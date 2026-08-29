@@ -2,6 +2,32 @@
 
 Foundry is a local-first visual design control plane for Codex, Cursor, and Claude Code. It lets you select rendered interface elements, preview precise refinements, review one structured change batch, and hand that batch to a coding agent for source implementation.
 
+## Installation experience
+
+The public package is prepared but not yet published. Once released, setup is one command from the project you want to inspect:
+
+```bash
+npx foundry-design setup
+```
+
+Setup detects the platform, framework, package manager, development command, and installed coding agents. It previews every file it will manage, adds development-only instrumentation for supported web frameworks, configures the selected MCP clients, and records a reversible install manifest.
+
+Then start a session with:
+
+```bash
+npx foundry-design start
+```
+
+Foundry reuses an available project server or starts the detected development command, launches the loopback runtime, and opens an authenticated visual preview. Remove only Foundry-managed integration with:
+
+```bash
+npx foundry-design uninstall
+```
+
+Supported automatic web integration currently includes Next.js App Router, Vite, and plain HTML. Generic web, SwiftUI, and React Native projects receive explicit setup guidance when a safe automatic edit is not available.
+
+Codex users can alternatively install the bundled plugin. The plugin contains the Foundry skill and MCP server definition, so project setup uses `--agent none` and does not create duplicate MCP configuration.
+
 ## Current capabilities
 
 - Measured browser selection with an isolated Shadow DOM inspector
@@ -17,10 +43,11 @@ Foundry is a local-first visual design control plane for Codex, Cursor, and Clau
 pnpm install
 pnpm check
 pnpm build
-pnpm foundry start --url http://localhost:3000
+pnpm foundry setup --project /path/to/project --agent codex --local-mcp
+pnpm foundry start --project /path/to/project
 ```
 
-The runtime binds to `127.0.0.1:4387`. It does not edit source files. Add the development-only web adapter shown by `pnpm foundry init web`, then start a session explicitly.
+The runtime binds to `127.0.0.1:4387`. Inspector preview changes remain temporary. Setup edits only the development integration and coding-agent configuration it shows before confirmation.
 
 ## Repository layout
 

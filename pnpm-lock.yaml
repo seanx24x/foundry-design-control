@@ -30,10 +30,10 @@ importers:
 
   packages/cli:
     dependencies:
-      '@foundry-design/protocol':
+      foundry-design-protocol:
         specifier: workspace:*
         version: link:../protocol
-      '@foundry-design/runtime':
+      foundry-design-runtime:
         specifier: workspace:*
         version: link:../runtime
 
@@ -56,9 +56,15 @@ importers:
 
   packages/runtime:
     dependencies:
-      '@foundry-design/protocol':
+      foundry-design-inspector:
+        specifier: workspace:*
+        version: link:../../apps/inspector
+      foundry-design-protocol:
         specifier: workspace:*
         version: link:../protocol
+      foundry-design-web-adapter:
+        specifier: workspace:*
+        version: link:../web-adapter
 
   packages/web-adapter: {}
 

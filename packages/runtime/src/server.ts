@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { extname, resolve } from 'node:path';
+import { dirname, extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import {
@@ -11,7 +11,7 @@ import {
   type SessionContext,
   type SurfaceSnapshot,
   type VerificationResult,
-} from '@foundry-design/protocol';
+} from 'foundry-design-protocol';
 import { SessionStore, type StoredSession } from './store.js';
 
 export interface RuntimeOptions {
@@ -20,9 +20,10 @@ export interface RuntimeOptions {
   store?: SessionStore;
 }
 
-const workspaceRoot = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const inspectorRoot = resolve(workspaceRoot, 'apps/inspector/dist');
-const adapterFile = resolve(workspaceRoot, 'packages/web-adapter/dist/adapter.js');
+const inspectorRoot = dirname(
+  fileURLToPath(import.meta.resolve('foundry-design-inspector/index.html')),
+);
+const adapterFile = fileURLToPath(import.meta.resolve('foundry-design-web-adapter'));
 
 const contentTypes: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',

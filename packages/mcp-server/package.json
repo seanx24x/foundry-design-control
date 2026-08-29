@@ -1,10 +1,20 @@
 {
-  "name": "@foundry-design/mcp-server",
+  "name": "foundry-design-mcp-server",
   "version": "0.1.0",
+  "description": "MCP bridge for local Foundry design sessions",
   "type": "module",
   "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
   "bin": {
     "foundry-design-mcp": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

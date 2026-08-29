@@ -1,8 +1,17 @@
 {
-  "name": "@foundry-design/inspector",
+  "name": "foundry-design-inspector",
   "version": "0.1.0",
-  "private": true,
+  "description": "Local review dashboard for Foundry design sessions",
   "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./index.html": "./dist/index.html"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "node --check public/app.js",

@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Foundry Design Control'
+  short_description: 'Inspect and refine live product interfaces'
+  default_prompt: 'Use $foundry-design-control to start a visual design session for this project.'

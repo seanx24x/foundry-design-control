@@ -1,10 +1,33 @@
 {
-  "name": "@foundry-design/cli",
+  "name": "foundry-design",
   "version": "0.1.0",
+  "description": "Install and run the local-first Foundry visual design control plane",
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "bin": {
     "foundry-design": "dist/index.js"
   },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seanx24x/foundry-design-control.git",
+    "directory": "packages/cli"
+  },
+  "keywords": [
+    "design",
+    "codex",
+    "cursor",
+    "claude",
+    "mcp",
+    "inspector"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -12,7 +35,7 @@
     "start": "tsx src/index.ts"
   },
   "dependencies": {
-    "@foundry-design/protocol": "workspace:*",
-    "@foundry-design/runtime": "workspace:*"
+    "foundry-design-protocol": "workspace:*",
+    "foundry-design-runtime": "workspace:*"
   }
 }

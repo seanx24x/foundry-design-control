@@ -2,9 +2,17 @@
 import { spawn } from 'node:child_process';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
+import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
-import { renderChangePrompt, type Platform, type SessionContext } from '@foundry-design/protocol';
-import { FoundryRuntime, SessionStore } from '@foundry-design/runtime';
+import { renderChangePrompt, type Platform, type SessionContext } from 'foundry-design-protocol';
+import { FoundryRuntime, SessionStore } from 'foundry-design-runtime';
+import {
+  createSetupPlan,
+  setupProject,
+  uninstallProject,
+  type Agent,
+  type FoundryProjectConfig,
+} from './installer.js';
 import { addSessionParams, detectPlatform } from './project.js';
 
 const args = process.argv.slice(2);
@@ -28,9 +36,11 @@ function printHelp(): void {
   console.log(`Foundry Design Control
 
 Usage:
+  foundry-design setup [--project PATH] [--agent codex,cursor,claude] [--url URL] [--yes]
   foundry-design init <web|swiftui|react-native> [--project PATH]
-  foundry-design start [--project PATH] [--url URL] [--platform PLATFORM] [--no-open]
+  foundry-design start [--project PATH] [--url URL] [--platform PLATFORM] [--no-open] [--no-dev]
   foundry-design doctor [--project PATH]
+  foundry-design uninstall [--project PATH] [--yes]
   foundry-design export <SESSION_ID> [--format json|prompt] [--output FILE]
   foundry-design install-agent <cursor|claude|codex> [--project PATH]
 
@@ -58,6 +68,67 @@ async function openUrl(url: string): Promise<void> {
   const childArgs = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
   const child = spawn(executable, childArgs, { detached: true, stdio: 'ignore' });
   child.unref();
+}
+
+async function urlAvailable(url: string): Promise<boolean> {
+  return fetch(url)
+    .then(() => true)
+    .catch(() => false);
+}
+
+async function confirm(message: string): Promise<boolean> {
+  if (has('--yes') || !process.stdin.isTTY) return true;
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await prompt.question(`${message} (Y/n) `)).trim().toLowerCase();
+    return answer === '' || answer === 'y' || answer === 'yes';
+  } finally {
+    prompt.close();
+  }
+}
+
+function requestedAgents(): Agent[] | undefined {
+  const value = flag('--agent');
+  if (!value) return undefined;
+  if (value === 'none') return [];
+  const agents = value.split(',').filter(Boolean) as Agent[];
+  const invalid = agents.filter((agent) => !['codex', 'cursor', 'claude'].includes(agent));
+  if (invalid.length) throw new Error(`Unsupported agent: ${invalid.join(', ')}`);
+  return [...new Set(agents)];
+}
+
+async function setup(): Promise<void> {
+  const root = projectRoot();
+  const options = {
+    agents: requestedAgents(),
+    targetUrl: flag('--url'),
+    packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
+  };
+  const plan = await createSetupPlan(root, options);
+  console.log(`Foundry setup\n\nProject: ${root}\nPlatform: ${plan.platform}`);
+  if (plan.framework) console.log(`Framework: ${plan.framework}`);
+  console.log(
+    `Agent integration: ${plan.agents.length ? plan.agents.join(', ') : 'plugin-provided'}`,
+  );
+  console.log('\nFiles Foundry will manage:');
+  for (const path of plan.files) console.log(`  ${path}`);
+  if (!plan.integrationFile && plan.platform === 'web') {
+    console.log(
+      '\nNo supported web entry was found. Foundry will create its adapter but leave integration pending.',
+    );
+  }
+  if (!(await confirm('\nContinue with this setup?'))) {
+    console.log('Setup cancelled.');
+    return;
+  }
+  const result = await setupProject(root, options);
+  console.log(`\n✓ Foundry configured ${result.changed.length} files.`);
+  if (result.targetUrl) console.log(`✓ Preview URL: ${result.targetUrl}`);
+  if (result.devCommand)
+    console.log(
+      `✓ Development command: ${result.devCommand.command} ${result.devCommand.args.join(' ')}`,
+    );
+  console.log('\nNext: foundry-design start');
 }
 
 async function initProject(): Promise<void> {
@@ -105,8 +176,51 @@ async function initProject(): Promise<void> {
 
 async function start(): Promise<void> {
   const root = projectRoot();
-  const platform = (flag('--platform') as Platform | undefined) ?? (await detectPlatform(root));
-  const targetUrl = flag('--url');
+  let config: FoundryProjectConfig | undefined;
+  try {
+    config = JSON.parse(
+      await readFile(join(root, '.foundry', 'foundry.config.json'), 'utf8'),
+    ) as FoundryProjectConfig;
+  } catch {
+    /* The explicit flags remain available for unconfigured projects. */
+  }
+  const platform =
+    (flag('--platform') as Platform | undefined) ??
+    config?.platform ??
+    (await detectPlatform(root));
+  const targetUrl = flag('--url') ?? config?.targetUrl;
+  if (platform === 'web' && config && !config.instrumented) {
+    throw new Error(
+      'Foundry setup is incomplete. Connect .foundry/web-adapter.ts to a development-only client entry, then set instrumented to true.',
+    );
+  }
+  let developmentServer: ReturnType<typeof spawn> | undefined;
+  if (
+    platform === 'web' &&
+    targetUrl &&
+    config?.devCommand &&
+    !has('--no-dev') &&
+    !(await urlAvailable(targetUrl))
+  ) {
+    console.log(
+      `Starting development server: ${config.devCommand.command} ${config.devCommand.args.join(' ')}`,
+    );
+    developmentServer = spawn(config.devCommand.command, config.devCommand.args, {
+      cwd: root,
+      stdio: 'inherit',
+    });
+    const deadline = Date.now() + 45_000;
+    while (Date.now() < deadline) {
+      if (await urlAvailable(targetUrl)) break;
+      if (developmentServer.exitCode != null)
+        throw new Error(`Development server exited with code ${developmentServer.exitCode}`);
+      await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+    }
+    if (!(await urlAvailable(targetUrl))) {
+      developmentServer.kill('SIGTERM');
+      throw new Error(`Development server did not become ready at ${targetUrl}`);
+    }
+  }
   const context: SessionContext = {
     projectRoot: root,
     revision: await revision(root),
@@ -124,6 +238,7 @@ async function start(): Promise<void> {
     await runtime.start();
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error;
+    developmentServer?.kill('SIGTERM');
     console.error(
       'Port 4387 is already in use. Stop the existing Foundry runtime before starting another session.',
     );
@@ -142,6 +257,7 @@ async function start(): Promise<void> {
   if (!has('--no-open')) await openUrl(productUrl);
   const shutdown = async () => {
     await runtime.stop();
+    developmentServer?.kill('SIGTERM');
     process.exit(0);
   };
   process.on('SIGINT', () => void shutdown());
@@ -149,18 +265,68 @@ async function start(): Promise<void> {
   await new Promise(() => {});
 }
 
+async function uninstall(): Promise<void> {
+  const root = projectRoot();
+  if (!(await confirm(`Remove Foundry-managed project integration from ${root}?`))) {
+    console.log('Uninstall cancelled.');
+    return;
+  }
+  const result = await uninstallProject(root);
+  console.log(`Removed Foundry integration from ${root}.`);
+  if (result.preserved.length) {
+    console.log('Preserved files with user changes:');
+    for (const path of result.preserved) console.log(`  ${path}`);
+  }
+}
+
 async function doctor(): Promise<void> {
   const root = projectRoot();
   const platform = await detectPlatform(root);
-  const checks = [
+  const configPath = join(root, '.foundry', 'foundry.config.json');
+  let config: FoundryProjectConfig | undefined;
+  try {
+    config = JSON.parse(await readFile(configPath, 'utf8')) as FoundryProjectConfig;
+  } catch {
+    /* Report setup as missing below. */
+  }
+  const agentFiles = [
+    join(root, '.codex', 'config.toml'),
+    join(root, '.cursor', 'mcp.json'),
+    join(root, '.mcp.json'),
+  ];
+  const configuredAgents = [];
+  for (const path of agentFiles) {
+    if ((await readFile(path, 'utf8').catch(() => '')).includes('foundry-design-control'))
+      configuredAgents.push(path);
+  }
+  const pluginProvided = await readFile(join(root, '.foundry', 'install-manifest.json'), 'utf8')
+    .then((content) => {
+      const manifest = JSON.parse(content) as { agents?: string[] };
+      return Array.isArray(manifest.agents) && manifest.agents.length === 0;
+    })
+    .catch(() => false);
+  const checks: Array<readonly [string, string, boolean]> = [
     ['Project', root, true],
     ['Detected platform', platform, true],
+    ['Foundry config', configPath, Boolean(config)],
     [
-      'Foundry config',
-      join(root, '.foundry', 'foundry.config.json'),
-      await readFile(join(root, '.foundry', 'foundry.config.json'), 'utf8')
-        .then(() => true)
-        .catch(() => false),
+      'Instrumentation',
+      config?.instrumented ? `${config.framework ?? config.platform}` : 'integration pending',
+      Boolean(config?.instrumented),
+    ],
+    [
+      'Agent connection',
+      configuredAgents.length
+        ? configuredAgents.join(', ')
+        : pluginProvided
+          ? 'plugin-provided'
+          : 'not configured',
+      configuredAgents.length > 0 || pluginProvided,
+    ],
+    [
+      'Project preview',
+      config?.targetUrl ?? 'not configured',
+      config?.targetUrl ? await urlAvailable(config.targetUrl) : platform !== 'web',
     ],
     [
       'Runtime health',
@@ -169,10 +335,10 @@ async function doctor(): Promise<void> {
         .then((response) => response.ok)
         .catch(() => false),
     ],
-  ] as const;
+  ];
   for (const [label, value, passed] of checks)
     console.log(`${passed ? '✓' : '○'} ${label}: ${value}`);
-  if (!checks[2][2]) console.log(`Run: foundry-design init ${platform}`);
+  if (!config) console.log('Run: foundry-design setup');
 }
 
 async function exportSession(): Promise<void> {
@@ -198,7 +364,7 @@ async function installAgent(): Promise<void> {
   const root = projectRoot();
   const server = {
     command: 'pnpm',
-    args: ['--dir', runtimeRepository, '--filter', '@foundry-design/mcp-server', 'start'],
+    args: ['--dir', runtimeRepository, '--filter', 'foundry-design-mcp-server', 'start'],
     env: { FOUNDRY_DESIGN_RUNTIME_URL: 'http://127.0.0.1:4387' },
   };
   if (agent === 'codex') {
@@ -207,7 +373,7 @@ async function installAgent(): Promise<void> {
     const file = join(directory, 'foundry-mcp.toml');
     await writeFile(
       file,
-      `# Merge this project-scoped server into your Codex MCP configuration.\n[mcp_servers.foundry-design-control]\ncommand = "pnpm"\nargs = ["--dir", "${runtimeRepository}", "--filter", "@foundry-design/mcp-server", "start"]\n[mcp_servers.foundry-design-control.env]\nFOUNDRY_DESIGN_RUNTIME_URL = "http://127.0.0.1:4387"\n`,
+      `# Merge this project-scoped server into your Codex MCP configuration.\n[mcp_servers.foundry-design-control]\ncommand = "pnpm"\nargs = ["--dir", "${runtimeRepository}", "--filter", "foundry-design-mcp-server", "start"]\n[mcp_servers.foundry-design-control.env]\nFOUNDRY_DESIGN_RUNTIME_URL = "http://127.0.0.1:4387"\n`,
     );
     console.log(`Wrote Codex MCP snippet: ${file}`);
     return;
@@ -226,9 +392,11 @@ async function installAgent(): Promise<void> {
 }
 
 try {
-  if (command === 'init') await initProject();
+  if (command === 'setup') await setup();
+  else if (command === 'init') await initProject();
   else if (command === 'start') await start();
   else if (command === 'doctor') await doctor();
+  else if (command === 'uninstall') await uninstall();
   else if (command === 'export') await exportSession();
   else if (command === 'install-agent') await installAgent();
   else printHelp();

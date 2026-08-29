@@ -1,6 +1,7 @@
 {
-  "name": "@foundry-design/protocol",
+  "name": "foundry-design-protocol",
   "version": "0.1.0",
+  "description": "Versioned Foundry design-change schemas and prompt rendering",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -9,6 +10,12 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

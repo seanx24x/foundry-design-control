@@ -1,14 +1,21 @@
 {
-  "name": "@foundry-design/runtime",
+  "name": "foundry-design-runtime",
   "version": "0.1.0",
+  "description": "Loopback-only session runtime for Foundry Design Control",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -16,6 +23,8 @@
     "test": "node --import tsx --test src/*.test.ts"
   },
   "dependencies": {
-    "@foundry-design/protocol": "workspace:*"
+    "foundry-design-inspector": "workspace:*",
+    "foundry-design-protocol": "workspace:*",
+    "foundry-design-web-adapter": "workspace:*"
   }
 }

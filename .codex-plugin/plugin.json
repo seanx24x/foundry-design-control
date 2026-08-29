@@ -1,0 +1,27 @@
+{
+  "name": "foundry-design-control",
+  "version": "0.1.0",
+  "description": "Visually inspect a running product, collect precise design changes, and hand one reviewed batch back to Codex.",
+  "author": {
+    "name": "Sean Lynch",
+    "url": "https://github.com/seanx24x"
+  },
+  "repository": "https://github.com/seanx24x/foundry-design-control",
+  "keywords": ["design", "visual-inspector", "motion", "mcp", "developer-tools"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Foundry Design Control",
+    "shortDescription": "Refine live interfaces with precise controls",
+    "longDescription": "Foundry connects a local visual inspector to Codex. Select rendered elements, preview layout, type, color, content, accessibility, responsive, and motion changes, then apply one reviewed source-edit batch.",
+    "developerName": "Sean Lynch",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Start Foundry for this project.",
+      "Apply my reviewed Foundry changes.",
+      "Verify the latest Foundry design session."
+    ],
+    "brandColor": "#A75031"
+  }
+}

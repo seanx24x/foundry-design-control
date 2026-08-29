@@ -13,7 +13,7 @@ import {
   type DesignChange,
   type SessionContext,
   type VerificationResult,
-} from '@foundry-design/protocol';
+} from 'foundry-design-protocol';
 
 export interface StoredSession {
   token: string;

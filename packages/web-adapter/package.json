@@ -1,6 +1,7 @@
 {
-  "name": "@foundry-design/web-adapter",
+  "name": "foundry-design-web-adapter",
   "version": "0.1.0",
+  "description": "Development-only browser inspector for Foundry",
   "type": "module",
   "main": "dist/adapter.js",
   "types": "dist/index.d.ts",
@@ -9,6 +10,12 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/adapter.js"
     }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "esbuild src/index.ts --bundle --format=esm --target=es2022 --outfile=dist/adapter.js && tsc -p tsconfig.json --emitDeclarationOnly",
