@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>Foundry — Design control</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="masthead">
+        <a class="wordmark" href="/" aria-label="Foundry home">
+          <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>Foundry</span>
+        </a>
+        <div class="runtime-status"><span class="pulse"></span> Local runtime</div>
+      </header>
+
+      <main>
+        <section class="intro" id="intro">
+          <div>
+            <p class="eyebrow">Design control plane</p>
+            <h1>Shape the interface.<br /><em>Keep the evidence.</em></h1>
+          </div>
+          <p class="lede">
+            Select real rendered elements, tune them in context, and return one exact change batch
+            to your coding agent.
+          </p>
+        </section>
+
+        <section class="session-view hidden" id="session-view" aria-live="polite">
+          <div class="session-header">
+            <div>
+              <p class="eyebrow" id="session-platform">Active session</p>
+              <h2 id="session-title">Loading session…</h2>
+              <p class="session-meta" id="session-meta"></p>
+            </div>
+            <div class="session-actions">
+              <button class="button secondary" id="copy-prompt">Copy agent prompt</button>
+              <button class="button primary" id="download-json">Export JSON</button>
+            </div>
+          </div>
+
+          <div class="native-stage hidden" id="native-stage">
+            <div class="native-canvas" id="native-canvas">
+              <img id="native-frame" alt="Live Simulator preview" />
+              <div id="native-targets"></div>
+            </div>
+            <aside class="native-properties" id="native-properties">
+              <p class="eyebrow">Live selection</p>
+              <h3>Select an element</h3>
+              <p>
+                Choose a measured region in the mirrored preview to expose its registered controls.
+              </p>
+            </aside>
+          </div>
+
+          <div class="workbench">
+            <aside class="rail" aria-label="Change summary">
+              <div class="count-block">
+                <strong id="change-count">0</strong><span>Changes</span>
+              </div>
+              <div class="count-block">
+                <strong id="approved-count">0</strong><span>Reviewed</span>
+              </div>
+              <div class="count-block">
+                <strong id="verified-count">0</strong><span>Verified</span>
+              </div>
+              <div class="rail-rule"></div>
+              <p>Changes are grouped by their measured target and final property value.</p>
+            </aside>
+            <div class="ledger">
+              <div class="ledger-title">
+                <h3>Change ledger</h3>
+                <span id="updated-at"></span>
+              </div>
+              <div id="changes" class="changes"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="sessions" id="sessions-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Recent work</p>
+              <h2>Design sessions</h2>
+            </div>
+            <button class="button secondary" id="refresh">Refresh</button>
+          </div>
+          <div class="session-grid" id="session-grid"></div>
+        </section>
+
+        <section class="empty-guide" id="empty-guide">
+          <p class="eyebrow">Start here</p>
+          <div class="command">
+            <code>pnpm foundry start --url http://localhost:3000</code
+            ><button id="copy-command">Copy</button>
+          </div>
+          <p>
+            Then load the development-only adapter in your product. Hold <kbd>⌥</kbd> and click any
+            rendered element to open its controls.
+          </p>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

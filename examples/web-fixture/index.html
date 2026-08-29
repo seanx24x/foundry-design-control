@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Foundry fixture</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main
+      data-foundry-id="billing-card"
+      data-foundry-label="Billing card"
+      data-foundry-component="Settings/BillingCard"
+      data-foundry-source="examples/web-fixture/BillingCard.tsx:18:4"
+    >
+      <div class="copy">
+        <span class="tag">Workspace plan</span>
+        <h1>Make room for the next release.</h1>
+        <p
+          data-foundry-id="billing-copy"
+          data-foundry-label="Plan description"
+          data-foundry-source="examples/web-fixture/BillingCard.tsx:23:8"
+        >
+          Twelve editors, unlimited review links, and a shared component library.
+        </p>
+      </div>
+      <div class="price"><strong>$48</strong><span>per month</span></div>
+      <button
+        data-foundry-id="upgrade-button"
+        data-foundry-label="Upgrade button"
+        data-foundry-component="Settings/BillingCard/Button"
+        data-foundry-source="examples/web-fixture/BillingCard.tsx:31:8"
+      >
+        Upgrade workspace <i aria-hidden="true">→</i>
+      </button>
+      <div class="orbit" aria-hidden="true"></div>
+    </main>
+    <script type="module">
+      const query = new URLSearchParams(location.search);
+      if (query.has('__foundry_session')) {
+        const { installFoundryInspector } = await import('http://127.0.0.1:4387/adapter.js');
+        installFoundryInspector();
+      }
+    </script>
+  </body>
+</html>

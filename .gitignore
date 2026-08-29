@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.foundry/
+.DS_Store
+*.log
+.swiftpm/
+.build/
