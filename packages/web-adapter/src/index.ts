@@ -1,4 +1,5 @@
 import { cssPath, parseSource, targetId } from './locator.js';
+import { createDebouncedChangeRecorder } from './recording.js';
 
 export interface FoundryInspectorOptions {
   runtimeUrl?: string;
@@ -418,16 +419,17 @@ export function installFoundryInspector(
     controlsRoot
       .querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-control]')
       .forEach((field) => {
-        let recordTimer: ReturnType<typeof setTimeout> | undefined;
+        const control = controls[Number(field.dataset.control)];
+        if (!control) return;
+        const recorder = createDebouncedChangeRecorder<string | number>(180, (before, after) =>
+          record(control, before, after),
+        );
         field.addEventListener('input', () => {
-          const control = controls[Number(field.dataset.control)];
-          if (!control) return;
           const before = control.read();
           const value = control.kind === 'number' ? Number(field.value) : field.value;
           control.apply(value);
           updateOutline();
-          if (recordTimer) clearTimeout(recordTimer);
-          recordTimer = setTimeout(() => void record(control, before, value), 180);
+          recorder.push(before, value);
         });
       });
   }
