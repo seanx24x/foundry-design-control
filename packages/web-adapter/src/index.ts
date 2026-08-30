@@ -35,23 +35,28 @@ interface Control {
 }
 
 const PANEL_CSS = `
-  :host { all: initial; --fdc-ink:#202321; --fdc-paper:#f6f6f1; --fdc-line:#c8ccc5; --fdc-copper:#a75031; --fdc-muted:#656a65; font-family:"Avenir Next",Avenir,"Helvetica Neue",sans-serif; color:var(--fdc-ink); }
+  :host { all:initial; --fdc-ink:#171b1d; --fdc-paper:#f7f9f8; --fdc-surface:#ffffff; --fdc-subtle:#eef1ef; --fdc-line:#d5dbd8; --fdc-signal:#3659f4; --fdc-signal-soft:#e8ecff; --fdc-muted:#66706d; font-family:"Avenir Next",Avenir,"Helvetica Neue",sans-serif; color:var(--fdc-ink); }
   * { box-sizing:border-box; }
-  .outline { position:fixed; z-index:2147483645; pointer-events:none; border:1px solid var(--fdc-copper); box-shadow:0 0 0 1px rgb(255 255 255 / 75%); transition:top 80ms linear,left 80ms linear,width 80ms linear,height 80ms linear; }
-  .measure { position:absolute; left:-1px; top:-25px; height:23px; display:flex; align-items:center; gap:8px; padding:0 8px; color:white; background:var(--fdc-copper); font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:nowrap; }
-  .cross::before,.cross::after { content:""; position:absolute; background:var(--fdc-copper); }.cross::before { width:9px;height:1px;left:-5px;top:-1px; }.cross::after { width:1px;height:9px;left:-1px;top:-5px; }
-  .panel { position:fixed; z-index:2147483646; top:12px; right:12px; width:356px; max-height:calc(100vh - 24px); overflow:hidden; display:flex; flex-direction:column; color:var(--fdc-ink); background:var(--fdc-paper); border:1px solid #b9beb7; box-shadow:0 22px 70px rgb(20 24 21 / 24%); pointer-events:auto; border-radius:5px; }
-  .top { display:flex; align-items:center; min-height:52px; padding:0 14px; border-bottom:1px solid var(--fdc-line); }
-  .brand { display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700;letter-spacing:-.015em; }.brand-mark { width:13px;height:14px;display:flex;align-items:flex-end;gap:2px; }.brand-mark i { display:block;width:3px;background:var(--fdc-copper);border-radius:2px 2px 0 0; }.brand-mark i:nth-child(1){height:7px}.brand-mark i:nth-child(2){height:13px}.brand-mark i:nth-child(3){height:9px}
-  .top-actions { margin-left:auto;display:flex;gap:4px; }.icon-button { width:30px;height:30px;border:0;border-radius:3px;background:transparent;color:var(--fdc-muted);cursor:pointer;font-size:16px; }.icon-button:hover { background:#e7e8e2;color:var(--fdc-ink); }.icon-button.active { color:white;background:var(--fdc-copper); }
-  .selection { padding:14px; border-bottom:1px solid var(--fdc-line); }.selection small { display:block;margin-bottom:6px;color:var(--fdc-copper);font:600 9px/1.2 ui-monospace,monospace;text-transform:uppercase;letter-spacing:.12em; }.selection strong { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;letter-spacing:-.02em; }.selection code { display:block;margin-top:5px;overflow:hidden;text-overflow:ellipsis;color:var(--fdc-muted);font:10px/1.4 ui-monospace,monospace;white-space:nowrap; }
-  .scope { display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--fdc-line);border-bottom:1px solid var(--fdc-line); }.scope label { display:flex;flex-direction:column;gap:5px;padding:9px 10px;background:var(--fdc-paper);color:var(--fdc-muted);font:9px/1.2 ui-monospace,monospace;text-transform:uppercase;letter-spacing:.08em; }.scope select { width:100%;padding:0;border:0;background:transparent;color:var(--fdc-ink);font:11px/1.3 "Avenir Next",sans-serif;text-transform:none;letter-spacing:0;outline:none; }
-  .tabs { display:flex;gap:0;overflow-x:auto;border-bottom:1px solid var(--fdc-line);scrollbar-width:none; }.tab { flex:none;height:38px;padding:0 11px;border:0;border-right:1px solid var(--fdc-line);background:transparent;color:var(--fdc-muted);font:600 9px/1 ui-monospace,monospace;text-transform:uppercase;letter-spacing:.07em;cursor:pointer; }.tab.active { color:var(--fdc-copper);box-shadow:inset 0 -2px var(--fdc-copper); }
-  .controls { min-height:180px;overflow:auto;padding:5px 14px 16px; }.group-label { margin:16px 0 8px;color:var(--fdc-muted);font:600 9px/1.2 ui-monospace,monospace;text-transform:uppercase;letter-spacing:.1em; }.control { display:grid;grid-template-columns:minmax(0,1fr) 124px;align-items:center;gap:12px;min-height:39px;border-top:1px solid #dddeda; }.control label { overflow:hidden;text-overflow:ellipsis;font-size:11px;white-space:nowrap; }.control-field { display:flex;align-items:center;border:1px solid var(--fdc-line);border-radius:3px;background:white;overflow:hidden; }.control input,.control select { width:100%;height:28px;padding:0 8px;border:0;background:transparent;color:var(--fdc-ink);font:11px/1 ui-monospace,monospace;outline:none; }.control input[type=color] { padding:3px;height:28px; }.unit { padding-right:7px;color:var(--fdc-muted);font:9px/1 ui-monospace,monospace; }
-  .motion-row { padding:11px 0;border-top:1px solid #dddeda; }.motion-title { display:flex;justify-content:space-between;gap:12px;margin-bottom:9px;font-size:11px; }.motion-title code { color:var(--fdc-muted);font:9px/1.3 ui-monospace,monospace; }.motion-actions { display:flex;gap:6px; }.motion-actions button { min-height:28px;padding:0 9px;border:1px solid var(--fdc-line);background:white;border-radius:3px;font-size:10px;cursor:pointer; }
-  .empty { padding:38px 12px;text-align:center;color:var(--fdc-muted);font-size:12px;line-height:1.6; }.footer { display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--fdc-line); }.footer button { min-height:42px;border:0;background:transparent;font-size:11px;font-weight:650;cursor:pointer; }.footer button+button { border-left:1px solid var(--fdc-line); }.footer .review { color:white;background:var(--fdc-ink); }
-  .toast { position:absolute;left:50%;bottom:50px;transform:translate(-50%,8px);padding:8px 11px;background:var(--fdc-ink);color:white;border-radius:3px;font-size:10px;opacity:0;transition:.15s ease;pointer-events:none;white-space:nowrap; }.toast.show { opacity:1;transform:translate(-50%,0); }
-  @media (max-width:600px){.panel{top:auto;right:6px;bottom:6px;left:6px;width:auto;max-height:68vh}.scope{display:none}}
+  button,select,input { font:inherit; }
+  button:focus-visible,select:focus-visible,input:focus-visible { outline:2px solid var(--fdc-signal);outline-offset:2px; }
+  .outline { position:fixed;z-index:2147483645;pointer-events:none;border:1.5px solid var(--fdc-signal);box-shadow:0 0 0 1px rgb(255 255 255 / 90%),0 0 0 4px rgb(54 89 244 / 12%);transition:top 80ms linear,left 80ms linear,width 80ms linear,height 80ms linear; }
+  .measure { position:absolute;left:-2px;top:-28px;height:25px;display:flex;align-items:center;padding:0 9px;color:white;background:var(--fdc-signal);border-radius:5px 5px 5px 0;font:650 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;white-space:nowrap;box-shadow:0 4px 14px rgb(25 43 124 / 20%); }
+  .cross::before,.cross::after { content:"";position:absolute;background:var(--fdc-signal); }.cross::before { width:11px;height:1px;left:-6px;top:-1px; }.cross::after { width:1px;height:11px;left:-1px;top:-6px; }
+  .panel { position:fixed;z-index:2147483646;top:16px;right:16px;width:392px;max-height:calc(100vh - 32px);overflow:hidden;display:flex;flex-direction:column;color:var(--fdc-ink);background:var(--fdc-paper);border:1px solid rgb(117 128 123 / 32%);box-shadow:0 24px 80px rgb(23 30 27 / 22%),0 2px 8px rgb(23 30 27 / 8%);pointer-events:auto;border-radius:12px; }
+  .top { display:flex;align-items:center;min-height:60px;padding:0 14px 0 16px;background:var(--fdc-surface);border-bottom:1px solid var(--fdc-line); }
+  .brand { display:flex;align-items:center;gap:10px;min-width:0; }.brand-mark { width:16px;height:17px;display:flex;align-items:flex-end;gap:2px; }.brand-mark i { display:block;width:4px;background:var(--fdc-signal);border-radius:2px 2px 1px 1px; }.brand-mark i:nth-child(1){height:8px}.brand-mark i:nth-child(2){height:16px}.brand-mark i:nth-child(3){height:11px}
+  .brand-copy { display:flex;flex-direction:column;gap:2px; }.brand-copy b { font-size:13px;line-height:1;font-weight:750;letter-spacing:-.02em; }.brand-copy span { color:var(--fdc-muted);font:500 9px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.05em;text-transform:uppercase; }
+  .session-status { margin-left:auto;display:flex;align-items:center;gap:6px;padding:5px 8px;color:#236c59;background:#e8f6f1;border-radius:999px;font:650 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.06em; }.session-status i { width:6px;height:6px;background:#2ca67f;border-radius:50%;box-shadow:0 0 0 3px rgb(44 166 127 / 13%); }.session-status.offline { color:#8b4d3d;background:#faece7; }.session-status.offline i { background:#d16d51;box-shadow:none; }
+  .top-actions { display:flex;gap:3px;margin-left:7px; }.icon-button { width:32px;height:32px;border:0;border-radius:7px;background:transparent;color:var(--fdc-muted);cursor:pointer;font-size:16px;line-height:1; }.icon-button:hover { background:var(--fdc-subtle);color:var(--fdc-ink); }.icon-button.active { color:white;background:var(--fdc-signal);box-shadow:0 4px 14px rgb(54 89 244 / 24%); }
+  .selection { padding:16px;background:var(--fdc-surface);border-bottom:1px solid var(--fdc-line);box-shadow:inset 3px 0 var(--fdc-signal); }.selection-heading { display:flex;align-items:center;justify-content:space-between;margin-bottom:7px; }.selection small { color:var(--fdc-signal);font:700 9px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.12em; }.selection-state { color:var(--fdc-muted);font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.06em; }.selection strong { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;line-height:1.25;letter-spacing:-.025em; }.selection code { display:block;margin-top:5px;overflow:hidden;text-overflow:ellipsis;color:var(--fdc-muted);font:10px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap; }.selection-stats { display:flex;gap:6px;margin-top:11px; }.selection-stats[hidden] { display:none; }.selection-stats span { padding:5px 7px;color:#34403c;background:var(--fdc-subtle);border-radius:5px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em; }.selection-stats span:first-child { color:#2947c6;background:var(--fdc-signal-soft); }
+  .scope { display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--fdc-line);border-bottom:1px solid var(--fdc-line); }.scope label { display:flex;flex-direction:column;gap:6px;padding:10px 11px;background:var(--fdc-paper);color:var(--fdc-muted);font:650 8px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.09em; }.scope select { width:100%;padding:0 16px 0 0;border:0;background:transparent;color:var(--fdc-ink);font:600 11px/1.3 "Avenir Next",Avenir,sans-serif;text-transform:none;letter-spacing:0;outline:none;cursor:pointer; }
+  .tabs { display:flex;gap:4px;overflow-x:auto;padding:7px 8px;background:var(--fdc-subtle);border-bottom:1px solid var(--fdc-line);scrollbar-width:none; }.tab { flex:none;height:29px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:var(--fdc-muted);font:650 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:capitalize;letter-spacing:.01em;cursor:pointer; }.tab:hover { color:var(--fdc-ink);background:rgb(255 255 255 / 70%); }.tab.active { color:#2947c6;background:var(--fdc-surface);box-shadow:0 1px 3px rgb(24 31 28 / 10%); }
+  .controls { min-height:204px;overflow:auto;padding:4px 16px 18px;background:var(--fdc-paper); }.group-label { margin:16px 0 9px;color:var(--fdc-muted);font:650 9px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.1em; }.control { display:grid;grid-template-columns:minmax(0,1fr) 146px;align-items:center;gap:14px;min-height:46px;border-top:1px solid var(--fdc-line); }.control label { overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:560;white-space:nowrap; }.control-field { display:flex;align-items:center;min-height:32px;border:1px solid #cbd2ce;border-radius:7px;background:var(--fdc-surface);overflow:hidden;transition:border-color .15s ease,box-shadow .15s ease; }.control-field:focus-within { border-color:var(--fdc-signal);box-shadow:0 0 0 3px rgb(54 89 244 / 11%); }.control input,.control select { width:100%;height:31px;padding:0 9px;border:0;background:transparent;color:var(--fdc-ink);font:550 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;outline:none; }.control input[type=color] { padding:4px;height:31px; }.unit { padding-right:8px;color:var(--fdc-muted);font:9px/1 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .motion-row { padding:13px 0;border-top:1px solid var(--fdc-line); }.motion-title { display:flex;justify-content:space-between;gap:12px;margin-bottom:10px;font-size:12px;font-weight:600; }.motion-title code { color:var(--fdc-muted);font:9px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; }.motion-actions { display:flex;gap:6px; }.motion-actions button { min-height:30px;padding:0 10px;border:1px solid #cbd2ce;background:var(--fdc-surface);border-radius:7px;color:var(--fdc-ink);font-size:10px;font-weight:600;cursor:pointer; }.motion-actions button:hover { border-color:var(--fdc-signal);color:var(--fdc-signal); }
+  .empty { padding:48px 28px;text-align:center;color:var(--fdc-muted);font-size:12px;line-height:1.6; }.empty::before { content:"⌖";display:grid;place-items:center;width:38px;height:38px;margin:0 auto 13px;color:var(--fdc-signal);background:var(--fdc-signal-soft);border-radius:10px;font:18px/1 ui-monospace,monospace; }
+  .footer { display:grid;grid-template-columns:118px 1fr;gap:8px;padding:10px;background:var(--fdc-surface);border-top:1px solid var(--fdc-line); }.footer button { min-height:40px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-surface);color:var(--fdc-ink);font-size:11px;font-weight:700;cursor:pointer; }.footer button:hover { border-color:#aab3af; }.footer .review { display:flex;align-items:center;justify-content:center;gap:8px;color:white;background:var(--fdc-ink);border-color:var(--fdc-ink);box-shadow:0 5px 14px rgb(23 27 29 / 13%); }.footer .review:hover { background:#282e31; }.change-count { min-width:18px;height:18px;display:inline-grid;place-items:center;padding:0 5px;color:var(--fdc-ink);background:white;border-radius:999px;font:750 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace; }.change-count[hidden] { display:none; }
+  .toast { position:absolute;left:50%;bottom:64px;transform:translate(-50%,8px);padding:9px 12px;background:var(--fdc-ink);color:white;border-radius:7px;font-size:10px;font-weight:650;opacity:0;transition:.15s ease;pointer-events:none;white-space:nowrap;box-shadow:0 8px 28px rgb(23 27 29 / 24%); }.toast.show { opacity:1;transform:translate(-50%,0); }
+  @media (max-width:680px){.panel{top:auto;right:8px;bottom:8px;left:8px;width:auto;max-height:64vh}.scope{display:none}.controls{min-height:170px}.footer{grid-template-columns:104px 1fr}}
   @media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}}
 `;
 
@@ -235,7 +240,7 @@ export function installFoundryInspector(
   const host = document.createElement('div');
   host.dataset.foundryOverlay = 'true';
   const shadow = host.attachShadow({ mode: 'open' });
-  shadow.innerHTML = `<style>${PANEL_CSS}</style><div class="outline" hidden><span class="cross"></span><span class="measure"></span></div><aside class="panel" aria-label="Foundry design inspector"><div class="top"><div class="brand"><span class="brand-mark"><i></i><i></i><i></i></span>Foundry</div><div class="top-actions"><button class="icon-button inspect" title="Select element (Option-click)" aria-label="Select element">⌖</button><button class="icon-button close" title="Close inspector" aria-label="Close inspector">×</button></div></div><div class="selection"><small>Selection</small><strong>Nothing selected</strong><code>Hold ⌥ and click an element</code></div><div class="scope"><label>Scope<select data-scope><option value="instance">Instance</option><option value="component">Component</option></select></label><label>Breakpoint<select data-breakpoint><option>current</option><option>mobile</option><option>tablet</option><option>desktop</option></select></label><label>Theme<select data-theme><option>current</option><option>light</option><option>dark</option></select></label></div><div class="tabs"></div><div class="controls"><div class="empty">Select a rendered element to expose its measured controls.</div></div><div class="footer"><button class="verify">Verify preview</button><button class="review">Review changes</button></div><div class="toast"></div></aside>`;
+  shadow.innerHTML = `<style>${PANEL_CSS}</style><div class="outline" hidden><span class="cross"></span><span class="measure"></span></div><aside class="panel" aria-label="Foundry design inspector"><div class="top"><div class="brand"><span class="brand-mark"><i></i><i></i><i></i></span><span class="brand-copy"><b>Foundry</b><span>Design control</span></span></div><span class="session-status"><i></i><span>Live</span></span><div class="top-actions"><button class="icon-button inspect" title="Select element (Option-click)" aria-label="Select element">⌖</button><button class="icon-button close" title="Close inspector" aria-label="Close inspector">×</button></div></div><div class="selection"><div class="selection-heading"><small>Selection</small><span class="selection-state">Ready</span></div><strong>Nothing selected</strong><code>Hold ⌥ and click an element</code><div class="selection-stats" hidden><span data-selection-size></span><span data-selection-confidence></span></div></div><div class="scope"><label>Scope<select data-scope><option value="instance">Instance</option><option value="component">Component</option></select></label><label>Breakpoint<select data-breakpoint><option>current</option><option>mobile</option><option>tablet</option><option>desktop</option></select></label><label>Theme<select data-theme><option>current</option><option>light</option><option>dark</option></select></label></div><div class="tabs"></div><div class="controls"><div class="empty">Select an element to inspect its measured design controls.</div></div><div class="footer"><button class="verify">Verify</button><button class="review"><span>Review changes</span><span class="change-count" hidden>0</span></button></div><div class="toast"></div></aside>`;
   document.body.append(host);
 
   const outline = shadow.querySelector<HTMLElement>('.outline')!;
@@ -243,8 +248,14 @@ export function installFoundryInspector(
   const tabs = shadow.querySelector<HTMLElement>('.tabs')!;
   const controlsRoot = shadow.querySelector<HTMLElement>('.controls')!;
   const inspectButton = shadow.querySelector<HTMLButtonElement>('.inspect')!;
+  const sessionStatus = shadow.querySelector<HTMLElement>('.session-status')!;
   const selectionTitle = shadow.querySelector<HTMLElement>('.selection strong')!;
   const selectionCode = shadow.querySelector<HTMLElement>('.selection code')!;
+  const selectionState = shadow.querySelector<HTMLElement>('.selection-state')!;
+  const selectionStats = shadow.querySelector<HTMLElement>('.selection-stats')!;
+  const selectionSize = shadow.querySelector<HTMLElement>('[data-selection-size]')!;
+  const selectionConfidence = shadow.querySelector<HTMLElement>('[data-selection-confidence]')!;
+  const changeCount = shadow.querySelector<HTMLElement>('.change-count')!;
   const scope = shadow.querySelector<HTMLSelectElement>('[data-scope]')!;
   const breakpoint = shadow.querySelector<HTMLSelectElement>('[data-breakpoint]')!;
   const theme = shadow.querySelector<HTMLSelectElement>('[data-theme]')!;
@@ -253,6 +264,36 @@ export function installFoundryInspector(
   let activeCategory: Category = 'layout';
   let selectedControls: Control[] = [];
   let resizeObserver: ResizeObserver | undefined;
+
+  if (!sessionId || !token) {
+    sessionStatus.classList.add('offline');
+    sessionStatus.querySelector('span')!.textContent = 'Offline';
+  }
+
+  function updateChangeCount(count: number): void {
+    changeCount.textContent = String(count);
+    changeCount.hidden = count === 0;
+  }
+
+  async function hydrateSession(): Promise<void> {
+    if (!sessionId || !token) return;
+    try {
+      const response = await fetch(`${runtimeUrl}/v1/sessions/${sessionId}`, {
+        headers: { 'x-foundry-token': token },
+      });
+      if (!response.ok) return;
+      const { changeSet } = await response.json();
+      updateChangeCount(
+        changeSet.changes.filter((change: { status: string }) => change.status !== 'rejected')
+          .length,
+      );
+    } catch {
+      sessionStatus.classList.add('offline');
+      sessionStatus.querySelector('span')!.textContent = 'Offline';
+    }
+  }
+
+  void hydrateSession();
 
   function showToast(message: string): void {
     const toast = shadow.querySelector<HTMLElement>('.toast')!;
@@ -275,6 +316,7 @@ export function installFoundryInspector(
     });
     outline.querySelector<HTMLElement>('.measure')!.textContent =
       `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
+    selectionSize.textContent = `${Math.round(rect.width)} × ${Math.round(rect.height)} px`;
     outline.hidden = rect.width <= 0 || rect.height <= 0;
   }
 
@@ -339,18 +381,32 @@ export function installFoundryInspector(
       after,
       unit: control.unit,
       scope: scope.value,
-      context: { breakpoint: breakpoint.value, theme: theme.value, state: 'current' },
+      context: {
+        breakpoint: breakpoint.value,
+        theme: theme.value,
+        state: 'current',
+      },
       confidence: selected.dataset.foundrySource ? 'instrumented' : 'measured',
       evidence: ['live preview override', 'computed style'],
       status: 'draft',
     };
     const response = await fetch(`${runtimeUrl}/v1/sessions/${sessionId}/changes`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-foundry-token': token },
+      headers: {
+        'content-type': 'application/json',
+        'x-foundry-token': token,
+      },
       body: JSON.stringify(payload),
     });
     if (!response.ok) showToast((await response.json()).error ?? 'Could not record change');
-    else showToast('Change recorded');
+    else {
+      const { changeSet } = await response.json();
+      updateChangeCount(
+        changeSet.changes.filter((change: { status: string }) => change.status !== 'rejected')
+          .length,
+      );
+      showToast('Change recorded');
+    }
   }
 
   function renderControls(): void {
@@ -439,13 +495,32 @@ export function installFoundryInspector(
     selected = element;
     selectedControls = controlsFor(element);
     activeCategory = 'layout';
-    selectionTitle.textContent = targetFor(element).label;
+    const target = targetFor(element);
+    selectionTitle.textContent = target.label;
     selectionCode.textContent = element.dataset.foundrySource || cssPath(element);
+    selectionState.textContent = 'Measured';
+    selectionConfidence.textContent =
+      target.confidence === 'instrumented' ? 'Instrumented' : 'Measured target';
+    selectionStats.hidden = false;
     resizeObserver?.disconnect();
     resizeObserver = new ResizeObserver(updateOutline);
     resizeObserver.observe(element);
     updateOutline();
     renderControls();
+  }
+
+  function clearSelection(): void {
+    selected = null;
+    selectedControls = [];
+    resizeObserver?.disconnect();
+    outline.hidden = true;
+    selectionTitle.textContent = 'Nothing selected';
+    selectionCode.textContent = 'Hold ⌥ and click an element';
+    selectionState.textContent = 'Ready';
+    selectionStats.hidden = true;
+    tabs.innerHTML = '';
+    controlsRoot.innerHTML =
+      '<div class="empty">Select an element to inspect its measured design controls.</div>';
   }
 
   function handlePointer(event: MouseEvent): void {
@@ -528,10 +603,7 @@ export function installFoundryInspector(
     );
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      selected = null;
-      outline.hidden = true;
-    }
+    if (event.key === 'Escape') clearSelection();
   });
   return {
     inspect() {
