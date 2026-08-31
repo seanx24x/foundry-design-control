@@ -347,7 +347,8 @@ const PANEL_CSS = `
   /* Fluid inspector controls */
   .inspector-category .property-section { width:100%;margin-left:0;border-left:0; }
   .inspector-category .property-section .section-head { padding-left:10px; }
-  .category-body>.context-tools,.category-body>.native-panel,.category-body>.design-health { width:100%;margin-left:0; }
+  .category-body>.context-tools,.category-body>.native-panel { width:100%;margin-left:0; }
+  .category-body>.design-health { width:auto;margin:12px 14px 0; }
   .section-grid { width:100%;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px 14px 14px;box-sizing:border-box; }
   .section-grid.stacked { grid-template-columns:minmax(0,1fr); }
   .section-grid:not(.stacked)>:last-child:nth-child(odd) { grid-column:1/-1; }
