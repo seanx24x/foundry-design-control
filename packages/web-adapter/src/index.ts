@@ -348,14 +348,24 @@ const PANEL_CSS = `
   .inspector-category .property-section { width:100%;margin-left:0;border-left:0; }
   .inspector-category .property-section .section-head { padding-left:10px; }
   .category-body>.context-tools,.category-body>.native-panel,.category-body>.design-health { width:100%;margin-left:0; }
-  .section-grid { width:100%;box-sizing:border-box; }
-  .property-control { grid-template-columns:minmax(84px,112px) minmax(0,1fr) 24px; }
-  .section-grid.two { grid-template-columns:repeat(2,minmax(0,1fr));column-gap:8px; }
-  .section-grid.two .compact-control { grid-template-columns:minmax(0,1fr) 20px;gap:4px; }
+  .section-grid { width:100%;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px 14px 14px;box-sizing:border-box; }
+  .section-grid.stacked { grid-template-columns:minmax(0,1fr); }
+  .section-grid:not(.stacked)>:last-child:nth-child(odd) { grid-column:1/-1; }
+  .property-control { min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:6px; }
+  .property-control .property-label { min-height:13px;line-height:13px; }
+  .property-control .control-field { width:100%;height:34px; }
+  .property-control input,.property-control select { height:32px; }
+  .section-grid.two { grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
+  .section-grid.two .compact-control { position:relative;display:block; }
   .compact-control .field-prefix,.compact-control .field-prefix.wide { width:44px;min-width:44px;box-sizing:border-box;padding-left:10px; }
   .section-grid.two .control-field { width:100%;height:34px; }
   .section-grid.two .compact-control input,.section-grid.two .compact-control select { height:32px; }
-  .section-grid.two .control-reset { width:20px; }
+  .control-field>.control-reset { position:absolute;z-index:2;top:4px;right:4px;width:24px;height:24px; }
+  .control-field>input { padding-right:32px; }
+  .control-field:has(>select:not(.unit-select))>.control-reset { right:30px; }
+  .control-field:has(>select:not(.unit-select))>select:not(.unit-select) { padding-right:56px!important; }
+  .control-field:has(>.unit-select)>.control-reset { right:49px; }
+  .control-field:has(>.unit)>.control-reset { right:25px; }
   /* Consistent inset chevrons for every select input */
   select { -webkit-appearance:none;appearance:none;padding-right:30px!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%238f8f96' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 6.5 3 3 3-3'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:right 9px center!important;background-size:16px 16px!important; }
   .control-field .unit-select { width:48px;padding-right:20px!important;padding-left:3px!important;background-position:right 3px center!important;background-size:14px 14px!important; }
@@ -787,9 +797,9 @@ function renderPropertyControl(control: Control, index: number, prefix?: string)
       ? ` data-scrub-for="${index}" title="Drag left or right to adjust ${escapeHtml(control.label)}. Hold Shift for larger steps or Option for finer steps."`
       : '';
   if (prefix) {
-    return `<label class="compact-control"><span class="sr-only">${escapeHtml(control.label)}</span><span class="control-field"><span class="field-prefix ${prefix.length > 2 ? 'wide' : ''}"${scrubAttributes}>${escapeHtml(prefix)}</span>${field}</span>${reset}</label>`;
+    return `<label class="compact-control"><span class="sr-only">${escapeHtml(control.label)}</span><span class="control-field"><span class="field-prefix ${prefix.length > 2 ? 'wide' : ''}"${scrubAttributes}>${escapeHtml(prefix)}</span>${field}${reset}</span></label>`;
   }
-  return `<label class="property-control"><span class="property-label"${scrubAttributes}>${escapeHtml(control.label)}</span><span class="control-field">${field}</span>${reset}</label>`;
+  return `<label class="property-control"><span class="property-label"${scrubAttributes}>${escapeHtml(control.label)}</span><span class="control-field">${field}${reset}</span></label>`;
 }
 
 export function installFoundryInspector(
