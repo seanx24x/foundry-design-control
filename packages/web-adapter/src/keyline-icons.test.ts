@@ -27,6 +27,7 @@ const expectedSemantics = [
   'lock',
   'maximize-2',
   'mouse-pointer-2',
+  'interact',
   'palette',
   'panels-top-left',
   'play',

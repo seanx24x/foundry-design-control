@@ -47,6 +47,14 @@ import {
   type VerifiedBaseline,
 } from './design-memory.js';
 import { renderKeylineIcons } from './keyline-icons.js';
+import {
+  DEFAULT_WORKSPACE_STATE,
+  clampUtilityRect,
+  updateWorkspace,
+  type FoundryRect,
+  type FoundryUtility,
+  type FoundryWorkspaceState,
+} from './workspace.js';
 
 export interface FoundryInspectorOptions {
   runtimeUrl?: string;
@@ -66,13 +74,22 @@ type Category =
   'layout' | 'typography' | 'color' | 'effects' | 'content' | 'accessibility' | 'motion';
 type ControlKind = 'number' | 'text' | 'color' | 'select';
 
+interface InspectorGroup {
+  key: string;
+  category: Category;
+  label: string;
+  icon: string;
+  sectionLabels?: string[];
+  showContext?: boolean;
+}
+
 const CATEGORY_LABELS: Record<Category, string> = {
-  layout: 'Layout',
-  typography: 'Type',
-  color: 'Color',
+  layout: 'Layout and spacing',
+  typography: 'Typography',
+  color: 'Fill and stroke',
   effects: 'Effects',
   content: 'Content',
-  accessibility: 'A11y',
+  accessibility: 'Accessibility',
   motion: 'Motion',
 };
 
@@ -97,23 +114,28 @@ interface ControlSection {
 const CONTROL_SECTIONS: Partial<Record<Category, ControlSection[]>> = {
   layout: [
     {
-      label: 'Constraints',
-      properties: ['widthMode', 'heightMode', 'minWidth', 'maxWidth', 'aspectRatio', 'overflow'],
+      label: 'Position and size',
+      properties: [
+        'widthMode',
+        'heightMode',
+        'width',
+        'height',
+        'minWidth',
+        'maxWidth',
+        'aspectRatio',
+        'overflow',
+      ],
       columns: 2,
       prefixes: {
         widthMode: 'W',
         heightMode: 'H',
+        width: 'W',
+        height: 'H',
         minWidth: 'Min',
         maxWidth: 'Max',
         aspectRatio: 'Ratio',
         overflow: 'Clip',
       },
-    },
-    {
-      label: 'Size',
-      properties: ['width', 'height'],
-      columns: 2,
-      prefixes: { width: 'W', height: 'H' },
     },
     {
       label: 'Flow',
@@ -312,8 +334,16 @@ const PANEL_CSS = `
   .onboarding-card,.onboarding-step { color:var(--fdc-ink);background:var(--fdc-surface); }.onboarding-card-head span { color:#e7a68c;background:#36231d; }.onboarding-actions button { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }.onboarding-actions .onboarding-start { color:#141416;background:#f0f1f3;border-color:#f0f1f3; }
   .review-summary { color:var(--fdc-ink);background:var(--fdc-paper); }.empty-state-icon { color:#9ec5ff;background:var(--fdc-signal-soft); }
   .component-card,.health-card { color:var(--fdc-ink);background:var(--fdc-surface);border-color:var(--fdc-line); }.component-card.selected { color:var(--fdc-ink);background:var(--fdc-component-soft);border-color:#5c4b9e;box-shadow:0 0 0 2px rgb(155 135 245 / 10%); }.component-variants span,.component-actions button,.component-variants button { color:#c1b5f5;background:var(--fdc-component-soft);border-color:#4a406f; }.health-score::before { background:var(--fdc-surface); }.health-filters button { color:var(--fdc-muted); }.health-filters button:hover,.health-filters button.active { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }.health-card p,.health-evidence { color:var(--fdc-muted); }.mapping-chooser { color:#f0c9a8;background:#35291d;border-color:#665039; }.mapping-chooser>strong,.mapping-option,.mapping-option small { color:#e7c29f; }.review-card.locating { background:var(--fdc-signal-soft); }.baseline-badge { color:#83d8bb;background:#18352c; }
+  /* Workspace ownership */
+  .workspace-bar { position:fixed;z-index:2147483647;top:12px;left:50%;min-height:48px;display:flex;align-items:center;gap:5px;padding:6px;transform:translateX(-50%);color:var(--fdc-ink);background:rgb(28 28 31 / 96%);border:1px solid var(--fdc-line);border-radius:12px;box-shadow:0 2px 2px rgb(0 0 0 / 20%),0 14px 34px rgb(0 0 0 / 34%);backdrop-filter:blur(14px);pointer-events:auto; }.workspace-bar .brand { flex:none;padding:0 7px 0 4px; }.workspace-bar .brand-copy b { font-size:12px; }.workspace-bar .session-status { margin:0; }.workspace-actions { display:flex;align-items:center;gap:2px; }.workspace-divider { width:1px;height:24px;background:var(--fdc-line); }.workspace-bar .icon-button { width:34px;height:34px; }.workspace-bar .icon-button.active { color:#9ec5ff;background:var(--fdc-signal-soft); }.workspace-bar .status-popover { top:44px;right:auto;left:58px; }
+  .panel { top:72px;bottom:12px;max-height:none; }.panel[hidden] { display:none; }.inspector-head { min-height:44px;display:flex;align-items:center;gap:7px;padding:0 8px 0 13px;border-bottom:1px solid var(--fdc-line);background:var(--fdc-surface); }.inspector-head strong { font-size:12px;font-weight:550; }.inspector-head span { color:var(--fdc-muted);font-size:9px; }.inspector-head .icon-button { margin-left:auto; }.controls { min-height:0;flex:1; }.inspector-baseline { padding:0 12px 8px;border-bottom:1px solid var(--fdc-line); }.inspector-category { border-bottom:1px solid var(--fdc-line); }.inspector-category>.inspector-heading { position:sticky;top:0;z-index:2;height:44px;padding:0 8px 0 4px;background:rgb(28 28 31 / 97%); }.inspector-category>.inspector-heading .section-toggle { min-height:43px; }.inspector-category>.inspector-heading .section-toggle>svg { width:15px;height:15px;color:var(--fdc-muted);transform:none; }.inspector-category.collapsed>.category-body { display:none; }.inspector-category.collapsed>.inspector-heading .section-toggle>svg { transform:rotate(-90deg); }.inspector-category .property-section { margin-left:10px;border-left:1px solid var(--fdc-line); }.inspector-category .property-section .section-head { padding-left:6px; }.inspector-category[data-category="position"]>.category-body>.property-section>.section-head { display:none; }.category-body>.context-tools,.category-body>.native-panel,.category-body>.design-health { margin-left:10px; }
+  .layers-panel { top:72px;bottom:12px;max-height:none; }.layers-panel[hidden] { display:none; }
+  .utility-panel { z-index:2147483646;max-height:none;min-width:280px;min-height:280px;box-shadow:0 2px 2px rgb(0 0 0 / 22%),0 18px 48px rgb(0 0 0 / 42%); }.utility-panel[hidden] { display:none; }.utility-handle { cursor:grab;user-select:none;touch-action:none; }.utility-handle:active { cursor:grabbing; }.utility-resizer { position:absolute;right:2px;bottom:2px;width:18px;height:18px;padding:0;border:0;background:transparent;cursor:nwse-resize; }.utility-resizer::after { content:"";position:absolute;right:3px;bottom:3px;width:7px;height:7px;border-right:1px solid var(--fdc-muted);border-bottom:1px solid var(--fdc-muted); }.health-panel,.library-panel { right:auto;max-height:none; }.health-list,.library-body { min-height:0;flex:1; }
+  .change-tray { position:fixed;z-index:2147483646;right:var(--fdc-canvas-right,376px);bottom:12px;left:var(--fdc-canvas-left,276px);min-height:0;display:flex;flex-direction:column;align-items:stretch;padding:0;overflow:hidden;color:var(--fdc-ink);background:var(--fdc-surface);border:1px solid var(--fdc-line);border-radius:11px;box-shadow:0 2px 2px rgb(0 0 0 / 22%),0 18px 48px rgb(0 0 0 / 36%);pointer-events:auto; }.change-tray[hidden] { display:none; }.change-tray-summary { min-height:48px;display:grid;grid-template-columns:minmax(0,1fr) auto 32px 72px;align-items:center;gap:7px;padding:6px 7px 6px 11px; }.change-tray-summary .change-count { margin-right:2px; }.change-tray-summary button { height:32px;border:1px solid var(--fdc-line);border-radius:6px;color:var(--fdc-ink);background:var(--fdc-elevated);cursor:pointer; }.change-tray-summary .tray-compare { width:32px;display:grid;place-items:center;padding:0; }.change-tray-summary .tray-compare svg { width:13px;height:13px; }.change-tray-summary button:disabled { opacity:.35;cursor:not-allowed; }.change-tray.expanded { height:min(420px,45vh); }.change-tray.expanded .change-tray-summary { border-bottom:1px solid var(--fdc-line); }.change-tray .review-view:not([hidden]) { min-width:0;min-height:0;display:flex; }.change-tray .review-body { min-height:0;flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-content:start;overflow:auto; }.change-tray .review-group { min-width:0;border-right:1px solid var(--fdc-line); }.change-tray .review-actions { flex:none;grid-template-columns:100px minmax(180px,280px);justify-content:end; }.change-tray .review-head { flex:none; }.change-tray .review-head span { margin-left:auto; }
+  .tool-shelf { bottom:calc(18px + var(--fdc-tray-lift,0px)); }.tool-select[hidden],.tool-divider[hidden] { display:none; }.tool-select.interact.active { color:white;background:var(--fdc-signal); }.mode-copy { min-width:88px; }.canvas-actions-divider { margin-left:2px; }.multi-actions-divider { margin-left:2px; }
+  .compare-bar { bottom:calc(78px + var(--fdc-tray-lift,0px)); }
   @keyframes fdc-selection-title { from { opacity:.45;transform:translateY(2px) } to { opacity:1;transform:none } }
-  @media (max-width:680px){.panel{top:auto;right:8px;bottom:66px;left:8px;width:auto;max-height:58vh}.layers-panel,.health-panel,.library-panel{top:8px;right:8px;left:8px;width:auto;max-height:42vh}.scope{display:none}.controls{min-height:170px}.tool-shelf{right:8px;bottom:8px;left:8px;transform:none;max-width:none}.mode-copy{min-width:0}.mode-copy span{display:none}.tabs{flex:1;overflow-x:auto}.tool-select::after,.tab::after{display:none}.footer{grid-template-columns:78px 1fr}.onboarding-card{right:12px;bottom:68px;left:12px;width:auto;transform:none}.workbench-controls select,.workbench-controls button:not(.icon-button){max-width:92px}.workbench-matrix{grid-template-columns:76px repeat(var(--matrix-columns),minmax(90px,1fr))}}
+  @media (max-width:680px){.workspace-bar{right:8px;left:8px;transform:none;overflow-x:auto}.workspace-bar .brand{padding-right:3px}.workspace-bar .brand-copy{display:none}.workspace-bar .status-popover{position:fixed;top:66px;right:8px;left:8px;width:auto}.panel{top:auto;right:8px;bottom:74px;left:8px;width:auto;max-height:56vh}.layers-panel{top:68px;right:8px;bottom:auto;left:8px;width:auto;max-height:42vh}.utility-panel{top:68px!important;right:8px!important;bottom:74px!important;left:8px!important;width:auto!important;height:auto!important;max-height:none}.utility-resizer{display:none}.scope{display:grid;grid-template-columns:1fr 1fr}.controls{min-height:170px}.change-tray{right:8px;bottom:8px;left:8px}.change-tray.expanded{height:48vh}.change-tray .review-body{grid-template-columns:1fr}.tool-shelf{right:8px;bottom:calc(8px + var(--fdc-tray-lift,0px));left:8px;transform:none;max-width:none}.mode-copy{min-width:0}.mode-copy span{display:none}.tool-select::after,.tab::after{display:none}.onboarding-card{right:12px;bottom:68px;left:12px;width:auto;transform:none}.workbench-controls select,.workbench-controls button:not(.icon-button){max-width:92px}.workbench-matrix{grid-template-columns:76px repeat(var(--matrix-columns),minmax(90px,1fr))}}
   @media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}}
 `;
 
@@ -725,7 +755,44 @@ export function installFoundryInspector(
   const host = document.createElement('div');
   host.dataset.foundryOverlay = 'true';
   const shadow = host.attachShadow({ mode: 'open' });
-  shadow.innerHTML = `<style>${PANEL_CSS}</style><div class="outline" hidden><span class="cross"></span><span class="measure"></span></div><div class="hover-outline" hidden></div><aside class="layers-panel" aria-label="Foundry layers" hidden><div class="layers-head"><i data-foundry-icon="layers-3"></i><strong>Layers</strong><span data-layer-count></span><button class="icon-button close-layers" aria-label="Close layers"><i data-foundry-icon="x"></i></button></div><div class="layers-search"><input type="search" aria-label="Search layers" placeholder="Search layers" /></div><div class="layer-tree"></div></aside><aside class="health-panel" aria-label="Design health" hidden><div class="health-head"><i data-foundry-icon="activity"></i><strong>Design health</strong><button class="icon-button close-health" aria-label="Close design health"><i data-foundry-icon="x"></i></button></div><div class="health-summary"></div><div class="health-filters" role="group" aria-label="Filter design health issues"></div><div class="health-list"></div><div class="health-footer"><button class="health-show-ignored" hidden></button><button class="health-rescan">Scan again</button></div></aside><aside class="panel" aria-label="Foundry design inspector"><div class="top"><div class="top-identity"><div class="brand"><span class="brand-mark"><i></i><i></i><i></i></span><span class="brand-copy"><b>Foundry</b><span>Inspector</span></span></div><span class="session-status"><i></i><span>Live</span></span><button class="icon-button close" title="Close inspector" aria-label="Close inspector"><i data-foundry-icon="x"></i></button></div><div class="top-actions" role="toolbar" aria-label="Inspector actions"><button class="icon-button toggle-layers" title="Open layers" aria-label="Open layers"><i data-foundry-icon="layers-3"></i></button></div></div><div class="selection"><div class="selection-heading"><small class="selection-kind">No layer</small><span class="selection-state">Ready</span></div><strong>Nothing selected</strong><code>Click any element to inspect it</code><div class="selection-stats" hidden><span data-selection-size></span><span data-selection-confidence></span></div><div class="selection-path" hidden><button data-select-parent aria-label="Select parent layer"><i data-foundry-icon="chevron-right"></i><span>Parent</span></button><span class="path-name"></span><button data-select-child aria-label="Select first child layer"><span>Child</span><i data-foundry-icon="chevron-down"></i></button></div></div><div class="scope"><label>Scope<select data-scope><option value="instance">Instance</option><option value="component">Component</option></select></label><label>Breakpoint<select data-breakpoint><option>current</option><option>mobile</option><option>tablet</option><option>desktop</option></select></label><label>Theme<select data-theme><option>current</option><option>light</option><option>dark</option></select></label></div><div class="controls"><div class="empty">Select an element to inspect its measured design controls.</div></div><div class="review-view" hidden><div class="review-head"><button class="review-back" aria-label="Back to inspector"><i data-foundry-icon="arrow-left"></i></button><strong>Review and apply</strong><span class="review-count"></span></div><div class="review-body"></div><div class="review-actions"><button class="review-cancel">Back</button><button class="apply">Apply with agent</button></div></div><div class="footer"><button class="verify">Verify</button><button class="review"><span>Review changes</span><span class="change-count" hidden>0</span></button></div></aside><div class="tool-shelf" role="toolbar" aria-label="Design tools"><button class="tool-select inspect" data-tooltip="Select mode" title="Select mode: click any element" aria-label="Selection mode" aria-pressed="true"><i data-foundry-icon="mouse-pointer-2"></i></button><span class="tool-divider"></span><div class="tabs"></div></div><div class="toast"></div>`;
+  shadow.innerHTML = `<style>${PANEL_CSS}</style>
+    <div class="outline" hidden><span class="cross"></span><span class="measure"></span></div>
+    <div class="hover-outline" hidden></div>
+    <header class="workspace-bar" aria-label="Foundry workspace">
+      <div class="brand"><span class="brand-mark"><i></i><i></i><i></i></span><span class="brand-copy"><b>Foundry</b></span></div>
+      <span class="session-status"><i></i><span>Live</span></span>
+      <span class="workspace-divider"></span>
+      <nav class="workspace-actions" aria-label="Workspace destinations">
+        <button class="icon-button toggle-layers" title="Toggle layers" aria-label="Toggle layers" aria-pressed="true"><i data-foundry-icon="layers-3"></i></button>
+        <button class="icon-button toggle-inspector" title="Toggle inspector" aria-label="Toggle inspector" aria-pressed="true"><i data-foundry-icon="panels-top-left"></i></button>
+        <button class="icon-button open-health" title="Design health" aria-label="Open design health" aria-pressed="false"><i data-foundry-icon="activity"></i></button>
+        <button class="icon-button open-workbench" title="State workbench" aria-label="Open state workbench" aria-pressed="false"><i data-foundry-icon="play"></i></button>
+        <button class="icon-button open-library" title="Design memory" aria-label="Open design memory" aria-pressed="false"><i data-foundry-icon="bookmark"></i></button>
+        <button class="icon-button open-commands" title="Commands" aria-label="Open commands"><i data-foundry-icon="command"></i></button>
+      </nav>
+      <span class="workspace-divider"></span>
+      <button class="icon-button close" title="Exit Foundry" aria-label="Exit Foundry"><i data-foundry-icon="x"></i></button>
+    </header>
+    <aside class="layers-panel" aria-label="Foundry layers" hidden>
+      <div class="layers-head"><i data-foundry-icon="layers-3"></i><strong>Layers</strong><span data-layer-count></span><button class="icon-button close-layers" aria-label="Close layers"><i data-foundry-icon="x"></i></button></div>
+      <div class="layers-search"><input type="search" aria-label="Search layers" placeholder="Search layers" /></div><div class="layer-tree"></div>
+    </aside>
+    <aside class="health-panel utility-panel" data-utility="health" aria-label="Design health" hidden>
+      <div class="health-head utility-handle"><i data-foundry-icon="activity"></i><strong>Design health</strong><button class="icon-button close-health" aria-label="Close design health"><i data-foundry-icon="x"></i></button></div>
+      <div class="health-summary"></div><div class="health-filters" role="group" aria-label="Filter design health issues"></div><div class="health-list"></div><div class="health-footer"><button class="health-show-ignored" hidden></button><button class="health-rescan">Scan again</button></div><button class="utility-resizer" aria-label="Resize design health"></button>
+    </aside>
+    <aside class="panel" aria-label="Foundry design inspector">
+      <div class="inspector-head"><strong>Inspector</strong><span>Selection properties</span><button class="icon-button toggle-inspector inspector-collapse" aria-label="Close inspector"><i data-foundry-icon="x"></i></button></div>
+      <div class="selection"><div class="selection-heading"><small class="selection-kind">No layer</small><span class="selection-state">Ready</span></div><strong>Nothing selected</strong><code>Click any element to inspect it</code><div class="selection-stats" hidden><span data-selection-size></span><span data-selection-confidence></span></div><div class="selection-path" hidden><button data-select-parent aria-label="Select parent layer"><i data-foundry-icon="chevron-right"></i><span>Parent</span></button><span class="path-name"></span><button data-select-child aria-label="Select first child layer"><span>Child</span><i data-foundry-icon="chevron-down"></i></button></div></div>
+      <div class="scope"><label>Scope<select data-scope><option value="instance">Instance</option><option value="component">Component</option></select></label><label>Breakpoint<select data-breakpoint><option>current</option><option>mobile</option><option>tablet</option><option>desktop</option></select></label><label>Theme<select data-theme><option>current</option><option>light</option><option>dark</option></select></label></div>
+      <div class="controls"><div class="empty">Select an element to inspect its measured design controls.</div></div>
+    </aside>
+    <section class="change-dock change-tray" aria-label="Foundry changes" hidden>
+      <div class="change-tray-summary"><div class="change-dock-copy"><strong data-dock-count>No changes</strong><span data-dock-last>Edits will appear here</span></div><span class="change-count" hidden>0</span><button class="tray-compare" title="Compare changes" aria-label="Compare changes" disabled><i data-foundry-icon="contrast"></i></button><button class="dock-review">Review</button></div>
+      <div class="review-view" hidden><div class="review-head"><button class="review-back" aria-label="Collapse change tray"><i data-foundry-icon="chevron-down"></i></button><strong>Review and apply</strong><span class="review-count"></span></div><div class="review-body"></div><div class="review-actions"><button class="review-cancel">Collapse</button><button class="apply">Apply with agent</button></div></div>
+    </section>
+    <div class="tool-shelf" role="toolbar" aria-label="Canvas tools"><button class="tool-select inspect" data-tooltip="Select" title="Select: click any element" aria-label="Select mode" aria-pressed="true"><i data-foundry-icon="mouse-pointer-2"></i></button><button class="tool-select interact" data-tooltip="Interact" title="Interact with the app" aria-label="Interact mode" aria-pressed="false"><i data-foundry-icon="interact"></i></button></div>
+    <div class="toast"></div>`;
   document.body.append(host);
   shadow
     .querySelector<HTMLElement>('.layers-search')!
@@ -742,12 +809,6 @@ export function installFoundryInspector(
     'afterend',
     '<div class="status-popover" hidden><strong data-status-title>Session connected</strong><span data-status-detail>Changes are stored locally.</span><code data-status-project></code><code data-status-revision></code><button data-status-retry>Check connection</button></div>',
   );
-  shadow
-    .querySelector<HTMLElement>('.footer')!
-    .insertAdjacentHTML(
-      'beforebegin',
-      '<div class="change-dock" hidden><div class="change-dock-copy"><strong data-dock-count>No changes</strong><span data-dock-last>Edits will appear here</span></div><button class="dock-undo" title="Undo last preview" aria-label="Undo last preview"><i data-foundry-icon="undo-2"></i></button><button class="dock-review">Review</button></div>',
-    );
   shadow
     .querySelector<HTMLElement>('.panel')!
     .insertAdjacentHTML(
@@ -774,10 +835,11 @@ export function installFoundryInspector(
   commandPalette.innerHTML = `<input type="search" aria-label="Search commands" placeholder="Type a command"/><div class="command-list"></div>`;
   shadow.append(commandPalette);
   const libraryPanel = document.createElement('aside');
-  libraryPanel.className = 'library-panel';
+  libraryPanel.className = 'library-panel utility-panel';
+  libraryPanel.dataset.utility = 'memory';
   libraryPanel.hidden = true;
   libraryPanel.setAttribute('aria-label', 'Foundry design memory');
-  libraryPanel.innerHTML = `<div class="library-head"><i data-foundry-icon="bookmark"></i><strong>Design memory</strong><span>Local to this project</span><button class="icon-button close-library" aria-label="Close design memory"><i data-foundry-icon="x"></i></button></div><div class="library-actions"><button data-save-recipe disabled><i data-foundry-icon="save"></i>Save treatment</button><button data-capture-baseline disabled><i data-foundry-icon="check"></i>Save baseline</button></div><div class="library-body"></div>`;
+  libraryPanel.innerHTML = `<div class="library-head utility-handle"><i data-foundry-icon="bookmark"></i><strong>Design memory</strong><span>Local to this project</span><button class="icon-button close-library" aria-label="Close design memory"><i data-foundry-icon="x"></i></button></div><div class="library-actions"><button data-save-recipe disabled><i data-foundry-icon="save"></i>Save treatment</button><button data-capture-baseline disabled><i data-foundry-icon="check"></i>Save baseline</button></div><div class="library-body"></div><button class="utility-resizer" aria-label="Resize design memory"></button>`;
   shadow.append(libraryPanel);
 
   shadow
@@ -803,12 +865,6 @@ export function installFoundryInspector(
   canvasVariant.setAttribute('aria-label', 'Component variant');
   shadow.append(canvasVariant);
   shadow
-    .querySelector<HTMLElement>('.top-actions')!
-    .insertAdjacentHTML(
-      'afterbegin',
-      '<button class="icon-button open-health" title="Scan design health" aria-label="Scan design health"><i data-foundry-icon="activity"></i></button><button class="icon-button open-workbench" title="Open state workbench" aria-label="Open state workbench"><i data-foundry-icon="panels-top-left"></i></button><button class="icon-button open-library" title="Open design memory" aria-label="Open design memory"><i data-foundry-icon="bookmark"></i></button><button class="icon-button open-compare" title="Compare changes" aria-label="Compare changes"><i data-foundry-icon="contrast"></i></button><button class="icon-button open-commands" title="Open commands" aria-label="Open commands"><i data-foundry-icon="command"></i></button>',
-    );
-  shadow
     .querySelector<HTMLElement>('.scope')!
     .insertAdjacentHTML(
       'beforeend',
@@ -816,7 +872,7 @@ export function installFoundryInspector(
     );
   shadow
     .querySelector<HTMLElement>('.tool-shelf')!
-    .querySelector<HTMLElement>('.inspect')!
+    .querySelector<HTMLElement>('.interact')!
     .insertAdjacentHTML(
       'afterend',
       '<span class="mode-copy" aria-live="polite"><strong>Select mode</strong><span>Click any element</span></span>',
@@ -825,7 +881,7 @@ export function installFoundryInspector(
     .querySelector<HTMLElement>('.tool-shelf')!
     .insertAdjacentHTML(
       'beforeend',
-      '<span class="tool-divider canvas-actions-divider"></span><button class="tool-select undo" data-tooltip="Undo" aria-label="Undo preview" disabled><i data-foundry-icon="undo-2"></i></button><button class="tool-select redo" data-tooltip="Redo" aria-label="Redo preview" disabled><i data-foundry-icon="redo-2"></i></button><button class="tool-select align" data-tooltip="Align" aria-label="Align selected elements" disabled><i data-foundry-icon="align-horizontal-space-around"></i></button><button class="tool-select distribute" data-tooltip="Distribute" aria-label="Distribute selected elements" disabled><i data-foundry-icon="columns-3"></i></button>',
+      '<span class="tool-divider canvas-actions-divider"></span><button class="tool-select undo" data-tooltip="Undo" aria-label="Undo preview" disabled><i data-foundry-icon="undo-2"></i></button><button class="tool-select redo" data-tooltip="Redo" aria-label="Redo preview" disabled><i data-foundry-icon="redo-2"></i></button><span class="tool-divider multi-actions-divider" hidden></span><button class="tool-select align" data-tooltip="Align" aria-label="Align selected elements" hidden><i data-foundry-icon="align-horizontal-space-around"></i></button><button class="tool-select distribute" data-tooltip="Distribute" aria-label="Distribute selected elements" hidden><i data-foundry-icon="columns-3"></i></button>',
     );
   const workbench = document.createElement('section');
   workbench.className = 'workbench';
@@ -854,12 +910,14 @@ export function installFoundryInspector(
 
   const outline = shadow.querySelector<HTMLElement>('.outline')!;
   const panel = shadow.querySelector<HTMLElement>('.panel')!;
-  const tabs = shadow.querySelector<HTMLElement>('.tabs')!;
   const controlsRoot = shadow.querySelector<HTMLElement>('.controls')!;
   const inspectButton = shadow.querySelector<HTMLButtonElement>('.inspect')!;
+  const interactButton = shadow.querySelector<HTMLButtonElement>('.interact')!;
+  const workspaceBar = shadow.querySelector<HTMLElement>('.workspace-bar')!;
   const sessionStatus = shadow.querySelector<HTMLElement>('.session-status')!;
   const statusPopover = shadow.querySelector<HTMLElement>('.status-popover')!;
   const changeDock = shadow.querySelector<HTMLElement>('.change-dock')!;
+  const trayCompare = shadow.querySelector<HTMLButtonElement>('.tray-compare')!;
   const selectionKind = shadow.querySelector<HTMLElement>('.selection-kind')!;
   const selectionTitle = shadow.querySelector<HTMLElement>('.selection strong')!;
   const selectionCode = shadow.querySelector<HTMLElement>('.selection code')!;
@@ -902,6 +960,7 @@ export function installFoundryInspector(
   const reviewCount = shadow.querySelector<HTMLElement>('.review-count')!;
   const applyButton = shadow.querySelector<HTMLButtonElement>('.review-actions .apply')!;
   const reviewCancel = shadow.querySelector<HTMLButtonElement>('.review-cancel')!;
+  let workspaceState: FoundryWorkspaceState = { ...DEFAULT_WORKSPACE_STATE };
   let selected: HTMLElement | null = null;
   let selectedElements: HTMLElement[] = [];
   let layerEntries: Array<{
@@ -918,7 +977,6 @@ export function installFoundryInspector(
     sessionStorage.getItem(layerViewPreferenceKey) === 'components' ? 'components' : 'layers';
   let clickCycle = { x: -1, y: -1, at: 0, index: -1, signature: '' };
   let inspecting = options.startInspecting ?? true;
-  let activeCategory: Category = 'layout';
   let selectedControls: Control[] = [];
   let resizeObserver: ResizeObserver | undefined;
   let activeReviewPayload: any = null;
@@ -932,6 +990,7 @@ export function installFoundryInspector(
   })();
   let reviewShowRejected = false;
   let reviewPoll: ReturnType<typeof setInterval> | undefined;
+  let lastReviewTrigger: HTMLElement | null = null;
   let designGraph: {
     tokens: BrowserDesignToken[];
     components: Array<{
@@ -980,11 +1039,11 @@ export function installFoundryInspector(
   let hydratedOnce = false;
   const collapsedSections = new Set<string>();
   try {
-    for (const key of JSON.parse(localStorage.getItem('__foundry_collapsed_sections') ?? '[]')) {
+    for (const key of JSON.parse(sessionStorage.getItem('__foundry_collapsed_sections') ?? '[]')) {
       if (typeof key === 'string') collapsedSections.add(key);
     }
   } catch {
-    localStorage.removeItem('__foundry_collapsed_sections');
+    sessionStorage.removeItem('__foundry_collapsed_sections');
   }
   let comparisonActive = false;
   let isolatedComparisonElement: HTMLElement | null = null;
@@ -1006,6 +1065,189 @@ export function installFoundryInspector(
   let projectRevision = '';
   let designMemory: ProjectDesignMemory = emptyDesignMemory();
   let matrixMode = false;
+  let lastUtilityTrigger: HTMLElement | null = null;
+  const utilityRects = new Map<Exclude<FoundryUtility, null>, FoundryRect>();
+
+  function utilityStorageKey(utility: Exclude<FoundryUtility, null>): string {
+    return `__foundry_utility_rect:${utility}:${projectRoot}`;
+  }
+
+  function canvasBounds() {
+    const layersRect = workspaceState.layersOpen ? layersPanel.getBoundingClientRect() : null;
+    const inspectorRect = workspaceState.inspectorOpen ? panel.getBoundingClientRect() : null;
+    const trayRect = !changeDock.hidden ? changeDock.getBoundingClientRect() : null;
+    return {
+      left: Math.round((layersRect?.right ?? 0) + 12),
+      top: Math.round(workspaceBar.getBoundingClientRect().bottom + 12),
+      right: Math.round((inspectorRect?.left ?? window.innerWidth) - 12),
+      bottom: Math.round((trayRect?.top ?? window.innerHeight) - 12),
+    };
+  }
+
+  function readUtilityRect(utility: Exclude<FoundryUtility, null>): FoundryRect | undefined {
+    try {
+      const value = JSON.parse(localStorage.getItem(utilityStorageKey(utility)) ?? 'null');
+      if (value && ['x', 'y', 'width', 'height'].every((key) => Number.isFinite(value[key]))) {
+        return value as FoundryRect;
+      }
+    } catch {
+      localStorage.removeItem(utilityStorageKey(utility));
+    }
+    return undefined;
+  }
+
+  function applyUtilityRect(utility: Exclude<FoundryUtility, null>): void {
+    const utilityPanel = utility === 'health' ? healthPanel : libraryPanel;
+    if (window.matchMedia('(max-width: 680px)').matches) {
+      utilityPanel.style.removeProperty('left');
+      utilityPanel.style.removeProperty('top');
+      utilityPanel.style.removeProperty('width');
+      utilityPanel.style.removeProperty('height');
+      return;
+    }
+    const bounds = canvasBounds();
+    const fallback = {
+      x: bounds.left + 12,
+      y: bounds.top + 12,
+      width: 320,
+      height: Math.min(560, Math.max(320, bounds.bottom - bounds.top - 24)),
+    };
+    const rect = clampUtilityRect(
+      utilityRects.get(utility) ?? readUtilityRect(utility) ?? fallback,
+      bounds,
+    );
+    utilityRects.set(utility, rect);
+    Object.assign(utilityPanel.style, {
+      left: `${rect.x}px`,
+      top: `${rect.y}px`,
+      width: `${rect.width}px`,
+      height: `${rect.height}px`,
+    });
+  }
+
+  function positionWorkspaceSurfaces(): void {
+    const bounds = canvasBounds();
+    host.style.setProperty('--fdc-canvas-left', `${Math.max(12, bounds.left)}px`);
+    host.style.setProperty(
+      '--fdc-canvas-right',
+      `${Math.max(12, window.innerWidth - bounds.right)}px`,
+    );
+    host.style.setProperty(
+      '--fdc-tray-lift',
+      workspaceState.tray !== 'hidden'
+        ? `${Math.max(0, window.innerHeight - bounds.bottom)}px`
+        : '0px',
+    );
+    if (workspaceState.utility) applyUtilityRect(workspaceState.utility);
+  }
+
+  function persistUtilityRect(utility: Exclude<FoundryUtility, null>, rect: FoundryRect): void {
+    utilityRects.set(utility, rect);
+    try {
+      localStorage.setItem(utilityStorageKey(utility), JSON.stringify(rect));
+    } catch {
+      showToast('Panel position could not be saved in this browser');
+    }
+  }
+
+  function setUtility(utility: Exclude<FoundryUtility, null> | null): void {
+    const closing = utility == null;
+    if (!closing && shadow.activeElement instanceof HTMLElement) {
+      lastUtilityTrigger = shadow.activeElement;
+    }
+    workspaceState = utility
+      ? updateWorkspace(workspaceState, { type: 'open-utility', utility })
+      : updateWorkspace(workspaceState, { type: 'close-utility' });
+    healthPanel.hidden = workspaceState.utility !== 'health';
+    libraryPanel.hidden = workspaceState.utility !== 'memory';
+    shadow
+      .querySelector<HTMLButtonElement>('.open-health')!
+      .classList.toggle('active', workspaceState.utility === 'health');
+    shadow
+      .querySelector<HTMLButtonElement>('.open-library')!
+      .classList.toggle('active', workspaceState.utility === 'memory');
+    shadow
+      .querySelector<HTMLButtonElement>('.open-health')!
+      .setAttribute('aria-pressed', String(workspaceState.utility === 'health'));
+    shadow
+      .querySelector<HTMLButtonElement>('.open-library')!
+      .setAttribute('aria-pressed', String(workspaceState.utility === 'memory'));
+    if (workspaceState.utility === 'health') scanDesignHealth();
+    if (workspaceState.utility === 'memory') renderDesignMemory();
+    positionWorkspaceSurfaces();
+    if (closing) lastUtilityTrigger?.focus();
+  }
+
+  function installUtilityGeometry(
+    utilityPanel: HTMLElement,
+    utility: Exclude<FoundryUtility, null>,
+  ): void {
+    const handle = utilityPanel.querySelector<HTMLElement>('.utility-handle')!;
+    const resizer = utilityPanel.querySelector<HTMLElement>('.utility-resizer')!;
+    handle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return;
+      const start = utilityPanel.getBoundingClientRect();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      handle.setPointerCapture(event.pointerId);
+      const move = (pointerMove: PointerEvent): void => {
+        const rect = clampUtilityRect(
+          {
+            x: start.x + pointerMove.clientX - startX,
+            y: start.y + pointerMove.clientY - startY,
+            width: start.width,
+            height: start.height,
+          },
+          canvasBounds(),
+        );
+        Object.assign(utilityPanel.style, { left: `${rect.x}px`, top: `${rect.y}px` });
+        utilityRects.set(utility, rect);
+      };
+      const finish = (): void => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', finish);
+        handle.removeEventListener('pointercancel', finish);
+        const rect = utilityRects.get(utility);
+        if (rect) persistUtilityRect(utility, rect);
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', finish);
+      handle.addEventListener('pointercancel', finish);
+    });
+    resizer.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      const start = utilityPanel.getBoundingClientRect();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      resizer.setPointerCapture(event.pointerId);
+      const move = (pointerMove: PointerEvent): void => {
+        const rect = clampUtilityRect(
+          {
+            x: start.x,
+            y: start.y,
+            width: start.width + pointerMove.clientX - startX,
+            height: start.height + pointerMove.clientY - startY,
+          },
+          canvasBounds(),
+        );
+        Object.assign(utilityPanel.style, {
+          width: `${rect.width}px`,
+          height: `${rect.height}px`,
+        });
+        utilityRects.set(utility, rect);
+      };
+      const finish = (): void => {
+        resizer.removeEventListener('pointermove', move);
+        resizer.removeEventListener('pointerup', finish);
+        resizer.removeEventListener('pointercancel', finish);
+        const rect = utilityRects.get(utility);
+        if (rect) persistUtilityRect(utility, rect);
+      };
+      resizer.addEventListener('pointermove', move);
+      resizer.addEventListener('pointerup', finish);
+      resizer.addEventListener('pointercancel', finish);
+    });
+  }
 
   if (!sessionId || !token) {
     setSessionStatus(
@@ -1048,8 +1290,14 @@ export function installFoundryInspector(
   function updateChangeCount(count: number, latest?: any): void {
     changeCount.textContent = String(count);
     changeCount.hidden = count === 0;
-    shadow.querySelector<HTMLButtonElement>('.footer .review')!.hidden = count > 0;
     changeDock.hidden = count === 0;
+    workspaceState = updateWorkspace(workspaceState, {
+      type: 'set-tray',
+      tray: count === 0 ? 'hidden' : workspaceState.tray === 'expanded' ? 'expanded' : 'collapsed',
+    });
+    if (count === 0) reviewView.hidden = true;
+    changeDock.classList.toggle('expanded', workspaceState.tray === 'expanded');
+    trayCompare.disabled = count === 0 || historyCursor === 0;
     changeDock.querySelector<HTMLElement>('[data-dock-count]')!.textContent =
       `${count} ${count === 1 ? 'change' : 'changes'} recorded`;
     if (latest) {
@@ -1057,6 +1305,7 @@ export function installFoundryInspector(
     }
     changeDock.querySelector<HTMLElement>('[data-dock-last]')!.textContent =
       lastRecordedSummary || 'Ready to review';
+    positionWorkspaceSurfaces();
   }
 
   function populateDesignContext(): void {
@@ -1117,6 +1366,8 @@ export function installFoundryInspector(
       if (projectRoot !== nextProjectRoot || !hydratedOnce) {
         projectRoot = nextProjectRoot;
         designMemory = readDesignMemory(localStorage, projectRoot);
+        utilityRects.clear();
+        positionWorkspaceSurfaces();
       }
       projectRevision = changeSet.context.revision ?? '';
       designGraph = graph;
@@ -1203,14 +1454,11 @@ export function installFoundryInspector(
   }
 
   function openDesignMemory(): void {
-    libraryPanel.hidden = false;
-    shadow.querySelector<HTMLButtonElement>('.open-library')!.classList.add('active');
-    renderDesignMemory();
+    if (workspaceState.utility !== 'memory') setUtility('memory');
   }
 
   function closeDesignMemory(): void {
-    libraryPanel.hidden = true;
-    shadow.querySelector<HTMLButtonElement>('.open-library')!.classList.remove('active');
+    if (workspaceState.utility === 'memory') setUtility(null);
   }
 
   function saveSelectedRecipe(): void {
@@ -1828,19 +2076,42 @@ export function installFoundryInspector(
 
   const layersPreferenceKey = '__foundry_layers_visibility';
   function toggleLayers(force?: boolean, remember = true): void {
-    if (force !== false) healthPanel.hidden = true;
-    layersPanel.hidden = force == null ? !layersPanel.hidden : !force;
+    workspaceState = updateWorkspace(workspaceState, {
+      type: 'toggle-layers',
+      open: force,
+    });
+    layersPanel.hidden = !workspaceState.layersOpen;
     const layersButton = shadow.querySelector<HTMLButtonElement>('.toggle-layers')!;
-    const layersButtonLabel = layersPanel.hidden ? 'Open layers' : 'Close layers';
+    const layersButtonLabel = workspaceState.layersOpen ? 'Hide layers' : 'Show layers';
     layersButton.setAttribute('aria-label', layersButtonLabel);
     layersButton.title = layersButtonLabel;
-    layersButton.classList.toggle('active', !layersPanel.hidden);
-    shadow.querySelector<HTMLButtonElement>('.open-health')!.classList.remove('active');
+    layersButton.setAttribute('aria-pressed', String(workspaceState.layersOpen));
+    layersButton.classList.toggle('active', workspaceState.layersOpen);
     if (remember) {
-      sessionStorage.setItem(layersPreferenceKey, layersPanel.hidden ? 'closed' : 'open');
+      sessionStorage.setItem(layersPreferenceKey, workspaceState.layersOpen ? 'open' : 'closed');
     }
-    if (!layersPanel.hidden) renderLayers();
+    if (workspaceState.layersOpen) renderLayers();
     else previewLayer(null);
+    positionWorkspaceSurfaces();
+  }
+
+  function toggleInspector(force?: boolean): void {
+    workspaceState = updateWorkspace(workspaceState, {
+      type: 'toggle-inspector',
+      open: force,
+    });
+    panel.hidden = !workspaceState.inspectorOpen;
+    shadow.querySelectorAll<HTMLButtonElement>('.toggle-inspector').forEach((button) => {
+      button.classList.toggle('active', workspaceState.inspectorOpen);
+      button.setAttribute('aria-pressed', String(workspaceState.inspectorOpen));
+      if (!button.classList.contains('inspector-collapse')) {
+        button.setAttribute(
+          'aria-label',
+          workspaceState.inspectorOpen ? 'Hide inspector' : 'Show inspector',
+        );
+      }
+    });
+    positionWorkspaceSurfaces();
   }
 
   function selectionCandidatesAt(x: number, y: number, preferMappedTarget = false): HTMLElement[] {
@@ -1886,9 +2157,8 @@ export function installFoundryInspector(
     shadow.querySelector<HTMLButtonElement>('.undo')!.disabled = historyCursor === 0;
     shadow.querySelector<HTMLButtonElement>('.redo')!.disabled =
       historyCursor >= previewHistory.length;
-    const compare = shadow.querySelector<HTMLButtonElement>('.open-compare')!;
-    compare.disabled = historyCursor === 0;
-    compare.title = historyCursor
+    trayCompare.disabled = historyCursor === 0;
+    trayCompare.title = historyCursor
       ? 'Compare changes (Shift-C)'
       : 'Make a preview change to enable comparison';
   }
@@ -2116,8 +2386,11 @@ export function installFoundryInspector(
   }
 
   function openWorkbench(): void {
+    workspaceState = updateWorkspace(workspaceState, { type: 'set-workbench', open: true });
     workbench.hidden = false;
-    shadow.querySelector<HTMLButtonElement>('.open-workbench')!.classList.add('active');
+    const workbenchButton = shadow.querySelector<HTMLButtonElement>('.open-workbench')!;
+    workbenchButton.classList.add('active');
+    workbenchButton.setAttribute('aria-pressed', 'true');
     resizeWorkbench();
     const frame = shadow.querySelector<HTMLIFrameElement>('.frame-shell iframe')!;
     const url = new URL(location.href);
@@ -2128,8 +2401,11 @@ export function installFoundryInspector(
   }
 
   function closeWorkbench(): void {
+    workspaceState = updateWorkspace(workspaceState, { type: 'set-workbench', open: false });
     workbench.hidden = true;
-    shadow.querySelector<HTMLButtonElement>('.open-workbench')!.classList.remove('active');
+    const workbenchButton = shadow.querySelector<HTMLButtonElement>('.open-workbench')!;
+    workbenchButton.classList.remove('active');
+    workbenchButton.setAttribute('aria-pressed', 'false');
   }
 
   function reviewValue(value: unknown, unit?: string): string {
@@ -2508,7 +2784,7 @@ export function installFoundryInspector(
   }
 
   async function refreshReview(): Promise<void> {
-    if (!panel.classList.contains('reviewing') || !sessionId || !token) return;
+    if (workspaceState.tray !== 'expanded' || !sessionId || !token) return;
     try {
       const payload = await sessionRequest();
       const latestRun = payload.applyRuns?.at(-1);
@@ -2538,9 +2814,12 @@ export function installFoundryInspector(
       showToast('Session connection is missing');
       return;
     }
-    panel.classList.add('reviewing');
+    if (shadow.activeElement instanceof HTMLElement) lastReviewTrigger = shadow.activeElement;
+    workspaceState = updateWorkspace(workspaceState, { type: 'set-tray', tray: 'expanded' });
+    changeDock.classList.add('expanded');
     reviewView.hidden = false;
     outline.hidden = true;
+    positionWorkspaceSurfaces();
     renderReviewPayload(await sessionRequest());
     clearInterval(reviewPoll);
     clearInterval(healthPoll);
@@ -2548,11 +2827,17 @@ export function installFoundryInspector(
   }
 
   function closeReview(): void {
-    panel.classList.remove('reviewing');
+    workspaceState = updateWorkspace(workspaceState, {
+      type: 'set-tray',
+      tray: changeDock.hidden ? 'hidden' : 'collapsed',
+    });
+    changeDock.classList.remove('expanded');
     reviewView.hidden = true;
     clearInterval(reviewPoll);
     reviewPoll = undefined;
     updateOutline();
+    positionWorkspaceSurfaces();
+    lastReviewTrigger?.focus();
   }
 
   async function submitReviewedRun(): Promise<void> {
@@ -2877,30 +3162,12 @@ export function installFoundryInspector(
   }
 
   function renderToolTabs(): void {
-    const categories = [
-      ...new Set<Category>([
-        'layout',
-        'typography',
-        'color',
-        'effects',
-        'content',
-        'accessibility',
-        ...(selected?.getAnimations().length ? ['motion' as const] : []),
-      ]),
-    ];
-    tabs.innerHTML = categories
-      .map(
-        (category) =>
-          `<button class="tab ${selected && activeCategory === category ? 'active' : ''}" data-category="${category}" data-tooltip="${CATEGORY_LABELS[category]}" title="${CATEGORY_LABELS[category]} controls" aria-label="${CATEGORY_LABELS[category]} controls" ${selected ? '' : 'disabled'}><i data-foundry-icon="${CATEGORY_ICONS[category]}"></i></button>`,
-      )
-      .join('');
-    renderIcons(tabs);
-    tabs.querySelectorAll<HTMLButtonElement>('[data-category]').forEach((button) =>
-      button.addEventListener('click', () => {
-        activeCategory = button.dataset.category as Category;
-        renderControls();
-      }),
-    );
+    const multi = selectedElements.length > 1;
+    shadow
+      .querySelectorAll<HTMLElement>('.align,.distribute,.multi-actions-divider')
+      .forEach((element) => {
+        element.hidden = !multi;
+      });
   }
 
   function installNumberScrubbing(): void {
@@ -3136,7 +3403,8 @@ export function installFoundryInspector(
 
   function renderContextPanel(category: Category): string {
     if (!selected) return '';
-    const tokens = tokensForCategory(category).slice(0, 24);
+    const supportsTokens = ['layout', 'typography', 'color', 'effects'].includes(category);
+    const tokens = supportsTokens ? tokensForCategory(category).slice(0, 24) : [];
     const component = selectedComponent();
     const variants = component?.variants ?? [];
     const tokenPanel = tokens.length
@@ -3155,18 +3423,19 @@ export function installFoundryInspector(
       category === 'color' && contrast != null
         ? `<div class="design-health ${contrast >= 4.5 ? 'pass' : 'fail'}"><i data-foundry-icon="contrast"></i><span>${contrast}:1 contrast · ${contrast >= 4.5 ? 'AA pass' : 'Needs attention'}</span></div>`
         : '';
-    const variantPanel = variants.length
-      ? `<section class="native-panel"><div class="native-panel-head"><strong>${escapeHtml(component!.name)} variants</strong><span>${component!.instances} instances</span></div><div class="variant-list">${variants
-          .map(
-            (variant) =>
-              `<button class="variant-button" data-variant="${escapeHtml(variant.id)}"><span>${escapeHtml(variant.name)}</span><code>${escapeHtml(
-                Object.entries(variant.props)
-                  .map(([key, value]) => `${key}=${value}`)
-                  .join(' · '),
-              )}</code></button>`,
-          )
-          .join('')}</div></section>`
-      : '';
+    const variantPanel =
+      category === 'content' && variants.length
+        ? `<section class="native-panel"><div class="native-panel-head"><strong>${escapeHtml(component!.name)} variants</strong><span>${component!.instances} instances</span></div><div class="variant-list">${variants
+            .map(
+              (variant) =>
+                `<button class="variant-button" data-variant="${escapeHtml(variant.id)}"><span>${escapeHtml(variant.name)}</span><code>${escapeHtml(
+                  Object.entries(variant.props)
+                    .map(([key, value]) => `${key}=${value}`)
+                    .join(' · '),
+                )}</code></button>`,
+            )
+            .join('')}</div></section>`
+        : '';
     const categoryTools =
       category === 'layout'
         ? `<div class="context-tools"><button data-layout-action="tidy"><i data-foundry-icon="wand-sparkles"></i>Tidy layout</button><button data-layout-action="up"><i data-foundry-icon="arrow-up"></i>Move up</button><button data-layout-action="down"><i data-foundry-icon="arrow-down"></i>Move down</button><button data-layout-action="lock"><i data-foundry-icon="lock"></i>Lock ratio</button></div>`
@@ -3176,7 +3445,7 @@ export function installFoundryInspector(
             ? `<div class="context-tools"><button data-color-action="gradient">Linear gradient</button><button data-color-action="clear">Clear fill</button></div>`
             : '';
     const tokenMode =
-      (designGraph?.tokens.length ?? 0)
+      category === 'layout' && (designGraph?.tokens.length ?? 0)
         ? `<div class="context-tools"><button class="${tokenOnly ? 'active' : ''}" data-token-only><i data-foundry-icon="${tokenOnly ? 'lock' : 'unlink-2'}"></i>${tokenOnly ? 'Token-only on' : 'Token-only off'}</button></div>`
         : '';
     return `${categoryTools}${tokenMode}${health}${variantPanel}${tokenPanel}`;
@@ -3207,30 +3476,36 @@ export function installFoundryInspector(
   }
 
   function installContextActions(controls: Control[]): void {
-    controlsRoot
-      .querySelector<HTMLInputElement>('.native-search')
-      ?.addEventListener('input', (event) => {
+    controlsRoot.querySelectorAll<HTMLInputElement>('.native-search').forEach((search) =>
+      search.addEventListener('input', (event) => {
         const queryValue = (event.currentTarget as HTMLInputElement).value.toLowerCase();
-        controlsRoot.querySelectorAll<HTMLElement>('[data-token-search]').forEach((chip) => {
-          chip.hidden = !chip.dataset.tokenSearch?.includes(queryValue);
-        });
-      });
-    controlsRoot
-      .querySelector<HTMLButtonElement>('[data-token-only]')
-      ?.addEventListener('click', () => {
+        search
+          .closest<HTMLElement>('.native-panel')
+          ?.querySelectorAll<HTMLElement>('[data-token-search]')
+          .forEach((chip) => {
+            chip.hidden = !chip.dataset.tokenSearch?.includes(queryValue);
+          });
+      }),
+    );
+    controlsRoot.querySelectorAll<HTMLButtonElement>('[data-token-only]').forEach((button) =>
+      button.addEventListener('click', () => {
         tokenOnly = !tokenOnly;
         renderControls();
-      });
+      }),
+    );
     controlsRoot.querySelectorAll<HTMLButtonElement>('[data-native-token]').forEach((button) => {
       button.addEventListener('click', () => {
         const token = designGraph?.tokens.find((item) => item.id === button.dataset.nativeToken);
         if (!token) return;
+        const category =
+          (button.closest<HTMLElement>('.inspector-category')?.dataset.category as
+            Category | undefined) ?? 'layout';
         const candidateProperties =
-          activeCategory === 'color'
+          category === 'color'
             ? ['color', 'backgroundColor', 'borderColor']
-            : activeCategory === 'typography'
+            : category === 'typography'
               ? ['fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'fontFamily']
-              : activeCategory === 'effects'
+              : category === 'effects'
                 ? ['borderRadius']
                 : ['gap', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'];
         const control =
@@ -3413,7 +3688,8 @@ export function installFoundryInspector(
       return;
     }
     comparisonActive = true;
-    shadow.querySelector<HTMLButtonElement>('.open-compare')!.classList.add('active');
+    workspaceState = updateWorkspace(workspaceState, { type: 'set-comparison', open: true });
+    trayCompare.classList.add('active');
     compareBar.hidden = false;
     compareBar.querySelector<HTMLInputElement>('[data-compare-scrub]')!.value =
       mode === 'before' ? '0' : '100';
@@ -3535,7 +3811,8 @@ export function installFoundryInspector(
     if (isolatedComparisonElement) toggleComparisonIsolation();
     showComparison('after');
     comparisonActive = false;
-    shadow.querySelector<HTMLButtonElement>('.open-compare')!.classList.remove('active');
+    workspaceState = updateWorkspace(workspaceState, { type: 'set-comparison', open: false });
+    trayCompare.classList.remove('active');
     compareBar.hidden = true;
   }
 
@@ -3889,149 +4166,190 @@ export function installFoundryInspector(
   }
 
   function openHealth(): void {
-    layersPanel.hidden = true;
-    healthPanel.hidden = false;
-    shadow.querySelector<HTMLButtonElement>('.open-health')!.classList.add('active');
-    shadow.querySelector<HTMLButtonElement>('.toggle-layers')!.classList.remove('active');
-    scanDesignHealth();
+    if (workspaceState.utility !== 'health') setUtility('health');
   }
 
   function closeHealth(): void {
-    healthPanel.hidden = true;
-    shadow.querySelector<HTMLButtonElement>('.open-health')!.classList.remove('active');
+    if (workspaceState.utility === 'health') setUtility(null);
+  }
+
+  function renderMotionControls(animations: Animation[]): string {
+    if (!animations.length) return '';
+    return `<section class="inspector-category property-section ${collapsedSections.has('category:motion') ? 'collapsed' : ''}" data-category="motion" data-section-key="category:motion"><div class="inspector-heading section-head"><button class="section-toggle" aria-expanded="${String(!collapsedSections.has('category:motion'))}"><i data-foundry-icon="play"></i><strong>Motion</strong></button><span class="property-count">${animations.length} active</span></div><div class="category-body motion-list">${animations
+      .map((animation, index) => {
+        const timing = animation.effect?.getComputedTiming();
+        const authored = animation.effect?.getTiming();
+        const duration = Number(timing?.duration ?? 0) || 1000;
+        return `<div class="motion-row" data-animation="${index}"><div class="motion-title"><span>Animation ${index + 1}</span><code>${Math.round(duration)} ms</code></div><input class="motion-timeline" data-motion-timeline type="range" min="0" max="${duration}" step="1" value="${Math.min(duration, Number(animation.currentTime ?? 0))}" aria-label="Animation timeline"/><div class="motion-fields"><label>Duration<input data-motion-duration type="number" min="0" step="10" value="${Math.round(duration)}"/></label><label>Delay<input data-motion-delay type="number" step="10" value="${Math.round(Number(authored?.delay ?? 0))}"/></label><label style="grid-column:1/-1">Easing<input data-motion-easing type="text" value="${escapeHtml(String(authored?.easing ?? 'linear'))}"/></label></div><div class="motion-actions"><button data-action="toggle">${animation.playState === 'paused' ? 'Play' : 'Pause'}</button><button data-action="slower">½ speed</button><button data-action="faster">2× speed</button><button data-action="restart">Restart</button></div></div>`;
+      })
+      .join('')}</div></section>`;
+  }
+
+  function installMotionControls(animations: Animation[]): void {
+    controlsRoot.querySelectorAll<HTMLElement>('[data-animation]').forEach((row) => {
+      const animation = animations[Number(row.dataset.animation)];
+      if (!animation) return;
+      row
+        .querySelector<HTMLInputElement>('[data-motion-timeline]')!
+        .addEventListener('input', (event) => {
+          animation.pause();
+          animation.currentTime = Number((event.currentTarget as HTMLInputElement).value);
+        });
+      const installTimingField = (
+        selector: string,
+        property: 'duration' | 'delay' | 'easing',
+        label: string,
+      ): void => {
+        const field = row.querySelector<HTMLInputElement>(selector)!;
+        field.addEventListener('change', () => {
+          const effect = animation.effect as KeyframeEffect | null;
+          if (!effect) return;
+          const before = effect.getTiming()[property] as string | number;
+          const after = property === 'easing' ? field.value : Number(field.value);
+          effect.updateTiming({ [property]: after });
+          void record(
+            {
+              category: 'motion',
+              property: `animation.${row.dataset.animation}.${property}`,
+              label,
+              kind: property === 'easing' ? 'text' : 'number',
+              value: before,
+              unit: property === 'easing' ? undefined : 'ms',
+              read: () => effect.getTiming()[property] as string | number,
+              apply: (value) => effect.updateTiming({ [property]: value }),
+            },
+            before,
+            after,
+          );
+        });
+      };
+      installTimingField('[data-motion-duration]', 'duration', 'Duration');
+      installTimingField('[data-motion-delay]', 'delay', 'Delay');
+      installTimingField('[data-motion-easing]', 'easing', 'Easing');
+      row.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((button) =>
+        button.addEventListener('click', () => {
+          const before = animation.playbackRate;
+          if (button.dataset.action === 'toggle')
+            animation.playState === 'paused' ? animation.play() : animation.pause();
+          if (button.dataset.action === 'slower') animation.playbackRate *= 0.5;
+          if (button.dataset.action === 'faster') animation.playbackRate *= 2;
+          if (button.dataset.action === 'restart') animation.currentTime = 0;
+          void record(
+            {
+              category: 'motion',
+              property: `animation.${row.dataset.animation}.playbackRate`,
+              label: 'Playback rate',
+              kind: 'number',
+              value: before,
+              read: () => animation.playbackRate,
+              apply: () => {},
+            },
+            before,
+            animation.playbackRate,
+          );
+          renderControls();
+        }),
+      );
+    });
   }
 
   function renderControls(): void {
     renderToolTabs();
-    if (activeCategory === 'motion') {
-      const animations = selected?.getAnimations() ?? [];
-      controlsRoot.innerHTML = animations.length
-        ? `<div class="inspector-heading"><i data-foundry-icon="play"></i><strong>Motion</strong><span class="property-count">${animations.length} active</span></div><div class="motion-list">${animations
-            .map((animation, index) => {
-              const timing = animation.effect?.getComputedTiming();
-              const authored = animation.effect?.getTiming();
-              const duration = Number(timing?.duration ?? 0) || 1000;
-              return `<div class="motion-row" data-animation="${index}"><div class="motion-title"><span>Animation ${index + 1}</span><code>${Math.round(duration)} ms</code></div><input class="motion-timeline" data-motion-timeline type="range" min="0" max="${duration}" step="1" value="${Math.min(duration, Number(animation.currentTime ?? 0))}" aria-label="Animation timeline"/><div class="motion-fields"><label>Duration<input data-motion-duration type="number" min="0" step="10" value="${Math.round(duration)}"/></label><label>Delay<input data-motion-delay type="number" step="10" value="${Math.round(Number(authored?.delay ?? 0))}"/></label><label style="grid-column:1/-1">Easing<input data-motion-easing type="text" value="${escapeHtml(String(authored?.easing ?? 'linear'))}"/></label></div><div class="motion-actions"><button data-action="toggle">${animation.playState === 'paused' ? 'Play' : 'Pause'}</button><button data-action="slower">½ speed</button><button data-action="faster">2× speed</button><button data-action="restart">Restart</button></div></div>`;
-            })
-            .join('')}</div>`
-        : '<div class="empty">No CSS, transition, or Web Animation is active on this element.</div>';
-      renderIcons(controlsRoot);
-      controlsRoot.querySelectorAll<HTMLElement>('[data-animation]').forEach((row) => {
-        const animation = animations[Number(row.dataset.animation)];
-        if (!animation) return;
-        row
-          .querySelector<HTMLInputElement>('[data-motion-timeline]')!
-          .addEventListener('input', (event) => {
-            animation.pause();
-            animation.currentTime = Number((event.currentTarget as HTMLInputElement).value);
-          });
-        const installTimingField = (
-          selector: string,
-          property: 'duration' | 'delay' | 'easing',
-          label: string,
-        ): void => {
-          const field = row.querySelector<HTMLInputElement>(selector)!;
-          field.addEventListener('change', () => {
-            const effect = animation.effect as KeyframeEffect | null;
-            if (!effect) return;
-            const before = effect.getTiming()[property] as string | number;
-            const after = property === 'easing' ? field.value : Number(field.value);
-            effect.updateTiming({ [property]: after });
-            void record(
-              {
-                category: 'motion',
-                property: `animation.${row.dataset.animation}.${property}`,
-                label,
-                kind: property === 'easing' ? 'text' : 'number',
-                value: before,
-                unit: property === 'easing' ? undefined : 'ms',
-                read: () => effect.getTiming()[property] as string | number,
-                apply: (value) => effect.updateTiming({ [property]: value }),
-              },
-              before,
-              after,
-            );
-          });
-        };
-        installTimingField('[data-motion-duration]', 'duration', 'Duration');
-        installTimingField('[data-motion-delay]', 'delay', 'Delay');
-        installTimingField('[data-motion-easing]', 'easing', 'Easing');
-        row.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((button) =>
-          button.addEventListener('click', () => {
-            const before = animation.playbackRate;
-            if (button.dataset.action === 'toggle')
-              animation.playState === 'paused' ? animation.play() : animation.pause();
-            if (button.dataset.action === 'slower') animation.playbackRate *= 0.5;
-            if (button.dataset.action === 'faster') animation.playbackRate *= 2;
-            if (button.dataset.action === 'restart') animation.currentTime = 0;
-            void record(
-              {
-                category: 'motion',
-                property: `animation.${row.dataset.animation}.playbackRate`,
-                label: 'Playback rate',
-                kind: 'number',
-                value: before,
-                read: () => animation.playbackRate,
-                apply: () => {},
-              },
-              before,
-              animation.playbackRate,
-            );
-            renderControls();
-          }),
-        );
-      });
+    if (!selected) {
+      renderSelectionEmptyState();
       return;
     }
-    let controls = selectedControls.filter((control) => control.category === activeCategory);
-    if (tokenOnly) {
-      controls = controls.filter(
-        (control) =>
-          matchingTokens(
-            designGraph?.tokens ?? [],
-            control.property,
-            `${control.value}${control.unit ?? ''}`,
-          ).length > 0,
+    const groups: InspectorGroup[] = [
+      {
+        key: 'position',
+        category: 'layout',
+        label: 'Position and size',
+        icon: 'maximize-2',
+        sectionLabels: ['Position and size'],
+      },
+      {
+        key: 'layout',
+        category: 'layout',
+        label: 'Layout and spacing',
+        icon: CATEGORY_ICONS.layout,
+        sectionLabels: ['Flow', 'Padding', 'Margin'],
+        showContext: true,
+      },
+      ...(['typography', 'color', 'effects', 'content', 'accessibility'] as Category[]).map(
+        (category) => ({
+          key: category,
+          category,
+          label: CATEGORY_LABELS[category],
+          icon: CATEGORY_ICONS[category],
+          showContext: true,
+        }),
+      ),
+    ];
+    const indexedControls = selectedControls
+      .map((control, index) => ({ control, index }))
+      .filter(({ control }) =>
+        tokenOnly
+          ? matchingTokens(
+              designGraph?.tokens ?? [],
+              control.property,
+              `${control.value}${control.unit ?? ''}`,
+            ).length > 0
+          : true,
       );
-    }
-    const configuredSections = CONTROL_SECTIONS[activeCategory] ?? [];
-    const renderedProperties = new Set<string>();
-    const sections = configuredSections
-      .map((section) => {
-        const entries = section.properties
-          .map((property) => {
-            const index = controls.findIndex((control) => control.property === property);
-            return index >= 0 ? { control: controls[index]!, index } : undefined;
+    const categoryMarkup = groups
+      .map((group) => {
+        const configuredCategorySections = CONTROL_SECTIONS[group.category] ?? [];
+        const configuredSections = group.sectionLabels
+          ? configuredCategorySections.filter((section) =>
+              group.sectionLabels!.includes(section.label),
+            )
+          : configuredCategorySections;
+        const groupProperties = new Set(
+          configuredSections.flatMap((section) => section.properties),
+        );
+        const controls = indexedControls.filter(
+          (entry) =>
+            entry.control.category === group.category &&
+            (!group.sectionLabels || groupProperties.has(entry.control.property)),
+        );
+        if (!controls.length) return '';
+        const renderedProperties = new Set<string>();
+        const sections = configuredSections
+          .map((section) => {
+            const entries = section.properties
+              .map((property) => controls.find((entry) => entry.control.property === property))
+              .filter((entry): entry is { control: Control; index: number } => Boolean(entry));
+            entries.forEach(({ control }) => renderedProperties.add(control.property));
+            if (!entries.length) return '';
+            const sectionKey = `${group.key}:${section.label}`;
+            return `<section class="property-section ${collapsedSections.has(sectionKey) ? 'collapsed' : ''}" data-section-key="${escapeHtml(sectionKey)}"><div class="section-head"><button class="section-toggle" aria-expanded="${String(!collapsedSections.has(sectionKey))}"><i data-foundry-icon="chevron-down"></i><strong>${escapeHtml(section.label)}</strong></button>${section.label === 'Padding' ? `<button class="section-action ${paddingLinked ? 'active' : ''}" data-padding-link aria-label="${paddingLinked ? 'Unlink padding values' : 'Link padding values'}"><i data-foundry-icon="${paddingLinked ? 'link-2' : 'unlink-2'}"></i></button>` : ''}</div><div class="section-grid ${section.columns === 2 ? 'two' : ''} ${section.stacked ? 'stacked' : ''}">${entries
+              .map(({ control, index }) =>
+                renderPropertyControl(control, index, section.prefixes?.[control.property]),
+              )
+              .join('')}</div></section>`;
           })
-          .filter((entry): entry is { control: Control; index: number } => Boolean(entry));
-        entries.forEach(({ control }) => renderedProperties.add(control.property));
-        if (!entries.length) return '';
-        const sectionKey = `${activeCategory}:${section.label}`;
-        return `<section class="property-section ${collapsedSections.has(sectionKey) ? 'collapsed' : ''}" data-section-key="${escapeHtml(sectionKey)}"><div class="section-head"><button class="section-toggle" aria-expanded="${String(!collapsedSections.has(sectionKey))}"><i data-foundry-icon="chevron-down"></i><strong>${escapeHtml(section.label)}</strong></button>${section.label === 'Padding' ? `<button class="section-action ${paddingLinked ? 'active' : ''}" data-padding-link aria-label="${paddingLinked ? 'Unlink padding values' : 'Link padding values'}"><i data-foundry-icon="${paddingLinked ? 'link-2' : 'unlink-2'}"></i></button>` : ''}</div><div class="section-grid ${section.columns === 2 ? 'two' : ''} ${section.stacked ? 'stacked' : ''}">${entries
-          .map(({ control, index }) =>
-            renderPropertyControl(control, index, section.prefixes?.[control.property]),
-          )
-          .join('')}</div></section>`;
+          .join('');
+        const remaining = controls.filter(
+          ({ control }) => !renderedProperties.has(control.property),
+        );
+        const remainingSection = remaining.length
+          ? `<section class="property-section ${collapsedSections.has(`${group.key}:Other`) ? 'collapsed' : ''}" data-section-key="${escapeHtml(`${group.key}:Other`)}"><div class="section-head"><button class="section-toggle" aria-expanded="${String(!collapsedSections.has(`${group.key}:Other`))}"><i data-foundry-icon="chevron-down"></i><strong>Other</strong></button></div><div class="section-grid">${remaining
+              .map(({ control, index }) => renderPropertyControl(control, index))
+              .join('')}</div></section>`
+          : '';
+        const categoryKey = `category:${group.key}`;
+        return `<section class="inspector-category property-section ${collapsedSections.has(categoryKey) ? 'collapsed' : ''}" data-category="${group.key}" data-section-key="${categoryKey}"><div class="inspector-heading section-head"><button class="section-toggle" aria-expanded="${String(!collapsedSections.has(categoryKey))}"><i data-foundry-icon="${group.icon}"></i><strong>${group.label}</strong></button><span class="property-count">${controls.length}</span></div><div class="category-body">${group.showContext ? renderContextPanel(group.category) : ''}${sections}${remainingSection}</div></section>`;
       })
       .join('');
-    const remaining = controls
-      .map((control, index) => ({ control, index }))
-      .filter(({ control }) => !renderedProperties.has(control.property));
-    const remainingSection = remaining.length
-      ? `<section class="property-section ${collapsedSections.has(`${activeCategory}:Other`) ? 'collapsed' : ''}" data-section-key="${escapeHtml(`${activeCategory}:Other`)}"><div class="section-head"><button class="section-toggle" aria-expanded="${String(!collapsedSections.has(`${activeCategory}:Other`))}"><i data-foundry-icon="chevron-down"></i><strong>Other</strong></button></div><div class="section-grid">${remaining
-          .map(({ control, index }) => renderPropertyControl(control, index))
-          .join('')}</div></section>`
-      : '';
-    const currentBaseline = selected
-      ? baselineForContext(
-          designMemory,
-          foundryTargetId(selected),
-          breakpoint.value,
-          theme.value,
-          state.value,
-        )
-      : undefined;
-    controlsRoot.innerHTML = `<div class="inspector-heading"><i data-foundry-icon="${CATEGORY_ICONS[activeCategory]}"></i><strong>${CATEGORY_LABELS[activeCategory]}</strong><span class="property-count">${controls.length} properties</span></div>${currentBaseline ? `<div style="padding:0 12px"><span class="baseline-badge">Verified baseline · ${escapeHtml(new Date(currentBaseline.verifiedAt).toLocaleDateString())}</span></div>` : ''}${renderContextPanel(activeCategory)}${controls.length ? `${sections}${remainingSection}` : '<div class="empty">No project-token controls are available for this category.</div>'}`;
+    const currentBaseline = baselineForContext(
+      designMemory,
+      foundryTargetId(selected),
+      breakpoint.value,
+      theme.value,
+      state.value,
+    );
+    const animations = selected.getAnimations();
+    controlsRoot.innerHTML = `${currentBaseline ? `<div class="inspector-baseline"><span class="baseline-badge">Verified baseline · ${escapeHtml(new Date(currentBaseline.verifiedAt).toLocaleDateString())}</span></div>` : ''}${categoryMarkup}${renderMotionControls(animations)}`;
     renderIcons(controlsRoot);
     controlsRoot.querySelectorAll<HTMLButtonElement>('.section-toggle').forEach((button) => {
       button.addEventListener('click', () => {
@@ -4043,31 +4361,31 @@ export function installFoundryInspector(
         button.setAttribute('aria-expanded', String(!collapsed));
         if (collapsed) collapsedSections.add(key);
         else collapsedSections.delete(key);
-        localStorage.setItem(
+        sessionStorage.setItem(
           '__foundry_collapsed_sections',
           JSON.stringify([...collapsedSections]),
         );
       });
     });
-    controlsRoot
-      .querySelector<HTMLButtonElement>('[data-padding-link]')
-      ?.addEventListener('click', () => {
+    controlsRoot.querySelectorAll<HTMLButtonElement>('[data-padding-link]').forEach((button) =>
+      button.addEventListener('click', () => {
         paddingLinked = !paddingLinked;
         renderControls();
-      });
-    controls.forEach((control, index) => {
+      }),
+    );
+    indexedControls.forEach(({ control, index }) => {
       const matches = matchingTokens(
         designGraph?.tokens ?? [],
         control.property,
         `${control.value}${control.unit ?? ''}`,
       );
       const tokenEligible =
-        (activeCategory === 'layout' && /gap|padding|margin/i.test(control.property)) ||
-        (activeCategory === 'typography' &&
+        (control.category === 'layout' && /gap|padding|margin/i.test(control.property)) ||
+        (control.category === 'typography' &&
           /font|lineHeight|letterSpacing/i.test(control.property)) ||
-        (activeCategory === 'color' && /color|background|fill|stroke/i.test(control.property)) ||
-        (activeCategory === 'effects' && /radius|shadow|blur/i.test(control.property));
-      if (!tokenEligible || !tokensForCategory(activeCategory).length) return;
+        (control.category === 'color' && /color|background|fill|stroke/i.test(control.property)) ||
+        (control.category === 'effects' && /radius|shadow|blur/i.test(control.property));
+      if (!tokenEligible || !tokensForCategory(control.category).length) return;
       const field = controlsRoot.querySelector<HTMLElement>(`[data-control="${index}"]`);
       const label = field?.closest<HTMLElement>('label');
       if (!label) return;
@@ -4090,7 +4408,7 @@ export function installFoundryInspector(
     });
     controlsRoot.querySelectorAll<HTMLButtonElement>('[data-reset-control]').forEach((button) => {
       button.addEventListener('click', () => {
-        const control = controls[Number(button.dataset.resetControl)];
+        const control = selectedControls[Number(button.dataset.resetControl)];
         if (!control || !selected) return;
         const entry = previewHistory.find(
           (item) => item.element === selected && item.property === control.property,
@@ -4119,7 +4437,7 @@ export function installFoundryInspector(
     controlsRoot.querySelectorAll<HTMLSelectElement>('[data-unit-control]').forEach((unitField) => {
       unitField.addEventListener('change', () => {
         const index = Number(unitField.dataset.unitControl);
-        const control = controls[index];
+        const control = selectedControls[index];
         const valueField = controlsRoot.querySelector<HTMLInputElement>(
           `input[data-control="${index}"]`,
         );
@@ -4171,7 +4489,8 @@ export function installFoundryInspector(
     controlsRoot
       .querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-control]')
       .forEach((field) => {
-        const control = controls[Number(field.dataset.control)];
+        const index = Number(field.dataset.control);
+        const control = selectedControls[index];
         if (!control) return;
         const editedElement = selected;
         const recorder = createDebouncedChangeRecorder<string | number>(180, (before, after) => {
@@ -4188,7 +4507,7 @@ export function installFoundryInspector(
           }
           return record(control, before, after, editedElement);
         });
-        fieldRecorders.set(Number(field.dataset.control), recorder);
+        fieldRecorders.set(index, recorder);
         field.addEventListener('focus', () => {
           activeControlProperty = control.property;
         });
@@ -4197,7 +4516,7 @@ export function installFoundryInspector(
           const value = control.kind === 'number' ? Number(field.value) : field.value;
           control.apply(value);
           if (paddingLinked && control.property.startsWith('padding')) {
-            controls.forEach((linkedControl, linkedIndex) => {
+            indexedControls.forEach(({ control: linkedControl, index: linkedIndex }) => {
               if (
                 linkedControl === control ||
                 !['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'].includes(
@@ -4220,18 +4539,20 @@ export function installFoundryInspector(
       });
     controlsRoot.querySelectorAll<HTMLButtonElement>('[data-token-control]').forEach((button) => {
       button.addEventListener('click', () => {
+        const index = Number(button.dataset.tokenControl);
         const field = controlsRoot.querySelector<HTMLInputElement | HTMLSelectElement>(
-          `[data-control="${button.dataset.tokenControl}"]`,
+          `[data-control="${index}"]`,
         );
-        const control = controls[Number(button.dataset.tokenControl)];
+        const control = selectedControls[index];
         if (!field || !control) return;
         const raw = button.dataset.tokenValue ?? '';
         field.value = control.kind === 'number' ? String(numberFrom(raw)) : raw;
         field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
       });
     });
-    installContextActions(controls);
+    installContextActions(selectedControls);
     installNumberScrubbing();
+    installMotionControls(animations);
   }
 
   function select(element: HTMLElement, additive = false): void {
@@ -4252,9 +4573,6 @@ export function installFoundryInspector(
       selected = element;
     }
     selectedControls = controlsFor(element);
-    if (activeCategory === 'motion' && !element.getAnimations().length) {
-      activeCategory = 'layout';
-    }
     const target = targetFor(element);
     panel.classList.add('has-selection');
     selectionRoot.classList.remove('selected-flash');
@@ -4502,15 +4820,15 @@ export function installFoundryInspector(
 
   function updateInspectionMode(): void {
     inspectButton.classList.toggle('active', inspecting);
+    interactButton.classList.toggle('active', !inspecting);
     inspectButton.setAttribute('aria-pressed', String(inspecting));
-    inspectButton.setAttribute(
-      'aria-label',
-      inspecting ? 'Selection mode on' : 'Interaction mode on',
-    );
-    inspectButton.dataset.tooltip = inspecting ? 'Select mode' : 'Interact with app';
-    inspectButton.title = inspecting
-      ? 'Select mode: click any element'
-      : 'Interaction mode: use the app normally. Option-click still selects.';
+    interactButton.setAttribute('aria-pressed', String(!inspecting));
+    inspectButton.setAttribute('aria-label', 'Select mode');
+    interactButton.setAttribute('aria-label', 'Interact mode');
+    inspectButton.dataset.tooltip = 'Select';
+    interactButton.dataset.tooltip = 'Interact';
+    inspectButton.title = 'Select mode: click any element';
+    interactButton.title = 'Interaction mode: use the app normally. Option-click still selects.';
     modeCopyTitle.textContent = inspecting ? 'Select mode' : 'Interact mode';
     modeCopyDetail.textContent = inspecting ? 'Click any element' : 'Option-click to select';
   }
@@ -4730,7 +5048,7 @@ export function installFoundryInspector(
       method: 'POST',
       body: JSON.stringify({ runId, results }),
     });
-    if (panel.classList.contains('reviewing')) renderReviewPayload(payload);
+    if (workspaceState.tray === 'expanded') renderReviewPayload(payload);
     showToast(
       `${results.filter((result: any) => result.passed).length}/${results.length} changes verified`,
     );
@@ -4866,7 +5184,11 @@ export function installFoundryInspector(
   document.addEventListener('keydown', nudgeSelection);
   document.addEventListener('keyup', commitNudge);
   window.addEventListener('scroll', updateOutline, true);
-  window.addEventListener('resize', updateOutline);
+  const handleWorkspaceResize = (): void => {
+    updateOutline();
+    positionWorkspaceSurfaces();
+  };
+  window.addEventListener('resize', handleWorkspaceResize);
   renderToolTabs();
   renderSelectionEmptyState();
   installResizeHandles();
@@ -4875,13 +5197,14 @@ export function installFoundryInspector(
   updateHistoryActions();
   updateInspectionMode();
   inspectButton.addEventListener('click', () => {
-    inspecting = !inspecting;
+    inspecting = true;
     updateInspectionMode();
-    showToast(
-      inspecting
-        ? 'Select mode on · click any element'
-        : 'Interaction mode on · use the app normally',
-    );
+    showToast('Select mode on · click any element');
+  });
+  interactButton.addEventListener('click', () => {
+    inspecting = false;
+    updateInspectionMode();
+    showToast('Interaction mode on · use the app normally');
   });
   const toggleStatusPopover = (): void => {
     statusPopover.hidden = !statusPopover.hidden;
@@ -4935,6 +5258,10 @@ export function installFoundryInspector(
   shadow.querySelector('.toggle-layers')?.addEventListener('click', () => toggleLayers());
   shadow.querySelector('.close-layers')?.addEventListener('click', () => toggleLayers(false));
   toggleLayers(sessionStorage.getItem(layersPreferenceKey) !== 'closed', false);
+  shadow
+    .querySelectorAll<HTMLButtonElement>('.toggle-inspector')
+    .forEach((button) => button.addEventListener('click', () => toggleInspector()));
+  toggleInspector(true);
   layerViewButtons.forEach((button) => {
     button.addEventListener('click', () => {
       layerView = button.dataset.layerView === 'components' ? 'components' : 'layers';
@@ -4944,7 +5271,11 @@ export function installFoundryInspector(
       renderLayers();
     });
   });
-  shadow.querySelector('.open-health')?.addEventListener('click', openHealth);
+  shadow
+    .querySelector('.open-health')
+    ?.addEventListener('click', () =>
+      workspaceState.utility === 'health' ? closeHealth() : openHealth(),
+    );
   shadow.querySelector('.close-health')?.addEventListener('click', closeHealth);
   shadow.querySelector('.health-rescan')?.addEventListener('click', scanDesignHealth);
   shadow.querySelector('.health-show-ignored')?.addEventListener('click', () => {
@@ -4962,6 +5293,8 @@ export function installFoundryInspector(
   libraryPanel
     .querySelector('[data-capture-baseline]')
     ?.addEventListener('click', saveManualBaseline);
+  installUtilityGeometry(healthPanel, 'health');
+  installUtilityGeometry(libraryPanel, 'memory');
   layerSearch.addEventListener('input', () => renderLayers());
   layerTree.addEventListener('scroll', () => {
     cancelAnimationFrame(layerScrollFrame);
@@ -4975,7 +5308,7 @@ export function installFoundryInspector(
     const child = firstLayerChild(selected);
     if (child) select(child);
   });
-  shadow.querySelector('.open-compare')?.addEventListener('click', () => showComparison('after'));
+  trayCompare.addEventListener('click', () => showComparison('after'));
   shadow.querySelector('.open-commands')?.addEventListener('click', openCommands);
   compareBar.querySelectorAll<HTMLButtonElement>('[data-compare]').forEach((button) =>
     button.addEventListener('click', () => {
@@ -5044,8 +5377,6 @@ export function installFoundryInspector(
   shadow.querySelector('.redo')?.addEventListener('click', () => void replayHistory(1));
   shadow.querySelector('.align')?.addEventListener('click', () => void alignSelected());
   shadow.querySelector('.distribute')?.addEventListener('click', () => void distributeSelected());
-  shadow.querySelector('.verify')?.addEventListener('click', () => void verify());
-  shadow.querySelector('.review')?.addEventListener('click', () => void openReview());
   shadow.querySelector('.review-back')?.addEventListener('click', closeReview);
   reviewCancel.addEventListener('click', () => {
     if (reviewCancel.dataset.action === 'cancel') void cancelRun();
@@ -5104,7 +5435,7 @@ export function installFoundryInspector(
     else if (!healthPanel.hidden) closeHealth();
     else if (comparisonActive) closeComparison();
     else if (!workbench.hidden) closeWorkbench();
-    else if (panel.classList.contains('reviewing')) closeReview();
+    else if (workspaceState.tray === 'expanded') closeReview();
     else clearSelection();
   }
   document.addEventListener('keydown', handleGlobalShortcuts);
@@ -5147,7 +5478,7 @@ export function installFoundryInspector(
     document.removeEventListener('keyup', commitNudge);
     document.removeEventListener('keydown', handleGlobalShortcuts);
     window.removeEventListener('scroll', updateOutline, true);
-    window.removeEventListener('resize', updateOutline);
+    window.removeEventListener('resize', handleWorkspaceResize);
     cancelAnimationFrame(selectionHoverFrame);
     host.remove();
   }

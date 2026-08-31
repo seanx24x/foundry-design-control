@@ -14,6 +14,7 @@ import commandIcon from '@iconify-icons/keyline-icons/square-terminal';
 import componentIcon from '@iconify-icons/keyline-icons/shapes';
 import contrastIcon from '@iconify-icons/keyline-icons/circle-half';
 import cursorIcon from '@iconify-icons/keyline-icons/cursor';
+import interactIcon from '@iconify-icons/keyline-icons/cursor-click';
 import eyeIcon from '@iconify-icons/keyline-icons/eye';
 import eyeOffIcon from '@iconify-icons/keyline-icons/eye-off';
 import fileTextIcon from '@iconify-icons/keyline-icons/file-text';
@@ -67,6 +68,7 @@ export const KEYLINE_ICONS: Record<string, KeylineIconData> = {
   lock: lockIcon,
   'maximize-2': maximizeIcon,
   'mouse-pointer-2': cursorIcon,
+  interact: interactIcon,
   palette: paletteIcon,
   'panels-top-left': panelsIcon,
   play: playIcon,
