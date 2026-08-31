@@ -68,9 +68,9 @@ importers:
 
   packages/web-adapter:
     dependencies:
-      lucide:
-        specifier: ^1.37.0
-        version: 1.37.0
+      '@iconify-icons/keyline-icons':
+        specifier: 2.0.0
+        version: 2.0.0
 
 packages:
 
@@ -386,6 +386,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@iconify-icons/keyline-icons@2.0.0':
+    resolution: {integrity: sha512-8LiN6gKISjVqUOidlL6dgDsSYE0iqrtL//lUeh95xDm9gpTnQAPGp1ggizaEqTKfvmxJZeRXJ3Wc3RuWoDbbWA==}
+
+  '@iconify/types@2.0.0':
+    resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
+
   '@modelcontextprotocol/core@2.0.0':
     resolution: {integrity: sha512-pJCEwGG7Lfr/+PQp9ZTwKXNeO5wzbfKL7H3MYpCorM4oFBoQrdjnBgEoqG+RjhsvS1FKrDbKux+M1HhlnGWqcA==}
     engines: {node: '>=20'}
@@ -411,9 +417,6 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
-
-  lucide@1.37.0:
-    resolution: {integrity: sha512-e6/YmVKk0dwJf1CVDlYfSZTLax/+a7tVPPo867aUC+VmWsGNMimWrFI/pGoDc9qkjiJqkVHar14rMwgOHMrTcw==}
 
   prettier@3.9.6:
     resolution: {integrity: sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g==}
@@ -594,6 +597,12 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
+  '@iconify-icons/keyline-icons@2.0.0':
+    dependencies:
+      '@iconify/types': 2.0.0
+
+  '@iconify/types@2.0.0': {}
+
   '@modelcontextprotocol/core@2.0.0':
     dependencies:
       zod: 4.5.2
@@ -667,8 +676,6 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
-
-  lucide@1.37.0: {}
 
   prettier@3.9.6: {}
 

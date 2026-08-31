@@ -37,6 +37,6 @@
     "test": "node --import tsx --test src/*.test.ts"
   },
   "dependencies": {
-    "lucide": "^1.37.0"
+    "@iconify-icons/keyline-icons": "2.0.0"
   }
 }
