@@ -47,9 +47,31 @@ async function setStatus(changeId, status) {
   await loadSession();
 }
 
+function renderApplyRun(runs = []) {
+  const container = $('#apply-run');
+  const run = runs.at(-1);
+  if (!run) {
+    container.classList.add('hidden');
+    return;
+  }
+  container.classList.remove('hidden');
+  const attention = ['needs_attention', 'failed'].includes(run.state);
+  const active = ['queued', 'claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state);
+  container.innerHTML = `<div><p class="eyebrow">Apply run · attempt ${run.attempts}</p><h3>${escapeText(run.state.replaceAll('_', ' '))}</h3><p>${escapeText(run.messages.at(-1)?.message ?? run.error ?? 'Apply run created.')}</p></div><div class="apply-run-results">${run.validationResults.map((result) => `<span class="${result.passed ? 'pass' : 'fail'}">${result.passed ? 'Passed' : 'Failed'} · ${escapeText(result.name)}</span>`).join('')}${run.verificationResults.map((result) => `<span class="${result.passed ? 'pass' : 'fail'}">${result.passed ? 'Matched' : 'Mismatch'} · ${escapeText(result.property)}</span>`).join('')}</div><div class="apply-run-actions">${attention ? `<button class="button primary" data-run-action="retry" data-run="${run.id}">Retry with agent</button>` : ''}${active ? `<button class="button secondary" data-run-action="cancel" data-run="${run.id}">Cancel</button>` : ''}</div>`;
+  container.querySelectorAll('[data-run-action]').forEach((button) =>
+    button.addEventListener('click', async () => {
+      await api(
+        `/v1/sessions/${sessionId}/apply-runs/${button.dataset.run}/${button.dataset.runAction}`,
+        { method: 'POST', body: '{}' },
+      );
+      await loadSession();
+    }),
+  );
+}
+
 function renderSession(payload) {
   activeSession = payload;
-  const { changeSet, verifications } = payload;
+  const { changeSet, verifications, applyRuns = [], designGraph } = payload;
   $('#intro').classList.add('hidden');
   $('#sessions-section').classList.add('hidden');
   $('#empty-guide').classList.add('hidden');
@@ -58,7 +80,7 @@ function renderSession(payload) {
   $('#session-title').textContent =
     changeSet.context.targetName || changeSet.context.targetUrl || 'Untitled surface';
   $('#session-meta').textContent =
-    `${changeSet.context.projectRoot} · ${changeSet.context.breakpoint} · ${changeSet.context.theme}`;
+    `${changeSet.context.projectRoot} · ${changeSet.context.breakpoint} · ${changeSet.context.theme}${designGraph ? ` · ${designGraph.tokens.length} tokens · ${designGraph.components.length} components` : ''}`;
   $('#change-count').textContent = String(changeSet.changes.length);
   $('#approved-count').textContent = String(
     changeSet.changes.filter((change) => ['approved', 'applied'].includes(change.status)).length,
@@ -66,6 +88,22 @@ function renderSession(payload) {
   $('#verified-count').textContent = String(verifications.filter((result) => result.passed).length);
   $('#updated-at').textContent =
     `Updated ${new Date(changeSet.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const activeRun = applyRuns.some((run) =>
+    ['queued', 'claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state),
+  );
+  const reviewedCount = changeSet.changes.filter(
+    (change) =>
+      change.status === 'approved' &&
+      change.confidence !== 'unresolved' &&
+      !(change.mappingCandidates?.length > 1 && !change.selectedMappingId),
+  ).length;
+  $('#apply-agent').disabled = activeRun || reviewedCount === 0;
+  $('#apply-agent').textContent = activeRun
+    ? 'Agent working…'
+    : reviewedCount
+      ? `Apply ${reviewedCount} with agent`
+      : 'Review changes first';
+  renderApplyRun(applyRuns);
 
   const changes = $('#changes');
   if (changeSet.changes.length === 0) {
@@ -74,21 +112,24 @@ function renderSession(payload) {
     return;
   }
   changes.innerHTML = changeSet.changes
-    .map(
-      (change, index) => `
+    .map((change, index) => {
+      const unresolved =
+        change.confidence === 'unresolved' ||
+        (change.mappingCandidates?.length > 1 && !change.selectedMappingId);
+      return `
     <article class="change">
       <div class="change-index">${String(index + 1).padStart(2, '0')}</div>
       <div>
         <h4>${escapeText(change.target.label)} · ${escapeText(change.property)}</h4>
         <p class="value-change">${escapeText(formatValue(change.before, change.unit))} → ${escapeText(formatValue(change.after, change.unit))}</p>
-        <p>${escapeText(change.scope)} · ${escapeText(change.context.breakpoint)} · ${escapeText(change.context.theme)} · ${escapeText(change.confidence)}</p>
+        <p>${escapeText(change.scope)} · ${escapeText(change.context.breakpoint)} · ${escapeText(change.context.theme)} · ${escapeText(unresolved ? 'mapping required' : change.confidence)}${change.token ? ` · ${escapeText(change.token)}` : ''}</p>
       </div>
       <div class="change-controls">
-        <button class="status-button ${change.status === 'approved' ? 'active' : ''}" data-status="approved" data-id="${change.id}">Review</button>
+        <button class="status-button ${change.status === 'approved' ? 'active' : ''}" data-status="approved" data-id="${change.id}" ${unresolved ? 'disabled title="Resolve the source mapping in the live inspector"' : ''}>Review</button>
         <button class="status-button ${change.status === 'rejected' ? 'active' : ''}" data-status="rejected" data-id="${change.id}">Exclude</button>
       </div>
-    </article>`,
-    )
+    </article>`;
+    })
     .join('');
   changes
     .querySelectorAll('[data-status]')
@@ -231,7 +272,7 @@ $('#copy-prompt').addEventListener('click', async () => {
   toast('Agent prompt copied');
 });
 $('#download-json').addEventListener('click', async () => {
-  const data = await api(`/v1/sessions/${sessionId}/export?format=json`);
+  const data = await api(`/v1/sessions/${sessionId}/export?format=full`);
   const link = document.createElement('a');
   link.href = URL.createObjectURL(
     new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
@@ -239,6 +280,24 @@ $('#download-json').addEventListener('click', async () => {
   link.download = `foundry-${sessionId}.json`;
   link.click();
   URL.revokeObjectURL(link.href);
+});
+$('#apply-agent').addEventListener('click', async () => {
+  const reviews = activeSession.changeSet.changes.map((change) => ({
+    changeId: change.id,
+    approved: change.status === 'approved',
+  }));
+  try {
+    await api(`/v1/sessions/${sessionId}/apply-runs`, {
+      method: 'POST',
+      body: JSON.stringify({
+        reviews,
+        revision: activeSession.changeSet.context.revision,
+      }),
+    });
+    await loadSession();
+  } catch (error) {
+    toast(error.message);
+  }
 });
 
 if (sessionId) {

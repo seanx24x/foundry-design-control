@@ -1,0 +1,28 @@
+name: Beta feedback
+description: Tell us where Foundry helped or created friction.
+title: '[Beta]: '
+labels: [beta-feedback]
+body:
+  - type: dropdown
+    id: workflow
+    attributes:
+      label: Workflow stage
+      options: [Install, Inspect, Refine, Review, Apply, Verify, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: What were you trying to design?
+    validations:
+      required: true
+  - type: textarea
+    id: feedback
+    attributes:
+      label: What felt useful or difficult?
+    validations:
+      required: true
+  - type: textarea
+    id: improvement
+    attributes:
+      label: What would make you return to Foundry?

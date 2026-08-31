@@ -1,13 +1,26 @@
 {
   "name": "foundry-design-runtime",
-  "version": "0.1.0",
+  "version": "0.2.0-beta.1",
   "description": "Loopback-only session runtime for Foundry Design Control",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "!dist/*.test.*",
+    "!dist/**/*.test.*"
   ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/seanx24x/foundry-design-control#readme",
+  "bugs": "https://github.com/seanx24x/foundry-design-control/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seanx24x/foundry-design-control.git",
+    "directory": "packages/runtime"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

@@ -19,7 +19,10 @@ function result(value: unknown) {
 }
 
 serveStdio(() => {
-  const server = new McpServer({ name: 'foundry-design-control', version: '0.1.0' });
+  const server = new McpServer({
+    name: 'foundry-design-control',
+    version: '0.3.0',
+  });
   const client = new FoundryRuntimeClient();
 
   server.registerTool(
@@ -33,6 +36,7 @@ serveStdio(() => {
         targetUrl: z.string().url().optional(),
         targetName: z.string().optional(),
         revision: z.string().optional(),
+        designGraphRevision: z.string().optional(),
       }),
     },
     async (input) =>
@@ -40,7 +44,12 @@ serveStdio(() => {
         await client.request('/v1/sessions', {
           method: 'POST',
           body: JSON.stringify({
-            context: { ...input, theme: 'system', breakpoint: 'current', state: 'current' },
+            context: {
+              ...input,
+              theme: 'system',
+              breakpoint: 'current',
+              state: 'current',
+            },
           }),
         }),
       ),
@@ -51,10 +60,130 @@ serveStdio(() => {
     {
       description:
         'Read the canonical change set and verification results for a Foundry session before editing code.',
-      inputSchema: z.object({ sessionId: z.string().optional(), token: z.string().optional() }),
+      inputSchema: z.object({
+        sessionId: z.string().optional(),
+        token: z.string().optional(),
+      }),
     },
     async ({ sessionId, token }) =>
       result(await client.request(`/v1/sessions/${client.sessionId(sessionId)}`, {}, token)),
+  );
+
+  server.registerTool(
+    'foundry_design_get_project_design',
+    {
+      description:
+        'Read the revisioned local project design graph, including tokens, components, variants, viewports, themes, states, and motion presets.',
+      inputSchema: z.object({
+        sessionId: z.string().optional(),
+        token: z.string().optional(),
+      }),
+    },
+    async ({ sessionId, token }) =>
+      result(
+        await client.request(`/v1/sessions/${client.sessionId(sessionId)}/design-graph`, {}, token),
+      ),
+  );
+
+  server.registerTool(
+    'foundry_design_wait_for_apply',
+    {
+      description:
+        'Wait for the user to review a Foundry batch and press Apply with agent, then atomically claim that apply run.',
+      inputSchema: z.object({
+        sessionId: z.string().optional(),
+        token: z.string().optional(),
+        agent: z.object({
+          name: z.string().min(1),
+          version: z.string().optional(),
+          taskId: z.string().optional(),
+        }),
+        revision: z.string().optional(),
+        designGraphRevision: z.string().optional(),
+        waitMs: z.number().int().min(0).max(60_000).default(30_000),
+      }),
+    },
+    async ({ sessionId, token, agent, revision, designGraphRevision, waitMs }) => {
+      const id = client.sessionId(sessionId);
+      const deadline = Date.now() + waitMs;
+      do {
+        const payload = (await client.request(
+          `/v1/sessions/${id}/apply-runs?state=queued`,
+          {},
+          token,
+        )) as { runs?: Array<{ id: string }> };
+        const run = payload.runs?.[0];
+        if (run) {
+          return result(
+            await client.request(
+              `/v1/sessions/${id}/apply-runs/${run.id}/claim`,
+              {
+                method: 'POST',
+                body: JSON.stringify({ agent, revision, designGraphRevision }),
+              },
+              token,
+            ),
+          );
+        }
+        if (Date.now() >= deadline) break;
+        await new Promise((resolveWait) => setTimeout(resolveWait, 500));
+      } while (true);
+      return result({ status: 'waiting', sessionId: id, waitedMs: waitMs });
+    },
+  );
+
+  server.registerTool(
+    'foundry_design_get_apply_run',
+    {
+      description: 'Read one persistent Foundry apply run, including progress and verification.',
+      inputSchema: z.object({
+        sessionId: z.string().optional(),
+        token: z.string().optional(),
+        runId: z.string().min(1),
+      }),
+    },
+    async ({ sessionId, token, runId }) =>
+      result(
+        await client.request(
+          `/v1/sessions/${client.sessionId(sessionId)}/apply-runs/${runId}`,
+          {},
+          token,
+        ),
+      ),
+  );
+
+  server.registerTool(
+    'foundry_design_update_apply_run',
+    {
+      description:
+        'Report source-edit, rebuild, validation, verification-request, or failure progress for a claimed Foundry apply run.',
+      inputSchema: z.object({
+        sessionId: z.string().optional(),
+        token: z.string().optional(),
+        runId: z.string().min(1),
+        state: z.enum(['applying', 'rebuilding', 'verifying', 'failed']),
+        message: z.string().optional(),
+        changedFiles: z.array(z.string()).optional(),
+        validationResults: z
+          .array(
+            z.object({
+              name: z.string().min(1),
+              passed: z.boolean(),
+              summary: z.string().optional(),
+            }),
+          )
+          .optional(),
+        error: z.string().optional(),
+      }),
+    },
+    async ({ sessionId, token, runId, ...update }) =>
+      result(
+        await client.request(
+          `/v1/sessions/${client.sessionId(sessionId)}/apply-runs/${runId}`,
+          { method: 'PATCH', body: JSON.stringify(update) },
+          token,
+        ),
+      ),
   );
 
   server.registerTool(
@@ -86,7 +215,7 @@ serveStdio(() => {
       inputSchema: z.object({
         sessionId: z.string().optional(),
         token: z.string().optional(),
-        format: z.enum(['json', 'prompt']).default('json'),
+        format: z.enum(['json', 'prompt', 'full']).default('json'),
       }),
     },
     async ({ sessionId, token, format }) =>
@@ -132,6 +261,7 @@ serveStdio(() => {
       inputSchema: z.object({
         sessionId: z.string().optional(),
         token: z.string().optional(),
+        runId: z.string().optional(),
         results: z.array(
           z.object({
             changeId: z.string(),
@@ -145,11 +275,11 @@ serveStdio(() => {
         ),
       }),
     },
-    async ({ sessionId, token, results }) =>
+    async ({ sessionId, token, runId, results }) =>
       result(
         await client.request(
           `/v1/sessions/${client.sessionId(sessionId)}/verify`,
-          { method: 'POST', body: JSON.stringify({ results }) },
+          { method: 'POST', body: JSON.stringify({ runId, results }) },
           token,
         ),
       ),

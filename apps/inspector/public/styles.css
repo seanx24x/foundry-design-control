@@ -305,6 +305,49 @@ kbd {
     12px/1.5 ui-monospace,
     monospace;
 }
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+.apply-run {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.6fr) auto;
+  align-items: center;
+  gap: 28px;
+  margin-bottom: 24px;
+  padding: 22px 24px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+.apply-run .eyebrow {
+  margin-bottom: 8px;
+}
+.apply-run h3 {
+  text-transform: capitalize;
+}
+.apply-run p:not(.eyebrow) {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.apply-run-results {
+  display: grid;
+  gap: 6px;
+  font-size: 11px;
+}
+.apply-run-results .pass {
+  color: #39705a;
+}
+.apply-run-results .fail {
+  color: #a85131;
+}
+.apply-run-actions {
+  display: flex;
+  gap: 8px;
+}
 .workbench {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
@@ -521,7 +564,8 @@ kbd {
     grid-template-columns: 1fr 1fr;
   }
   .workbench,
-  .native-stage {
+  .native-stage,
+  .apply-run {
     grid-template-columns: 1fr;
   }
   .native-properties {

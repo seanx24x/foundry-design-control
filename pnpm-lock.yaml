@@ -66,7 +66,11 @@ importers:
         specifier: workspace:*
         version: link:../web-adapter
 
-  packages/web-adapter: {}
+  packages/web-adapter:
+    dependencies:
+      lucide:
+        specifier: ^1.37.0
+        version: 1.37.0
 
 packages:
 
@@ -408,6 +412,9 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
+  lucide@1.37.0:
+    resolution: {integrity: sha512-e6/YmVKk0dwJf1CVDlYfSZTLax/+a7tVPPo867aUC+VmWsGNMimWrFI/pGoDc9qkjiJqkVHar14rMwgOHMrTcw==}
+
   prettier@3.9.6:
     resolution: {integrity: sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g==}
     engines: {node: '>=14'}
@@ -660,6 +667,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  lucide@1.37.0: {}
 
   prettier@3.9.6: {}
 

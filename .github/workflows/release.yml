@@ -1,0 +1,41 @@
+name: Publish beta
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm release:check
+      - run: pnpm release:pack
+      - run: pnpm release:test-install
+      - name: Publish beta packages
+        run: |
+          for package in \
+            apps/inspector \
+            packages/protocol \
+            packages/web-adapter \
+            packages/runtime \
+            packages/cli \
+            packages/mcp-server \
+            packages/react-native-adapter
+          do
+            pnpm --dir "$package" publish --tag beta --provenance --no-git-checks
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

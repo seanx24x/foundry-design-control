@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -14,6 +15,7 @@ import {
   type FoundryProjectConfig,
 } from './installer.js';
 import { addSessionParams, detectPlatform } from './project.js';
+import { indexProjectDesign } from './indexer.js';
 
 const args = process.argv.slice(2);
 const command = args[0] ?? 'help';
@@ -40,16 +42,17 @@ Usage:
   foundry-design init <web|swiftui|react-native> [--project PATH]
   foundry-design start [--project PATH] [--url URL] [--platform PLATFORM] [--no-open] [--no-dev]
   foundry-design doctor [--project PATH]
+  foundry-design index [--project PATH] [--output FILE]
   foundry-design uninstall [--project PATH] [--yes]
-  foundry-design export <SESSION_ID> [--format json|prompt] [--output FILE]
+  foundry-design export <SESSION_ID> [--format json|prompt|full] [--output FILE]
   foundry-design install-agent <cursor|claude|codex> [--project PATH]
 
 Foundry is local-only and never edits product source from inspector controls.`);
 }
 
-async function revision(root: string): Promise<string | undefined> {
+async function gitOutput(root: string, gitArgs: string[]): Promise<string | undefined> {
   return new Promise((resolveRevision) => {
-    const child = spawn('git', ['rev-parse', 'HEAD'], {
+    const child = spawn('git', gitArgs, {
       cwd: root,
       stdio: ['ignore', 'pipe', 'ignore'],
     });
@@ -60,6 +63,24 @@ async function revision(root: string): Promise<string | undefined> {
     child.on('close', (code) => resolveRevision(code === 0 ? output.trim() : undefined));
     child.on('error', () => resolveRevision(undefined));
   });
+}
+
+async function revision(root: string): Promise<string | undefined> {
+  const head = await gitOutput(root, ['rev-parse', 'HEAD']);
+  if (!head) return undefined;
+  const diff = (await gitOutput(root, ['diff', '--no-ext-diff', '--binary', 'HEAD'])) ?? '';
+  const untracked =
+    (await gitOutput(root, ['ls-files', '--others', '--exclude-standard']))
+      ?.split('\n')
+      .filter(Boolean)
+      .sort() ?? [];
+  if (!diff && !untracked.length) return head;
+  const hash = createHash('sha256').update(diff);
+  for (const file of untracked) {
+    hash.update(file);
+    hash.update(await readFile(join(root, file)).catch(() => Buffer.from('unreadable')));
+  }
+  return `${head}-dirty-${hash.digest('hex').slice(0, 12)}`;
 }
 
 async function openUrl(url: string): Promise<void> {
@@ -140,7 +161,25 @@ async function initProject(): Promise<void> {
   await mkdir(configRoot, { recursive: true });
   await writeFile(
     join(configRoot, 'foundry.config.json'),
-    `${JSON.stringify({ platform, runtimeUrl: 'http://127.0.0.1:4387', instrumented: true }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        version: 2,
+        platform,
+        runtimeUrl: 'http://127.0.0.1:4387',
+        instrumented: true,
+        design: {
+          componentRoots: ['src', 'app', 'components'],
+          exclude: ['node_modules', 'dist', 'build', '.next', 'coverage'],
+          viewports: [
+            { id: 'mobile', label: 'Mobile', width: 390, height: 844 },
+            { id: 'tablet', label: 'Tablet', width: 768, height: 1024 },
+            { id: 'desktop', label: 'Desktop', width: 1440, height: 900 },
+          ],
+        },
+      },
+      null,
+      2,
+    )}\n`,
   );
   if (platform === 'web') {
     await writeFile(
@@ -221,9 +260,10 @@ async function start(): Promise<void> {
       throw new Error(`Development server did not become ready at ${targetUrl}`);
     }
   }
+  const projectRevision = await revision(root);
   const context: SessionContext = {
     projectRoot: root,
-    revision: await revision(root),
+    revision: projectRevision,
     platform,
     targetUrl,
     targetName: basename(root),
@@ -233,6 +273,13 @@ async function start(): Promise<void> {
   };
   const store = new SessionStore();
   const session = await store.create(context);
+  if (platform === 'web') {
+    const graph = await indexProjectDesign(root, config, projectRevision);
+    await store.setDesignGraph(session.changeSet.sessionId, graph);
+    console.log(
+      `Indexed ${graph.tokens.length} tokens, ${graph.components.length} components, and ${graph.breakpoints.length} viewports.`,
+    );
+  }
   const runtime = new FoundryRuntime({ store });
   try {
     await runtime.start();
@@ -254,6 +301,12 @@ async function start(): Promise<void> {
   console.log(`Platform: ${platform}`);
   console.log(`Inspector: ${reviewUrl}`);
   if (targetUrl && platform === 'web') console.log(`Instrumented preview: ${productUrl}`);
+  if (platform === 'web') {
+    console.log('\nFirst edit:');
+    console.log('  1. Option-click an element. Shift-click to add more.');
+    console.log('  2. Drag a blue handle or use the inspector for exact values.');
+    console.log('  3. Review the semantic mapping, then Apply with agent.');
+  }
   if (!has('--no-open')) await openUrl(productUrl);
   const shutdown = async () => {
     await runtime.stop();
@@ -263,6 +316,20 @@ async function start(): Promise<void> {
   process.on('SIGINT', () => void shutdown());
   process.on('SIGTERM', () => void shutdown());
   await new Promise(() => {});
+}
+
+async function indexDesign(): Promise<void> {
+  const root = projectRoot();
+  const config = await readFile(join(root, '.foundry', 'foundry.config.json'), 'utf8')
+    .then((content) => JSON.parse(content) as FoundryProjectConfig)
+    .catch(() => undefined);
+  const graph = await indexProjectDesign(root, config, await revision(root));
+  const content = `${JSON.stringify(graph, null, 2)}\n`;
+  const output = flag('--output');
+  if (output) {
+    await writeFile(resolve(output), content);
+    console.log(`Wrote Foundry design graph to ${resolve(output)}`);
+  } else console.log(content);
 }
 
 async function uninstall(): Promise<void> {
@@ -349,7 +416,18 @@ async function exportSession(): Promise<void> {
   const content =
     format === 'prompt'
       ? renderChangePrompt(session.changeSet)
-      : JSON.stringify(session.changeSet, null, 2);
+      : JSON.stringify(
+          format === 'full'
+            ? {
+                changeSet: session.changeSet,
+                verifications: session.verifications,
+                applyRuns: session.applyRuns,
+                designGraph: session.designGraph,
+              }
+            : session.changeSet,
+          null,
+          2,
+        );
   const output = flag('--output');
   if (output) {
     await writeFile(resolve(output), `${content}\n`);
@@ -396,6 +474,7 @@ try {
   else if (command === 'init') await initProject();
   else if (command === 'start') await start();
   else if (command === 'doctor') await doctor();
+  else if (command === 'index') await indexDesign();
   else if (command === 'uninstall') await uninstall();
   else if (command === 'export') await exportSession();
   else if (command === 'install-agent') await installAgent();

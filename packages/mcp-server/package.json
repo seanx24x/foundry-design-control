@@ -1,17 +1,27 @@
 {
   "name": "foundry-design-mcp-server",
-  "version": "0.1.0",
+  "version": "0.2.0-beta.1",
   "description": "MCP bridge for local Foundry design sessions",
   "type": "module",
   "main": "dist/index.js",
   "files": [
-    "dist"
+    "dist",
+    "!dist/*.test.*",
+    "!dist/**/*.test.*"
   ],
   "bin": {
     "foundry-design-mcp": "dist/index.js"
   },
   "engines": {
     "node": ">=20"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/seanx24x/foundry-design-control#readme",
+  "bugs": "https://github.com/seanx24x/foundry-design-control/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seanx24x/foundry-design-control.git",
+    "directory": "packages/mcp-server"
   },
   "publishConfig": {
     "access": "public"

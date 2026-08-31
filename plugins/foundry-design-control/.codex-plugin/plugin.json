@@ -1,0 +1,29 @@
+{
+  "name": "foundry-design-control",
+  "version": "0.2.0-beta.1",
+  "description": "Design directly in a running product, review exact changes, apply them with an agent, and verify the rebuilt result.",
+  "author": {
+    "name": "Sean Lynch",
+    "url": "https://github.com/seanx24x"
+  },
+  "homepage": "https://github.com/seanx24x/foundry-design-control#readme",
+  "repository": "https://github.com/seanx24x/foundry-design-control",
+  "license": "MIT",
+  "keywords": ["design", "visual-inspector", "motion", "mcp", "developer-tools"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Foundry Design Control",
+    "shortDescription": "Design precisely in the live product",
+    "longDescription": "Foundry connects a local precision canvas to your coding agent. Manipulate rendered elements, use project-native tokens and components, review an exact source-mapped batch, then apply and verify it in the rebuilt product.",
+    "developerName": "Sean Lynch",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Start Foundry for this project.",
+      "Apply my reviewed Foundry changes.",
+      "Verify the latest Foundry design session."
+    ],
+    "brandColor": "#A75031"
+  }
+}

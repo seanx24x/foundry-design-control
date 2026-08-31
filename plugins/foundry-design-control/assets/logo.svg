@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">Foundry Design Control</title>
+  <rect width="128" height="128" rx="30" fill="#A75031"/>
+  <path d="M34 88V52a8 8 0 0 1 16 0v36a8 8 0 0 1-16 0Zm22 0V34a8 8 0 0 1 16 0v54a8 8 0 0 1-16 0Zm22 0V62a8 8 0 0 1 16 0v26a8 8 0 0 1-16 0Z" fill="#fff"/>
+</svg>

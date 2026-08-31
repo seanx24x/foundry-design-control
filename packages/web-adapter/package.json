@@ -1,6 +1,6 @@
 {
   "name": "foundry-design-web-adapter",
-  "version": "0.1.0",
+  "version": "0.2.0-beta.1",
   "description": "Development-only browser inspector for Foundry",
   "type": "module",
   "main": "dist/adapter.js",
@@ -12,8 +12,22 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "THIRD_PARTY_NOTICES.md",
+    "!dist/*.test.*",
+    "!dist/**/*.test.*"
   ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/seanx24x/foundry-design-control#readme",
+  "bugs": "https://github.com/seanx24x/foundry-design-control/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seanx24x/foundry-design-control.git",
+    "directory": "packages/web-adapter"
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -21,5 +35,8 @@
     "build": "esbuild src/index.ts --bundle --format=esm --target=es2022 --outfile=dist/adapter.js && tsc -p tsconfig.json --emitDeclarationOnly",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test src/*.test.ts"
+  },
+  "dependencies": {
+    "lucide": "^1.37.0"
   }
 }

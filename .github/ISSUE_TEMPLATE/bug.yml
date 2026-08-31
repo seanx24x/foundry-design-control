@@ -1,0 +1,37 @@
+name: Bug report
+description: Report a reproducible Foundry problem without sharing sensitive project data.
+title: '[Bug]: '
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Foundry version
+      placeholder: 0.2.0-beta.1
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Coding agent
+      options: [Codex, Cursor, Claude Code, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Remove session tokens, credentials, private source, and confidential paths.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Safe doctor output
+      description: Paste non-sensitive output from foundry-design doctor.

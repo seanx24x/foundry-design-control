@@ -1,0 +1,16 @@
+{
+  "name": "foundry-design-control",
+  "owner": {
+    "name": "Sean Lynch"
+  },
+  "metadata": {
+    "description": "Design-in-code tools for a reviewed apply-and-verify workflow."
+  },
+  "plugins": [
+    {
+      "name": "foundry-design-control",
+      "source": "plugins/foundry-design-control",
+      "description": "Design directly in a running product and apply one verified source batch."
+    }
+  ]
+}

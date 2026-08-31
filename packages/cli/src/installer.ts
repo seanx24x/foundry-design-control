@@ -9,13 +9,34 @@ export type Agent = 'codex' | 'cursor' | 'claude';
 export type WebFramework = 'next' | 'vite' | 'html' | 'generic';
 
 export interface FoundryProjectConfig {
-  version: 1;
+  version: 1 | 2;
   platform: Platform;
   framework?: WebFramework;
   runtimeUrl: string;
   targetUrl?: string;
   devCommand?: { command: string; args: string[] };
   instrumented: boolean;
+  design?: {
+    tokenFiles?: string[];
+    componentRoots?: string[];
+    exclude?: string[];
+    viewports?: Array<{ id: string; label: string; width: number; height?: number }>;
+    themes?: Array<{
+      id: string;
+      label: string;
+      selector?: string;
+      attribute?: string;
+      value?: string;
+    }>;
+    states?: Array<{
+      id: string;
+      label: string;
+      theme?: string;
+      pseudoStates?: Array<'hover' | 'focus' | 'active' | 'disabled'>;
+      reducedMotion?: boolean;
+      query?: Record<string, string>;
+    }>;
+  };
 }
 
 interface ManagedFile {
@@ -414,13 +435,26 @@ export async function setupProject(
   const jsonConfigs: string[] = [];
   const changed: string[] = [];
   const config: FoundryProjectConfig = {
-    version: 1,
+    version: 2,
     platform: plan.platform,
     ...(plan.framework ? { framework: plan.framework } : {}),
     runtimeUrl,
     ...(plan.targetUrl ? { targetUrl: plan.targetUrl } : {}),
     ...(plan.devCommand ? { devCommand: plan.devCommand } : {}),
     instrumented: plan.platform !== 'web' || Boolean(plan.integrationFile),
+    design: {
+      componentRoots: ['src', 'app', 'components'],
+      exclude: ['node_modules', 'dist', 'build', '.next', 'coverage'],
+      viewports: [
+        { id: 'mobile', label: 'Mobile', width: 390, height: 844 },
+        { id: 'tablet', label: 'Tablet', width: 768, height: 1024 },
+        { id: 'desktop', label: 'Desktop', width: 1440, height: 900 },
+      ],
+      themes: [
+        { id: 'light', label: 'Light', attribute: 'data-theme', value: 'light' },
+        { id: 'dark', label: 'Dark', attribute: 'data-theme', value: 'dark' },
+      ],
+    },
   };
   const configFile = join(plan.root, '.foundry', 'foundry.config.json');
   generated.push(await writeGenerated(configFile, `${JSON.stringify(config, null, 2)}\n`));

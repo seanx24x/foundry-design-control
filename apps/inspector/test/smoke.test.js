@@ -7,5 +7,7 @@ test('inspector entry includes accessible review and export actions', async () =
   assert.match(html, /Change ledger/);
   assert.match(html, /Copy agent prompt/);
   assert.match(html, /Export JSON/);
+  assert.match(html, /Apply with agent/);
+  assert.match(html, /id="apply-run"/);
   assert.match(html, /aria-live="polite"/);
 });

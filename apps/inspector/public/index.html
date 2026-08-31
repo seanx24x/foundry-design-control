@@ -38,9 +38,12 @@
             </div>
             <div class="session-actions">
               <button class="button secondary" id="copy-prompt">Copy agent prompt</button>
-              <button class="button primary" id="download-json">Export JSON</button>
+              <button class="button secondary" id="download-json">Export JSON</button>
+              <button class="button primary" id="apply-agent">Apply with agent</button>
             </div>
           </div>
+
+          <section class="apply-run hidden" id="apply-run"></section>
 
           <div class="native-stage hidden" id="native-stage">
             <div class="native-canvas" id="native-canvas">
@@ -98,8 +101,8 @@
             ><button id="copy-command">Copy</button>
           </div>
           <p>
-            Then load the development-only adapter in your product. Hold <kbd>⌥</kbd> and click any
-            rendered element to open its controls.
+            Then load the development-only adapter in your product. Hold
+            <kbd>⌥</kbd> and click any rendered element to open its controls.
           </p>
         </section>
       </main>

@@ -4,9 +4,14 @@ import { dirname, extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import {
+  PROTOCOL_VERSION,
   previewCommandSchema,
+  projectDesignGraphSchema,
   renderChangePrompt,
   surfaceSnapshotSchema,
+  type ApplyRunState,
+  type DesignChange,
+  type DesignOperationInput,
   type PreviewCommand,
   type SessionContext,
   type SurfaceSnapshot,
@@ -34,7 +39,9 @@ const contentTypes: Record<string, string> = {
 };
 
 function sendJson(response: ServerResponse, status: number, value: unknown): void {
-  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
+  response.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+  });
   response.end(JSON.stringify(value));
 }
 
@@ -71,7 +78,12 @@ function applyCors(request: IncomingMessage, response: ServerResponse): boolean 
 }
 
 function publicSession(stored: StoredSession): Omit<StoredSession, 'token'> {
-  return { changeSet: stored.changeSet, verifications: stored.verifications };
+  return {
+    changeSet: stored.changeSet,
+    verifications: stored.verifications,
+    applyRuns: stored.applyRuns,
+    designGraph: stored.designGraph,
+  };
 }
 
 async function staticFile(pathname: string, response: ServerResponse): Promise<boolean> {
@@ -134,7 +146,10 @@ export class FoundryRuntime {
       const parts = url.pathname.split('/').filter(Boolean);
 
       if (request.method === 'GET' && url.pathname === '/v1/health') {
-        sendJson(response, 200, { status: 'ok', protocolVersion: '1.0.0' });
+        sendJson(response, 200, {
+          status: 'ok',
+          protocolVersion: PROTOCOL_VERSION,
+        });
         return;
       }
       if (request.method === 'GET' && url.pathname === '/v1/sessions') {
@@ -144,7 +159,10 @@ export class FoundryRuntime {
       if (request.method === 'POST' && url.pathname === '/v1/sessions') {
         const input = (await body(request)) as { context: SessionContext };
         const stored = await this.store.create(input.context);
-        sendJson(response, 201, { ...publicSession(stored), token: stored.token });
+        sendJson(response, 201, {
+          ...publicSession(stored),
+          token: stored.token,
+        });
         return;
       }
 
@@ -160,6 +178,38 @@ export class FoundryRuntime {
           sendJson(response, 201, publicSession(updated));
           return;
         }
+        if (parts[3] === 'design-graph') {
+          if (request.method === 'GET') {
+            sendJson(response, 200, { designGraph: stored.designGraph });
+            return;
+          }
+          if (request.method === 'POST') {
+            const graph = projectDesignGraphSchema.parse(await body(request));
+            const updated = await this.store.setDesignGraph(id, graph);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+        }
+        if (parts[3] === 'operations') {
+          if (request.method === 'POST' && parts.length === 4) {
+            const updated = await this.store.addOperation(
+              id,
+              (await body(request)) as Omit<DesignOperationInput, 'id' | 'createdAt' | 'updatedAt'>,
+            );
+            sendJson(response, 201, publicSession(updated));
+            return;
+          }
+          if (request.method === 'PATCH' && parts[4]) {
+            const input = (await body(request)) as { selectedMappingId: string };
+            const updated = await this.store.resolveOperation(
+              id,
+              parts[4],
+              input.selectedMappingId,
+            );
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+        }
         if (request.method === 'PATCH' && parts[3] === 'changes' && parts[4]) {
           const input = (await body(request)) as {
             status: 'draft' | 'approved' | 'applied' | 'rejected' | 'unresolved';
@@ -169,10 +219,84 @@ export class FoundryRuntime {
           return;
         }
         if (request.method === 'POST' && parts[3] === 'verify') {
-          const input = (await body(request)) as { results: VerificationResult[] };
-          const updated = await this.store.addVerifications(id, input.results);
+          const input = (await body(request)) as {
+            results: VerificationResult[];
+            runId?: string;
+          };
+          const updated = await this.store.addVerifications(id, input.results, input.runId);
           sendJson(response, 200, publicSession(updated));
           return;
+        }
+        if (parts[3] === 'apply-runs') {
+          if (request.method === 'GET' && parts.length === 4) {
+            const state = url.searchParams.get('state');
+            sendJson(response, 200, {
+              runs: state
+                ? stored.applyRuns.filter((run) => run.state === state)
+                : stored.applyRuns,
+            });
+            return;
+          }
+          if (request.method === 'POST' && parts.length === 4) {
+            const input = (await body(request)) as {
+              reviews: Array<{
+                changeId: string;
+                approved: boolean;
+                after?: DesignChange['after'];
+              }>;
+              revision?: string;
+              retryOf?: string;
+            };
+            const updated = await this.store.createApplyRun(id, input);
+            sendJson(response, 201, publicSession(updated));
+            return;
+          }
+          const runId = parts[4];
+          if (runId && request.method === 'GET' && parts.length === 5) {
+            const run = stored.applyRuns.find((candidate) => candidate.id === runId);
+            if (!run) throw new Error(`Unknown apply run: ${runId}`);
+            sendJson(response, 200, { run });
+            return;
+          }
+          if (runId && request.method === 'POST' && parts[5] === 'claim') {
+            const input = (await body(request)) as {
+              agent: { name: string; version?: string; taskId?: string };
+              revision?: string;
+              designGraphRevision?: string;
+            };
+            const updated = await this.store.claimApplyRun(id, runId, input);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+          if (runId && request.method === 'POST' && parts[5] === 'retry') {
+            const updated = await this.store.retryApplyRun(id, runId);
+            sendJson(response, 201, publicSession(updated));
+            return;
+          }
+          if (runId && request.method === 'POST' && parts[5] === 'cancel') {
+            const updated = await this.store.updateApplyRun(id, runId, {
+              state: 'cancelled',
+              message: 'Apply run cancelled by the user.',
+            });
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+          if (runId && request.method === 'PATCH' && parts.length === 5) {
+            const input = (await body(request)) as {
+              state?: ApplyRunState;
+              message?: string;
+              changedFiles?: string[];
+              validationResults?: Array<{
+                name: string;
+                passed: boolean;
+                summary?: string;
+              }>;
+              error?: string;
+            };
+            const updated = await this.store.updateApplyRun(id, runId, input);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
         }
         if (request.method === 'GET' && parts[3] === 'surface') {
           sendJson(response, 200, { surface: this.surfaces.get(id) ?? null });
@@ -181,7 +305,10 @@ export class FoundryRuntime {
         if (request.method === 'POST' && parts[3] === 'surface') {
           const surface = surfaceSnapshotSchema.parse(await body(request));
           this.surfaces.set(id, surface);
-          sendJson(response, 202, { accepted: true, updatedAt: surface.updatedAt });
+          sendJson(response, 202, {
+            accepted: true,
+            updatedAt: surface.updatedAt,
+          });
           return;
         }
         if (request.method === 'GET' && parts[3] === 'commands') {
@@ -215,8 +342,12 @@ export class FoundryRuntime {
         if (request.method === 'GET' && parts[3] === 'export') {
           const format = url.searchParams.get('format') ?? 'json';
           if (format === 'prompt') {
-            response.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8' });
+            response.writeHead(200, {
+              'content-type': 'text/markdown; charset=utf-8',
+            });
             response.end(renderChangePrompt(stored.changeSet));
+          } else if (format === 'full') {
+            sendJson(response, 200, publicSession(stored));
           } else {
             sendJson(response, 200, stored.changeSet);
           }

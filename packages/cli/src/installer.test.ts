@@ -52,8 +52,13 @@ test('sets up and reversibly removes Vite and all agent integrations', async () 
   const claude = JSON.parse(await readFile(join(root, '.mcp.json'), 'utf8'));
   assert.equal(claude.mcpServers['foundry-design-control'].command, 'pnpm');
   const config = JSON.parse(await readFile(join(root, '.foundry', 'foundry.config.json'), 'utf8'));
+  assert.equal(config.version, 2);
   assert.equal(config.instrumented, true);
   assert.equal(config.targetUrl, 'http://127.0.0.1:4173');
+  assert.deepEqual(
+    config.design.viewports.map((viewport: { id: string }) => viewport.id),
+    ['mobile', 'tablet', 'desktop'],
+  );
 
   await writeFile(
     join(root, '.foundry', 'web-adapter.ts'),

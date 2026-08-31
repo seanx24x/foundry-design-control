@@ -1,7 +1,7 @@
 {
   "name": "foundry-design-control",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0-beta.1",
   "description": "Local-first visual design control plane for coding agents",
   "packageManager": "pnpm@10.30.3",
   "engines": {
@@ -14,7 +14,10 @@
     "check": "pnpm format:check && pnpm typecheck && pnpm test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "foundry": "node packages/cli/dist/index.js"
+    "foundry": "node packages/cli/dist/index.js",
+    "release:check": "node scripts/release-check.mjs",
+    "release:pack": "node scripts/pack-release.mjs",
+    "release:test-install": "node scripts/test-packed-install.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
