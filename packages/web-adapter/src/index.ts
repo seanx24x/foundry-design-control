@@ -340,6 +340,39 @@ const PANEL_CSS = `
   .layers-panel { top:72px;bottom:12px;max-height:none; }.layers-panel[hidden] { display:none; }
   .utility-panel { z-index:2147483646;max-height:none;min-width:280px;min-height:280px;box-shadow:0 2px 2px rgb(0 0 0 / 22%),0 18px 48px rgb(0 0 0 / 42%); }.utility-panel[hidden] { display:none; }.utility-handle { cursor:grab;user-select:none;touch-action:none; }.utility-handle:active { cursor:grabbing; }.utility-resizer { position:absolute;right:2px;bottom:2px;width:18px;height:18px;padding:0;border:0;background:transparent;cursor:nwse-resize; }.utility-resizer::after { content:"";position:absolute;right:3px;bottom:3px;width:7px;height:7px;border-right:1px solid var(--fdc-muted);border-bottom:1px solid var(--fdc-muted); }.health-panel,.library-panel { right:auto;max-height:none; }.health-list,.library-body { min-height:0;flex:1; }
   .change-tray { position:fixed;z-index:2147483646;right:var(--fdc-canvas-right,376px);bottom:12px;left:var(--fdc-canvas-left,276px);min-height:0;display:flex;flex-direction:column;align-items:stretch;padding:0;overflow:hidden;color:var(--fdc-ink);background:var(--fdc-surface);border:1px solid var(--fdc-line);border-radius:11px;box-shadow:0 2px 2px rgb(0 0 0 / 22%),0 18px 48px rgb(0 0 0 / 36%);pointer-events:auto; }.change-tray[hidden] { display:none; }.change-tray-summary { min-height:48px;display:grid;grid-template-columns:minmax(0,1fr) auto 32px 72px;align-items:center;gap:7px;padding:6px 7px 6px 11px; }.change-tray-summary .change-count { margin-right:2px; }.change-tray-summary button { height:32px;border:1px solid var(--fdc-line);border-radius:6px;color:var(--fdc-ink);background:var(--fdc-elevated);cursor:pointer; }.change-tray-summary .tray-compare { width:32px;display:grid;place-items:center;padding:0; }.change-tray-summary .tray-compare svg { width:13px;height:13px; }.change-tray-summary button:disabled { opacity:.35;cursor:not-allowed; }.change-tray.expanded { height:min(420px,45vh); }.change-tray.expanded .change-tray-summary { border-bottom:1px solid var(--fdc-line); }.change-tray .review-view:not([hidden]) { min-width:0;min-height:0;display:flex; }.change-tray .review-body { min-height:0;flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-content:start;overflow:auto; }.change-tray .review-group { min-width:0;border-right:1px solid var(--fdc-line); }.change-tray .review-actions { flex:none;grid-template-columns:100px minmax(180px,280px);justify-content:end; }.change-tray .review-head { flex:none; }.change-tray .review-head span { margin-left:auto; }
+  /* Focused review list */
+  .change-tray .review-body { display:block;overflow-x:hidden;overflow-y:auto; }
+  .review-overview { position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:12px;min-height:52px;padding:8px 12px;border-bottom:1px solid var(--fdc-line);background:rgb(20 20 22 / 97%);backdrop-filter:blur(10px); }
+  .review-overview .review-summary { min-width:0;flex:1;padding:0;border:0;background:transparent; }
+  .review-overview .review-summary strong { overflow:hidden;text-overflow:ellipsis;font-size:11px;white-space:nowrap; }
+  .review-overview .review-summary span { overflow:hidden;text-overflow:ellipsis;margin-top:2px;font-size:9px;white-space:nowrap; }
+  .review-overview .review-toolbar { position:static;z-index:auto;flex:none;padding:0;border:0;background:transparent;backdrop-filter:none; }
+  .review-overview .review-toolbar button { height:28px;padding:0 8px;border-color:transparent;background:transparent;color:var(--fdc-muted);font-size:9px; }
+  .review-overview .review-toolbar button:hover { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }
+  .change-tray .review-group { border-right:0;border-bottom:1px solid var(--fdc-line); }
+  .change-tray .review-group-title { position:sticky;top:52px;z-index:2;min-height:38px;padding:0 12px;background:rgb(28 28 31 / 98%); }
+  .review-group-title .included-count { font-size:9px; }
+  .review-card { min-height:50px;grid-template-columns:18px minmax(0,1fr);align-items:start;gap:9px;padding:8px 12px; }
+  .review-card input[type="checkbox"] { margin-top:7px; }
+  .review-card-line { min-height:32px;display:grid;grid-template-columns:minmax(120px,1fr) auto minmax(220px,320px) 30px;align-items:center;gap:8px; }
+  .review-card-line>strong { font-size:10px; }
+  .review-values { min-width:0;display:grid;grid-template-columns:minmax(72px,1fr) 12px minmax(90px,1fr);align-items:center;gap:5px;margin:0; }
+  .review-before { min-width:0;overflow:hidden;text-overflow:ellipsis;padding:0 8px;color:var(--fdc-muted);background:transparent;font-size:10px;text-align:right;white-space:nowrap; }
+  .review-after { height:30px;font-size:10px; }
+  .review-more { position:relative;justify-self:end; }
+  .review-more>summary { width:28px;height:28px;display:grid;place-items:center;border:1px solid transparent;border-radius:5px;color:var(--fdc-muted);font:600 11px/1 var(--fdc-font);letter-spacing:1px;list-style:none;cursor:pointer; }
+  .review-more>summary::-webkit-details-marker { display:none; }
+  .review-more>summary:hover,.review-more[open]>summary { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }
+  .review-more .review-card-tools { position:absolute;z-index:5;right:0;top:32px;width:260px;display:flex;flex-direction:column;gap:2px;padding:4px;border:1px solid var(--fdc-line);border-radius:7px;background:var(--fdc-elevated);box-shadow:0 10px 24px rgb(0 0 0 / 34%); }
+  .review-more .review-card-tools button { width:100%;height:27px;padding:0 7px;border:0;text-align:left;background:transparent; }
+  .review-more .review-card-tools button:hover { background:var(--fdc-subtle); }
+  .review-details { margin-top:3px;padding-top:3px;border-top:1px solid var(--fdc-line); }
+  .review-details summary { min-height:27px;display:flex;align-items:center;padding:0 7px;color:var(--fdc-muted);font-size:8px;cursor:pointer; }
+  .review-details[open] { padding-bottom:6px; }
+  .review-details .review-source,.review-details .impact-list { padding-right:7px;padding-left:7px; }
+  .review-visual { display:none; }
+  @media (max-width:980px){.review-card-line{grid-template-columns:minmax(100px,1fr) auto minmax(190px,260px) 30px}.review-overview .review-summary span{display:none}}
+  @media (max-width:760px){.review-card-line{grid-template-columns:minmax(0,1fr) auto 30px}.review-values{grid-column:1/-1;width:100%}.review-overview{align-items:flex-start}.review-overview .review-toolbar{margin-left:auto}.review-overview .review-toolbar button{padding:0 6px}}
   .tool-shelf { bottom:calc(18px + var(--fdc-tray-lift,0px)); }.tool-select[hidden],.tool-divider[hidden] { display:none; }.tool-select.interact.active { color:white;background:var(--fdc-signal); }.mode-copy { min-width:88px; }.canvas-actions-divider { margin-left:2px; }.multi-actions-divider { margin-left:2px; }
   .compare-bar { bottom:calc(78px + var(--fdc-tray-lift,0px)); }
   @keyframes fdc-selection-title { from { opacity:.45;transform:translateY(2px) } to { opacity:1;transform:none } }
@@ -2420,25 +2453,6 @@ export function installFoundryInspector(
     return change.target.locator?.selector ?? 'Source mapping unavailable';
   }
 
-  function reviewVisual(change: any, afterValue: string): string {
-    const before = String(change.before);
-    const after = String(afterValue);
-    const property = String(change.property);
-    const colorValue = (value: string): string =>
-      /^(#|rgb|hsl|oklch|transparent)/i.test(value.trim()) ? value.trim() : '#e8e8e8';
-    const numeric = (value: string): number => Math.max(0, Number.parseFloat(value) || 0);
-    const sample = (value: string, label: string): string => {
-      let style = '';
-      if (/color|fill|background/i.test(property)) style = `--sample-color:${colorValue(value)}`;
-      else if (/radius/i.test(property))
-        style = `--sample-radius:${Math.min(16, numeric(value))}px`;
-      else if (/width|height|gap|padding|margin|size/i.test(property))
-        style = `--sample-scale:${Math.max(0.45, Math.min(1.35, numeric(value) / Math.max(numeric(before), numeric(after), 1)))}`;
-      return `<span class="review-sample" data-label="${label}"><i style="${escapeHtml(style)}"></i></span>`;
-    };
-    return `<span class="review-visual">${sample(before, 'Before')}${sample(after, 'After')}</span>`;
-  }
-
   function persistReviewDraft(): void {
     try {
       sessionStorage.setItem(reviewDraftKey, JSON.stringify(reviewDraft));
@@ -2507,7 +2521,7 @@ export function installFoundryInspector(
     ).length;
     reviewBody.innerHTML =
       changes.length || rejectedCount
-        ? `<div class="review-summary" data-unresolved="${unresolvedCount}" aria-live="polite"><strong>Preparing review…</strong><span>Only included, exactly mapped changes will be sent to your agent.</span></div><div class="review-toolbar"><button data-review-approve-exact>Include exact</button><button data-review-toggle-rejected>${reviewShowRejected ? 'Hide' : 'Show'} removed${rejectedCount ? ` · ${rejectedCount}` : ''}</button></div>${[
+        ? `<div class="review-overview"><div class="review-summary" data-unresolved="${unresolvedCount}" aria-live="polite"><strong>Preparing review…</strong><span>Only included, exactly mapped changes will be sent to your agent.</span></div><div class="review-toolbar"><button data-review-approve-exact>Include all</button><button data-review-toggle-rejected>${reviewShowRejected ? 'Hide removed' : rejectedCount ? `${rejectedCount} removed` : 'Removed'}</button></div></div>${[
             ...groups.values(),
           ]
             .map((group) => {
@@ -2543,7 +2557,7 @@ export function installFoundryInspector(
                     componentInstances: component?.instances,
                     unresolved,
                   });
-                  return `<div class="review-card ${change.status === 'rejected' ? 'rejected' : ''}" data-review-card="${escapeHtml(change.id)}"><input aria-label="Include ${escapeHtml(change.property)} change" type="checkbox" data-review-change="${escapeHtml(change.id)}" ${checked ? 'checked' : ''} ${selectable ? '' : 'disabled'}/><span class="review-card-main"><span class="review-card-line"><strong title="${escapeHtml(change.property)}">${escapeHtml(humanizeProperty(change.property))}</strong><span class="confidence-pill ${unresolved ? 'unresolved' : ''}">${escapeHtml(change.status === 'rejected' ? 'removed' : change.confidence)}</span><span class="review-card-tools"><button data-review-locate="${escapeHtml(change.id)}">Locate</button><button data-review-preview="${escapeHtml(change.id)}" title="Hold to preview before">Preview</button><button data-review-status="${escapeHtml(change.id)}" data-next-status="${change.status === 'rejected' ? 'draft' : 'rejected'}">${change.status === 'rejected' ? 'Restore' : 'Remove'}</button></span></span>${reviewVisual(change, afterValue)}<span class="review-values"><span class="review-before">${escapeHtml(reviewValue(change.before, change.unit))}</span><span>→</span><input aria-label="New ${escapeHtml(change.property)} value" class="review-after" data-review-after="${escapeHtml(change.id)}" data-value-kind="${inputType}" type="${inputType}" value="${escapeHtml(afterValue)}" ${selectable ? '' : 'disabled'}/></span>${mappingChooser}<details class="review-details"><summary>Mapping details</summary><span class="review-source">${escapeHtml(change.property)} · ${escapeHtml(reviewSource(change))} · ${escapeHtml(change.scope)} · ${escapeHtml(change.context.breakpoint)} · ${escapeHtml(change.context.theme)}${change.token ? ` · ${escapeHtml(change.token)}` : ''}</span><span class="impact-list">${impact.map((message) => `<span class="impact-item ${unresolved || (!change.token && message.includes('literal')) ? 'warning' : ''}">${escapeHtml(message)}</span>`).join('')}</span></details></span></div>`;
+                  return `<div class="review-card ${change.status === 'rejected' ? 'rejected' : ''}" data-review-card="${escapeHtml(change.id)}"><input aria-label="Include ${escapeHtml(change.property)} change" type="checkbox" data-review-change="${escapeHtml(change.id)}" ${checked ? 'checked' : ''} ${selectable ? '' : 'disabled'}/><div class="review-card-main"><div class="review-card-line"><strong title="${escapeHtml(change.property)}">${escapeHtml(humanizeProperty(change.property))}</strong><span class="confidence-pill ${unresolved ? 'unresolved' : ''}">${escapeHtml(change.status === 'rejected' ? 'removed' : change.confidence)}</span><span class="review-values"><span class="review-before" title="Before: ${escapeHtml(reviewValue(change.before, change.unit))}">${escapeHtml(reviewValue(change.before, change.unit))}</span><span aria-hidden="true">→</span><input aria-label="New ${escapeHtml(change.property)} value" class="review-after" data-review-after="${escapeHtml(change.id)}" data-value-kind="${inputType}" type="${inputType}" value="${escapeHtml(afterValue)}" ${selectable ? '' : 'disabled'}/></span><details class="review-more"><summary aria-label="More actions for ${escapeHtml(humanizeProperty(change.property))}">•••</summary><div class="review-card-tools"><button data-review-locate="${escapeHtml(change.id)}">Locate</button><button data-review-preview="${escapeHtml(change.id)}" title="Hold to preview before">Preview before</button><button data-review-status="${escapeHtml(change.id)}" data-next-status="${change.status === 'rejected' ? 'draft' : 'rejected'}">${change.status === 'rejected' ? 'Restore' : 'Remove'}</button><details class="review-details"><summary>Source and scope</summary><span class="review-source">${escapeHtml(change.property)} · ${escapeHtml(reviewSource(change))} · ${escapeHtml(change.scope)} · ${escapeHtml(change.context.breakpoint)} · ${escapeHtml(change.context.theme)}${change.token ? ` · ${escapeHtml(change.token)}` : ''}</span><span class="impact-list">${impact.map((message) => `<span class="impact-item ${unresolved || (!change.token && message.includes('literal')) ? 'warning' : ''}">${escapeHtml(message)}</span>`).join('')}</span></details></div></details></div>${mappingChooser}</div></div>`;
                 })
                 .join('')}</section>`;
             })
