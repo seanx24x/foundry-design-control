@@ -1,6 +1,13 @@
 import { cssPath, parseSource } from './locator.js';
 import { createDebouncedChangeRecorder } from './recording.js';
-import { emptyReviewDraft, parseReviewDraft, reviewAfterValue, reviewSelection } from './review.js';
+import {
+  emptyReviewDraft,
+  humanizeProperty,
+  parseReviewDraft,
+  reviewAfterValue,
+  reviewSelection,
+  reviewSummary,
+} from './review.js';
 import {
   nextCycleIndex,
   orderedSelectionIndexes,
@@ -296,16 +303,16 @@ const PANEL_CSS = `
   .outline { position:fixed;z-index:2147483645;pointer-events:none;border:1.5px solid var(--fdc-signal);box-shadow:0 0 0 1px rgb(255 255 255 / 90%),0 0 0 4px rgb(54 89 244 / 12%);transition:top 80ms linear,left 80ms linear,width 80ms linear,height 80ms linear; }
   .measure { position:absolute;left:-2px;top:-28px;height:25px;display:flex;align-items:center;padding:0 9px;color:white;background:var(--fdc-signal);border-radius:5px 5px 5px 0;font:650 10px/1 var(--fdc-font);letter-spacing:.02em;white-space:nowrap;box-shadow:0 4px 14px rgb(25 43 124 / 20%); }
   .cross::before,.cross::after { content:"";position:absolute;background:var(--fdc-signal); }.cross::before { width:11px;height:1px;left:-6px;top:-1px; }.cross::after { width:1px;height:11px;left:-1px;top:-6px; }
-  .panel { position:fixed;z-index:2147483646;top:12px;right:12px;width:328px;min-width:300px;max-width:min(520px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:hidden;display:flex;flex-direction:column;color:var(--fdc-ink);background:var(--fdc-surface);border:1px solid var(--fdc-line);box-shadow:0 1px 2px rgb(0 0 0 / 5%),0 10px 28px rgb(0 0 0 / 10%);pointer-events:auto;border-radius:10px; }
+  .panel { position:fixed;z-index:2147483646;top:12px;right:12px;width:352px;min-width:312px;max-width:min(520px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:hidden;display:flex;flex-direction:column;color:var(--fdc-ink);background:var(--fdc-surface);border:1px solid var(--fdc-line);box-shadow:0 1px 2px rgb(0 0 0 / 5%),0 10px 28px rgb(0 0 0 / 10%);pointer-events:auto;border-radius:12px; }
   .top { flex:none;background:var(--fdc-surface);border-bottom:1px solid var(--fdc-line); }
   .top-identity { position:relative;min-height:44px;display:flex;align-items:center;padding:0 12px; }
   .brand { flex:1;display:flex;align-items:center;gap:8px;min-width:0; }.brand-mark { width:14px;height:15px;display:flex;align-items:flex-end;gap:2px; }.brand-mark i { display:block;width:3px;background:var(--fdc-signal);border-radius:2px 2px 1px 1px; }.brand-mark i:nth-child(1){height:7px}.brand-mark i:nth-child(2){height:14px}.brand-mark i:nth-child(3){height:10px}
   .brand-copy { display:flex;align-items:baseline;gap:5px; }.brand-copy b { font-size:13px;line-height:1;font-weight:550;letter-spacing:-.02em; }.brand-copy span { color:var(--fdc-muted);font:400 10px/1 var(--fdc-font); }
   .session-status { flex:none;margin-left:8px;display:flex;align-items:center;gap:5px;padding:4px 7px;border:0;color:#236c59;background:#eef8f4;border-radius:999px;font:500 10px/1 var(--fdc-font);cursor:pointer; }.session-status i { width:5px;height:5px;background:#2ca67f;border-radius:50%; }.session-status.saving { color:#6b570f;background:#fff8d8; }.session-status.saving i { background:#d5a91d;animation:fdc-pulse 1s ease-in-out infinite; }.session-status.error,.session-status.offline { color:#8b4d3d;background:#faece7; }.session-status.error i,.session-status.offline i { background:#d16d51; }.session-status.saved { color:#236c59;background:#eef8f4; }.status-popover { position:absolute;z-index:2;top:39px;right:40px;width:238px;padding:10px;border:1px solid var(--fdc-line);border-radius:8px;background:white;box-shadow:0 10px 28px rgb(0 0 0 / 14%); }.status-popover[hidden] { display:none; }.status-popover strong { display:block;font-size:11px;font-weight:550; }.status-popover span,.status-popover code { display:block;margin-top:5px;overflow:hidden;text-overflow:ellipsis;color:var(--fdc-muted);font:400 9px/1.45 var(--fdc-font);white-space:nowrap; }.status-popover button { width:100%;height:28px;margin-top:8px;border:1px solid var(--fdc-line);border-radius:5px;background:white;color:var(--fdc-ink);font-size:9px;cursor:pointer; }
   .top-identity>.close { flex:none;margin-left:4px; }.top-actions { min-height:40px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));align-items:center;padding:4px 8px;border-top:1px solid var(--fdc-line);background:var(--fdc-surface); }.top-actions .icon-button { justify-self:center; }.icon-button { width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:6px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.icon-button:hover { background:var(--fdc-subtle);color:var(--fdc-ink); }.icon-button.active { color:#0761d1;background:#edf6ff; }.icon-button:disabled { opacity:.35;cursor:not-allowed; }.icon-button:disabled:hover { color:var(--fdc-muted);background:transparent; }
-  .selection { padding:12px;background:var(--fdc-surface);border-bottom:1px solid var(--fdc-line); }.selection-heading { display:flex;align-items:center;justify-content:space-between;margin-bottom:8px; }.selection-kind { max-width:200px;overflow:hidden;text-overflow:ellipsis;padding:4px 6px;color:#4d4d4d;background:var(--fdc-subtle);border-radius:4px;font:500 10px/1 var(--fdc-font);text-transform:uppercase;letter-spacing:.02em;white-space:nowrap; }.selection-state { color:var(--fdc-muted);font:400 10px/1 var(--fdc-font); }.selection strong { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;line-height:1.3;font-weight:550;letter-spacing:-.02em; }.selection code { display:block;margin-top:5px;overflow:hidden;text-overflow:ellipsis;color:var(--fdc-muted);font:400 10px/1.45 var(--fdc-font);white-space:nowrap; }.selection-stats { display:flex;gap:5px;margin-top:10px; }.selection-stats[hidden] { display:none; }.selection-stats span { padding:4px 6px;color:#4d4d4d;background:var(--fdc-subtle);border-radius:5px;font:400 10px/1 var(--fdc-font); }.selection-stats span:first-child { color:#0761d1;background:#edf6ff; }
-  .scope { display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:11px 12px;background:var(--fdc-surface);border-bottom:1px solid var(--fdc-line); }.scope label { display:flex;flex-direction:column;gap:5px;color:var(--fdc-muted);font:500 10px/1.2 var(--fdc-font); }.scope select { width:100%;height:30px;padding:0 7px;border:1px solid var(--fdc-line);border-radius:5px;background:var(--fdc-surface);color:var(--fdc-ink);font:400 11px/1 var(--fdc-font);text-transform:none;letter-spacing:0;outline:none;cursor:pointer; }
-  .tool-shelf { position:fixed;z-index:2147483646;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;max-width:calc(100vw - 32px);padding:6px;background:var(--fdc-surface);border:1px solid var(--fdc-line);border-radius:12px;box-shadow:0 2px 2px rgb(0 0 0 / 4%),0 8px 16px -4px rgb(0 0 0 / 14%);pointer-events:auto; }
+  .selection { position:relative;padding:14px;background:var(--fdc-surface);border-bottom:1px solid var(--fdc-line); }.selection::before { content:"";position:absolute;top:13px;left:0;width:2px;height:0;background:var(--fdc-signal);border-radius:0 2px 2px 0;transition:height .18s ease; }.panel.has-selection .selection::before { height:24px; }.selection-heading { display:flex;align-items:center;justify-content:space-between;margin-bottom:9px; }.selection-kind { max-width:220px;overflow:hidden;text-overflow:ellipsis;padding:4px 6px;color:#4d4d4d;background:var(--fdc-subtle);border-radius:4px;font:500 10px/1 var(--fdc-font);text-transform:uppercase;letter-spacing:.025em;white-space:nowrap; }.selection-state { color:var(--fdc-muted);font:450 10px/1 var(--fdc-font); }.panel.has-selection .selection-state { color:#0761d1; }.selection strong { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;line-height:1.3;font-weight:550;letter-spacing:-.025em; }.selection code { display:block;margin-top:5px;overflow:hidden;text-overflow:ellipsis;color:var(--fdc-muted);font:400 11px/1.45 var(--fdc-font);white-space:nowrap; }.selection-hint { display:block;margin-top:9px;color:#858585;font:400 10px/1.45 var(--fdc-font); }.selection-stats { display:flex;gap:5px;margin-top:10px; }.selection-stats[hidden] { display:none; }.selection-stats span { padding:5px 7px;color:#4d4d4d;background:var(--fdc-subtle);border-radius:5px;font:400 10px/1 var(--fdc-font); }.selection-stats span:first-child { color:#0761d1;background:#edf6ff; }.selection.selected-flash strong { animation:fdc-selection-title .2s ease-out; }
+  .scope { display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 14px;background:var(--fdc-surface);border-bottom:1px solid var(--fdc-line); }.scope label { display:flex;flex-direction:column;gap:6px;color:var(--fdc-muted);font:500 11px/1.2 var(--fdc-font); }.scope select { width:100%;height:34px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:6px;background:var(--fdc-surface);color:var(--fdc-ink);font:400 12px/1 var(--fdc-font);text-transform:none;letter-spacing:0;outline:none;cursor:pointer; }
+  .tool-shelf { position:fixed;z-index:2147483646;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;max-width:calc(100vw - 32px);padding:6px;background:var(--fdc-surface);border:1px solid var(--fdc-line);border-radius:12px;box-shadow:0 2px 2px rgb(0 0 0 / 4%),0 8px 16px -4px rgb(0 0 0 / 14%);pointer-events:auto; }.mode-copy { min-width:96px;display:flex;flex-direction:column;gap:2px;padding:0 6px 0 1px; }.mode-copy strong { font-size:10px;font-weight:550;line-height:1.1; }.mode-copy span { color:var(--fdc-muted);font-size:9px;line-height:1.2;white-space:nowrap; }
   .tool-select,.tab { position:relative;flex:none;width:36px;height:36px;display:grid;place-items:center;padding:0;border:0;border-radius:6px;background:transparent;color:#4d4d4d;cursor:pointer; }.tool-select:hover,.tab:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.tool-select.active,.tab.active { color:white;background:var(--fdc-ink); }.tool-select svg,.tab svg,.icon-button svg { width:16px;height:16px;stroke-width:1.75;pointer-events:none; }.tool-select::after,.tab::after { content:attr(data-tooltip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translate(-50%,3px);padding:6px 8px;border-radius:5px;background:var(--fdc-ink);color:white;font:400 11px/1 var(--fdc-font);white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s ease,transform .12s ease; }.tool-select:hover::after,.tool-select:focus-visible::after,.tab:not(:disabled):hover::after,.tab:not(:disabled):focus-visible::after { opacity:1;transform:translate(-50%,0); }.tool-divider { width:1px;height:24px;flex:none;background:var(--fdc-line); }.tabs { display:flex;gap:2px;overflow:visible;scrollbar-width:none; }.tab:disabled { color:#a1a1a1;cursor:default; }.tab:disabled:hover { background:transparent; }
   .controls { min-height:210px;overflow:auto;background:var(--fdc-surface); }.inspector-heading { position:sticky;top:0;z-index:1;height:42px;display:flex;align-items:center;gap:8px;padding:0 12px;background:rgb(255 255 255 / 96%);border-bottom:1px solid var(--fdc-line);backdrop-filter:blur(8px); }.inspector-heading svg { width:15px;height:15px;stroke-width:1.75;color:#4d4d4d; }.inspector-heading strong { font-size:12px;font-weight:550; }.property-count { margin-left:auto;color:var(--fdc-muted);font:400 10px/1 var(--fdc-font);letter-spacing:.01em; }.property-section { padding:0;border-bottom:1px solid var(--fdc-line); }.section-head { width:100%;min-height:39px;display:flex;align-items:center;padding:0 8px 0 4px;background:white;color:#3f3f3f; }.section-head:hover { background:#fcfcfc; }.section-toggle { min-width:0;min-height:39px;flex:1;display:flex;align-items:center;gap:7px;padding:0 8px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer; }.section-toggle>svg { width:12px;height:12px;color:#858585;transition:transform .12s ease; }.property-section.collapsed .section-toggle>svg { transform:rotate(-90deg); }.section-head strong { font-size:11px;font-weight:500; }.section-grid { display:grid;gap:8px;padding:0 12px 12px; }.property-section.collapsed .section-grid { display:none; }.section-grid.two { grid-template-columns:1fr 1fr; }.section-grid.stacked .property-control { grid-template-columns:1fr;gap:6px; }.property-control { display:grid;grid-template-columns:minmax(0,1fr) 132px 24px;align-items:center;gap:7px;min-height:34px; }.property-label { overflow:hidden;text-overflow:ellipsis;color:#4d4d4d;font-size:11px;font-weight:400;white-space:nowrap; }.control-field { position:relative;display:flex;align-items:center;min-width:0;height:32px;border:1px solid var(--fdc-line);border-radius:5px;background:var(--fdc-paper);overflow:hidden;transition:border-color .12s ease,box-shadow .12s ease,background .12s ease; }.control-field:hover { background:var(--fdc-surface); }.control-field:focus-within { border-color:var(--fdc-signal);background:var(--fdc-surface);box-shadow:0 0 0 2px rgb(0 112 243 / 10%); }.control-reset { width:24px;height:24px;display:grid;place-items:center;padding:0;border:0;border-radius:4px;background:transparent;color:#8a8a8a;cursor:pointer;opacity:0; }.property-control:hover .control-reset,.compact-control:hover .control-reset,.control-reset:focus-visible { opacity:1; }.control-reset:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.control-reset svg { width:12px;height:12px; }.compact-control { min-width:0;display:grid;grid-template-columns:minmax(0,1fr) 24px;gap:5px;align-items:center; }.compact-control .control-field { width:100%; }.field-prefix { min-width:28px;padding-left:8px;color:#7a7a7a;font:400 10px/1 var(--fdc-font); }.compact-control .field-prefix.wide { min-width:40px; }.property-control input,.property-control select,.compact-control input,.compact-control select { width:100%;min-width:0;height:30px;padding:0 7px;border:0;background:transparent;color:var(--fdc-ink);font:400 11px/1 var(--fdc-font);outline:none; }.property-control input[type="number"],.compact-control input[type="number"] { appearance:textfield; }.property-control input[type="number"]::-webkit-inner-spin-button,.property-control input[type="number"]::-webkit-outer-spin-button,.compact-control input[type="number"]::-webkit-inner-spin-button,.compact-control input[type="number"]::-webkit-outer-spin-button { margin:0;appearance:none; }.property-control select { font-family:var(--fdc-font); }.control-field .unit-select { width:40px;flex:none;padding:0 3px;color:#707070;font-size:9px;cursor:pointer; }[data-scrub-for] { cursor:ew-resize;user-select:none;touch-action:none; }.property-label[data-scrub-for]:hover,.field-prefix[data-scrub-for]:hover,[data-scrub-for].scrubbing { color:var(--fdc-signal); }.color-swatch { width:17px;height:17px;flex:none;margin-left:7px;border:1px solid rgb(0 0 0 / 10%);border-radius:3px;background:var(--swatch-color); }.color-swatch.transparent { background-color:white;background-image:linear-gradient(45deg,#d9d9d9 25%,transparent 25%),linear-gradient(-45deg,#d9d9d9 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d9d9d9 75%),linear-gradient(-45deg,transparent 75%,#d9d9d9 75%);background-size:8px 8px;background-position:0 0,0 4px,4px -4px,-4px 0; }.color-value { overflow:hidden;text-overflow:ellipsis;margin-left:7px;color:#4d4d4d;font:400 10px/1 var(--fdc-font);white-space:nowrap; }.color-picker { position:absolute;inset:0;width:100%!important;height:100%!important;opacity:0;cursor:pointer; }.unit { padding-right:7px;color:#7a7a7a;font:400 10px/1 var(--fdc-font); }.sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
   .motion-list { padding:0 12px 12px; }.motion-row { padding:12px 0;border-bottom:1px solid var(--fdc-line); }.motion-title { display:flex;justify-content:space-between;gap:12px;margin-bottom:9px;font-size:12px;font-weight:550; }.motion-title code { color:var(--fdc-muted);font:400 10px/1.3 var(--fdc-font); }.motion-actions { display:grid;grid-template-columns:repeat(4,1fr);gap:4px; }.motion-actions button { min-height:30px;padding:0 5px;border:1px solid var(--fdc-line);background:var(--fdc-paper);border-radius:5px;color:var(--fdc-ink);font-size:10px;font-weight:400;cursor:pointer; }.motion-actions button:hover { border-color:#c7c7c7;background:var(--fdc-surface); }
@@ -351,7 +358,11 @@ const PANEL_CSS = `
   .component-actions { display:flex;gap:4px;padding:0 8px 8px 45px; }.component-actions button,.component-variants button { height:24px;padding:0 6px;border:1px solid #e6e1f7;border-radius:4px;color:#66598c;background:#faf9ff;font-size:8px;cursor:pointer; }.component-actions button:hover,.component-variants button:hover { border-color:#c8bdf1;background:#f4f0ff; }
   .token-provenance { grid-column:2;display:flex;align-items:center;gap:5px;margin-top:5px;color:#23715c;font-size:8px; }.token-provenance.literal { color:#985033; }.token-provenance::before { content:"";width:5px;height:5px;border-radius:50%;background:currentColor; }
   .workbench-matrix[hidden] { display:none; }
-  @media (max-width:680px){.panel{top:auto;right:8px;bottom:66px;left:8px;width:auto;max-height:58vh}.layers-panel,.health-panel,.library-panel{top:8px;right:8px;left:8px;width:auto;max-height:42vh}.scope{display:none}.controls{min-height:170px}.tool-shelf{right:8px;bottom:8px;left:8px;transform:none;max-width:none}.tabs{flex:1;overflow-x:auto}.tool-select::after,.tab::after{display:none}.footer{grid-template-columns:78px 1fr}.workbench-controls select,.workbench-controls button:not(.icon-button){max-width:92px}.workbench-matrix{grid-template-columns:76px repeat(var(--matrix-columns),minmax(90px,1fr))}}
+  .empty-state { min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 30px;text-align:center; }.empty-state-icon { width:38px;height:38px;display:grid;place-items:center;margin-bottom:14px;color:var(--fdc-signal);background:#edf6ff;border-radius:10px; }.empty-state-icon svg { width:16px;height:16px;stroke-width:1.75; }.empty-state strong { font-size:13px;font-weight:550;letter-spacing:-.01em; }.empty-state p { max-width:230px;margin:7px 0 0;color:var(--fdc-muted);font-size:11px;line-height:1.55; }.empty-state-actions { display:flex;align-items:center;gap:6px;margin-top:16px; }.empty-state-actions button { height:30px;padding:0 10px;border:1px solid var(--fdc-line);border-radius:6px;background:white;color:var(--fdc-ink);font-size:10px;cursor:pointer; }.empty-state-actions button:first-child { color:white;border-color:var(--fdc-ink);background:var(--fdc-ink); }.empty-state kbd { margin-top:12px;color:#8a8a8a;font:400 9px/1.4 var(--fdc-font); }
+  .review-head strong { font-size:13px; }.review-summary { padding:13px 14px 12px;border-bottom:1px solid var(--fdc-line);background:#fcfcfc; }.review-summary strong { display:block;font-size:12px;font-weight:550;letter-spacing:-.01em; }.review-summary span { display:block;margin-top:4px;color:var(--fdc-muted);font-size:10px;line-height:1.45; }.review-summary.attention strong { color:#8b4d3d; }.review-toolbar button { height:28px;padding:0 9px;font-size:10px; }
+  .onboarding-card { bottom:82px;width:340px;padding:16px;border-radius:12px;box-shadow:0 14px 38px rgb(0 0 0 / 15%); }.onboarding-card-head { gap:9px; }.onboarding-card-head span { width:26px;height:26px;display:grid;place-items:center;color:#a75031;background:#fbf1ed;border-radius:7px; }.onboarding-card-head svg { width:14px;height:14px;color:inherit; }.onboarding-card-head strong { font-size:13px;letter-spacing:-.015em; }.onboarding-card>p { margin:9px 0 14px;font-size:11px;line-height:1.55; }.onboarding-steps { display:grid;grid-template-columns:1fr;gap:1px;border:1px solid var(--fdc-line);border-radius:8px;overflow:hidden;background:var(--fdc-line); }.onboarding-step { display:grid;grid-template-columns:24px 1fr;gap:9px;padding:9px 10px;background:white;text-align:left; }.onboarding-step b { color:#8a8a8a;font-size:9px;font-weight:500;letter-spacing:.04em; }.onboarding-step strong { display:block;font-size:10px;font-weight:550; }.onboarding-step small { display:block;margin-top:2px;color:var(--fdc-muted);font-size:9px;line-height:1.35; }.onboarding-actions { gap:6px;margin-top:13px; }.onboarding-actions button { height:32px;padding:0 11px;border-radius:6px;font-size:10px; }
+  @keyframes fdc-selection-title { from { opacity:.45;transform:translateY(2px) } to { opacity:1;transform:none } }
+  @media (max-width:680px){.panel{top:auto;right:8px;bottom:66px;left:8px;width:auto;max-height:58vh}.layers-panel,.health-panel,.library-panel{top:8px;right:8px;left:8px;width:auto;max-height:42vh}.scope{display:none}.controls{min-height:170px}.tool-shelf{right:8px;bottom:8px;left:8px;transform:none;max-width:none}.mode-copy{min-width:0}.mode-copy span{display:none}.tabs{flex:1;overflow-x:auto}.tool-select::after,.tab::after{display:none}.footer{grid-template-columns:78px 1fr}.onboarding-card{right:12px;bottom:68px;left:12px;width:auto;transform:none}.workbench-controls select,.workbench-controls button:not(.icon-button){max-width:92px}.workbench-matrix{grid-template-columns:76px repeat(var(--matrix-columns),minmax(90px,1fr))}}
   @media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}}
 `;
 
@@ -797,7 +808,7 @@ export function installFoundryInspector(
   onboarding.hidden = true;
   onboarding.setAttribute('aria-label', 'Getting started with Foundry');
   onboarding.innerHTML =
-    '<div class="onboarding-card-head"><i data-lucide="sparkles"></i><strong>Design directly on the real interface</strong></div><p>Click to inspect, refine with project-native values, then review once. Passed work becomes reusable local design memory.</p><div class="onboarding-steps"><span>1 · Select in Layers</span><span>2 · Refine visually</span><span>3 · Apply and verify</span></div><div class="onboarding-actions"><button class="onboarding-shortcuts">Explore commands</button><button class="onboarding-start">Start designing</button></div>';
+    '<div class="onboarding-card-head"><span><i data-lucide="sparkles"></i></span><strong>Start with the interface</strong></div><p>Foundry stays in Select mode while you work. Click anything, refine measured values, then apply one reviewed batch.</p><div class="onboarding-steps"><div class="onboarding-step"><b>01</b><span><strong>Select</strong><small>Click the page or choose a layer.</small></span></div><div class="onboarding-step"><b>02</b><span><strong>Refine</strong><small>Adjust real layout, type, color, and motion.</small></span></div><div class="onboarding-step"><b>03</b><span><strong>Apply</strong><small>Review once, update source, and verify.</small></span></div></div><div class="onboarding-actions"><button class="onboarding-shortcuts">View shortcuts</button><button class="onboarding-start">Select an element</button></div>';
   shadow.append(onboarding);
   const compareBar = document.createElement('div');
   compareBar.className = 'compare-bar';
@@ -854,6 +865,13 @@ export function installFoundryInspector(
     );
   shadow
     .querySelector<HTMLElement>('.tool-shelf')!
+    .querySelector<HTMLElement>('.inspect')!
+    .insertAdjacentHTML(
+      'afterend',
+      '<span class="mode-copy" aria-live="polite"><strong>Select mode</strong><span>Click any element</span></span>',
+    );
+  shadow
+    .querySelector<HTMLElement>('.tool-shelf')!
     .insertAdjacentHTML(
       'beforeend',
       '<span class="tool-divider canvas-actions-divider"></span><button class="tool-select undo" data-tooltip="Undo" aria-label="Undo preview" disabled><i data-lucide="undo-2"></i></button><button class="tool-select redo" data-tooltip="Redo" aria-label="Redo preview" disabled><i data-lucide="redo-2"></i></button><button class="tool-select align" data-tooltip="Align" aria-label="Align selected elements" disabled><i data-lucide="align-horizontal-space-around"></i></button><button class="tool-select distribute" data-tooltip="Distribute" aria-label="Distribute selected elements" disabled><i data-lucide="columns-3"></i></button>',
@@ -901,6 +919,14 @@ export function installFoundryInspector(
   const selectionKind = shadow.querySelector<HTMLElement>('.selection-kind')!;
   const selectionTitle = shadow.querySelector<HTMLElement>('.selection strong')!;
   const selectionCode = shadow.querySelector<HTMLElement>('.selection code')!;
+  selectionCode.insertAdjacentHTML(
+    'afterend',
+    '<span class="selection-hint">Select mode stays on · click anywhere to begin</span>',
+  );
+  const selectionHint = shadow.querySelector<HTMLElement>('.selection-hint')!;
+  const selectionRoot = shadow.querySelector<HTMLElement>('.selection')!;
+  const modeCopyTitle = shadow.querySelector<HTMLElement>('.mode-copy strong')!;
+  const modeCopyDetail = shadow.querySelector<HTMLElement>('.mode-copy span')!;
   const selectionState = shadow.querySelector<HTMLElement>('.selection-state')!;
   const selectionStats = shadow.querySelector<HTMLElement>('.selection-stats')!;
   const selectionSize = shadow.querySelector<HTMLElement>('[data-selection-size]')!;
@@ -2217,7 +2243,19 @@ export function installFoundryInspector(
     const selectableCount = reviewBody.querySelectorAll<HTMLInputElement>(
       '[data-review-change]:not(:disabled)',
     ).length;
+    const summary = reviewBody.querySelector<HTMLElement>('.review-summary');
+    const elementCount = reviewBody.querySelectorAll('.review-group').length;
+    const unresolvedCount = Number(summary?.dataset.unresolved ?? 0);
     reviewCount.textContent = `${selectedCount} of ${selectableCount} included`;
+    if (summary) {
+      summary.classList.toggle('attention', unresolvedCount > 0);
+      summary.querySelector('strong')!.textContent = reviewSummary(
+        selectedCount,
+        selectableCount,
+        elementCount,
+        unresolvedCount,
+      );
+    }
     reviewBody.querySelectorAll<HTMLElement>('.review-group').forEach((group) => {
       const included = group.querySelectorAll<HTMLInputElement>(
         '[data-review-change]:checked:not(:disabled)',
@@ -2242,9 +2280,14 @@ export function installFoundryInspector(
         (change: any) =>
           change.status === 'rejected' && String(change.before) !== String(change.after),
       ).length ?? 0;
+    const unresolvedCount = changes.filter(
+      (change: any) =>
+        change.confidence === 'unresolved' ||
+        (change.mappingCandidates?.length > 1 && !change.selectedMappingId),
+    ).length;
     reviewBody.innerHTML =
       changes.length || rejectedCount
-        ? `<div class="review-toolbar"><button data-review-approve-exact>Approve exact</button><button data-review-toggle-rejected>${reviewShowRejected ? 'Hide' : 'Show'} rejected${rejectedCount ? ` · ${rejectedCount}` : ''}</button></div>${[
+        ? `<div class="review-summary" data-unresolved="${unresolvedCount}" aria-live="polite"><strong>Preparing review…</strong><span>Only included, exactly mapped changes will be sent to your agent.</span></div><div class="review-toolbar"><button data-review-approve-exact>Include exact</button><button data-review-toggle-rejected>${reviewShowRejected ? 'Hide' : 'Show'} removed${rejectedCount ? ` · ${rejectedCount}` : ''}</button></div>${[
             ...groups.values(),
           ]
             .map((group) => {
@@ -2280,7 +2323,7 @@ export function installFoundryInspector(
                     componentInstances: component?.instances,
                     unresolved,
                   });
-                  return `<div class="review-card ${change.status === 'rejected' ? 'rejected' : ''}" data-review-card="${escapeHtml(change.id)}"><input aria-label="Include ${escapeHtml(change.property)} change" type="checkbox" data-review-change="${escapeHtml(change.id)}" ${checked ? 'checked' : ''} ${selectable ? '' : 'disabled'}/><span class="review-card-main"><span class="review-card-line"><strong>${escapeHtml(change.property)}</strong><span class="confidence-pill ${unresolved ? 'unresolved' : ''}">${escapeHtml(change.status === 'rejected' ? 'rejected' : change.confidence)}</span><span class="review-card-tools"><button data-review-locate="${escapeHtml(change.id)}">Locate</button><button data-review-preview="${escapeHtml(change.id)}" title="Hold to preview before">Preview</button><button data-review-status="${escapeHtml(change.id)}" data-next-status="${change.status === 'rejected' ? 'draft' : 'rejected'}">${change.status === 'rejected' ? 'Restore' : 'Remove'}</button></span></span>${reviewVisual(change, afterValue)}<span class="review-values"><span class="review-before">${escapeHtml(reviewValue(change.before, change.unit))}</span><span>→</span><input aria-label="New ${escapeHtml(change.property)} value" class="review-after" data-review-after="${escapeHtml(change.id)}" data-value-kind="${inputType}" type="${inputType}" value="${escapeHtml(afterValue)}" ${selectable ? '' : 'disabled'}/></span>${mappingChooser}<details class="review-details"><summary>Mapping details</summary><span class="review-source">${escapeHtml(reviewSource(change))} · ${escapeHtml(change.scope)} · ${escapeHtml(change.context.breakpoint)} · ${escapeHtml(change.context.theme)}${change.token ? ` · ${escapeHtml(change.token)}` : ''}</span><span class="impact-list">${impact.map((message) => `<span class="impact-item ${unresolved || (!change.token && message.includes('literal')) ? 'warning' : ''}">${escapeHtml(message)}</span>`).join('')}</span></details></span></div>`;
+                  return `<div class="review-card ${change.status === 'rejected' ? 'rejected' : ''}" data-review-card="${escapeHtml(change.id)}"><input aria-label="Include ${escapeHtml(change.property)} change" type="checkbox" data-review-change="${escapeHtml(change.id)}" ${checked ? 'checked' : ''} ${selectable ? '' : 'disabled'}/><span class="review-card-main"><span class="review-card-line"><strong title="${escapeHtml(change.property)}">${escapeHtml(humanizeProperty(change.property))}</strong><span class="confidence-pill ${unresolved ? 'unresolved' : ''}">${escapeHtml(change.status === 'rejected' ? 'removed' : change.confidence)}</span><span class="review-card-tools"><button data-review-locate="${escapeHtml(change.id)}">Locate</button><button data-review-preview="${escapeHtml(change.id)}" title="Hold to preview before">Preview</button><button data-review-status="${escapeHtml(change.id)}" data-next-status="${change.status === 'rejected' ? 'draft' : 'rejected'}">${change.status === 'rejected' ? 'Restore' : 'Remove'}</button></span></span>${reviewVisual(change, afterValue)}<span class="review-values"><span class="review-before">${escapeHtml(reviewValue(change.before, change.unit))}</span><span>→</span><input aria-label="New ${escapeHtml(change.property)} value" class="review-after" data-review-after="${escapeHtml(change.id)}" data-value-kind="${inputType}" type="${inputType}" value="${escapeHtml(afterValue)}" ${selectable ? '' : 'disabled'}/></span>${mappingChooser}<details class="review-details"><summary>Mapping details</summary><span class="review-source">${escapeHtml(change.property)} · ${escapeHtml(reviewSource(change))} · ${escapeHtml(change.scope)} · ${escapeHtml(change.context.breakpoint)} · ${escapeHtml(change.context.theme)}${change.token ? ` · ${escapeHtml(change.token)}` : ''}</span><span class="impact-list">${impact.map((message) => `<span class="impact-item ${unresolved || (!change.token && message.includes('literal')) ? 'warning' : ''}">${escapeHtml(message)}</span>`).join('')}</span></details></span></div>`;
                 })
                 .join('')}</section>`;
             })
@@ -4269,11 +4312,19 @@ export function installFoundryInspector(
       activeCategory = 'layout';
     }
     const target = targetFor(element);
+    panel.classList.add('has-selection');
+    selectionRoot.classList.remove('selected-flash');
+    void selectionRoot.offsetWidth;
+    selectionRoot.classList.add('selected-flash');
     selectionKind.textContent = element.tagName.toLowerCase();
     selectionTitle.textContent =
       selectedElements.length > 1 ? `${selectedElements.length} elements` : target.label;
     selectionCode.textContent = element.dataset.foundrySource || foundrySelector(element);
-    selectionState.textContent = 'Measured';
+    selectionState.textContent = selectedElements.length > 1 ? 'Multi-select' : 'Selected';
+    selectionHint.textContent =
+      selectedElements.length > 1
+        ? `${selectedElements.length} layers · shared controls are shown`
+        : 'Shift-click adds layers · repeat a click to cycle overlaps';
     selectionConfidence.textContent =
       target.confidence === 'instrumented' ? 'Instrumented' : 'Measured target';
     selectionStats.hidden = false;
@@ -4290,6 +4341,22 @@ export function installFoundryInspector(
     if (matrixMode) renderWorkbenchMatrix();
   }
 
+  function renderSelectionEmptyState(): void {
+    controlsRoot.innerHTML =
+      '<div class="empty-state"><span class="empty-state-icon"><i data-lucide="mouse-pointer-2"></i></span><strong>Select something to begin</strong><p>Click any element on the page, or use Layers for a precise structural selection.</p><span class="empty-state-actions"><button data-empty-layers>Open Layers</button><button data-empty-interact>Interact with app</button></span><kbd>Shift-click adds · Option-click selects while interacting</kbd></div>';
+    renderIcons(controlsRoot);
+    controlsRoot
+      .querySelector<HTMLButtonElement>('[data-empty-layers]')
+      ?.addEventListener('click', () => toggleLayers(true));
+    controlsRoot
+      .querySelector<HTMLButtonElement>('[data-empty-interact]')
+      ?.addEventListener('click', () => {
+        inspecting = false;
+        updateInspectionMode();
+        showToast('Interaction mode on · Option-click still selects');
+      });
+  }
+
   function clearSelection(): void {
     selected = null;
     selectedElements = [];
@@ -4297,17 +4364,18 @@ export function installFoundryInspector(
     sessionStorage.removeItem('__foundry_selected_selector');
     resizeObserver?.disconnect();
     outline.hidden = true;
+    panel.classList.remove('has-selection');
     shadow.querySelectorAll('.multi-outline').forEach((item) => item.remove());
     selectionKind.textContent = 'No layer';
     selectionTitle.textContent = 'Nothing selected';
     selectionCode.textContent = 'Click any element to inspect it';
     selectionState.textContent = 'Ready';
+    selectionHint.textContent = 'Select mode stays on · click anywhere to begin';
     selectionStats.hidden = true;
     selectionPath.hidden = true;
     previewLayer(null);
     renderToolTabs();
-    controlsRoot.innerHTML =
-      '<div class="empty">Select an element to inspect its measured design controls.</div>';
+    renderSelectionEmptyState();
     updateCanvasActions();
     renderLayers();
     if (!libraryPanel.hidden) renderDesignMemory();
@@ -4499,6 +4567,8 @@ export function installFoundryInspector(
     inspectButton.title = inspecting
       ? 'Select mode: click any element'
       : 'Interaction mode: use the app normally. Option-click still selects.';
+    modeCopyTitle.textContent = inspecting ? 'Select mode' : 'Interact mode';
+    modeCopyDetail.textContent = inspecting ? 'Click any element' : 'Option-click to select';
   }
 
   async function waitForStableGeometry(changes: any[]): Promise<void> {
@@ -4854,6 +4924,7 @@ export function installFoundryInspector(
   window.addEventListener('scroll', updateOutline, true);
   window.addEventListener('resize', updateOutline);
   renderToolTabs();
+  renderSelectionEmptyState();
   installResizeHandles();
   installRadiusHandle();
   installPanelResizer();
@@ -4889,6 +4960,7 @@ export function installFoundryInspector(
     onboarding.hidden = true;
     inspecting = true;
     updateInspectionMode();
+    showToast('Select mode stays on · click any element to begin');
   });
   onboarding.querySelector('.onboarding-shortcuts')?.addEventListener('click', () => {
     localStorage.setItem('__foundry_onboarded', '1');
