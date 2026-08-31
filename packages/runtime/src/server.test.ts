@@ -24,6 +24,11 @@ test('protects and serves the apply-run lifecycle over loopback HTTP', async () 
     const unauthorized = await fetch(`http://127.0.0.1:${port}/v1/sessions/${id}/apply-runs`);
     assert.equal(unauthorized.status, 401);
 
+    const bootstrap = await fetch(`http://127.0.0.1:${port}/adapter-bootstrap.js`);
+    assert.equal(bootstrap.status, 200);
+    assert.equal(bootstrap.headers.get('cache-control'), 'no-store');
+    assert.match(await bootstrap.text(), /installFoundryInspector/);
+
     const graphResponse = await fetch(`http://127.0.0.1:${port}/v1/sessions/${id}/design-graph`, {
       method: 'POST',
       headers: {

@@ -78,6 +78,9 @@ test('sets up and reversibly removes Vite and all agent integrations', async () 
     config.design.viewports.map((viewport: { id: string }) => viewport.id),
     ['mobile', 'tablet', 'desktop'],
   );
+  const adapter = await readFile(join(root, '.foundry', 'web-adapter.ts'), 'utf8');
+  assert.match(adapter, /const adapter = await import/);
+  assert.doesNotMatch(adapter, /const module =/);
 
   await writeFile(
     join(root, '.foundry', 'web-adapter.ts'),
@@ -142,11 +145,118 @@ test('integrates and removes a Next.js App Router loader', async () => {
   const layout = await readFile(join(root, 'app', 'layout.tsx'), 'utf8');
   assert.match(layout, /import \{ FoundryLoader \}/);
   assert.match(layout, /<FoundryLoader \/>/);
-  assert.match(await readFile(join(root, 'app', 'foundry-loader.tsx'), 'utf8'), /webpackIgnore/);
+  const loader = await readFile(join(root, 'app', 'foundry-loader.tsx'), 'utf8');
+  assert.match(loader, /adapter-bootstrap\.js/);
+  assert.doesNotMatch(loader, /import\(.*127\.0\.0\.1/);
+  const manifest = JSON.parse(
+    await readFile(join(root, '.foundry', 'install-manifest.json'), 'utf8'),
+  );
+  assert.equal(manifest.version, 2);
+  assert.equal(manifest.generatorVersion, '0.2.0-beta.3');
+  assert.equal(manifest.validation.length, 2);
   await uninstallProject(root);
   const restored = await readFile(join(root, 'app', 'layout.tsx'), 'utf8');
   assert.doesNotMatch(restored, /FoundryLoader/);
   await assert.rejects(readFile(join(root, 'app', 'foundry-loader.tsx'), 'utf8'));
+});
+
+test('rolls back every managed file when setup introduces a project failure', async () => {
+  const root = await fixture('rollback');
+  await mkdir(join(root, 'app'), { recursive: true });
+  const original = `export default function Layout({ children }) {
+  return <html><body>{children}</body></html>;
+}
+`;
+  await writeFile(join(root, 'app', 'layout.tsx'), original);
+  await writeFile(join(root, '.gitignore'), 'coverage/\n');
+  await writeFile(
+    join(root, 'package.json'),
+    JSON.stringify({
+      scripts: {
+        typecheck:
+          "node -e \"const fs=require('fs');if(fs.existsSync('app/foundry-loader.tsx')){console.error('app/foundry-loader.tsx: generated failure');process.exit(1)}\"",
+      },
+      dependencies: { next: '16.0.0' },
+    }),
+  );
+
+  await assert.rejects(setupProject(root, { agents: [] }), /introduced a typecheck failure/);
+  assert.equal(await readFile(join(root, 'app', 'layout.tsx'), 'utf8'), original);
+  assert.equal(await readFile(join(root, '.gitignore'), 'utf8'), 'coverage/\n');
+  await assert.rejects(readFile(join(root, 'app', 'foundry-loader.tsx'), 'utf8'));
+  await assert.rejects(readFile(join(root, '.foundry', 'install-manifest.json'), 'utf8'));
+  await assert.rejects(readFile(join(root, '.foundry', 'setup-transaction.json'), 'utf8'));
+});
+
+test('recovers an interrupted setup before applying a new transaction', async () => {
+  const root = await fixture('recover');
+  await mkdir(join(root, 'app'), { recursive: true });
+  await mkdir(join(root, '.foundry'), { recursive: true });
+  const original = `export default function Layout({ children }) {
+  return <html><body data-recovered>{children}</body></html>;
+}
+`;
+  const layout = join(root, 'app', 'layout.tsx');
+  await writeFile(layout, 'interrupted setup content\n');
+  await writeFile(
+    join(root, '.foundry', 'setup-transaction.json'),
+    `${JSON.stringify({
+      version: 1,
+      root,
+      snapshots: [{ path: layout, content: Buffer.from(original).toString('base64') }],
+    })}\n`,
+  );
+  await writeFile(join(root, 'package.json'), JSON.stringify({ dependencies: { next: '16.0.0' } }));
+
+  await setupProject(root, { agents: [] });
+  const integrated = await readFile(layout, 'utf8');
+  assert.match(integrated, /data-recovered/);
+  assert.doesNotMatch(integrated, /interrupted setup content/);
+  await assert.rejects(readFile(join(root, '.foundry', 'setup-transaction.json'), 'utf8'));
+});
+
+test('migrates the known beta Next.js loader repair without treating it as a user edit', async () => {
+  const root = await fixture('legacy-loader');
+  await mkdir(join(root, 'app'), { recursive: true });
+  await writeFile(join(root, 'package.json'), JSON.stringify({ dependencies: { next: '16.0.0' } }));
+  await writeFile(
+    join(root, 'app', 'layout.tsx'),
+    'export default function Layout({ children }) { return <html><body>{children}</body></html>; }\n',
+  );
+  await setupProject(root, { agents: [] });
+  const loader = join(root, 'app', 'foundry-loader.tsx');
+  await writeFile(
+    loader,
+    `'use client';
+
+import { useEffect } from 'react';
+
+export function FoundryLoader(): null {
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    if (!query.has('__foundry_session')) return;
+    // @ts-expect-error The Foundry adapter is served by the local runtime during an active session.
+    void import(/* webpackIgnore: true */ 'http://127.0.0.1:4387/adapter.js').then((module) =>
+      module.installFoundryInspector(),
+    );
+  }, []);
+  return null;
+}
+`,
+  );
+  const manifestPath = join(root, '.foundry', 'install-manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.version = 1;
+  delete manifest.generatorVersion;
+  delete manifest.validation;
+  const loaderEntry = manifest.generatedFiles.find(
+    (file: { path: string }) => file.path === loader,
+  );
+  loaderEntry.sha256 = 'ec45810b798224907a947c3bf9e01e5e342b64f506c910a35f08fdc0399aac0e';
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  await setupProject(root, { agents: [] });
+  assert.match(await readFile(loader, 'utf8'), /adapter-bootstrap\.js/);
 });
 
 test('reports generic web projects as not yet instrumented', async () => {

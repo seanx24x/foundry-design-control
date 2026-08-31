@@ -144,6 +144,10 @@ async function setup(): Promise<void> {
   }
   const result = await setupProject(root, options);
   console.log(`\n✓ Foundry configured ${result.changed.length} files.`);
+  for (const check of result.validation) {
+    const marker = check.status === 'passed' ? '✓' : check.status === 'skipped' ? '–' : '!';
+    console.log(`${marker} ${check.name}: ${check.status.replaceAll('-', ' ')}`);
+  }
   if (result.skillDirectories.length) {
     console.log(`✓ Installed the Foundry skill for ${result.agents.join(', ')}.`);
   }

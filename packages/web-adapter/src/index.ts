@@ -116,6 +116,8 @@ const CONTROL_SECTIONS: Partial<Record<Category, ControlSection[]>> = {
     {
       label: 'Position and size',
       properties: [
+        'left',
+        'top',
         'widthMode',
         'heightMode',
         'width',
@@ -124,6 +126,9 @@ const CONTROL_SECTIONS: Partial<Record<Category, ControlSection[]>> = {
         'maxWidth',
         'aspectRatio',
         'overflow',
+        'rotate',
+        'scaleX',
+        'scaleY',
       ],
       columns: 2,
       prefixes: {
@@ -135,6 +140,11 @@ const CONTROL_SECTIONS: Partial<Record<Category, ControlSection[]>> = {
         maxWidth: 'Max',
         aspectRatio: 'Ratio',
         overflow: 'Clip',
+        left: 'X',
+        top: 'Y',
+        rotate: '°',
+        scaleX: 'Flip X',
+        scaleY: 'Flip Y',
       },
     },
     {
@@ -190,17 +200,29 @@ const CONTROL_SECTIONS: Partial<Record<Category, ControlSection[]>> = {
     },
   ],
   color: [
-    { label: 'Appearance', properties: ['color', 'backgroundColor', 'opacity'] },
-    { label: 'Gradient', properties: ['backgroundImage'], stacked: true },
+    { label: 'Appearance', properties: ['opacity'] },
+    { label: 'Fill', properties: ['color', 'backgroundColor', 'backgroundImage'], stacked: true },
   ],
   effects: [
     {
-      label: 'Corners and border',
-      properties: ['borderRadius', 'borderWidth'],
+      label: 'Corners',
+      properties: [
+        'borderRadius',
+        'borderTopLeftRadius',
+        'borderTopRightRadius',
+        'borderBottomLeftRadius',
+        'borderBottomRightRadius',
+      ],
       columns: 2,
-      prefixes: { borderRadius: 'R', borderWidth: 'B' },
+      prefixes: {
+        borderRadius: 'All',
+        borderTopLeftRadius: 'TL',
+        borderTopRightRadius: 'TR',
+        borderBottomLeftRadius: 'BL',
+        borderBottomRightRadius: 'BR',
+      },
     },
-    { label: 'Stroke', properties: ['borderColor'] },
+    { label: 'Stroke', properties: ['borderWidth', 'borderColor'] },
     {
       label: 'Effects',
       properties: ['boxShadow', 'filter'],
@@ -246,7 +268,7 @@ const PANEL_CSS = `
   .outline { position:fixed;z-index:2147483645;pointer-events:none;border:1.5px solid var(--fdc-signal);box-shadow:0 0 0 1px rgb(255 255 255 / 90%),0 0 0 4px rgb(54 89 244 / 12%);transition:top 80ms linear,left 80ms linear,width 80ms linear,height 80ms linear; }
   .measure { position:absolute;left:-2px;top:-28px;height:25px;display:flex;align-items:center;padding:0 9px;color:white;background:var(--fdc-signal);border-radius:5px 5px 5px 0;font:650 10px/1 var(--fdc-font);letter-spacing:.02em;white-space:nowrap;box-shadow:0 4px 14px rgb(25 43 124 / 20%); }
   .cross::before,.cross::after { content:"";position:absolute;background:var(--fdc-signal); }.cross::before { width:11px;height:1px;left:-6px;top:-1px; }.cross::after { width:1px;height:11px;left:-1px;top:-6px; }
-  .panel { position:fixed;z-index:2147483646;top:12px;right:12px;width:352px;min-width:312px;max-width:min(520px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:hidden;display:flex;flex-direction:column;color:var(--fdc-ink);background:var(--fdc-surface);border:1px solid var(--fdc-line);box-shadow:0 1px 2px rgb(0 0 0 / 5%),0 10px 28px rgb(0 0 0 / 10%);pointer-events:auto;border-radius:12px; }
+  .panel { position:fixed;z-index:2147483646;top:12px;right:12px;width:384px;min-width:340px;max-width:min(520px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:hidden;display:flex;flex-direction:column;color:var(--fdc-ink);background:var(--fdc-surface);border:1px solid var(--fdc-line);box-shadow:0 1px 2px rgb(0 0 0 / 5%),0 10px 28px rgb(0 0 0 / 10%);pointer-events:auto;border-radius:12px; }
   .top { flex:none;background:var(--fdc-surface);border-bottom:1px solid var(--fdc-line); }
   .top-identity { position:relative;min-height:44px;display:flex;align-items:center;padding:0 12px; }
   .brand { flex:1;display:flex;align-items:center;min-width:0; }
@@ -279,9 +301,9 @@ const PANEL_CSS = `
   .spacing-guide { position:fixed;z-index:2147483644;pointer-events:auto;background:#ff4d8d; }.spacing-guide.horizontal { height:1px;cursor:ew-resize; }.spacing-guide.vertical { width:1px;cursor:ns-resize; }.spacing-guide span { position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:2px 4px;border-radius:3px;background:#ff4d8d;color:white;font:600 8px/1 var(--fdc-font);white-space:nowrap; }
   .selection-path { display:flex;align-items:center;gap:4px;margin-top:9px;min-width:0; }.selection-path button { min-width:0;height:25px;display:flex;align-items:center;gap:4px;padding:0 7px;border:1px solid var(--fdc-line);border-radius:5px;background:var(--fdc-paper);color:#555;font-size:9px;cursor:pointer; }.selection-path button:hover { color:var(--fdc-ink);border-color:#d2d2d2;background:white; }.selection-path button:disabled { opacity:.4;cursor:default; }.selection-path svg { width:11px;height:11px; }.selection-path .path-name { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
   .selection-path[hidden] { display:none; }
-  .layers-panel { position:fixed;z-index:2147483646;top:12px;left:12px;width:252px;max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--fdc-line);border-radius:10px;background:var(--fdc-surface);box-shadow:0 1px 2px rgb(0 0 0 / 5%),0 10px 28px rgb(0 0 0 / 10%);pointer-events:auto; }.layers-panel[hidden] { display:none; }.layers-head { min-height:44px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line); }.layers-head svg { width:15px;height:15px; }.layers-head strong { font-size:12px;font-weight:550; }.layers-head span { color:var(--fdc-muted);font-size:9px; }.layers-head .icon-button { margin-left:auto; }.layers-search { padding:8px;border-bottom:1px solid var(--fdc-line);background:var(--fdc-paper); }.layers-search input { width:100%;height:30px;padding:0 9px;border:1px solid var(--fdc-line);border-radius:5px;background:white;color:var(--fdc-ink);font-size:10px;outline:none; }.layers-search input:focus { border-color:var(--fdc-signal);box-shadow:0 0 0 2px rgb(0 112 243 / 10%); }.layer-tree { min-height:120px;overflow:auto;padding:5px; }.layer-row { width:100%;height:30px;display:grid;grid-template-columns:14px 14px minmax(0,1fr) auto;align-items:center;gap:4px;padding:0 7px 0 calc(7px + var(--layer-depth) * 12px);border:0;border-radius:5px;background:transparent;color:#474747;text-align:left;cursor:pointer; }.layer-row:hover { background:var(--fdc-subtle); }.layer-row.selected { color:#075fc5;background:#eaf3ff; }.layer-row .chevron,.layer-row .layer-icon { width:12px;height:12px;color:#8a8a8a; }.layer-row .layer-label { overflow:hidden;text-overflow:ellipsis;font-size:10px;white-space:nowrap; }.layer-row .layer-meta { padding:2px 4px;border-radius:3px;background:#f0f0f0;color:#747474;font-size:8px;text-transform:uppercase; }.layer-row.selected .layer-meta { color:#075fc5;background:#d8e9ff; }.layers-empty { padding:34px 18px;color:var(--fdc-muted);font-size:10px;line-height:1.5;text-align:center; }
+  .layers-panel { position:fixed;z-index:2147483646;top:12px;left:12px;width:252px;max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--fdc-line);border-radius:10px;background:var(--fdc-surface);box-shadow:0 1px 2px rgb(0 0 0 / 5%),0 10px 28px rgb(0 0 0 / 10%);pointer-events:auto; }.layers-panel[hidden] { display:none; }.layers-head { min-height:44px;display:flex;flex:none;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line); }.layers-head svg { width:15px;height:15px; }.layers-head strong { font-size:12px;font-weight:550; }.layers-head span { color:var(--fdc-muted);font-size:9px; }.layers-head .icon-button { margin-left:auto; }.layers-search { flex:none;padding:8px;border-bottom:1px solid var(--fdc-line);background:var(--fdc-paper); }.layers-search input { width:100%;height:30px;padding:0 9px;border:1px solid var(--fdc-line);border-radius:5px;background:white;color:var(--fdc-ink);font-size:10px;outline:none; }.layers-search input:focus { border-color:var(--fdc-signal);box-shadow:0 0 0 2px rgb(0 112 243 / 10%); }.layer-tree { min-height:120px;overflow:auto;padding:5px; }.layer-row { width:100%;height:30px;display:grid;grid-template-columns:14px 14px minmax(0,1fr) auto;align-items:center;gap:4px;padding:0 7px 0 calc(7px + var(--layer-depth) * 12px);border:0;border-radius:5px;background:transparent;color:#474747;text-align:left;cursor:pointer; }.layer-row:hover { background:var(--fdc-subtle); }.layer-row.selected { color:#075fc5;background:#eaf3ff; }.layer-row .chevron,.layer-row .layer-icon { width:12px;height:12px;color:#8a8a8a; }.layer-row .layer-label { overflow:hidden;text-overflow:ellipsis;font-size:10px;white-space:nowrap; }.layer-row .layer-meta { padding:2px 4px;border-radius:3px;background:#f0f0f0;color:#747474;font-size:8px;text-transform:uppercase; }.layer-row.selected .layer-meta { color:#075fc5;background:#d8e9ff; }.layers-empty { padding:34px 18px;color:var(--fdc-muted);font-size:10px;line-height:1.5;text-align:center; }
   .layers-switch { display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:5px;border-bottom:1px solid var(--fdc-line);background:var(--fdc-paper); }.layers-switch button { min-width:0;height:28px;display:flex;align-items:center;justify-content:center;gap:6px;padding:0 7px;border:0;border-radius:5px;background:transparent;color:var(--fdc-muted);font-size:10px;cursor:pointer; }.layers-switch button:hover { color:var(--fdc-ink);background:white; }.layers-switch button.active { color:var(--fdc-ink);background:white;box-shadow:0 0 0 1px var(--fdc-line),0 1px 2px rgb(0 0 0 / 5%); }.layers-switch button span { min-width:17px;height:17px;display:grid;place-items:center;padding:0 4px;border-radius:999px;background:var(--fdc-subtle);color:#747474;font-size:8px; }.layers-switch button[data-layer-view="components"].active { color:#5f46bf; }.layers-switch button[data-layer-view="components"].active span { color:#5f46bf;background:var(--fdc-component-soft); }.component-list { display:grid;gap:5px;padding:2px; }.component-card { overflow:hidden;border:1px solid var(--fdc-line);border-radius:7px;background:white; }.component-card:hover { border-color:#d7d0f3;box-shadow:0 2px 8px rgb(52 38 110 / 6%); }.component-card.selected { border-color:#c8bdf1;background:#fbfaff;box-shadow:0 0 0 2px rgb(114 87 217 / 8%); }.component-main { width:100%;min-height:52px;display:grid;grid-template-columns:30px minmax(0,1fr) auto;align-items:center;gap:7px;padding:7px 8px;border:0;background:transparent;color:var(--fdc-ink);text-align:left;cursor:pointer; }.component-main:disabled { cursor:default; }.component-mark { width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fdc-component);background:var(--fdc-component-soft); }.component-mark svg { width:14px;height:14px; }.component-copy { min-width:0; }.component-copy strong,.component-copy span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-copy strong { font-size:10px;font-weight:550; }.component-copy span { margin-top:4px;color:var(--fdc-muted);font-size:8px; }.component-status { display:flex;flex-direction:column;align-items:flex-end;gap:4px; }.component-status span { padding:2px 5px;border-radius:999px;color:#5f46bf;background:var(--fdc-component-soft);font-size:8px;white-space:nowrap; }.component-status small { color:#8b8b8b;font-size:8px;white-space:nowrap; }.component-variants { display:flex;gap:4px;overflow:hidden;padding:0 8px 8px 45px; }.component-variants span { max-width:88px;overflow:hidden;text-overflow:ellipsis;padding:3px 5px;border:1px solid #e6e1f7;border-radius:4px;color:#66598c;background:#faf9ff;font-size:8px;white-space:nowrap; }
-  .layer-row { grid-template-columns:16px minmax(0,1fr);gap:1px;padding-right:4px;cursor:default; }.layer-row.dragging { opacity:.45; }.layer-row.drop-target { box-shadow:inset 0 2px 0 var(--fdc-signal); }.layer-spacer { width:1px;pointer-events:none; }.layer-toggle { width:16px;height:28px;display:grid;place-items:center;padding:0;border:0;background:transparent;color:#858585;cursor:pointer; }.layer-toggle:disabled { visibility:hidden; }.layer-toggle svg { width:11px;height:11px; }.layer-select { min-width:0;height:28px;display:grid;grid-template-columns:14px minmax(0,1fr) auto;align-items:center;gap:5px;padding:0 4px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer; }
+  .layer-tree { position:relative;scrollbar-gutter:stable; }.layer-selection-glide { position:absolute;z-index:0;top:0;right:5px;left:5px;height:30px;border:1px solid rgb(72 132 220 / 22%);border-radius:7px;background:var(--fdc-signal-soft);transform:translateY(var(--layer-glide-y));transition:transform .24s cubic-bezier(.16,1,.3,1),height .18s cubic-bezier(.16,1,.3,1);pointer-events:none; }.layer-row { position:relative;z-index:1;grid-template-columns:16px minmax(0,1fr);gap:1px;padding-right:4px;cursor:default; }.layer-row.entering { animation:layer-row-enter .22s cubic-bezier(.16,1,.3,1) both;animation-delay:min(calc(var(--layer-position) * 18ms),90ms); }.layer-row.selected { background:transparent; }.layer-row.dragging { opacity:.45; }.layer-row.drop-target { box-shadow:inset 0 2px 0 var(--fdc-signal); }.layer-branch { position:absolute;z-index:-1;top:-1px;bottom:-1px;left:var(--layer-branch-left);width:1px;background:var(--fdc-line);transform-origin:top;animation:layer-branch-draw .28s cubic-bezier(.16,1,.3,1) both;pointer-events:none; }.layer-spacer { width:1px;pointer-events:none; }.layer-toggle { width:16px;height:28px;display:grid;place-items:center;padding:0;border:0;background:transparent;color:#858585;cursor:pointer;transition:color .16s ease; }.layer-toggle:hover { color:var(--fdc-ink); }.layer-toggle:disabled { visibility:hidden; }.layer-toggle svg { width:11px;height:11px;transition:transform .24s cubic-bezier(.16,1,.3,1); }.layer-select { min-width:0;height:28px;display:grid;grid-template-columns:14px minmax(0,1fr) auto;align-items:center;gap:5px;padding:0 4px;border:0;border-radius:5px;background:transparent;color:inherit;text-align:left;cursor:pointer;outline:none; }.layer-select:focus-visible { box-shadow:inset 0 0 0 1px var(--fdc-signal); }.layer-select:active .layer-icon { transform:scale(.88); }.layer-icon { transition:color .16s ease,transform .16s cubic-bezier(.16,1,.3,1); }@keyframes layer-row-enter { from { opacity:0;transform:translateY(-5px); } to { opacity:1;transform:translateY(0); } }@keyframes layer-branch-draw { from { opacity:0;transform:scaleY(0); } to { opacity:1;transform:scaleY(1); } }
   .health-panel { position:fixed;z-index:2147483646;top:12px;left:12px;width:304px;max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--fdc-line);border-radius:10px;background:var(--fdc-surface);box-shadow:0 1px 2px rgb(0 0 0 / 5%),0 10px 28px rgb(0 0 0 / 10%);pointer-events:auto; }.health-panel[hidden] { display:none; }.health-head { min-height:48px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line); }.health-head>svg { width:15px;height:15px; }.health-head strong { font-size:12px;font-weight:550; }.health-head .icon-button { margin-left:auto; }.health-summary { display:grid;grid-template-columns:54px minmax(0,1fr);gap:10px;padding:12px;border-bottom:1px solid var(--fdc-line); }.health-score { width:54px;height:54px;display:grid;place-items:center;border-radius:50%;background:conic-gradient(var(--score-color) calc(var(--score) * 1%),#ececec 0); }.health-score::before { content:"";grid-area:1/1;width:42px;height:42px;border-radius:50%;background:white; }.health-score strong { z-index:1;grid-area:1/1;font-size:15px;font-weight:600; }.health-summary-copy { min-width:0;align-self:center; }.health-summary-copy strong { display:block;font-size:11px;font-weight:550; }.health-summary-copy span { display:block;margin-top:4px;color:var(--fdc-muted);font-size:9px;line-height:1.4; }.health-filters { display:flex;gap:4px;padding:7px 8px;border-bottom:1px solid var(--fdc-line);background:var(--fdc-paper); }.health-filters button { min-height:27px;padding:0 8px;border:1px solid transparent;border-radius:5px;background:transparent;color:#666;font-size:9px;cursor:pointer; }.health-filters button:hover,.health-filters button.active { border-color:var(--fdc-line);background:white;color:var(--fdc-ink); }.health-list { min-height:120px;overflow:auto;padding:6px; }.health-card { padding:10px;border:1px solid var(--fdc-line);border-radius:7px;background:white; }.health-card+.health-card { margin-top:6px; }.health-card-top { display:flex;align-items:center;gap:6px; }.health-severity { width:7px;height:7px;flex:none;border-radius:50%;background:#a3a3a3; }.health-severity.high { background:#d15d43; }.health-severity.medium { background:#d69b3c; }.health-severity.low { background:#4b84cb; }.health-card-top strong { min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:10px;font-weight:550;white-space:nowrap; }.health-card-top span:last-child { margin-left:auto;color:var(--fdc-muted);font-size:8px;text-transform:capitalize; }.health-card p { margin:7px 0 0;color:#5d5d5d;font-size:9px;line-height:1.45; }.health-evidence { margin-top:6px;padding:6px;border-radius:4px;background:var(--fdc-paper);color:#777;font-size:8px;line-height:1.4; }.health-actions { display:flex;gap:5px;margin-top:8px; }.health-actions button { min-height:27px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:5px;background:white;color:#555;font-size:9px;cursor:pointer; }.health-actions button:hover { border-color:#c8c8c8;color:var(--fdc-ink); }.health-actions .health-fix { margin-left:auto;color:white;border-color:var(--fdc-ink);background:var(--fdc-ink); }.health-actions .health-fix.previewed { color:#23715c;border-color:#bcded2;background:#edf8f4;cursor:default; }.health-actions .health-fix:disabled { opacity:1; }.health-actions .health-ignore { padding:0 6px;color:#888;border-color:transparent; }.health-footer { display:flex;align-items:center;gap:5px;padding:8px;border-top:1px solid var(--fdc-line); }.health-footer button { min-height:30px;padding:0 9px;border:1px solid var(--fdc-line);border-radius:5px;background:white;color:#555;font-size:9px;cursor:pointer; }.health-footer .health-rescan { flex:1;color:white;border-color:var(--fdc-ink);background:var(--fdc-ink); }.health-empty { padding:36px 18px;text-align:center;color:var(--fdc-muted);font-size:10px;line-height:1.5; }.health-empty svg { display:block;width:22px;height:22px;margin:0 auto 10px;color:#2b9a76; }
   .tool-select:disabled { color:#b6b6b6;cursor:default; }.tool-select:disabled:hover { background:transparent; }
   .token-row { grid-column:2;display:flex;flex-wrap:wrap;gap:5px;margin-top:7px; }.token-chip { height:24px;padding:0 7px;border:1px solid var(--fdc-line);border-radius:999px;background:var(--fdc-paper);color:#4d4d4d;font-size:9px;cursor:pointer; }.token-chip:hover { border-color:#b7d5ff;color:#0761d1;background:#edf6ff; }
@@ -290,7 +312,7 @@ const PANEL_CSS = `
   .native-panel { padding:10px 12px;border-bottom:1px solid var(--fdc-line); }.native-panel-head { display:flex;align-items:center;margin-bottom:7px; }.native-panel-head strong { font-size:10px;font-weight:550; }.native-panel-head span { margin-left:auto;color:var(--fdc-muted);font-size:9px; }.native-search { width:100%;height:28px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:5px;background:var(--fdc-paper);font-size:9px;outline:none; }.native-search:focus { border-color:var(--fdc-signal); }.native-grid { display:flex;flex-wrap:wrap;gap:5px;margin-top:7px; }.native-chip { min-height:26px;display:flex;align-items:center;gap:5px;padding:0 7px;border:1px solid var(--fdc-line);border-radius:5px;background:white;color:#4d4d4d;font-size:9px;cursor:pointer; }.native-chip:hover { border-color:#bdd7fb;background:#f5f9ff; }.native-chip .swatch { width:12px;height:12px;border:1px solid rgb(0 0 0 / 10%);border-radius:3px;background:var(--token-color); }.design-health { display:flex;align-items:center;gap:6px;margin-top:8px;padding:7px 8px;border-radius:5px;background:#f3f3f3;color:#575757;font-size:9px; }.design-health.pass { color:#23715c;background:#edf8f4; }.design-health.fail { color:#9a4930;background:#fff0e9; }.design-health svg { width:12px;height:12px; }
   .variant-list { display:grid;gap:5px;margin-top:7px; }.variant-button { min-height:30px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:5px;background:white;font-size:9px;cursor:pointer; }.variant-button code { overflow:hidden;text-overflow:ellipsis;color:var(--fdc-muted);font-size:8px;white-space:nowrap; }
   .compare-bar { position:fixed;z-index:2147483646;left:50%;bottom:78px;transform:translateX(-50%);display:flex;align-items:center;gap:5px;padding:6px;border:1px solid var(--fdc-line);border-radius:9px;background:white;box-shadow:0 8px 24px rgb(0 0 0 / 14%);pointer-events:auto; }.compare-bar[hidden] { display:none; }.compare-bar strong { padding:0 7px;font-size:10px;font-weight:550; }.compare-bar button { height:30px;display:flex;align-items:center;gap:5px;padding:0 8px;border:0;border-radius:5px;background:transparent;color:#555;font-size:9px;cursor:pointer; }.compare-bar button:hover,.compare-bar button.active { color:white;background:var(--fdc-ink); }.compare-bar svg { width:12px;height:12px; }.compare-bar input[type="range"] { width:96px;accent-color:var(--fdc-ink);cursor:ew-resize; }
-  .command-palette { position:fixed;z-index:2147483647;left:50%;top:18%;transform:translateX(-50%);width:min(480px,calc(100vw - 32px));overflow:hidden;border:1px solid #d8d8d8;border-radius:11px;background:white;box-shadow:0 24px 80px rgb(0 0 0 / 24%);pointer-events:auto; }.command-palette[hidden] { display:none; }.command-palette input { width:100%;height:46px;padding:0 14px;border:0;border-bottom:1px solid var(--fdc-line);font-size:12px;outline:none; }.command-list { max-height:320px;overflow:auto;padding:5px; }.command-item { width:100%;min-height:38px;display:flex;align-items:center;gap:9px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#333;text-align:left;font-size:11px;cursor:pointer; }.command-item:hover,.command-item.active { background:var(--fdc-subtle); }.command-item svg { width:14px;height:14px;color:#777; }.command-item small { margin-left:auto;color:#8a8a8a;font-size:9px; }
+  .command-palette { position:fixed;z-index:2147483647;left:50%;top:18%;transform:translateX(-50%);width:min(480px,calc(100vw - 32px));overflow:hidden;border:1px solid #d8d8d8;border-radius:11px;background:white;box-shadow:0 24px 80px rgb(0 0 0 / 24%);pointer-events:auto; }.command-palette[hidden] { display:none; }.command-search { display:flex;align-items:center;border-bottom:1px solid var(--fdc-line);background:var(--fdc-paper); }.command-palette input { min-width:0;flex:1;width:auto;height:46px;padding:0 14px;border:0;font-size:12px;outline:none; }.command-search .icon-button { flex:none;margin-right:7px; }.command-list { max-height:320px;overflow:auto;padding:5px; }.command-item { width:100%;min-height:38px;display:flex;align-items:center;gap:9px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#333;text-align:left;font-size:11px;cursor:pointer; }.command-item:hover,.command-item.active { background:var(--fdc-subtle); }.command-item svg { width:14px;height:14px;color:#777; }.command-item small { margin-left:auto;color:#8a8a8a;font-size:9px; }
   .comparison-stage { position:fixed;z-index:2147483647;inset:10px;display:flex;flex-direction:column;overflow:hidden;border:1px solid #303030;border-radius:12px;background:#111;box-shadow:0 24px 80px rgb(0 0 0 / 35%);pointer-events:auto; }.comparison-stage[hidden] { display:none; }.comparison-stage header { min-height:46px;display:flex;align-items:center;padding:0 8px 0 14px;color:white;border-bottom:1px solid #292929;background:#171717; }.comparison-stage header strong { font-size:12px;font-weight:550; }.comparison-stage header span { margin-left:8px;color:#8d8d8d;font-size:10px; }.comparison-stage header button { width:30px;height:30px;display:grid;place-items:center;margin-left:auto;padding:0;border:0;border-radius:5px;background:transparent;color:#aaa;cursor:pointer; }.comparison-stage header button:hover { color:white;background:#292929; }.comparison-stage header svg { width:14px;height:14px; }.comparison-frames { min-height:0;flex:1;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#343434; }.comparison-frame { position:relative;min-width:0;min-height:0;background:white; }.comparison-frame span { position:absolute;z-index:1;top:10px;left:10px;padding:5px 7px;border-radius:5px;background:rgb(17 17 17 / 88%);color:white;font-size:9px; }.comparison-frame iframe { width:100%;height:100%;display:block;border:0;background:white; }
   .impact-list { display:grid;gap:4px;margin-top:7px; }.impact-item { display:flex;align-items:flex-start;gap:5px;color:#666;font-size:8px;line-height:1.35; }.impact-item::before { content:"";width:4px;height:4px;flex:none;margin-top:3px;border-radius:50%;background:#9a9a9a; }.impact-item.warning { color:#985033; }.impact-item.warning::before { background:#d16d51; }
   .mapping-chooser { grid-column:2;margin-top:7px;padding:7px;background:#fff9ed;border:1px solid #f4ddb2;border-radius:6px; }.mapping-chooser>strong { display:block;margin-bottom:5px;color:#80561c;font-size:9px;font-weight:550; }.mapping-option { display:flex;align-items:flex-start;gap:6px;padding:5px 0;color:#5f4b2d;font-size:9px;line-height:1.35;cursor:pointer; }.mapping-option input { margin:1px 0 0;accent-color:var(--fdc-signal); }.mapping-option small { display:block;color:#8b7758;font-size:8px; }
@@ -317,15 +339,21 @@ const PANEL_CSS = `
   .scope select,.property-control input,.property-control select,.compact-control input,.compact-control select,.native-search,.command-palette input { color:var(--fdc-ink);background:var(--fdc-paper);border-color:var(--fdc-line); }
   .scope select option,.property-control select option,.compact-control select option { color:var(--fdc-ink);background:var(--fdc-paper); }
   .property-label,.section-head,.color-value,.layer-row,.command-item,.library-section-head { color:#d1d1d6; }.field-prefix,.unit,.control-field .unit-select,.section-toggle>svg,.layer-row .chevron,.layer-row .layer-icon,.command-item svg,.command-item small { color:var(--fdc-muted); }
-  .layer-row.selected { color:#a9cbff;background:var(--fdc-signal-soft); }.layer-row.selected .layer-icon { color:#86b7ff; }
+  .layer-row.selected { color:#a9cbff;background:transparent; }.layer-row.selected .layer-icon { color:#86b7ff; }
   .layer-row .layer-meta { color:#b5b5bc;background:var(--fdc-elevated); }.layer-row.selected .layer-meta { color:#a9cbff;background:#23416d; }
   .layers-search { background:var(--fdc-paper); }.layers-switch { background:var(--fdc-paper);border-color:var(--fdc-line); }.layers-switch button { color:var(--fdc-muted);background:transparent; }.layers-switch button:hover,.layers-switch button.active { color:var(--fdc-ink);background:var(--fdc-elevated); }.layers-switch button[data-layer-view="components"].active,.layers-switch button[data-layer-view="components"].active span { color:#c1b5f5;background:var(--fdc-component-soft); }
   .token-chip { color:#d1d1d6;background:var(--fdc-paper);border-color:var(--fdc-line); }.token-chip:hover { color:#9ec5ff;background:var(--fdc-signal-soft);border-color:#315482; }
+  .section-actions { flex:none;display:flex;align-items:center;gap:2px; }.section-action,.section-actions button,.category-action,.token-menu-trigger { height:26px;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:0 7px;border:1px solid transparent;border-radius:5px;color:var(--fdc-muted);background:transparent;font:500 9px/1 var(--fdc-font);cursor:pointer; }.section-action:hover,.section-actions button:hover,.category-action:hover,.token-menu-trigger:hover { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }.section-action svg,.category-action svg,.token-menu-trigger svg { width:12px;height:12px; }.type-presets button { width:26px;padding:0; }.category-action { margin-left:auto; }.inspector-heading .property-count { margin-left:4px; }
+  .token-menu-wrap { position:relative;display:flex;align-items:center;margin-top:5px; }.token-menu-trigger { width:26px;padding:0; }.token-menu { position:absolute;z-index:8;top:30px;right:0;width:230px;max-height:220px;overflow:auto;padding:5px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-elevated);box-shadow:0 14px 34px rgb(0 0 0 / 38%); }.token-menu[hidden] { display:none; }.token-option { width:100%;height:30px;display:grid;grid-template-columns:14px minmax(0,1fr) auto;align-items:center;gap:7px;padding:0 7px;border:0;border-radius:5px;color:var(--fdc-ink);background:transparent;text-align:left;cursor:pointer; }.token-option:hover { background:var(--fdc-subtle); }.token-option .swatch { width:12px;height:12px;border:1px solid rgb(255 255 255 / 14%);border-radius:3px;background:var(--token-color); }.token-option span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px; }.token-option code { color:var(--fdc-muted);font:400 8px/1 var(--fdc-font); }
+  .color-picker-trigger { width:100%;height:32px;display:flex;align-items:center;gap:7px;padding:0 32px 0 7px;border:0;background:transparent;color:var(--fdc-ink);font:400 11px/1 var(--fdc-font);text-align:left;cursor:pointer; }.color-picker-trigger .color-swatch { margin-left:0; }.color-popover { position:fixed;z-index:2147483647;width:280px;padding:10px;border:1px solid var(--fdc-line);border-radius:10px;color:var(--fdc-ink);background:var(--fdc-elevated);box-shadow:0 20px 60px rgb(0 0 0 / 48%);pointer-events:auto; }.color-popover[hidden] { display:none; }.color-popover-head { height:28px;display:flex;align-items:center;margin-bottom:8px; }.color-popover-head strong { font-size:10px;font-weight:550; }.color-popover-head button { margin-left:auto; }.color-plane { position:relative;width:100%;height:150px;overflow:hidden;border-radius:7px;background:linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent),hsl(var(--picker-hue) 100% 50%);cursor:crosshair;touch-action:none; }.color-plane-handle { position:absolute;width:12px;height:12px;transform:translate(-50%,-50%);border:2px solid white;border-radius:50%;box-shadow:0 1px 4px #000;pointer-events:none; }.color-sliders { display:grid;gap:7px;margin-top:9px; }.color-sliders label { display:grid;grid-template-columns:34px minmax(0,1fr);align-items:center;gap:7px;color:var(--fdc-muted);font-size:9px; }.color-sliders input[type="range"] { width:100%;accent-color:var(--fdc-signal); }.color-fields { display:grid;grid-template-columns:minmax(0,1fr) 34px;gap:6px;margin-top:9px; }.color-fields input { min-width:0;height:32px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:5px;color:var(--fdc-ink);background:var(--fdc-paper);font:400 10px/1 var(--fdc-font);outline:none; }.color-fields button { height:32px;display:grid;place-items:center;padding:0;border:1px solid var(--fdc-line);border-radius:5px;color:var(--fdc-muted);background:var(--fdc-paper);cursor:pointer; }.color-fields button:hover { color:var(--fdc-ink); }.color-fields svg { width:13px;height:13px; }.color-popover-section { margin-top:10px;padding-top:9px;border-top:1px solid var(--fdc-line); }.color-popover-section strong { display:block;margin-bottom:6px;color:var(--fdc-muted);font-size:8px;font-weight:500;text-transform:uppercase;letter-spacing:.04em; }.color-swatches { display:flex;flex-wrap:wrap;gap:6px; }.color-swatches button { width:22px;height:22px;padding:0;border:1px solid rgb(255 255 255 / 16%);border-radius:5px;background:var(--picker-swatch);cursor:pointer; }.color-swatches button:hover { box-shadow:0 0 0 2px var(--fdc-signal); }
   .review-summary { background:var(--fdc-paper); }.review-before { color:var(--fdc-muted);background:var(--fdc-subtle); }.review-sample { color:var(--fdc-muted);background:var(--fdc-paper);border-color:var(--fdc-line); }.review-sample::after { color:var(--fdc-muted);background:rgb(28 28 31 / 88%); }
   .confidence-pill { color:#9ec5ff;background:var(--fdc-signal-soft); }.confidence-pill.unresolved { color:#f2ae8f;background:#42271d; }
   .session-status,.session-status.saved { color:#83d8bb;background:#18352c; }.session-status.saving { color:#efd979;background:#3d3417; }.session-status.error,.session-status.offline { color:#f0a18b;background:#40251f; }
   .empty-state-icon { color:#9ec5ff;background:var(--fdc-signal-soft); }.onboarding-card-head span { color:#e7a68c;background:#36231d; }
   .change-count { color:var(--fdc-ink);background:var(--fdc-paper); }
+  .compare-bar button:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }
+  .compare-bar button.active { color:#141416;background:#f0f1f3; }
+  .toast { color:#141416;background:#f0f1f3;border:1px solid #ffffff;box-shadow:0 8px 20px rgb(0 0 0 / 30%); }
   .change-dock .dock-review,.footer .review,.review-actions .apply,.onboarding-actions .onboarding-start,.health-actions .health-fix,.health-footer .health-rescan,.memory-card-actions button:first-child,.empty-state-actions button:first-child { color:#141416;background:#f0f1f3;border-color:#f0f1f3; }.change-dock .dock-review:hover,.footer .review:hover,.review-actions .apply:hover { color:#141416;background:#ffffff; }
   .panel-resizer::after { background:#4a4a50; }
   .empty-state { min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 30px;text-align:center; }.empty-state-icon { width:38px;height:38px;display:grid;place-items:center;margin-bottom:14px;border-radius:10px; }.empty-state-icon svg { width:16px;height:16px; }.empty-state strong { font-size:13px;font-weight:550;letter-spacing:-.01em; }.empty-state p { max-width:230px;margin:7px 0 0;color:var(--fdc-muted);font-size:11px;line-height:1.55; }.empty-state-actions { display:flex;align-items:center;gap:6px;margin-top:16px; }.empty-state-actions button { height:30px;padding:0 10px;border:1px solid var(--fdc-line);border-radius:6px;font-size:10px;cursor:pointer; }.empty-state kbd { margin-top:12px;color:var(--fdc-muted);font:400 9px/1.4 var(--fdc-font); }
@@ -370,7 +398,24 @@ const PANEL_CSS = `
   /* Consistent inset chevrons for every select input */
   select { -webkit-appearance:none;appearance:none;padding-right:30px!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%238f8f96' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 6.5 3 3 3-3'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:right 9px center!important;background-size:16px 16px!important; }
   .control-field .unit-select { width:48px;padding-right:20px!important;padding-left:3px!important;background-position:right 3px center!important;background-size:14px 14px!important; }
-  .layers-panel { top:72px;bottom:12px;max-height:none; }.layers-panel[hidden] { display:none; }
+  .layers-panel { top:72px;bottom:auto;max-height:min(560px,calc(100vh - 84px)); }.layers-panel[hidden] { display:none; }.layers-switch { flex:none; }
+  /* Compact tree rhythm: rows use the panel width while hierarchy remains legible. */
+  .layer-tree { padding:4px 2px;scrollbar-gutter:auto;scrollbar-width:thin;scrollbar-color:#4a4a50 transparent; }
+  .layer-tree::-webkit-scrollbar { width:6px; }
+  .layer-tree::-webkit-scrollbar-track { background:transparent; }
+  .layer-tree::-webkit-scrollbar-thumb { background:#4a4a50;border-radius:999px; }
+  .layer-row { padding-left:calc(2px + var(--layer-depth) * 10px);padding-right:2px; }
+  .layer-selection-glide { right:2px;left:2px; }
+  .layer-toggle,.layer-select { height:30px; }
+  .layer-select { padding-right:2px;padding-left:2px; }
+  .layer-row .layer-meta { margin-right:2px; }
+  .component-list { padding-right:0;padding-left:0; }
+  .component-main { padding-right:6px;padding-left:6px; }
+  .component-variants,.component-actions { padding-right:6px;padding-left:41px; }
+  /* Keep every inspector field on the same 36px interaction rhythm. */
+  .property-control .control-field,.section-grid.two .control-field,.compact-control .control-field { height:36px; }
+  .property-control input,.property-control select,.section-grid.two .compact-control input,.section-grid.two .compact-control select { height:34px; }
+  .control-field>.control-reset { top:5px; }
   .utility-panel { z-index:2147483646;max-height:none;min-width:280px;min-height:280px;box-shadow:0 2px 2px rgb(0 0 0 / 22%),0 18px 48px rgb(0 0 0 / 42%); }.utility-panel[hidden] { display:none; }.utility-handle { cursor:grab;user-select:none;touch-action:none; }.utility-handle:active { cursor:grabbing; }.utility-resizer { position:absolute;right:2px;bottom:2px;width:18px;height:18px;padding:0;border:0;background:transparent;cursor:nwse-resize; }.utility-resizer::after { content:"";position:absolute;right:3px;bottom:3px;width:7px;height:7px;border-right:1px solid var(--fdc-muted);border-bottom:1px solid var(--fdc-muted); }.health-panel,.library-panel { right:auto;max-height:none; }.health-list,.library-body { min-height:0;flex:1; }
   .change-tray { position:fixed;z-index:2147483646;right:var(--fdc-canvas-right,376px);bottom:12px;left:var(--fdc-canvas-left,276px);min-height:0;display:flex;flex-direction:column;align-items:stretch;padding:0;overflow:hidden;color:var(--fdc-ink);background:var(--fdc-surface);border:1px solid var(--fdc-line);border-radius:11px;box-shadow:0 2px 2px rgb(0 0 0 / 22%),0 18px 48px rgb(0 0 0 / 36%);pointer-events:auto; }.change-tray[hidden] { display:none; }.change-tray-summary { min-height:48px;display:grid;grid-template-columns:minmax(0,1fr) auto 32px 72px;align-items:center;gap:7px;padding:6px 7px 6px 11px; }.change-tray-summary .change-count { margin-right:2px; }.change-tray-summary button { height:32px;border:1px solid var(--fdc-line);border-radius:6px;color:var(--fdc-ink);background:var(--fdc-elevated);cursor:pointer; }.change-tray-summary .tray-compare { width:32px;display:grid;place-items:center;padding:0; }.change-tray-summary .tray-compare svg { width:13px;height:13px; }.change-tray-summary button:disabled { opacity:.35;cursor:not-allowed; }.change-tray.expanded { height:min(420px,45vh); }.change-tray.expanded .change-tray-summary { border-bottom:1px solid var(--fdc-line); }.change-tray .review-view:not([hidden]) { min-width:0;min-height:0;display:flex; }.change-tray .review-body { min-height:0;flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-content:start;overflow:auto; }.change-tray .review-group { min-width:0;border-right:1px solid var(--fdc-line); }.change-tray .review-actions { flex:none;grid-template-columns:100px minmax(180px,280px);justify-content:end; }.change-tray .review-head { flex:none; }.change-tray .review-head span { margin-left:auto; }
   /* Focused review list */
@@ -409,8 +454,8 @@ const PANEL_CSS = `
   .tool-shelf { bottom:calc(18px + var(--fdc-tray-lift,0px)); }.tool-select[hidden],.tool-divider[hidden] { display:none; }.tool-select.interact.active { color:white;background:var(--fdc-signal); }.mode-copy { min-width:88px; }.canvas-actions-divider { margin-left:2px; }.multi-actions-divider { margin-left:2px; }
   .compare-bar { bottom:calc(78px + var(--fdc-tray-lift,0px)); }
   @keyframes fdc-selection-title { from { opacity:.45;transform:translateY(2px) } to { opacity:1;transform:none } }
-  @media (max-width:680px){.workspace-bar{right:8px;left:8px;transform:none;overflow-x:auto}.workspace-bar .brand{padding-right:3px}.workspace-bar .brand-copy{display:none}.workspace-bar .status-popover{position:fixed;top:66px;right:8px;left:8px;width:auto}.panel{top:auto;right:8px;bottom:74px;left:8px;width:auto;max-height:56vh}.layers-panel{top:68px;right:8px;bottom:auto;left:8px;width:auto;max-height:42vh}.utility-panel{top:68px!important;right:8px!important;bottom:74px!important;left:8px!important;width:auto!important;height:auto!important;max-height:none}.utility-resizer{display:none}.scope{display:grid;grid-template-columns:1fr 1fr}.controls{min-height:170px}.change-tray{right:8px;bottom:8px;left:8px}.change-tray.expanded{height:48vh}.change-tray .review-body{grid-template-columns:1fr}.tool-shelf{right:8px;bottom:calc(8px + var(--fdc-tray-lift,0px));left:8px;transform:none;max-width:none}.mode-copy{min-width:0}.mode-copy span{display:none}.tool-select::after,.tab::after{display:none}.onboarding-card{right:12px;bottom:68px;left:12px;width:auto;transform:none}.workbench-controls select,.workbench-controls button:not(.icon-button){max-width:92px}.workbench-matrix{grid-template-columns:76px repeat(var(--matrix-columns),minmax(90px,1fr))}}
-  @media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}}
+  @media (max-width:680px){.workspace-bar{right:8px;left:8px;transform:none;overflow-x:auto}.workspace-bar .brand{padding-right:3px}.workspace-bar .brand-copy{display:none}.workspace-bar .status-popover{position:fixed;top:66px;right:8px;left:8px;width:auto}.panel{top:calc(76px + min(32vh,220px));right:8px;bottom:74px;left:8px;width:auto;max-height:none}.layers-panel{top:68px;right:8px;bottom:auto;left:8px;width:auto;max-height:min(32vh,220px)}.utility-panel{top:68px!important;right:8px!important;bottom:74px!important;left:8px!important;width:auto!important;height:auto!important;max-height:none}.utility-resizer{display:none}.scope{display:grid;grid-template-columns:1fr 1fr}.controls{min-height:170px}.change-tray{right:8px;bottom:8px;left:8px}.change-tray.expanded{height:48vh}.change-tray .review-body{grid-template-columns:1fr}.tool-shelf{right:8px;bottom:calc(8px + var(--fdc-tray-lift,0px));left:8px;transform:none;max-width:none}.mode-copy{min-width:0}.mode-copy span{display:none}.tool-select::after,.tab::after{display:none}.onboarding-card{right:12px;bottom:68px;left:12px;width:auto;transform:none}.workbench-controls select,.workbench-controls button:not(.icon-button){max-width:92px}.workbench-matrix{grid-template-columns:76px repeat(var(--matrix-columns),minmax(90px,1fr))}}
+  @media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}.layer-row.entering,.layer-branch{animation:none!important}}
 `;
 
 function numberFrom(value: string): number {
@@ -425,6 +470,7 @@ function pxControl(
   property: keyof CSSStyleDeclaration,
   label: string,
   max = 600,
+  min = 0,
 ): Control {
   return {
     category,
@@ -433,7 +479,7 @@ function pxControl(
     kind: 'number',
     value: numberFrom(String(computed[property])),
     unit: 'px',
-    min: 0,
+    min,
     max,
     step: 1,
     read: () => numberFrom(getComputedStyle(element)[property] as string),
@@ -498,6 +544,51 @@ function numberStyleControl(
   };
 }
 
+function degreeControl(element: HTMLElement, computed: CSSStyleDeclaration): Control {
+  const read = (): number => numberFrom(getComputedStyle(element).rotate || '0');
+  return {
+    category: 'layout',
+    property: 'rotate',
+    label: 'Rotation',
+    kind: 'number',
+    value: numberFrom(computed.rotate || '0'),
+    unit: 'deg',
+    min: -360,
+    max: 360,
+    step: 1,
+    read,
+    apply: (value) => element.style.setProperty('rotate', `${value}deg`),
+  };
+}
+
+function scaleAxisControl(
+  element: HTMLElement,
+  computed: CSSStyleDeclaration,
+  axis: 'x' | 'y',
+): Control {
+  const readScale = (): [number, number] => {
+    const raw = getComputedStyle(element).scale;
+    if (!raw || raw === 'none') return [1, 1];
+    const values = raw.split(/\s+/).map(numberFrom);
+    return [values[0] || 1, values[1] ?? values[0] ?? 1];
+  };
+  const initial = computed.scale && computed.scale !== 'none' ? readScale() : [1, 1];
+  return {
+    category: 'layout',
+    property: axis === 'x' ? 'scaleX' : 'scaleY',
+    label: axis === 'x' ? 'Flip horizontal' : 'Flip vertical',
+    kind: 'select',
+    options: ['1', '-1'],
+    value: String(axis === 'x' ? initial[0] : initial[1]),
+    read: () => String(axis === 'x' ? readScale()[0] : readScale()[1]),
+    apply: (value) => {
+      const current = readScale();
+      current[axis === 'x' ? 0 : 1] = Number(value);
+      element.style.setProperty('scale', `${current[0]} ${current[1]}`);
+    },
+  };
+}
+
 function sizingModeControl(
   element: HTMLElement,
   computed: CSSStyleDeclaration,
@@ -549,6 +640,12 @@ function sizingModeControl(
 function controlsFor(element: HTMLElement): Control[] {
   const computed = getComputedStyle(element);
   const controls: Control[] = [
+    ...(computed.position !== 'static'
+      ? [
+          pxControl(element, computed, 'layout', 'left', 'X position', 5000, -5000),
+          pxControl(element, computed, 'layout', 'top', 'Y position', 5000, -5000),
+        ]
+      : []),
     sizingModeControl(element, computed, 'width'),
     sizingModeControl(element, computed, 'height'),
     styleControl(element, computed, 'layout', 'minWidth', 'Minimum width'),
@@ -561,6 +658,9 @@ function controlsFor(element: HTMLElement): Control[] {
       'auto',
       'scroll',
     ]),
+    degreeControl(element, computed),
+    scaleAxisControl(element, computed, 'x'),
+    scaleAxisControl(element, computed, 'y'),
     pxControl(element, computed, 'layout', 'width', 'Width', 1600),
     pxControl(element, computed, 'layout', 'height', 'Height', 1200),
     styleControl(element, computed, 'layout', 'display', 'Display', 'select', [
@@ -617,6 +717,10 @@ function controlsFor(element: HTMLElement): Control[] {
     numberStyleControl(element, computed, 'color', 'opacity', 'Opacity', 0, 1, 0.05),
     styleControl(element, computed, 'color', 'backgroundImage', 'Gradient'),
     pxControl(element, computed, 'effects', 'borderRadius', 'Corner radius', 200),
+    pxControl(element, computed, 'effects', 'borderTopLeftRadius', 'Top left radius', 200),
+    pxControl(element, computed, 'effects', 'borderTopRightRadius', 'Top right radius', 200),
+    pxControl(element, computed, 'effects', 'borderBottomLeftRadius', 'Bottom left radius', 200),
+    pxControl(element, computed, 'effects', 'borderBottomRightRadius', 'Bottom right radius', 200),
     pxControl(element, computed, 'effects', 'borderWidth', 'Border width', 32),
     styleControl(element, computed, 'effects', 'borderColor', 'Border color', 'color'),
     styleControl(element, computed, 'effects', 'boxShadow', 'Shadow'),
@@ -722,7 +826,19 @@ function controlsFor(element: HTMLElement): Control[] {
       },
     });
   }
-  return controls;
+  const textBearing =
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    Boolean(element.textContent?.trim());
+  const editableText =
+    element.childElementCount === 0 ||
+    ['BUTTON', 'A', 'LABEL', 'SUMMARY'].includes(element.tagName);
+  return controls.filter((control) => {
+    if (control.category === 'typography') return textBearing;
+    if (control.property === 'textContent') return textBearing && editableText;
+    if (control.property === 'color') return textBearing;
+    return true;
+  });
 }
 
 function colorForInput(value: string): string {
@@ -730,8 +846,78 @@ function colorForInput(value: string): string {
   canvas.width = canvas.height = 1;
   const context = canvas.getContext('2d');
   if (!context) return '#000000';
+  context.fillStyle = '#000000';
   context.fillStyle = value;
-  return context.fillStyle.startsWith('#') ? context.fillStyle : '#000000';
+  const normalized = context.fillStyle;
+  if (normalized.startsWith('#')) return normalized;
+  const channels = normalized
+    .match(/[\d.]+/g)
+    ?.slice(0, 3)
+    .map(Number);
+  if (!channels || channels.length < 3) return '#000000';
+  return `#${channels.map((channel) => Math.round(channel).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function hexChannels(value: string): [number, number, number] {
+  const hex = colorForInput(value).slice(1);
+  return [
+    Number.parseInt(hex.slice(0, 2), 16),
+    Number.parseInt(hex.slice(2, 4), 16),
+    Number.parseInt(hex.slice(4, 6), 16),
+  ];
+}
+
+function colorAlpha(value: string): number {
+  const slash = value.match(/\/\s*([\d.]+)%?\s*\)/);
+  if (slash) return value.includes('%') ? Number(slash[1]) / 100 : Number(slash[1]);
+  const comma = value.match(/rgba?\([^)]*,\s*([\d.]+)\s*\)$/);
+  return comma ? Number(comma[1]) : isTransparentColor(value) ? 0 : 1;
+}
+
+function rgbToHsv(red: number, green: number, blue: number): [number, number, number] {
+  const r = red / 255;
+  const g = green / 255;
+  const b = blue / 255;
+  const maximum = Math.max(r, g, b);
+  const minimum = Math.min(r, g, b);
+  const delta = maximum - minimum;
+  let hue = 0;
+  if (delta) {
+    if (maximum === r) hue = 60 * (((g - b) / delta) % 6);
+    else if (maximum === g) hue = 60 * ((b - r) / delta + 2);
+    else hue = 60 * ((r - g) / delta + 4);
+  }
+  if (hue < 0) hue += 360;
+  return [hue, maximum ? delta / maximum : 0, maximum];
+}
+
+function hsvToRgb(hue: number, saturation: number, value: number): [number, number, number] {
+  const chroma = value * saturation;
+  const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const match = value - chroma;
+  const [r, g, b] =
+    hue < 60
+      ? [chroma, x, 0]
+      : hue < 120
+        ? [x, chroma, 0]
+        : hue < 180
+          ? [0, chroma, x]
+          : hue < 240
+            ? [0, x, chroma]
+            : hue < 300
+              ? [x, 0, chroma]
+              : [chroma, 0, x];
+  return [r, g, b].map((channel) => Math.round((channel + match) * 255)) as [
+    number,
+    number,
+    number,
+  ];
+}
+
+function rgbHex(red: number, green: number, blue: number): string {
+  return `#${[red, green, blue]
+    .map((channel) => Math.max(0, Math.min(255, channel)).toString(16).padStart(2, '0'))
+    .join('')}`;
 }
 
 function escapeHtml(value: string): string {
@@ -770,7 +956,7 @@ function renderControlInput(control: Control, index: number): string {
     const rawValue = String(control.value);
     const value = colorForInput(rawValue);
     const transparent = isTransparentColor(rawValue);
-    return `<span class="color-swatch ${transparent ? 'transparent' : ''}" style="--swatch-color:${value}"></span><span class="color-value">${transparent ? 'Transparent' : escapeHtml(value.toUpperCase())}</span><input class="color-picker" id="${id}" data-control="${index}" aria-label="${escapeHtml(control.label)}" type="color" value="${escapeHtml(value)}"/>`;
+    return `<button type="button" class="color-picker-trigger" id="${id}" data-color-control="${index}" aria-label="Edit ${escapeHtml(control.label)}"><span class="color-swatch ${transparent ? 'transparent' : ''}" style="--swatch-color:${value}"></span><span class="color-value">${transparent ? 'Transparent' : escapeHtml(value.toUpperCase())}</span></button>`;
   }
   const type = control.kind === 'number' ? 'number' : 'text';
   const value = displayValue(control);
@@ -841,7 +1027,7 @@ export function installFoundryInspector(
     </header>
     <aside class="layers-panel" aria-label="Foundry layers" hidden>
       <div class="layers-head"><i data-foundry-icon="layers-3"></i><strong>Layers</strong><span data-layer-count></span><button class="icon-button close-layers" aria-label="Close layers"><i data-foundry-icon="x"></i></button></div>
-      <div class="layers-search"><input type="search" aria-label="Search layers" placeholder="Search layers" /></div><div class="layer-tree"></div>
+      <div class="layers-search"><input type="search" aria-label="Search layers" placeholder="Search layers" /></div><div class="layer-tree" role="tree" aria-label="Canvas layers"></div>
     </aside>
     <aside class="health-panel utility-panel" data-utility="health" aria-label="Design health" hidden>
       <div class="health-head utility-handle"><i data-foundry-icon="activity"></i><strong>Design health</strong><button class="icon-button close-health" aria-label="Close design health"><i data-foundry-icon="x"></i></button></div>
@@ -900,8 +1086,15 @@ export function installFoundryInspector(
   commandPalette.className = 'command-palette';
   commandPalette.hidden = true;
   commandPalette.setAttribute('aria-label', 'Foundry commands');
-  commandPalette.innerHTML = `<input type="search" aria-label="Search commands" placeholder="Type a command"/><div class="command-list"></div>`;
+  commandPalette.setAttribute('role', 'dialog');
+  commandPalette.innerHTML = `<div class="command-search"><input type="search" aria-label="Search commands" placeholder="Type a command"/><button class="icon-button close-commands" aria-label="Close commands" title="Close commands"><i data-foundry-icon="x"></i></button></div><div class="command-list"></div>`;
   shadow.append(commandPalette);
+  const colorPopover = document.createElement('section');
+  colorPopover.className = 'color-popover';
+  colorPopover.hidden = true;
+  colorPopover.setAttribute('role', 'dialog');
+  colorPopover.setAttribute('aria-label', 'Color editor');
+  shadow.append(colorPopover);
   const libraryPanel = document.createElement('aside');
   libraryPanel.className = 'library-panel utility-panel';
   libraryPanel.dataset.utility = 'memory';
@@ -1040,6 +1233,8 @@ export function installFoundryInspector(
     hasChildren: boolean;
   }> = [];
   const collapsedLayers = new WeakSet<HTMLElement>();
+  let visibleLayerElements = new Set<HTMLElement>();
+  let layerGlideTop: number | null = null;
   const layerViewPreferenceKey = '__foundry_layer_view';
   let layerView: 'layers' | 'components' =
     sessionStorage.getItem(layerViewPreferenceKey) === 'components' ? 'components' : 'layers';
@@ -1100,12 +1295,26 @@ export function installFoundryInspector(
   const previewHistory: HistoryEntry[] = [];
   let historyCursor = 0;
   let paddingLinked = true;
+  let radiusLinked = true;
   let tokenOnly = false;
   let activeControlProperty = '';
+  const recentColors = new Set<string>();
+  let activeColor:
+    | {
+        index: number;
+        control: Control;
+        element: HTMLElement;
+        hue: number;
+        saturation: number;
+        value: number;
+        alpha: number;
+      }
+    | undefined;
   let lastRecordedSummary = '';
   let statusResetTimer: ReturnType<typeof setTimeout> | undefined;
   let hydratedOnce = false;
   const collapsedSections = new Set<string>();
+  let sectionPreferenceTouched = sessionStorage.getItem('__foundry_collapsed_sections') != null;
   try {
     for (const key of JSON.parse(sessionStorage.getItem('__foundry_collapsed_sections') ?? '[]')) {
       if (typeof key === 'string') collapsedSections.add(key);
@@ -2044,19 +2253,42 @@ export function installFoundryInspector(
         ? virtualRange(visible.length, previousScrollTop, layerTree.clientHeight || 320, 30, 8)
         : { start: 0, end: visible.length, before: 0, after: 0 };
     const rendered = visible.slice(range.start, range.end);
+    const hasRenderedSelection = rendered.some((entry) => selectedElements.includes(entry.element));
+    const previouslyVisible = visibleLayerElements;
+    visibleLayerElements = new Set(visible.map((entry) => entry.element));
     layerTree.innerHTML = visible.length
       ? `${range.before ? `<div class="layer-spacer" style="height:${range.before}px"></div>` : ''}${rendered
-          .map((entry) => {
+          .map((entry, renderedPosition) => {
             const index = layerEntries.indexOf(entry);
             const meta = entry.instrumented ? 'Mapped' : entry.kind;
             const collapsed = collapsedLayers.has(entry.element);
-            return `<div class="layer-row ${selectedElements.includes(entry.element) ? 'selected' : ''}" style="--layer-depth:${Math.min(entry.depth, 8)}" data-layer-row="${index}" draggable="true"><button class="layer-toggle" data-layer-toggle="${index}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${escapeHtml(entry.label)}" aria-expanded="${!collapsed}" ${entry.hasChildren ? '' : 'disabled'}><i data-foundry-icon="${collapsed ? 'chevron-right' : 'chevron-down'}"></i></button><button class="layer-select" data-layer-index="${index}" aria-label="Select ${escapeHtml(entry.label)}"><i class="layer-icon" data-foundry-icon="${entry.kind === 'component' ? 'component' : 'box'}"></i><span class="layer-label">${escapeHtml(entry.label)}</span><span class="layer-meta">${escapeHtml(meta)}</span></button></div>`;
+            const position = range.start + renderedPosition;
+            const depth = Math.min(entry.depth, 8);
+            const selectedLayer = selectedElements.includes(entry.element);
+            const entering = previouslyVisible.has(entry.element) ? '' : ' entering';
+            const branch = depth ? `<span class="layer-branch" aria-hidden="true"></span>` : '';
+            return `<div class="layer-row ${selectedLayer ? 'selected' : ''}${entering}" style="--layer-depth:${depth};--layer-position:${Math.min(renderedPosition, 5)};--layer-branch-left:${10 + (depth - 1) * 10}px" data-layer-row="${index}" draggable="true">${branch}<button class="layer-toggle" data-layer-toggle="${index}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${escapeHtml(entry.label)}" aria-expanded="${!collapsed}" ${entry.hasChildren ? '' : 'disabled'}><i data-foundry-icon="${collapsed ? 'chevron-right' : 'chevron-down'}"></i></button><button class="layer-select" data-layer-index="${index}" role="treeitem" aria-level="${depth + 1}" aria-posinset="${position + 1}" aria-setsize="${visible.length}" aria-selected="${selectedLayer}" ${entry.hasChildren ? `aria-expanded="${!collapsed}"` : ''} tabindex="${selectedLayer || (!hasRenderedSelection && renderedPosition === 0) ? '0' : '-1'}" aria-label="Select ${escapeHtml(entry.label)}"><i class="layer-icon" data-foundry-icon="${entry.kind === 'component' ? 'component' : 'box'}"></i><span class="layer-label">${escapeHtml(entry.label)}</span><span class="layer-meta">${escapeHtml(meta)}</span></button></div>`;
           })
           .join(
             '',
           )}${range.after ? `<div class="layer-spacer" style="height:${range.after}px"></div>` : ''}`
       : '<div class="layers-empty">No visible layers match this search.</div>';
     layerTree.scrollTop = previousScrollTop;
+    const selectedRow = layerTree.querySelector<HTMLElement>('.layer-row.selected');
+    if (selectedRow) {
+      const targetTop = selectedRow.offsetTop;
+      const glide = document.createElement('span');
+      glide.className = 'layer-selection-glide';
+      glide.setAttribute('aria-hidden', 'true');
+      glide.style.setProperty('--layer-glide-y', `${layerGlideTop ?? targetTop}px`);
+      layerTree.prepend(glide);
+      requestAnimationFrame(() => {
+        glide.style.setProperty('--layer-glide-y', `${targetTop}px`);
+      });
+      layerGlideTop = targetTop;
+    } else {
+      layerGlideTop = null;
+    }
     renderIcons(layerTree);
     layerTree.querySelectorAll<HTMLElement>('[data-layer-row]').forEach((row) => {
       const entry = layerEntries[Number(row.dataset.layerRow)];
@@ -2138,6 +2370,77 @@ export function installFoundryInspector(
       button.addEventListener('click', (event) => {
         select(entry.element, event.shiftKey);
         entry.element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      });
+      button.addEventListener('keydown', (event) => {
+        const buttons = [...layerTree.querySelectorAll<HTMLButtonElement>('[data-layer-index]')];
+        const currentIndex = buttons.indexOf(button);
+        const focusAt = (index: number): void => {
+          const target = buttons[index];
+          if (!target) return;
+          buttons.forEach((item) => (item.tabIndex = item === target ? 0 : -1));
+          target.focus();
+          target.closest('.layer-row')?.scrollIntoView({ block: 'nearest' });
+        };
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          focusAt(Math.min(buttons.length - 1, currentIndex + 1));
+          return;
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          focusAt(Math.max(0, currentIndex - 1));
+          return;
+        }
+        if (event.key === 'Home') {
+          event.preventDefault();
+          focusAt(0);
+          return;
+        }
+        if (event.key === 'End') {
+          event.preventDefault();
+          focusAt(buttons.length - 1);
+          return;
+        }
+        if (event.key === 'ArrowRight' && entry.hasChildren) {
+          event.preventDefault();
+          if (collapsedLayers.has(entry.element)) {
+            collapsedLayers.delete(entry.element);
+            renderLayers(false);
+            requestAnimationFrame(() =>
+              layerTree
+                .querySelector<HTMLButtonElement>(
+                  `[data-layer-index="${layerEntries.indexOf(entry)}"]`,
+                )
+                ?.focus(),
+            );
+          } else {
+            const next = buttons[currentIndex + 1];
+            const nextEntry = next ? layerEntries[Number(next.dataset.layerIndex)] : undefined;
+            if (nextEntry && nextEntry.depth > entry.depth) focusAt(currentIndex + 1);
+          }
+          return;
+        }
+        if (event.key !== 'ArrowLeft') return;
+        event.preventDefault();
+        if (entry.hasChildren && !collapsedLayers.has(entry.element)) {
+          collapsedLayers.add(entry.element);
+          renderLayers(false);
+          requestAnimationFrame(() =>
+            layerTree
+              .querySelector<HTMLButtonElement>(
+                `[data-layer-index="${layerEntries.indexOf(entry)}"]`,
+              )
+              ?.focus(),
+          );
+          return;
+        }
+        for (let index = currentIndex - 1; index >= 0; index -= 1) {
+          const candidate = layerEntries[Number(buttons[index]?.dataset.layerIndex)];
+          if (candidate && candidate.depth < entry.depth) {
+            focusAt(index);
+            break;
+          }
+        }
       });
     });
   }
@@ -3452,18 +3755,8 @@ export function installFoundryInspector(
 
   function renderContextPanel(category: Category): string {
     if (!selected) return '';
-    const supportsTokens = ['layout', 'typography', 'color', 'effects'].includes(category);
-    const tokens = supportsTokens ? tokensForCategory(category).slice(0, 24) : [];
     const component = selectedComponent();
     const variants = component?.variants ?? [];
-    const tokenPanel = tokens.length
-      ? `<section class="native-panel"><div class="native-panel-head"><strong>Project ${category === 'typography' ? 'styles' : 'tokens'}</strong><span>${tokens.length}</span></div><input class="native-search" type="search" placeholder="Search project values" aria-label="Search project values"/><div class="native-grid">${tokens
-          .map(
-            (token) =>
-              `<button class="native-chip" data-native-token="${escapeHtml(token.id)}" data-token-search="${escapeHtml(`${token.name} ${token.value}`.toLowerCase())}" title="${escapeHtml(token.value)}">${category === 'color' ? `<span class="swatch" style="--token-color:${escapeHtml(token.value)}"></span>` : ''}<span>${escapeHtml(token.name)}</span></button>`,
-          )
-          .join('')}</div></section>`
-      : '';
     const contrast =
       category === 'color'
         ? contrastRatio(getComputedStyle(selected).color, opaqueBackground(selected))
@@ -3485,19 +3778,7 @@ export function installFoundryInspector(
             )
             .join('')}</div></section>`
         : '';
-    const categoryTools =
-      category === 'layout'
-        ? `<div class="context-tools"><button data-layout-action="tidy"><i data-foundry-icon="wand-sparkles"></i>Tidy layout</button><button data-layout-action="up"><i data-foundry-icon="arrow-up"></i>Move up</button><button data-layout-action="down"><i data-foundry-icon="arrow-down"></i>Move down</button><button data-layout-action="lock"><i data-foundry-icon="lock"></i>Lock ratio</button></div>`
-        : category === 'typography'
-          ? `<div class="context-tools"><button data-type-preset="compact">Compact</button><button data-type-preset="body">Body</button><button data-type-preset="display">Display</button></div>`
-          : category === 'color'
-            ? `<div class="context-tools"><button data-color-action="gradient">Linear gradient</button><button data-color-action="clear">Clear fill</button></div>`
-            : '';
-    const tokenMode =
-      category === 'layout' && (designGraph?.tokens.length ?? 0)
-        ? `<div class="context-tools"><button class="${tokenOnly ? 'active' : ''}" data-token-only><i data-foundry-icon="${tokenOnly ? 'lock' : 'unlink-2'}"></i>${tokenOnly ? 'Token-only on' : 'Token-only off'}</button></div>`
-        : '';
-    return `${categoryTools}${tokenMode}${health}${variantPanel}${tokenPanel}`;
+    return `${health}${variantPanel}`;
   }
 
   async function applyControlValue(
@@ -3635,16 +3916,18 @@ export function installFoundryInspector(
     });
     controlsRoot.querySelectorAll<HTMLButtonElement>('[data-color-action]').forEach((button) => {
       button.addEventListener('click', () => {
-        const control = controls.find((item) => item.property === 'backgroundImage');
-        if (!control) return;
-        const value =
-          button.dataset.colorAction === 'clear'
-            ? 'none'
-            : 'linear-gradient(135deg, currentColor 0%, transparent 100%)';
+        const gradient = controls.find((item) => item.property === 'backgroundImage');
+        if (!gradient) return;
+        if (button.dataset.colorAction === 'clear') {
+          const fill = controls.find((item) => item.property === 'backgroundColor');
+          if (fill) void applyControlValue(fill, 'transparent', 'Clear fill color');
+          void applyControlValue(gradient, 'none', 'Clear fill gradient');
+          return;
+        }
         void applyControlValue(
-          control,
-          value,
-          button.dataset.colorAction === 'clear' ? 'Clear fill' : 'Add linear gradient',
+          gradient,
+          'linear-gradient(135deg, currentColor 0%, transparent 100%)',
+          'Add linear gradient',
         );
       });
     });
@@ -3681,6 +3964,13 @@ export function installFoundryInspector(
       const siblings = [...parent.children].filter((item) => item !== element);
       const index = Math.max(0, Math.min(Number(value), siblings.length));
       parent.insertBefore(element, siblings[index] ?? null);
+    } else if (property === 'rotate') element.style.rotate = `${value}${unit ?? 'deg'}`;
+    else if (property === 'scaleX' || property === 'scaleY') {
+      const raw = getComputedStyle(element).scale;
+      const parts = !raw || raw === 'none' ? [1, 1] : raw.split(/\s+/).map(numberFrom);
+      const x = property === 'scaleX' ? Number(value) : (parts[0] ?? 1);
+      const y = property === 'scaleY' ? Number(value) : (parts[1] ?? parts[0] ?? 1);
+      element.style.scale = `${x} ${y}`;
     } else if (property === 'textContent') element.textContent = String(value);
     else if (['aria-label', 'role', 'tabindex', 'alt', 'src'].includes(property))
       element.setAttribute(property, String(value));
@@ -3880,8 +4170,16 @@ export function installFoundryInspector(
     { id: 'review', label: 'Review changes', shortcut: '', icon: 'file-text' },
   ];
 
-  function runCommand(id: string): void {
+  let commandReturnFocus: HTMLElement | null = null;
+
+  function closeCommands(restoreFocus = true): void {
     commandPalette.hidden = true;
+    if (restoreFocus && commandReturnFocus?.isConnected) commandReturnFocus.focus();
+    commandReturnFocus = null;
+  }
+
+  function runCommand(id: string): void {
+    closeCommands(false);
     if (id === 'health') openHealth();
     if (id === 'layers') toggleLayers(true);
     if (id === 'compare') showComparison('after');
@@ -3922,6 +4220,7 @@ export function installFoundryInspector(
   }
 
   function openCommands(): void {
+    commandReturnFocus = shadow.activeElement as HTMLElement | null;
     commandPalette.hidden = false;
     const input = commandPalette.querySelector<HTMLInputElement>('input')!;
     input.value = '';
@@ -4302,6 +4601,205 @@ export function installFoundryInspector(
     });
   }
 
+  function activeColorValue(): string {
+    if (!activeColor) return '#000000';
+    const [red, green, blue] = hsvToRgb(activeColor.hue, activeColor.saturation, activeColor.value);
+    return activeColor.alpha >= 0.999
+      ? rgbHex(red, green, blue)
+      : `rgba(${red}, ${green}, ${blue}, ${Math.round(activeColor.alpha * 100) / 100})`;
+  }
+
+  function refreshColorPopover(): void {
+    if (!activeColor) return;
+    const plane = colorPopover.querySelector<HTMLElement>('.color-plane');
+    const handle = colorPopover.querySelector<HTMLElement>('.color-plane-handle');
+    const hex = colorPopover.querySelector<HTMLInputElement>('[data-color-hex]');
+    const hue = colorPopover.querySelector<HTMLInputElement>('[data-color-hue]');
+    const alpha = colorPopover.querySelector<HTMLInputElement>('[data-color-alpha]');
+    if (plane) plane.style.setProperty('--picker-hue', String(activeColor.hue));
+    if (handle) {
+      handle.style.left = `${activeColor.saturation * 100}%`;
+      handle.style.top = `${(1 - activeColor.value) * 100}%`;
+    }
+    if (hex) hex.value = colorForInput(activeColorValue()).toUpperCase();
+    if (hue) hue.value = String(Math.round(activeColor.hue));
+    if (alpha) alpha.value = String(Math.round(activeColor.alpha * 100));
+  }
+
+  function previewActiveColor(): void {
+    if (!activeColor) return;
+    const value = activeColorValue();
+    activeColor.control.apply(value);
+    const trigger = controlsRoot.querySelector<HTMLButtonElement>(
+      `[data-color-control="${activeColor.index}"]`,
+    );
+    const swatch = trigger?.querySelector<HTMLElement>('.color-swatch');
+    const label = trigger?.querySelector<HTMLElement>('.color-value');
+    if (swatch) {
+      swatch.classList.toggle('transparent', activeColor.alpha === 0);
+      swatch.style.setProperty('--swatch-color', colorForInput(value));
+    }
+    if (label) label.textContent = activeColor.alpha === 0 ? 'Transparent' : value.toUpperCase();
+    refreshColorPopover();
+    updateOutline();
+  }
+
+  function commitActiveColor(before: string | number): void {
+    if (!activeColor) return;
+    const after = activeColor.control.read();
+    if (String(before) === String(after)) return;
+    recentColors.delete(String(after));
+    recentColors.add(String(after));
+    while (recentColors.size > 8) recentColors.delete(recentColors.values().next().value!);
+    pushHistory({
+      element: activeColor.element,
+      property: activeColor.control.property,
+      before,
+      after,
+      category: activeColor.control.category,
+      label: activeColor.control.label,
+    });
+    void record(activeColor.control, before, after, activeColor.element, 'Choose color');
+  }
+
+  function setActiveColor(value: string): void {
+    if (!activeColor) return;
+    const [red, green, blue] = hexChannels(value);
+    const [hue, saturation, brightness] = rgbToHsv(red, green, blue);
+    activeColor.hue = hue;
+    activeColor.saturation = saturation;
+    activeColor.value = brightness;
+    activeColor.alpha = colorAlpha(value);
+    previewActiveColor();
+  }
+
+  function openColorEditor(trigger: HTMLButtonElement, index: number): void {
+    const control = selectedControls[index];
+    if (!control || control.kind !== 'color' || !selected) return;
+    const [red, green, blue] = hexChannels(String(control.read()));
+    const [hue, saturation, value] = rgbToHsv(red, green, blue);
+    activeColor = {
+      index,
+      control,
+      element: selected,
+      hue,
+      saturation,
+      value,
+      alpha: colorAlpha(String(control.read())),
+    };
+    const tokens = tokensForCategory('color').slice(0, 18);
+    colorPopover.innerHTML = `<div class="color-popover-head"><strong>${escapeHtml(control.label)}</strong><button class="icon-button" data-close-color aria-label="Close color editor"><i data-foundry-icon="x"></i></button></div><div class="color-plane" style="--picker-hue:${hue}"><span class="color-plane-handle"></span></div><div class="color-sliders"><label>Hue<input data-color-hue type="range" min="0" max="359" value="${Math.round(hue)}"/></label><label>Alpha<input data-color-alpha type="range" min="0" max="100" value="${Math.round(activeColor.alpha * 100)}"/></label></div><div class="color-fields"><input data-color-hex aria-label="Hex color" value="${colorForInput(String(control.read())).toUpperCase()}"/><button data-eyedropper aria-label="Pick color from page" title="Eyedropper"><i data-foundry-icon="palette"></i></button></div>${tokens.length ? `<div class="color-popover-section"><strong>Project colors</strong><div class="color-swatches">${tokens.map((token) => `<button data-color-value="${escapeHtml(token.value)}" style="--picker-swatch:${escapeHtml(token.value)}" aria-label="Use ${escapeHtml(token.name)}" title="${escapeHtml(`${token.name} · ${token.value}`)}"></button>`).join('')}</div></div>` : ''}${
+      recentColors.size
+        ? `<div class="color-popover-section"><strong>Recent</strong><div class="color-swatches">${[
+            ...recentColors,
+          ]
+            .reverse()
+            .map(
+              (color) =>
+                `<button data-color-value="${escapeHtml(color)}" style="--picker-swatch:${escapeHtml(color)}" aria-label="Use recent color ${escapeHtml(color)}"></button>`,
+            )
+            .join('')}</div></div>`
+        : ''
+    }`;
+    renderIcons(colorPopover);
+    colorPopover.hidden = false;
+    const triggerRect = trigger.getBoundingClientRect();
+    const popoverRect = colorPopover.getBoundingClientRect();
+    const left = Math.max(8, Math.min(window.innerWidth - popoverRect.width - 8, triggerRect.left));
+    const preferredTop = triggerRect.bottom + 6;
+    const top =
+      preferredTop + popoverRect.height <= window.innerHeight - 8
+        ? preferredTop
+        : Math.max(8, triggerRect.top - popoverRect.height - 6);
+    colorPopover.style.left = `${Math.round(left)}px`;
+    colorPopover.style.top = `${Math.round(top)}px`;
+    refreshColorPopover();
+
+    colorPopover.querySelector('[data-close-color]')?.addEventListener('click', () => {
+      colorPopover.hidden = true;
+      activeColor = undefined;
+      trigger.focus();
+    });
+    const plane = colorPopover.querySelector<HTMLElement>('.color-plane')!;
+    plane.addEventListener('pointerdown', (event) => {
+      if (!activeColor) return;
+      const before = activeColor.control.read();
+      plane.setPointerCapture(event.pointerId);
+      const update = (pointer: PointerEvent): void => {
+        if (!activeColor) return;
+        const rect = plane.getBoundingClientRect();
+        activeColor.saturation = Math.max(
+          0,
+          Math.min(1, (pointer.clientX - rect.left) / rect.width),
+        );
+        activeColor.value =
+          1 - Math.max(0, Math.min(1, (pointer.clientY - rect.top) / rect.height));
+        previewActiveColor();
+      };
+      const finish = (pointer: PointerEvent): void => {
+        update(pointer);
+        commitActiveColor(before);
+        plane.removeEventListener('pointermove', update);
+        plane.removeEventListener('pointerup', finish);
+        plane.removeEventListener('pointercancel', finish);
+      };
+      update(event);
+      plane.addEventListener('pointermove', update);
+      plane.addEventListener('pointerup', finish);
+      plane.addEventListener('pointercancel', finish);
+    });
+    const bindSlider = (selector: string, apply: (value: number) => void): void => {
+      const slider = colorPopover.querySelector<HTMLInputElement>(selector)!;
+      let before: string | number = control.read();
+      slider.addEventListener('pointerdown', () => {
+        before = control.read();
+      });
+      slider.addEventListener('input', () => {
+        apply(Number(slider.value));
+        previewActiveColor();
+      });
+      slider.addEventListener('change', () => commitActiveColor(before));
+    };
+    bindSlider('[data-color-hue]', (next) => {
+      if (activeColor) activeColor.hue = next;
+    });
+    bindSlider('[data-color-alpha]', (next) => {
+      if (activeColor) activeColor.alpha = next / 100;
+    });
+    const hexField = colorPopover.querySelector<HTMLInputElement>('[data-color-hex]')!;
+    let hexBefore: string | number = control.read();
+    hexField.addEventListener('focus', () => {
+      hexBefore = control.read();
+    });
+    hexField.addEventListener('change', () => {
+      setActiveColor(hexField.value);
+      commitActiveColor(hexBefore);
+    });
+    colorPopover.querySelectorAll<HTMLButtonElement>('[data-color-value]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const before = control.read();
+        setActiveColor(button.dataset.colorValue ?? '#000000');
+        commitActiveColor(before);
+      });
+    });
+    colorPopover
+      .querySelector<HTMLButtonElement>('[data-eyedropper]')
+      ?.addEventListener('click', async () => {
+        const EyeDropper = (
+          window as unknown as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } }
+        ).EyeDropper;
+        if (!EyeDropper) {
+          showToast('Eyedropper is not available in this browser');
+          return;
+        }
+        const before = control.read();
+        const result = await new EyeDropper().open().catch(() => undefined);
+        if (!result) return;
+        setActiveColor(result.sRGBHex);
+        commitActiveColor(before);
+      });
+  }
+
   function renderControls(): void {
     renderToolTabs();
     if (!selected) {
@@ -4319,20 +4817,55 @@ export function installFoundryInspector(
       {
         key: 'layout',
         category: 'layout',
-        label: 'Layout and spacing',
+        label: 'Layout',
         icon: CATEGORY_ICONS.layout,
         sectionLabels: ['Flow', 'Padding', 'Margin'],
         showContext: true,
       },
-      ...(['typography', 'color', 'effects', 'content', 'accessibility'] as Category[]).map(
-        (category) => ({
-          key: category,
-          category,
-          label: CATEGORY_LABELS[category],
-          icon: CATEGORY_ICONS[category],
-          showContext: true,
-        }),
-      ),
+      {
+        key: 'typography',
+        category: 'typography',
+        label: 'Typography',
+        icon: CATEGORY_ICONS.typography,
+        showContext: true,
+      },
+      {
+        key: 'appearance',
+        category: 'color',
+        label: 'Appearance',
+        icon: 'eye',
+        sectionLabels: ['Appearance'],
+      },
+      {
+        key: 'fill',
+        category: 'color',
+        label: 'Fill',
+        icon: CATEGORY_ICONS.color,
+        sectionLabels: ['Fill'],
+        showContext: true,
+      },
+      {
+        key: 'stroke',
+        category: 'effects',
+        label: 'Stroke',
+        icon: 'box',
+        sectionLabels: ['Stroke'],
+      },
+      {
+        key: 'effects',
+        category: 'effects',
+        label: 'Effects',
+        icon: CATEGORY_ICONS.effects,
+        sectionLabels: ['Corners', 'Effects'],
+        showContext: true,
+      },
+      ...(['content', 'accessibility'] as Category[]).map((category) => ({
+        key: category,
+        category,
+        label: CATEGORY_LABELS[category],
+        icon: CATEGORY_ICONS[category],
+        showContext: true,
+      })),
     ];
     const indexedControls = selectedControls
       .map((control, index) => ({ control, index }))
@@ -4371,7 +4904,19 @@ export function installFoundryInspector(
             entries.forEach(({ control }) => renderedProperties.add(control.property));
             if (!entries.length) return '';
             const sectionKey = `${group.key}:${section.label}`;
-            return `<section class="property-section ${collapsedSections.has(sectionKey) ? 'collapsed' : ''}" data-section-key="${escapeHtml(sectionKey)}"><div class="section-head"><button class="section-toggle" aria-expanded="${String(!collapsedSections.has(sectionKey))}"><i data-foundry-icon="chevron-down"></i><strong>${escapeHtml(section.label)}</strong></button>${section.label === 'Padding' ? `<button class="section-action ${paddingLinked ? 'active' : ''}" data-padding-link aria-label="${paddingLinked ? 'Unlink padding values' : 'Link padding values'}"><i data-foundry-icon="${paddingLinked ? 'link-2' : 'unlink-2'}"></i></button>` : ''}</div><div class="section-grid ${section.columns === 2 ? 'two' : ''} ${section.stacked ? 'stacked' : ''}">${entries
+            const sectionActions =
+              section.label === 'Position and size'
+                ? '<span class="section-actions"><button class="section-action" data-layout-action="lock" aria-label="Lock aspect ratio" title="Lock aspect ratio"><i data-foundry-icon="lock"></i></button></span>'
+                : section.label === 'Padding'
+                  ? `<span class="section-actions"><button class="section-action ${paddingLinked ? 'active' : ''}" data-padding-link aria-label="${paddingLinked ? 'Unlink padding values' : 'Link padding values'}"><i data-foundry-icon="${paddingLinked ? 'link-2' : 'unlink-2'}"></i></button></span>`
+                  : section.label === 'Typeface'
+                    ? '<span class="section-actions type-presets"><button data-type-preset="compact">S</button><button data-type-preset="body">M</button><button data-type-preset="display">L</button></span>'
+                    : section.label === 'Fill'
+                      ? '<span class="section-actions"><button class="section-action" data-color-action="gradient" aria-label="Add linear gradient" title="Add gradient"><i data-foundry-icon="sparkles"></i></button><button class="section-action" data-color-action="clear" aria-label="Clear fill" title="Clear fill"><i data-foundry-icon="x"></i></button></span>'
+                      : section.label === 'Corners'
+                        ? `<span class="section-actions"><button class="section-action ${radiusLinked ? 'active' : ''}" data-radius-link aria-label="${radiusLinked ? 'Edit corner radii independently' : 'Link corner radii'}"><i data-foundry-icon="${radiusLinked ? 'link-2' : 'unlink-2'}"></i></button></span>`
+                        : '';
+            return `<section class="property-section ${collapsedSections.has(sectionKey) ? 'collapsed' : ''}" data-section-key="${escapeHtml(sectionKey)}"><div class="section-head"><button class="section-toggle" aria-expanded="${String(!collapsedSections.has(sectionKey))}"><i data-foundry-icon="chevron-down"></i><strong>${escapeHtml(section.label)}</strong></button>${sectionActions}</div><div class="section-grid ${section.columns === 2 ? 'two' : ''} ${section.stacked ? 'stacked' : ''}">${entries
               .map(({ control, index }) =>
                 renderPropertyControl(control, index, section.prefixes?.[control.property]),
               )
@@ -4387,7 +4932,11 @@ export function installFoundryInspector(
               .join('')}</div></section>`
           : '';
         const categoryKey = `category:${group.key}`;
-        return `<section class="inspector-category property-section ${collapsedSections.has(categoryKey) ? 'collapsed' : ''}" data-category="${group.key}" data-section-key="${categoryKey}"><div class="inspector-heading section-head"><button class="section-toggle" aria-expanded="${String(!collapsedSections.has(categoryKey))}"><i data-foundry-icon="${group.icon}"></i><strong>${group.label}</strong></button><span class="property-count">${controls.length}</span></div><div class="category-body">${group.showContext ? renderContextPanel(group.category) : ''}${sections}${remainingSection}</div></section>`;
+        const categoryAction =
+          group.key === 'layout'
+            ? '<button class="category-action" data-layout-action="tidy"><i data-foundry-icon="wand-sparkles"></i><span>Tidy</span></button>'
+            : '';
+        return `<section class="inspector-category property-section ${collapsedSections.has(categoryKey) ? 'collapsed' : ''}" data-category="${group.key}" data-section-key="${categoryKey}"><div class="inspector-heading section-head"><button class="section-toggle" aria-expanded="${String(!collapsedSections.has(categoryKey))}"><i data-foundry-icon="${group.icon}"></i><strong>${group.label}</strong></button>${categoryAction}<span class="property-count">${controls.length}</span></div><div class="category-body">${group.showContext ? renderContextPanel(group.category) : ''}${sections}${remainingSection}</div></section>`;
       })
       .join('');
     const currentBaseline = baselineForContext(
@@ -4410,6 +4959,7 @@ export function installFoundryInspector(
         button.setAttribute('aria-expanded', String(!collapsed));
         if (collapsed) collapsedSections.add(key);
         else collapsedSections.delete(key);
+        sectionPreferenceTouched = true;
         sessionStorage.setItem(
           '__foundry_collapsed_sections',
           JSON.stringify([...collapsedSections]),
@@ -4419,6 +4969,12 @@ export function installFoundryInspector(
     controlsRoot.querySelectorAll<HTMLButtonElement>('[data-padding-link]').forEach((button) =>
       button.addEventListener('click', () => {
         paddingLinked = !paddingLinked;
+        renderControls();
+      }),
+    );
+    controlsRoot.querySelectorAll<HTMLButtonElement>('[data-radius-link]').forEach((button) =>
+      button.addEventListener('click', () => {
+        radiusLinked = !radiusLinked;
         renderControls();
       }),
     );
@@ -4434,7 +4990,8 @@ export function installFoundryInspector(
           /font|lineHeight|letterSpacing/i.test(control.property)) ||
         (control.category === 'color' && /color|background|fill|stroke/i.test(control.property)) ||
         (control.category === 'effects' && /radius|shadow|blur/i.test(control.property));
-      if (!tokenEligible || !tokensForCategory(control.category).length) return;
+      const availableTokens = tokensForCategory(control.category);
+      if (!tokenEligible || !availableTokens.length) return;
       const field = controlsRoot.querySelector<HTMLElement>(`[data-control="${index}"]`);
       const label = field?.closest<HTMLElement>('label');
       if (!label) return;
@@ -4444,17 +5001,32 @@ export function installFoundryInspector(
           ? `<span class="token-provenance">Uses ${escapeHtml(matches[0]!.name)}</span>`
           : '<span class="token-provenance literal">Literal value · consider a project token</span>',
       );
-      if (!matches.length) return;
       label.insertAdjacentHTML(
         'beforeend',
-        `<span class="token-row">${matches
+        `<span class="token-menu-wrap"><button type="button" class="token-menu-trigger" data-token-menu-trigger="${index}" aria-expanded="false" aria-label="Choose a project token"><i data-foundry-icon="bookmark"></i></button><span class="token-menu" data-token-menu="${index}" hidden>${availableTokens
           .map(
             (token) =>
-              `<button type="button" class="token-chip" data-token-control="${index}" data-token-value="${escapeHtml(token.value)}" title="${escapeHtml(token.value)}">${escapeHtml(token.name)}</button>`,
+              `<button type="button" class="token-option" data-token-control="${index}" data-token-value="${escapeHtml(token.value)}" title="${escapeHtml(token.value)}">${control.category === 'color' ? `<span class="swatch" style="--token-color:${escapeHtml(token.value)}"></span>` : ''}<span>${escapeHtml(token.name)}</span><code>${escapeHtml(token.value)}</code></button>`,
           )
-          .join('')}</span>`,
+          .join('')}</span></span>`,
       );
     });
+    renderIcons(controlsRoot);
+    controlsRoot
+      .querySelectorAll<HTMLButtonElement>('[data-token-menu-trigger]')
+      .forEach((button) => {
+        button.addEventListener('click', () => {
+          const menu = controlsRoot.querySelector<HTMLElement>(
+            `[data-token-menu="${button.dataset.tokenMenuTrigger}"]`,
+          );
+          if (!menu) return;
+          controlsRoot.querySelectorAll<HTMLElement>('[data-token-menu]').forEach((candidate) => {
+            if (candidate !== menu) candidate.hidden = true;
+          });
+          menu.hidden = !menu.hidden;
+          button.setAttribute('aria-expanded', String(!menu.hidden));
+        });
+      });
     controlsRoot.querySelectorAll<HTMLButtonElement>('[data-reset-control]').forEach((button) => {
       button.addEventListener('click', () => {
         const control = selectedControls[Number(button.dataset.resetControl)];
@@ -4582,10 +5154,41 @@ export function installFoundryInspector(
               fieldRecorders.get(linkedIndex)?.push(linkedBefore, value);
             });
           }
+          const radiusProperties = [
+            'borderTopLeftRadius',
+            'borderTopRightRadius',
+            'borderBottomLeftRadius',
+            'borderBottomRightRadius',
+          ];
+          if (
+            radiusLinked &&
+            (control.property === 'borderRadius' || radiusProperties.includes(control.property))
+          ) {
+            indexedControls.forEach(({ control: linkedControl, index: linkedIndex }) => {
+              if (linkedControl === control || !radiusProperties.includes(linkedControl.property))
+                return;
+              const linkedBefore = linkedControl.read();
+              linkedControl.apply(value);
+              const linkedField = controlsRoot.querySelector<HTMLInputElement>(
+                `[data-control="${linkedIndex}"]`,
+              );
+              if (linkedField) linkedField.value = String(value);
+              fieldRecorders.get(linkedIndex)?.push(linkedBefore, value);
+            });
+          }
           updateOutline();
           recorder.push(before, value);
         });
       });
+    controlsRoot.querySelectorAll<HTMLButtonElement>('[data-color-control]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const index = Number(button.dataset.colorControl);
+        const control = selectedControls[index];
+        if (!control) return;
+        activeControlProperty = control.property;
+        openColorEditor(button, index);
+      });
+    });
     controlsRoot.querySelectorAll<HTMLButtonElement>('[data-token-control]').forEach((button) => {
       button.addEventListener('click', () => {
         const index = Number(button.dataset.tokenControl);
@@ -4593,8 +5196,16 @@ export function installFoundryInspector(
           `[data-control="${index}"]`,
         );
         const control = selectedControls[index];
-        if (!field || !control) return;
+        if (!control) return;
         const raw = button.dataset.tokenValue ?? '';
+        if (control.kind === 'color') {
+          void applyControlValue(control, raw, 'Use project color').then(() => {
+            if (selected) selectedControls = controlsFor(selected);
+            renderControls();
+          });
+          return;
+        }
+        if (!field) return;
         field.value = control.kind === 'number' ? String(numberFrom(raw)) : raw;
         field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
       });
@@ -4606,6 +5217,8 @@ export function installFoundryInspector(
 
   function select(element: HTMLElement, additive = false): void {
     if (element === host || host.contains(element)) return;
+    colorPopover.hidden = true;
+    activeColor = undefined;
     if (additive && selectedElements.includes(element)) {
       selectedElements = selectedElements.filter((item) => item !== element);
       if (!selectedElements.length) {
@@ -4620,6 +5233,46 @@ export function installFoundryInspector(
     } else {
       selectedElements = [element];
       selected = element;
+    }
+    if (!sectionPreferenceTouched) {
+      const categoryKeys = [
+        'position',
+        'layout',
+        'typography',
+        'appearance',
+        'fill',
+        'stroke',
+        'effects',
+        'content',
+        'accessibility',
+        'motion',
+      ];
+      categoryKeys.forEach((key) => collapsedSections.add(`category:${key}`));
+      collapsedSections.delete('category:position');
+      collapsedSections.delete('category:layout');
+      collapsedSections.delete('category:appearance');
+      collapsedSections.delete('category:fill');
+      const isText =
+        element instanceof HTMLInputElement ||
+        element instanceof HTMLTextAreaElement ||
+        (element.children.length === 0 && Boolean(element.textContent?.trim()));
+      const isMedia = element instanceof HTMLImageElement;
+      if (isText) {
+        collapsedSections.delete('category:typography');
+        collapsedSections.delete('category:content');
+      }
+      if (isMedia) {
+        collapsedSections.delete('category:content');
+        collapsedSections.delete('category:accessibility');
+      }
+      if (Number.parseFloat(getComputedStyle(element).borderWidth) > 0)
+        collapsedSections.delete('category:stroke');
+      if (
+        getComputedStyle(element).boxShadow !== 'none' ||
+        Number.parseFloat(getComputedStyle(element).borderRadius) > 0
+      )
+        collapsedSections.delete('category:effects');
+      if (element.getAnimations().length) collapsedSections.delete('category:motion');
     }
     selectedControls = controlsFor(element);
     const target = targetFor(element);
@@ -4669,6 +5322,8 @@ export function installFoundryInspector(
   }
 
   function clearSelection(): void {
+    colorPopover.hidden = true;
+    activeColor = undefined;
     selected = null;
     selectedElements = [];
     selectedControls = [];
@@ -5106,7 +5761,8 @@ export function installFoundryInspector(
   function installPanelResizer(): void {
     const resizer = shadow.querySelector<HTMLButtonElement>('.panel-resizer')!;
     const savedWidth = Number(localStorage.getItem('__foundry_panel_width'));
-    if (Number.isFinite(savedWidth) && savedWidth >= 300) panel.style.width = `${savedWidth}px`;
+    if (Number.isFinite(savedWidth) && savedWidth >= 340)
+      panel.style.width = `${Math.min(520, savedWidth)}px`;
     resizer.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
       const startX = event.clientX;
@@ -5115,7 +5771,7 @@ export function installFoundryInspector(
       event.preventDefault();
       const move = (pointer: PointerEvent): void => {
         const maximum = Math.min(520, window.innerWidth - 24);
-        const next = Math.max(300, Math.min(maximum, startWidth + startX - pointer.clientX));
+        const next = Math.max(340, Math.min(maximum, startWidth + startX - pointer.clientX));
         panel.style.width = `${Math.round(next)}px`;
       };
       const finish = (pointer: PointerEvent): void => {
@@ -5378,13 +6034,14 @@ export function installFoundryInspector(
     .querySelector<HTMLButtonElement>('[data-close-comparison-stage]')!
     .addEventListener('click', closeSplitComparison);
   const commandInput = commandPalette.querySelector<HTMLInputElement>('input')!;
+  commandPalette.querySelector('.close-commands')?.addEventListener('click', () => closeCommands());
   commandInput.addEventListener('input', () => renderCommands(commandInput.value));
   commandInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       const active = commandPalette.querySelector<HTMLButtonElement>('.command-item.active');
       if (active) runCommand(active.dataset.command!);
     }
-    if (event.key === 'Escape') commandPalette.hidden = true;
+    if (event.key === 'Escape') closeCommands();
   });
   shadow.querySelector('.close')?.addEventListener('click', destroyInspector);
   shadow.querySelector('.open-workbench')?.addEventListener('click', openWorkbench);
@@ -5478,8 +6135,11 @@ export function installFoundryInspector(
       return;
     }
     if (event.key !== 'Escape') return;
-    if (!comparisonStage.hidden) closeSplitComparison();
-    else if (!commandPalette.hidden) commandPalette.hidden = true;
+    if (!colorPopover.hidden) {
+      colorPopover.hidden = true;
+      activeColor = undefined;
+    } else if (!comparisonStage.hidden) closeSplitComparison();
+    else if (!commandPalette.hidden) closeCommands();
     else if (!libraryPanel.hidden) closeDesignMemory();
     else if (!healthPanel.hidden) closeHealth();
     else if (comparisonActive) closeComparison();

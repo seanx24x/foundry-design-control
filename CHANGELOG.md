@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0-beta.3 - 2026-08-31
+
+- Made setup transactional, validated, and recoverable after interruption.
+- Replaced the Next.js remote import with a bundler-independent local bootstrap.
+- Added safe migration for beta.2 Next.js loader repairs and install-manifest version 2.
+- Refined Layers density, inspector organization, contextual controls, tokens, and color editing.
+
 ## 0.2.0-beta.2 - 2026-08-30
 
 - Bundled the complete Foundry skill in the public CLI package.

@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { accessSync } from 'node:fs';
 import { access, mkdir, readFile, readdir, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import type { Platform } from 'foundry-design-protocol';
 import { detectPlatform } from './project.js';
 
@@ -45,14 +47,23 @@ interface ManagedFile {
   sha256: string;
 }
 
+export interface SetupValidationResult {
+  name: 'typecheck' | 'lint';
+  status: 'passed' | 'pre-existing-failure' | 'skipped';
+  command?: string;
+  message?: string;
+}
+
 interface InstallManifest {
-  version: 1;
+  version: 1 | 2;
   agents: Agent[];
   generatedFiles: ManagedFile[];
   managedBlocks: string[];
   jsonConfigs: string[];
   skillDirectories?: string[];
   installedAt: string;
+  generatorVersion?: string;
+  validation?: SetupValidationResult[];
 }
 
 export interface SetupOptions {
@@ -77,6 +88,7 @@ export interface SetupPlan {
 
 export interface SetupResult extends SetupPlan {
   changed: string[];
+  validation: SetupValidationResult[];
 }
 
 export interface UninstallResult {
@@ -86,6 +98,9 @@ export interface UninstallResult {
 
 const START = '>>> Foundry Design Control';
 const END = '<<< Foundry Design Control';
+const GENERATOR_VERSION = '0.2.0-beta.3';
+const TRANSACTION_FILE = 'setup-transaction.json';
+const execFileAsync = promisify(execFile);
 const DEFAULT_SKILL_ROOT = fileURLToPath(
   new URL('./skill/foundry-design-control/', import.meta.url),
 );
@@ -109,6 +124,205 @@ async function readText(path: string): Promise<string> {
 
 function digest(content: string): string {
   return createHash('sha256').update(content).digest('hex');
+}
+
+interface FileSnapshot {
+  path: string;
+  content: string | null;
+}
+
+interface SetupJournal {
+  version: 1;
+  root: string;
+  snapshots: FileSnapshot[];
+}
+
+interface CommandResult {
+  exitCode: number;
+  output: string;
+  unavailable?: boolean;
+}
+
+interface ValidationCommand {
+  name: SetupValidationResult['name'];
+  command: string;
+  args: string[];
+}
+
+const LEGACY_NEXT_LOADER_DIGESTS = new Set([
+  'ec45810b798224907a947c3bf9e01e5e342b64f506c910a35f08fdc0399aac0e',
+  '8a5757b906c3db7b720cb5a61c4b4dd189bf1f61cb299cf31e107d277b75b4b3',
+]);
+
+function transactionPath(root: string): string {
+  return join(root, '.foundry', TRANSACTION_FILE);
+}
+
+async function snapshotFiles(paths: string[]): Promise<FileSnapshot[]> {
+  return Promise.all(
+    [...new Set(paths)].map(async (path) => ({
+      path,
+      content: await readFile(path)
+        .then((value) => value.toString('base64'))
+        .catch(() => null),
+    })),
+  );
+}
+
+async function restoreSnapshots(root: string, snapshots: FileSnapshot[]): Promise<void> {
+  for (const snapshot of snapshots) {
+    if (snapshot.content == null) {
+      await rm(snapshot.path, { force: true }).catch(() => undefined);
+      continue;
+    }
+    await mkdir(dirname(snapshot.path), { recursive: true });
+    await writeFile(snapshot.path, Buffer.from(snapshot.content, 'base64'));
+  }
+  const directories = [...new Set(snapshots.map((snapshot) => dirname(snapshot.path)))]
+    .filter((path) => path.startsWith(root) && path !== root)
+    .sort((left, right) => right.length - left.length);
+  for (const directory of directories) await rmdir(directory).catch(() => undefined);
+}
+
+async function recoverInterruptedSetup(root: string): Promise<void> {
+  const path = transactionPath(root);
+  const journal = await readFile(path, 'utf8')
+    .then((value) => JSON.parse(value) as SetupJournal)
+    .catch(() => undefined);
+  if (!journal?.snapshots?.length || journal.root !== root) return;
+  await restoreSnapshots(root, journal.snapshots);
+  await rm(path, { force: true });
+  await rmdir(dirname(path)).catch(() => undefined);
+}
+
+async function writeTransaction(root: string, snapshots: FileSnapshot[]): Promise<void> {
+  const path = transactionPath(root);
+  await mkdir(dirname(path), { recursive: true });
+  const journal: SetupJournal = { version: 1, root, snapshots };
+  await writeFile(path, `${JSON.stringify(journal, null, 2)}\n`);
+}
+
+async function validationCommands(root: string): Promise<ValidationCommand[]> {
+  const pkg = await packageJson(root);
+  const manager = packageManager(root);
+  const commands: ValidationCommand[] = [];
+  if (pkg.scripts?.typecheck) {
+    commands.push({
+      name: 'typecheck',
+      command: manager.command,
+      args: manager.runArgs('typecheck'),
+    });
+  } else if (existsSync(join(root, 'node_modules', '.bin', 'tsc'))) {
+    commands.push({
+      name: 'typecheck',
+      command: join(root, 'node_modules', '.bin', 'tsc'),
+      args: ['--noEmit', '--pretty', 'false'],
+    });
+  }
+  if (pkg.scripts?.lint) {
+    commands.push({ name: 'lint', command: manager.command, args: manager.runArgs('lint') });
+  } else if (existsSync(join(root, 'node_modules', '.bin', 'eslint'))) {
+    commands.push({
+      name: 'lint',
+      command: join(root, 'node_modules', '.bin', 'eslint'),
+      args: ['.'],
+    });
+  }
+  return commands;
+}
+
+async function runValidationCommand(
+  root: string,
+  check: ValidationCommand,
+): Promise<CommandResult> {
+  try {
+    const result = await execFileAsync(check.command, check.args, {
+      cwd: root,
+      env: { ...process.env, CI: '1', NO_COLOR: '1' },
+      timeout: 180_000,
+      maxBuffer: 8_000_000,
+    });
+    return { exitCode: 0, output: `${result.stdout ?? ''}${result.stderr ?? ''}` };
+  } catch (error) {
+    const failure = error as {
+      code?: string | number;
+      stdout?: string;
+      stderr?: string;
+      message?: string;
+    };
+    if (failure.code === 'ENOENT') {
+      return { exitCode: 127, output: failure.message ?? 'Command unavailable', unavailable: true };
+    }
+    return {
+      exitCode: typeof failure.code === 'number' ? failure.code : 1,
+      output: `${failure.stdout ?? ''}${failure.stderr ?? ''}${failure.message ?? ''}`,
+    };
+  }
+}
+
+function introducedManagedDiagnostic(
+  root: string,
+  before: CommandResult,
+  after: CommandResult,
+  paths: string[],
+): boolean {
+  if (before.exitCode === 0 && after.exitCode !== 0) return true;
+  if (after.exitCode === 0 || before.output === after.output) return false;
+  return paths.some((path) => {
+    const relativePath = slash(relative(root, path));
+    return after.output.includes(relativePath) && !before.output.includes(relativePath);
+  });
+}
+
+async function validateInstalledProject(
+  root: string,
+  checks: ValidationCommand[],
+  baseline: Map<SetupValidationResult['name'], CommandResult>,
+  changed: string[],
+): Promise<SetupValidationResult[]> {
+  if (!checks.length) {
+    return [
+      { name: 'typecheck', status: 'skipped', message: 'No project validation command found.' },
+      { name: 'lint', status: 'skipped', message: 'No project validation command found.' },
+    ];
+  }
+  const results: SetupValidationResult[] = [];
+  for (const check of checks) {
+    const before = baseline.get(check.name)!;
+    const after = await runValidationCommand(root, check);
+    const command = [check.command, ...check.args].join(' ');
+    if (after.unavailable) {
+      results.push({
+        name: check.name,
+        status: 'skipped',
+        command,
+        message: 'The project command is not available in this environment.',
+      });
+      continue;
+    }
+    if (introducedManagedDiagnostic(root, before, after, changed)) {
+      const detail = after.output.trim().split('\n').slice(-12).join('\n');
+      throw new Error(
+        `Foundry setup introduced a ${check.name} failure.\n${detail || `Command failed: ${command}`}`,
+      );
+    }
+    results.push({
+      name: check.name,
+      status: after.exitCode === 0 ? 'passed' : 'pre-existing-failure',
+      command,
+      ...(after.exitCode === 0
+        ? {}
+        : {
+            message:
+              'The project had existing failures and Foundry added no managed-file diagnostic.',
+          }),
+    });
+  }
+  for (const name of ['typecheck', 'lint'] as const) {
+    if (!results.some((result) => result.name === name))
+      results.push({ name, status: 'skipped', message: `No ${name} command found.` });
+  }
+  return results;
 }
 
 function slash(path: string): string {
@@ -296,6 +510,25 @@ async function writeGenerated(path: string, content: string): Promise<ManagedFil
   return { path, sha256: digest(content) };
 }
 
+async function writeOwnedGenerated(
+  path: string,
+  content: string,
+  ownedFiles: Map<string, string>,
+  allowLegacyLoader = false,
+): Promise<ManagedFile> {
+  const existing = await readFile(path, 'utf8').catch(() => undefined);
+  if (existing != null && existing !== content) {
+    const currentDigest = digest(existing);
+    const ownedDigest = ownedFiles.get(path);
+    const ownedAndUnchanged = ownedDigest === currentDigest;
+    const knownLoader = allowLegacyLoader && LEGACY_NEXT_LOADER_DIGESTS.has(currentDigest);
+    if (!ownedAndUnchanged && !knownLoader) {
+      throw new Error(`Foundry preserved your edited generated file at ${path}.`);
+    }
+  }
+  return writeGenerated(path, content);
+}
+
 interface SkillFile {
   path: string;
   content: Buffer;
@@ -366,8 +599,8 @@ export async function installFoundryDesignControl(): Promise<void> {
   if (typeof window === 'undefined') return;
   const query = new URLSearchParams(window.location.search);
   if (!query.has('__foundry_session')) return;
-  const module = await import(/* @vite-ignore */ '${runtimeUrl}/adapter.js');
-  module.installFoundryInspector();
+  const adapter = await import(/* @vite-ignore */ '${runtimeUrl}/adapter.js');
+  adapter.installFoundryInspector();
 }
 `;
 }
@@ -376,13 +609,14 @@ async function configureWebIntegration(
   plan: SetupPlan,
   generated: ManagedFile[],
   managedBlocks: string[],
+  ownedFiles: Map<string, string>,
+  runtimeUrl: string,
 ): Promise<string | undefined> {
   const entry = plan.integrationFile;
   if (!entry) return undefined;
   if (plan.framework === 'next') {
     const appRoot = dirname(entry);
     const loader = join(appRoot, 'foundry-loader.tsx');
-    const runtimeUrl = 'http://127.0.0.1:4387';
     const loaderContent = `'use client';
 
 import { useEffect } from 'react';
@@ -391,14 +625,17 @@ export function FoundryLoader(): null {
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
     if (!query.has('__foundry_session')) return;
-    void import(/* webpackIgnore: true */ '${runtimeUrl}/adapter.js').then((module) =>
-      module.installFoundryInspector(),
-    );
+    if (document.querySelector('script[data-foundry-bootstrap]')) return;
+    const script = document.createElement('script');
+    script.type = 'module';
+    script.src = '${runtimeUrl}/adapter-bootstrap.js';
+    script.dataset.foundryBootstrap = 'true';
+    document.head.append(script);
   }, []);
   return null;
 }
 `;
-    generated.push(await writeGenerated(loader, loaderContent));
+    generated.push(await writeOwnedGenerated(loader, loaderContent, ownedFiles, true));
     const original = await readText(entry);
     if (!original.includes('FoundryLoader')) {
       const withImport = `import { FoundryLoader } from './foundry-loader';\n${original}`;
@@ -508,7 +745,9 @@ export async function setupProject(
   rootInput: string,
   options: SetupOptions = {},
 ): Promise<SetupResult> {
-  const plan = await createSetupPlan(rootInput, options);
+  const root = resolve(rootInput);
+  await recoverInterruptedSetup(root);
+  const plan = await createSetupPlan(root, options);
   const runtimeUrl = options.runtimeUrl ?? 'http://127.0.0.1:4387';
   const generated: ManagedFile[] = [];
   const managedBlocks: string[] = [];
@@ -530,87 +769,119 @@ export async function setupProject(
   for (const directory of plan.skillDirectories) {
     await validateSkillTarget(skillFiles, directory, ownedFiles);
   }
-  const config: FoundryProjectConfig = {
-    version: 2,
-    platform: plan.platform,
-    ...(plan.framework ? { framework: plan.framework } : {}),
-    runtimeUrl,
-    ...(plan.targetUrl ? { targetUrl: plan.targetUrl } : {}),
-    ...(plan.devCommand ? { devCommand: plan.devCommand } : {}),
-    instrumented: plan.platform !== 'web' || Boolean(plan.integrationFile),
-    design: {
-      componentRoots: ['src', 'app', 'components'],
-      exclude: ['node_modules', 'dist', 'build', '.next', 'coverage'],
-      viewports: [
-        { id: 'mobile', label: 'Mobile', width: 390, height: 844 },
-        { id: 'tablet', label: 'Tablet', width: 768, height: 1024 },
-        { id: 'desktop', label: 'Desktop', width: 1440, height: 900 },
-      ],
-      themes: [
-        { id: 'light', label: 'Light', attribute: 'data-theme', value: 'light' },
-        { id: 'dark', label: 'Dark', attribute: 'data-theme', value: 'dark' },
-      ],
-    },
-  };
-  const configFile = join(plan.root, '.foundry', 'foundry.config.json');
-  generated.push(await writeGenerated(configFile, `${JSON.stringify(config, null, 2)}\n`));
-  changed.push(configFile);
-  if (plan.platform === 'web') {
-    const adapter = join(plan.root, '.foundry', 'web-adapter.ts');
-    generated.push(await writeGenerated(adapter, adapterSource(runtimeUrl)));
-    changed.push(adapter);
-    const integration = await configureWebIntegration(plan, generated, managedBlocks);
-    if (integration) changed.push(integration);
-  } else {
-    const setup = join(plan.root, '.foundry', `${plan.platform}-setup.md`);
-    const content =
-      plan.platform === 'swiftui'
-        ? '# Foundry SwiftUI setup\n\nAdd FoundryDesignControl only to DEBUG builds and mark meaningful views with `.foundryInspectable`.\n'
-        : '# Foundry React Native setup\n\nCreate the debug adapter and register semantic targets using `measureInWindow`.\n';
-    generated.push(await writeGenerated(setup, content));
-    changed.push(setup);
+  const transactionFiles = [
+    ...plan.files.filter((path) => !plan.skillDirectories.includes(path)),
+    ...plan.skillDirectories.flatMap((directory) =>
+      skillFiles.map((file) => join(directory, file.path)),
+    ),
+  ];
+  const snapshots = await snapshotFiles(transactionFiles);
+  const checks = await validationCommands(plan.root);
+  const baseline = new Map<SetupValidationResult['name'], CommandResult>();
+  for (const check of checks)
+    baseline.set(check.name, await runValidationCommand(plan.root, check));
+  await writeTransaction(plan.root, snapshots);
+
+  try {
+    const config: FoundryProjectConfig = {
+      version: 2,
+      platform: plan.platform,
+      ...(plan.framework ? { framework: plan.framework } : {}),
+      runtimeUrl,
+      ...(plan.targetUrl ? { targetUrl: plan.targetUrl } : {}),
+      ...(plan.devCommand ? { devCommand: plan.devCommand } : {}),
+      instrumented: plan.platform !== 'web' || Boolean(plan.integrationFile),
+      design: {
+        componentRoots: ['src', 'app', 'components'],
+        exclude: ['node_modules', 'dist', 'build', '.next', 'coverage'],
+        viewports: [
+          { id: 'mobile', label: 'Mobile', width: 390, height: 844 },
+          { id: 'tablet', label: 'Tablet', width: 768, height: 1024 },
+          { id: 'desktop', label: 'Desktop', width: 1440, height: 900 },
+        ],
+        themes: [
+          { id: 'light', label: 'Light', attribute: 'data-theme', value: 'light' },
+          { id: 'dark', label: 'Dark', attribute: 'data-theme', value: 'dark' },
+        ],
+      },
+    };
+    const configFile = join(plan.root, '.foundry', 'foundry.config.json');
+    generated.push(
+      await writeOwnedGenerated(configFile, `${JSON.stringify(config, null, 2)}\n`, ownedFiles),
+    );
+    changed.push(configFile);
+    if (plan.platform === 'web') {
+      const adapter = join(plan.root, '.foundry', 'web-adapter.ts');
+      generated.push(await writeOwnedGenerated(adapter, adapterSource(runtimeUrl), ownedFiles));
+      changed.push(adapter);
+      const integration = await configureWebIntegration(
+        plan,
+        generated,
+        managedBlocks,
+        ownedFiles,
+        runtimeUrl,
+      );
+      if (integration) changed.push(integration);
+    } else {
+      const setup = join(plan.root, '.foundry', `${plan.platform}-setup.md`);
+      const content =
+        plan.platform === 'swiftui'
+          ? '# Foundry SwiftUI setup\n\nAdd FoundryDesignControl only to DEBUG builds and mark meaningful views with `.foundryInspectable`.\n'
+          : '# Foundry React Native setup\n\nCreate the debug adapter and register semantic targets using `measureInWindow`.\n';
+      generated.push(await writeOwnedGenerated(setup, content, ownedFiles));
+      changed.push(setup);
+    }
+    const gitignore = join(plan.root, '.gitignore');
+    await setManagedBlock(gitignore, managedBlock('.foundry/sessions/', 'hash'));
+    managedBlocks.push(gitignore);
+    changed.push(gitignore);
+    if (plan.agents.includes('codex')) {
+      const path = join(plan.root, '.codex', 'config.toml');
+      await configureCodex(path, options.packageRoot);
+      managedBlocks.push(path);
+      changed.push(path);
+    }
+    if (plan.agents.includes('cursor')) {
+      const path = join(plan.root, '.cursor', 'mcp.json');
+      await configureJson(path, options.packageRoot);
+      jsonConfigs.push(path);
+      changed.push(path);
+    }
+    if (plan.agents.includes('claude')) {
+      const path = join(plan.root, '.mcp.json');
+      await configureJson(path, options.packageRoot);
+      jsonConfigs.push(path);
+      changed.push(path);
+    }
+    for (const directory of plan.skillDirectories) {
+      const copied = await copySkill(skillFiles, directory);
+      generated.push(...copied.files);
+      skillDirectories.push(...copied.directories);
+      changed.push(directory);
+    }
+    const validation = await validateInstalledProject(plan.root, checks, baseline, changed);
+    const manifest: InstallManifest = {
+      version: 2,
+      agents: plan.agents,
+      generatedFiles: generated,
+      managedBlocks,
+      jsonConfigs,
+      skillDirectories: [...new Set(skillDirectories)],
+      installedAt: new Date().toISOString(),
+      generatorVersion: GENERATOR_VERSION,
+      validation,
+    };
+    const manifestFile = join(plan.root, '.foundry', 'install-manifest.json');
+    await writeFile(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
+    changed.push(manifestFile);
+    await rm(transactionPath(plan.root), { force: true });
+    return { ...plan, changed: [...new Set(changed)], validation };
+  } catch (error) {
+    await restoreSnapshots(plan.root, snapshots);
+    await rm(transactionPath(plan.root), { force: true });
+    await rmdir(join(plan.root, '.foundry')).catch(() => undefined);
+    throw error;
   }
-  const gitignore = join(plan.root, '.gitignore');
-  await setManagedBlock(gitignore, managedBlock('.foundry/sessions/', 'hash'));
-  managedBlocks.push(gitignore);
-  changed.push(gitignore);
-  if (plan.agents.includes('codex')) {
-    const path = join(plan.root, '.codex', 'config.toml');
-    await configureCodex(path, options.packageRoot);
-    managedBlocks.push(path);
-    changed.push(path);
-  }
-  if (plan.agents.includes('cursor')) {
-    const path = join(plan.root, '.cursor', 'mcp.json');
-    await configureJson(path, options.packageRoot);
-    jsonConfigs.push(path);
-    changed.push(path);
-  }
-  if (plan.agents.includes('claude')) {
-    const path = join(plan.root, '.mcp.json');
-    await configureJson(path, options.packageRoot);
-    jsonConfigs.push(path);
-    changed.push(path);
-  }
-  for (const directory of plan.skillDirectories) {
-    const copied = await copySkill(skillFiles, directory);
-    generated.push(...copied.files);
-    skillDirectories.push(...copied.directories);
-    changed.push(directory);
-  }
-  const manifest: InstallManifest = {
-    version: 1,
-    agents: plan.agents,
-    generatedFiles: generated,
-    managedBlocks,
-    jsonConfigs,
-    skillDirectories: [...new Set(skillDirectories)],
-    installedAt: new Date().toISOString(),
-  };
-  const manifestFile = join(plan.root, '.foundry', 'install-manifest.json');
-  await writeFile(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
-  changed.push(manifestFile);
-  return { ...plan, changed: [...new Set(changed)] };
 }
 
 async function removeJsonServer(path: string): Promise<void> {

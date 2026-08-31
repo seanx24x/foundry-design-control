@@ -87,6 +87,16 @@ function publicSession(stored: StoredSession): Omit<StoredSession, 'token'> {
 }
 
 async function staticFile(pathname: string, response: ServerResponse): Promise<boolean> {
+  if (pathname === '/adapter-bootstrap.js') {
+    response.writeHead(200, {
+      'content-type': 'text/javascript; charset=utf-8',
+      'cache-control': 'no-store',
+    });
+    response.end(
+      "import { installFoundryInspector } from '/adapter.js';\ninstallFoundryInspector();\n",
+    );
+    return true;
+  }
   const path = pathname === '/' ? '/index.html' : pathname;
   const file = path === '/adapter.js' ? adapterFile : resolve(inspectorRoot, `.${path}`);
   if (file !== adapterFile && !file.startsWith(inspectorRoot)) return false;
