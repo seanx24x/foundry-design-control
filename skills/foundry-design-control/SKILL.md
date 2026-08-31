@@ -7,12 +7,14 @@ description: Start and operate a local Foundry precision design session for live
 
 Use Foundry as a reviewable bridge between precise visual decisions and source code. Keep preview overrides temporary. Apply source edits only after the user resolves ambiguous mappings and reviews the change ledger.
 
+Resolve `<skill-root>` to the directory containing this `SKILL.md` before running any command below. Never treat `scripts/foundry.sh` as a path inside the user's project.
+
 ## Start a session
 
 1. Inspect the project, current worktree, framework, development command, and existing Foundry configuration.
-2. Run `scripts/foundry.sh doctor --project <root>`.
-3. If setup is absent, read [platform-setup.md](references/platform-setup.md), show the proposed files, then run `scripts/foundry.sh setup --project <root> --agent none --yes`. The plugin already supplies Codex MCP configuration.
-4. Run `scripts/foundry.sh start --project <root>`. It may start the detected development command when the configured preview URL is not already available.
+2. Run `<skill-root>/scripts/foundry.sh doctor --project <root>`.
+3. If setup is absent, read [platform-setup.md](references/platform-setup.md), then run `<skill-root>/scripts/foundry.sh setup --project <root> --agent none --yes`. Setup prints the complete managed-file plan before applying it. An npm or plugin installation already supplies the current agent's MCP configuration.
+4. Run `<skill-root>/scripts/foundry.sh start --project <root>`. It may start the detected development command when the configured preview URL is not already available.
 5. Keep the Foundry runtime alive while the user selects and refines elements.
 
 In web sessions, selection mode stays active so ordinary clicks can move continuously between elements. Inspector categories filter the selected element's controls without changing selection mode. Switch the pointer tool to interaction mode only when testing the underlying app; Option-click still makes a temporary selection there. Repeating a click cycles overlapping layers, and Option-click prioritizes the strongest mapped or semantic target. Use the Layers panel or the Parent and Child controls for obscured and nested targets. Shift-click builds a multi-selection and exposes measured gaps when the layers share a parent.
@@ -21,13 +23,13 @@ Use the inspector controls as the user's visual editing surface, not as source t
 
 When the user runs Design Health or asks to correct its findings, read [design-health.md](references/design-health.md). Preserve evidence-only findings when Foundry cannot propose a narrow, reversible preview.
 
-For web sessions, `start` indexes the local project design graph. Use `scripts/foundry.sh index --project <root>` when the graph must be refreshed independently.
+For web sessions, `start` indexes the local project design graph. Use `<skill-root>/scripts/foundry.sh index --project <root>` when the graph must be refreshed independently.
 
 Do not launch Foundry merely because a task contains design work. Require an explicit request for a visual or Foundry session.
 
 ## Read and review changes
 
-1. Prefer the Foundry MCP tools when available. Otherwise export with `scripts/foundry.sh export <session-id> --format json`.
+1. Prefer the Foundry MCP tools when available. Otherwise export with `<skill-root>/scripts/foundry.sh export <session-id> --format json`.
 2. Treat JSON as canonical and the consolidated prompt as a portable rendering of that JSON.
 3. Check every target's source reference, locator evidence, mapping confidence, state, theme, breakpoint, and instance/component scope.
 4. Read [semantic-mapping-contract.md](references/semantic-mapping-contract.md) when a change belongs to a direct manipulation operation.
@@ -63,4 +65,4 @@ For native limitations and motion registration, read [platform-setup.md](referen
 
 ## Remove project integration
 
-Run `scripts/foundry.sh uninstall --project <root>` only when the user explicitly asks. Preserve any Foundry-generated file whose contents changed after setup.
+Run `<skill-root>/scripts/foundry.sh uninstall --project <root>` only when the user explicitly asks. Preserve any Foundry-generated file whose contents changed after setup.

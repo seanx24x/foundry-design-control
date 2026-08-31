@@ -13,4 +13,4 @@ if command -v foundry-design >/dev/null 2>&1; then
   exec foundry-design "$@"
 fi
 
-exec npx -y foundry-design@0.1.0 "$@"
+exec npx -y foundry-design@beta "$@"

@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
-const version = '0.2.0-beta.1';
+const version = '0.2.0-beta.2';
 const packagePaths = [
   'apps/inspector/package.json',
   'packages/cli/package.json',
@@ -77,16 +77,28 @@ function filesBelow(directory) {
 
 const sourceSkill = join(root, 'skills/foundry-design-control');
 const bundledSkill = join(root, 'plugins/foundry-design-control/skills/foundry-design-control');
-for (const sourcePath of filesBelow(sourceSkill)) {
-  const localPath = relative(sourceSkill, sourcePath);
-  const bundledPath = join(bundledSkill, localPath);
-  if (!existsSync(bundledPath)) {
-    failures.push(`Plugin is missing skill file ${localPath}`);
+const cliSkill = join(root, 'packages/cli/dist/skill/foundry-design-control');
+const digest = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
+
+for (const [label, copy] of [
+  ['Plugin', bundledSkill],
+  ['CLI', cliSkill],
+]) {
+  if (!existsSync(copy)) {
+    failures.push(`${label} is missing its Foundry skill bundle`);
     continue;
   }
-  const digest = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
-  if (digest(sourcePath) !== digest(bundledPath))
-    failures.push(`Plugin skill copy drifted at ${localPath}`);
+  for (const sourcePath of filesBelow(sourceSkill)) {
+    const localPath = relative(sourceSkill, sourcePath);
+    const copiedPath = join(copy, localPath);
+    if (!existsSync(copiedPath)) {
+      failures.push(`${label} is missing skill file ${localPath}`);
+      continue;
+    }
+    if (digest(sourcePath) !== digest(copiedPath)) {
+      failures.push(`${label} skill copy drifted at ${localPath}`);
+    }
+  }
 }
 
 if (failures.length) {

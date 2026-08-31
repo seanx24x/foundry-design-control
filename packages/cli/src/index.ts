@@ -144,12 +144,16 @@ async function setup(): Promise<void> {
   }
   const result = await setupProject(root, options);
   console.log(`\n✓ Foundry configured ${result.changed.length} files.`);
+  if (result.skillDirectories.length) {
+    console.log(`✓ Installed the Foundry skill for ${result.agents.join(', ')}.`);
+  }
   if (result.targetUrl) console.log(`✓ Preview URL: ${result.targetUrl}`);
   if (result.devCommand)
     console.log(
       `✓ Development command: ${result.devCommand.command} ${result.devCommand.args.join(' ')}`,
     );
-  console.log('\nNext: foundry-design start');
+  console.log('\nRestart your coding agent, then ask: "Start Foundry for this project."');
+  console.log('You can also run: foundry-design start');
 }
 
 async function initProject(): Promise<void> {
@@ -441,8 +445,8 @@ async function installAgent(): Promise<void> {
     throw new Error('install-agent requires cursor, claude, or codex');
   const root = projectRoot();
   const server = {
-    command: 'pnpm',
-    args: ['--dir', runtimeRepository, '--filter', 'foundry-design-mcp-server', 'start'],
+    command: 'npx',
+    args: ['-y', 'foundry-design-mcp-server@beta'],
     env: { FOUNDRY_DESIGN_RUNTIME_URL: 'http://127.0.0.1:4387' },
   };
   if (agent === 'codex') {
@@ -451,7 +455,7 @@ async function installAgent(): Promise<void> {
     const file = join(directory, 'foundry-mcp.toml');
     await writeFile(
       file,
-      `# Merge this project-scoped server into your Codex MCP configuration.\n[mcp_servers.foundry-design-control]\ncommand = "pnpm"\nargs = ["--dir", "${runtimeRepository}", "--filter", "foundry-design-mcp-server", "start"]\n[mcp_servers.foundry-design-control.env]\nFOUNDRY_DESIGN_RUNTIME_URL = "http://127.0.0.1:4387"\n`,
+      `# Merge this project-scoped server into your Codex MCP configuration.\n[mcp_servers.foundry-design-control]\ncommand = "npx"\nargs = ["-y", "foundry-design-mcp-server@beta"]\n[mcp_servers.foundry-design-control.env]\nFOUNDRY_DESIGN_RUNTIME_URL = "http://127.0.0.1:4387"\n`,
     );
     console.log(`Wrote Codex MCP snippet: ${file}`);
     return;

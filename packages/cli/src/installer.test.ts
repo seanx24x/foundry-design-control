@@ -9,8 +9,19 @@ async function fixture(name: string): Promise<string> {
   return mkdtemp(join(tmpdir(), `foundry-${name}-`));
 }
 
+async function skillFixture(): Promise<string> {
+  const root = await fixture('skill');
+  await mkdir(join(root, 'references'), { recursive: true });
+  await mkdir(join(root, 'scripts'), { recursive: true });
+  await writeFile(join(root, 'SKILL.md'), '# Foundry Design Control\n');
+  await writeFile(join(root, 'references', 'workflow.md'), '# Workflow\n');
+  await writeFile(join(root, 'scripts', 'foundry.sh'), '#!/usr/bin/env bash\n');
+  return root;
+}
+
 test('sets up and reversibly removes Vite and all agent integrations', async () => {
   const root = await fixture('vite');
+  const skillRoot = await skillFixture();
   await mkdir(join(root, 'src'), { recursive: true });
   await mkdir(join(root, '.codex'), { recursive: true });
   await mkdir(join(root, '.cursor'), { recursive: true });
@@ -38,6 +49,7 @@ test('sets up and reversibly removes Vite and all agent integrations', async () 
     agents: ['codex', 'cursor', 'claude'],
     targetUrl: 'http://127.0.0.1:4173',
     packageRoot: '/opt/foundry',
+    skillRoot,
   });
   const entry = await readFile(join(root, 'src', 'main.ts'), 'utf8');
   assert.match(entry, /Foundry Design Control/);
@@ -51,6 +63,13 @@ test('sets up and reversibly removes Vite and all agent integrations', async () 
   assert.equal(cursor.mcpServers['foundry-design-control'].command, 'pnpm');
   const claude = JSON.parse(await readFile(join(root, '.mcp.json'), 'utf8'));
   assert.equal(claude.mcpServers['foundry-design-control'].command, 'pnpm');
+  for (const path of [
+    join(root, '.agents', 'skills', 'foundry-design-control', 'SKILL.md'),
+    join(root, '.cursor', 'skills', 'foundry-design-control', 'SKILL.md'),
+    join(root, '.claude', 'skills', 'foundry-design-control', 'SKILL.md'),
+  ]) {
+    assert.match(await readFile(path, 'utf8'), /Foundry Design Control/);
+  }
   const config = JSON.parse(await readFile(join(root, '.foundry', 'foundry.config.json'), 'utf8'));
   assert.equal(config.version, 2);
   assert.equal(config.instrumented, true);
@@ -71,6 +90,40 @@ test('sets up and reversibly removes Vite and all agent integrations', async () 
   const cursorAfter = JSON.parse(await readFile(join(root, '.cursor', 'mcp.json'), 'utf8'));
   assert.equal(cursorAfter.mcpServers.existing.command, 'existing');
   assert.equal(cursorAfter.mcpServers['foundry-design-control'], undefined);
+  for (const path of [
+    join(root, '.agents', 'skills', 'foundry-design-control', 'SKILL.md'),
+    join(root, '.cursor', 'skills', 'foundry-design-control', 'SKILL.md'),
+    join(root, '.claude', 'skills', 'foundry-design-control', 'SKILL.md'),
+  ]) {
+    await assert.rejects(readFile(path, 'utf8'));
+  }
+});
+
+test('uses the public beta MCP package outside the monorepo', async () => {
+  const root = await fixture('public-mcp');
+  const skillRoot = await skillFixture();
+  await writeFile(join(root, 'package.json'), JSON.stringify({}));
+  await setupProject(root, { agents: ['cursor'], skillRoot });
+  const cursor = JSON.parse(await readFile(join(root, '.cursor', 'mcp.json'), 'utf8'));
+  assert.deepEqual(cursor.mcpServers['foundry-design-control'].args, [
+    '-y',
+    'foundry-design-mcp-server@beta',
+  ]);
+});
+
+test('does not overwrite an existing project skill', async () => {
+  const root = await fixture('existing-skill');
+  const skillRoot = await skillFixture();
+  const target = join(root, '.agents', 'skills', 'foundry-design-control');
+  await mkdir(target, { recursive: true });
+  await writeFile(join(target, 'SKILL.md'), '# My customized Foundry skill\n');
+  await writeFile(join(root, 'package.json'), JSON.stringify({}));
+  await assert.rejects(
+    setupProject(root, { agents: ['codex'], skillRoot }),
+    /Foundry skill already exists/,
+  );
+  assert.match(await readFile(join(target, 'SKILL.md'), 'utf8'), /customized/);
+  await assert.rejects(readFile(join(root, '.foundry', 'foundry.config.json'), 'utf8'));
 });
 
 test('integrates and removes a Next.js App Router loader', async () => {

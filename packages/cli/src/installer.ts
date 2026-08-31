@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { accessSync } from 'node:fs';
-import { access, mkdir, readFile, rm, rmdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Platform } from 'foundry-design-protocol';
 import { detectPlatform } from './project.js';
 
@@ -50,6 +51,7 @@ interface InstallManifest {
   generatedFiles: ManagedFile[];
   managedBlocks: string[];
   jsonConfigs: string[];
+  skillDirectories?: string[];
   installedAt: string;
 }
 
@@ -58,6 +60,7 @@ export interface SetupOptions {
   targetUrl?: string;
   runtimeUrl?: string;
   packageRoot?: string;
+  skillRoot?: string;
 }
 
 export interface SetupPlan {
@@ -69,6 +72,7 @@ export interface SetupPlan {
   integrationFile?: string;
   targetUrl?: string;
   devCommand?: { command: string; args: string[] };
+  skillDirectories: string[];
 }
 
 export interface SetupResult extends SetupPlan {
@@ -82,6 +86,9 @@ export interface UninstallResult {
 
 const START = '>>> Foundry Design Control';
 const END = '<<< Foundry Design Control';
+const DEFAULT_SKILL_ROOT = fileURLToPath(
+  new URL('./skill/foundry-design-control/', import.meta.url),
+);
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -175,6 +182,12 @@ async function detectAgents(root: string): Promise<Agent[]> {
   return detected.length ? [...new Set(detected)] : ['codex'];
 }
 
+function skillDirectory(root: string, agent: Agent): string {
+  if (agent === 'codex') return join(root, '.agents', 'skills', 'foundry-design-control');
+  if (agent === 'cursor') return join(root, '.cursor', 'skills', 'foundry-design-control');
+  return join(root, '.claude', 'skills', 'foundry-design-control');
+}
+
 async function findFirst(root: string, candidates: string[]): Promise<string | undefined> {
   for (const candidate of candidates) {
     const path = join(root, candidate);
@@ -217,6 +230,7 @@ export async function createSetupPlan(
   const framework = platform === 'web' ? await detectWebFramework(root) : undefined;
   const agents = options.agents ?? (await detectAgents(root));
   const integration = await integrationFile(root, framework);
+  const skillDirectories = agents.map((agent) => skillDirectory(root, agent));
   const files = [
     join(root, '.foundry', 'foundry.config.json'),
     join(root, '.foundry', 'install-manifest.json'),
@@ -227,6 +241,7 @@ export async function createSetupPlan(
   if (agents.includes('codex')) files.push(join(root, '.codex', 'config.toml'));
   if (agents.includes('cursor')) files.push(join(root, '.cursor', 'mcp.json'));
   if (agents.includes('claude')) files.push(join(root, '.mcp.json'));
+  files.push(...skillDirectories);
   if (integration) {
     files.push(integration);
     if (framework === 'next') files.push(join(dirname(integration), 'foundry-loader.tsx'));
@@ -241,6 +256,7 @@ export async function createSetupPlan(
     integrationFile: integration,
     targetUrl: options.targetUrl ?? defaultTarget(framework),
     devCommand: await detectDevCommand(root),
+    skillDirectories,
   };
 }
 
@@ -278,6 +294,70 @@ async function writeGenerated(path: string, content: string): Promise<ManagedFil
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content);
   return { path, sha256: digest(content) };
+}
+
+interface SkillFile {
+  path: string;
+  content: Buffer;
+}
+
+async function readSkill(sourceRoot: string): Promise<SkillFile[]> {
+  if (!(await exists(join(sourceRoot, 'SKILL.md')))) {
+    throw new Error(`Foundry skill bundle is missing from ${sourceRoot}`);
+  }
+  const files: SkillFile[] = [];
+  const visit = async (directory: string): Promise<void> => {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const sourcePath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(sourcePath);
+      } else if (entry.isFile()) {
+        files.push({ path: relative(sourceRoot, sourcePath), content: await readFile(sourcePath) });
+      }
+    }
+  };
+  await visit(sourceRoot);
+  return files;
+}
+
+async function validateSkillTarget(
+  files: SkillFile[],
+  targetRoot: string,
+  ownedFiles: Map<string, string>,
+): Promise<void> {
+  for (const file of files) {
+    const targetPath = join(targetRoot, file.path);
+    const existing = await readFile(targetPath).catch(() => undefined);
+    if (existing && !ownedFiles.has(targetPath) && !existing.equals(file.content)) {
+      throw new Error(
+        `A Foundry skill already exists at ${targetRoot}. Move or remove it before setup.`,
+      );
+    }
+    const ownedDigest = ownedFiles.get(targetPath);
+    if (existing && ownedDigest && digest(existing.toString()) !== ownedDigest) {
+      throw new Error(
+        `Foundry preserved your edited skill at ${targetRoot}. Move it before updating setup.`,
+      );
+    }
+  }
+}
+
+async function copySkill(
+  skillFiles: SkillFile[],
+  targetRoot: string,
+): Promise<{ files: ManagedFile[]; directories: string[] }> {
+  const managedFiles: ManagedFile[] = [];
+  const directories = new Set<string>();
+  directories.add(targetRoot);
+  for (const file of skillFiles) {
+    const targetPath = join(targetRoot, file.path);
+    const directory = dirname(targetPath);
+    directories.add(directory);
+    await mkdir(directory, { recursive: true });
+    await writeFile(targetPath, file.content);
+    managedFiles.push({ path: targetPath, sha256: digest(file.content.toString()) });
+  }
+  return { files: managedFiles, directories: [...directories] };
 }
 
 function adapterSource(runtimeUrl: string): string {
@@ -390,7 +470,7 @@ function mcpServer(packageRoot?: string): {
   }
   return {
     command: 'npx',
-    args: ['-y', 'foundry-design-mcp-server@0.1.0'],
+    args: ['-y', 'foundry-design-mcp-server@beta'],
     env: { FOUNDRY_DESIGN_RUNTIME_URL: 'http://127.0.0.1:4387' },
   };
 }
@@ -433,7 +513,23 @@ export async function setupProject(
   const generated: ManagedFile[] = [];
   const managedBlocks: string[] = [];
   const jsonConfigs: string[] = [];
+  const skillDirectories: string[] = [];
   const changed: string[] = [];
+  const previousManifest = await readFile(
+    join(plan.root, '.foundry', 'install-manifest.json'),
+    'utf8',
+  )
+    .then((content) => JSON.parse(content) as InstallManifest)
+    .catch(() => undefined);
+  const ownedFiles = new Map(
+    (previousManifest?.generatedFiles ?? []).map((file) => [file.path, file.sha256]),
+  );
+  const skillFiles = plan.skillDirectories.length
+    ? await readSkill(resolve(options.skillRoot ?? DEFAULT_SKILL_ROOT))
+    : [];
+  for (const directory of plan.skillDirectories) {
+    await validateSkillTarget(skillFiles, directory, ownedFiles);
+  }
   const config: FoundryProjectConfig = {
     version: 2,
     platform: plan.platform,
@@ -496,12 +592,19 @@ export async function setupProject(
     jsonConfigs.push(path);
     changed.push(path);
   }
+  for (const directory of plan.skillDirectories) {
+    const copied = await copySkill(skillFiles, directory);
+    generated.push(...copied.files);
+    skillDirectories.push(...copied.directories);
+    changed.push(directory);
+  }
   const manifest: InstallManifest = {
     version: 1,
     agents: plan.agents,
     generatedFiles: generated,
     managedBlocks,
     jsonConfigs,
+    skillDirectories: [...new Set(skillDirectories)],
     installedAt: new Date().toISOString(),
   };
   const manifestFile = join(plan.root, '.foundry', 'install-manifest.json');
@@ -555,6 +658,16 @@ export async function uninstallProject(rootInput: string): Promise<UninstallResu
     }
     await rm(file.path);
     removed.push(file.path);
+  }
+  for (const directory of [...(manifest.skillDirectories ?? [])].sort(
+    (left, right) => right.length - left.length,
+  )) {
+    try {
+      await rmdir(directory);
+      removed.push(directory);
+    } catch {
+      /* Preserve non-empty directories and user additions. */
+    }
   }
   await rm(manifestFile);
   removed.push(manifestFile);

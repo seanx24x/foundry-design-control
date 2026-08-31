@@ -4,13 +4,19 @@ Foundry is a local-first precision design workbench for Codex, Cursor, and Claud
 
 ## Beta installation
 
-Foundry `0.2.0-beta.1` is the first shareable beta. From the project you want to inspect, run:
+Foundry is distributed through npm, so testers do not need access to the private GitHub repository. From the project you want to inspect, run:
 
 ```bash
 npx foundry-design@beta setup
 ```
 
-Setup detects the platform, framework, package manager, development command, and installed coding agents. It previews every file it will manage, adds development-only instrumentation for supported web frameworks, configures the selected MCP clients, and records a reversible install manifest.
+Setup detects the platform, framework, package manager, development command, and installed coding agents. It previews every file it will manage, adds development-only instrumentation for supported web frameworks, installs the Foundry skill for Codex, Cursor, or Claude Code, configures the selected MCP clients, and records a reversible install manifest.
+
+Restart the coding agent after setup, then ask:
+
+```text
+Start Foundry for this project.
+```
 
 Then start a session with:
 
@@ -26,7 +32,7 @@ npx foundry-design@beta uninstall
 
 Supported automatic web integration currently includes Next.js App Router, Vite, and plain HTML. Generic web, SwiftUI, and React Native projects receive explicit setup guidance when a safe automatic edit is not available.
 
-Codex, Cursor, and Claude Code users can alternatively install the bundled plugin from this repository. The plugin contains the Foundry skill and MCP server definition, so project setup uses `--agent none` and does not create duplicate MCP configuration.
+The repository also contains a portable plugin bundle for future marketplace distribution. The npm setup above is the public beta installation path.
 
 The beta supports Node.js 20 or newer. Read [Privacy](PRIVACY.md), [Security](SECURITY.md), and the [beta changelog](CHANGELOG.md) before using it with sensitive work.
 

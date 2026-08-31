@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-beta.2 - 2026-08-30
+
+- Bundled the complete Foundry skill in the public CLI package.
+- Added project-scoped skill installation for Codex, Cursor, and Claude Code.
+- Added reversible skill removal with protection for user-customized files.
+- Switched public MCP and launcher fallbacks to the npm beta channel.
+- Added clean tarball coverage for setup and uninstall without repository access.
+
 ## 0.2.0-beta.1 - 2026-08-30
 
 - Added the continuous review, apply, rebuild, and rendered-verification workflow.
