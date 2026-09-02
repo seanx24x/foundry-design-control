@@ -1,13 +1,13 @@
 {
   "name": "foundry-design-control",
-  "version": "0.2.0-beta.4",
+  "version": "0.2.0-beta.5",
   "description": "Directly manipulate a running product, resolve semantic source intent, and apply one verified design batch with Codex.",
   "author": {
     "name": "Sean Lynch",
     "url": "https://github.com/seanx24x"
   },
-  "repository": "https://github.com/seanx24x/foundry-design-control",
-  "homepage": "https://github.com/seanx24x/foundry-design-control#readme",
+  "repository": "https://withfoundry.ai",
+  "homepage": "https://withfoundry.ai",
   "license": "MIT",
   "keywords": ["design", "visual-inspector", "motion", "mcp", "developer-tools"],
   "skills": "./skills/",
@@ -19,6 +19,8 @@
     "developerName": "Sean Lynch",
     "category": "Productivity",
     "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://withfoundry.ai",
+    "privacyPolicyURL": "https://withfoundry.ai/#safety",
     "defaultPrompt": [
       "Start Foundry for this project.",
       "Apply my reviewed Foundry changes.",

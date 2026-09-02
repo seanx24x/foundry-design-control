@@ -1,13 +1,13 @@
 {
   "name": "foundry-design-control",
-  "version": "0.2.0-beta.4",
+  "version": "0.2.0-beta.5",
   "description": "Design directly in a running product, review exact changes, apply them with an agent, and verify the rebuilt result.",
   "author": {
     "name": "Sean Lynch",
     "url": "https://github.com/seanx24x"
   },
-  "homepage": "https://github.com/seanx24x/foundry-design-control#readme",
-  "repository": "https://github.com/seanx24x/foundry-design-control",
+  "homepage": "https://withfoundry.ai",
+  "repository": "https://withfoundry.ai",
   "license": "MIT",
   "keywords": ["design", "visual-inspector", "motion", "mcp", "developer-tools"],
   "skills": "./skills/",
@@ -19,6 +19,8 @@
     "developerName": "Sean Lynch",
     "category": "Productivity",
     "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://withfoundry.ai",
+    "privacyPolicyURL": "https://withfoundry.ai/#safety",
     "defaultPrompt": [
       "Start Foundry for this project.",
       "Apply my reviewed Foundry changes.",

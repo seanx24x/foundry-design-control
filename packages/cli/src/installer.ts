@@ -102,7 +102,7 @@ export interface UninstallResult {
 
 const START = '>>> Foundry Design Control';
 const END = '<<< Foundry Design Control';
-const GENERATOR_VERSION = '0.2.0-beta.4';
+const GENERATOR_VERSION = '0.2.0-beta.5';
 const TRANSACTION_FILE = 'setup-transaction.json';
 const execFileAsync = promisify(execFile);
 const DEFAULT_SKILL_ROOT = fileURLToPath(
@@ -802,6 +802,68 @@ export async function installAgentIntegration(
   const path = agent === 'cursor' ? join(root, '.cursor', 'mcp.json') : join(root, '.mcp.json');
   await configureJson(path, packageRoot);
   return path;
+}
+
+export interface HostAgentIntegration {
+  configFile: string;
+  skillDirectory: string;
+  preserved: string[];
+}
+
+/** Install one reusable user-level connection without placing MCP config in every project. */
+export async function installHostAgentIntegration(
+  homeInput: string,
+  agent: Agent,
+  options: Pick<SetupOptions, 'packageRoot' | 'skillRoot'> = {},
+): Promise<HostAgentIntegration> {
+  const home = resolve(homeInput);
+  const agentRoot =
+    agent === 'codex'
+      ? join(home, '.codex')
+      : agent === 'cursor'
+        ? join(home, '.cursor')
+        : join(home, '.claude');
+  const configFile =
+    agent === 'codex'
+      ? join(agentRoot, 'config.toml')
+      : agent === 'cursor'
+        ? join(agentRoot, 'mcp.json')
+        : join(home, '.claude.json');
+  const skillDirectory = join(agentRoot, 'skills', 'foundry-design-control');
+
+  if (agent === 'codex') await configureCodex(configFile, options.packageRoot);
+  else await configureJson(configFile, options.packageRoot);
+
+  const skillFiles = await readSkill(resolve(options.skillRoot ?? DEFAULT_SKILL_ROOT));
+  const manifestFile = join(skillDirectory, '.foundry-install.json');
+  const manifest = await readFile(manifestFile, 'utf8')
+    .then(
+      (content) =>
+        JSON.parse(content) as {
+          generatedFiles?: ManagedFile[];
+        },
+    )
+    .catch(() => undefined);
+  const ownedFiles = new Map(
+    (manifest?.generatedFiles ?? []).map((file) => [file.path, file.sha256]),
+  );
+  const preserved: string[] = [];
+  await validateSkillTarget(skillFiles, skillDirectory, ownedFiles, true, preserved);
+  const copied = await copySkill(skillFiles, skillDirectory, ownedFiles, new Set(preserved));
+  await writeFile(
+    manifestFile,
+    `${JSON.stringify(
+      {
+        version: 1,
+        generatorVersion: GENERATOR_VERSION,
+        generatedFiles: copied.files,
+        updatedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  return { configFile, skillDirectory, preserved };
 }
 
 export async function createUpdatePlan(

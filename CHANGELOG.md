@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-beta.5 - 2026-09-02
+
+- Added one-command shared agent setup with `setup --global`, so the MCP connection and Foundry skill can be reused across projects.
+- Added independent packed-install coverage for Codex, Cursor, Claude Code, and plugin-provided project setup.
+- Added an in-product first-run checklist covering setup, agent connection, selection, a recorded change, and verified application.
+- Added privacy-safe copied diagnostics containing connection state and counts without project content, paths, selectors, session IDs, or tokens.
+- Kept project-local setup available for teams that prefer repository-scoped agent configuration.
+
 ## 0.2.0-beta.4 - 2026-09-02
 
 - Added a live coding-agent listener heartbeat between the MCP bridge and local runtime.

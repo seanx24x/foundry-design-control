@@ -48,6 +48,7 @@ import {
 } from './design-memory.js';
 import { renderKeylineIcons } from './keyline-icons.js';
 import { FOUNDRY_UI_FOUNDATION_CSS } from './ui-foundations.js';
+import { createSafeDiagnostics } from './diagnostics.js';
 import {
   DEFAULT_WORKSPACE_STATE,
   clampUtilityRect,
@@ -364,6 +365,8 @@ const PANEL_CSS = `
   .review-head strong { font-size:12px; }.review-summary { padding:12px 16px 12px;border-bottom:1px solid var(--fdc-line);background:#fcfcfc; }.review-summary strong { display:block;font-size:12px;font-weight:550;letter-spacing:-.01em; }.review-summary span { display:block;margin-top:4px;color:var(--fdc-muted);font-size:12px;line-height:1.45; }.review-summary.attention strong { color:#8b4d3d; }.review-toolbar button { height:28px;padding:0 8px;font-size:12px; }
   .onboarding-card { bottom:84px;width:340px;padding:16px;border-radius:12px;box-shadow:0 16px 40px rgb(0 0 0 / 15%); }.onboarding-card-head { gap:8px; }.onboarding-card-head span { width:28px;height:28px;display:grid;place-items:center;color:#a75031;background:#fbf1ed;border-radius:8px; }.onboarding-card-head svg { width:16px;height:16px;color:inherit; }.onboarding-card-head strong { font-size:12px;letter-spacing:-.015em; }.onboarding-card>p { margin:8px 0 16px;font-size:12px;line-height:1.55; }.onboarding-steps { display:grid;grid-template-columns:1fr;gap:1px;border:1px solid var(--fdc-line);border-radius:8px;overflow:hidden;background:var(--fdc-line); }.onboarding-step { display:grid;grid-template-columns:24px 1fr;gap:8px;padding:8px 12px;background:white;text-align:left; }.onboarding-step b { color:#8a8a8a;font-size:8px;font-weight:500;letter-spacing:.04em; }.onboarding-step strong { display:block;font-size:12px;font-weight:550; }.onboarding-step small { display:block;margin-top:4px;color:var(--fdc-muted);font-size:8px;line-height:1.35; }.onboarding-actions { gap:8px;margin-top:12px; }.onboarding-actions button { height:32px;padding:0 12px;border-radius:8px;font-size:12px; }
   .onboarding-card,.onboarding-step { color:var(--fdc-ink);background:var(--fdc-surface); }.onboarding-card-head span { color:#e7a68c;background:#36231d; }.onboarding-actions button { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }.onboarding-actions .onboarding-start { color:#141416;background:#f0f1f3;border-color:#f0f1f3; }
+  .status-popover { width:256px; }.status-popover-actions { display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px; }.status-popover .status-popover-actions button { height:32px;margin:0; }.status-popover .status-popover-actions [data-status-retry] { grid-column:1/-1; }
+  .onboarding-card { width:360px; }.onboarding-card-head>strong { flex:1; }.onboarding-card-head .onboarding-close { width:28px;height:28px;display:grid;place-items:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.onboarding-card-head .onboarding-close:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.onboarding-card-head .onboarding-close svg { width:12px;height:12px; }.onboarding-steps { gap:4px;border:0;overflow:visible;background:transparent; }.onboarding-step { min-height:40px;grid-template-columns:24px minmax(0,1fr);align-items:center;gap:8px;padding:8px;border:1px solid var(--fdc-line);border-radius:8px; }.onboarding-step b { width:20px;height:20px;display:grid;place-items:center;border:1px solid var(--fdc-line);border-radius:50%;color:var(--fdc-muted);font:500 8px/1 var(--fdc-font);letter-spacing:0; }.onboarding-step b svg { width:12px;height:12px; }.onboarding-step.complete>b { color:#141416;background:#8ae0c2;border-color:#8ae0c2; }.onboarding-step.current { border-color:var(--fdc-signal);box-shadow:0 0 0 4px rgb(59 130 246 / 10%); }
   .review-summary { color:var(--fdc-ink);background:var(--fdc-paper); }.empty-state-icon { color:#9ec5ff;background:var(--fdc-signal-soft); }
   .component-card,.health-card { color:var(--fdc-ink);background:var(--fdc-surface);border-color:var(--fdc-line); }.component-card.selected { color:var(--fdc-ink);background:var(--fdc-component-soft);border-color:#5c4b9e;box-shadow:0 0 0 4px rgb(155 135 245 / 10%); }.component-variants span,.component-actions button,.component-variants button { color:#c1b5f5;background:var(--fdc-component-soft);border-color:#4a406f; }.health-score::before { background:var(--fdc-surface); }.health-filters button { color:var(--fdc-muted); }.health-filters button:hover,.health-filters button.active { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }.health-card p,.health-evidence { color:var(--fdc-muted); }.mapping-chooser { color:#f0c9a8;background:#35291d;border-color:#665039; }.mapping-chooser>strong,.mapping-option,.mapping-option small { color:#e7c29f; }.review-card.locating { background:var(--fdc-signal-soft); }.baseline-badge { color:#83d8bb;background:#18352c; }
   /* Workspace ownership */
@@ -1171,7 +1174,7 @@ export function installFoundryInspector(
   statusPill.setAttribute('aria-label', 'Foundry session status');
   statusPill.insertAdjacentHTML(
     'afterend',
-    '<div class="status-popover" hidden><strong data-status-title>Session connected</strong><span data-status-detail>Changes are stored locally.</span><code data-status-project></code><code data-status-revision></code><button data-status-retry>Check connection</button></div>',
+    '<div class="status-popover" hidden><strong data-status-title>Session connected</strong><span data-status-detail>Changes are stored locally.</span><code data-status-project></code><code data-status-revision></code><div class="status-popover-actions"><button data-status-checklist>Getting started</button><button data-status-diagnostics>Copy diagnostics</button><button data-status-retry>Check connection</button></div></div>',
   );
   shadow
     .querySelector<HTMLElement>('.panel')!
@@ -1184,7 +1187,7 @@ export function installFoundryInspector(
   onboarding.hidden = true;
   onboarding.setAttribute('aria-label', 'Getting started with Foundry');
   onboarding.innerHTML =
-    '<div class="onboarding-card-head"><span><i data-foundry-icon="sparkles"></i></span><strong>Start with the interface</strong></div><p>Foundry stays in Select mode while you work. Click anything, refine measured values, then apply one reviewed batch.</p><div class="onboarding-steps"><div class="onboarding-step"><b>01</b><span><strong>Select</strong><small>Click the page or choose a layer.</small></span></div><div class="onboarding-step"><b>02</b><span><strong>Refine</strong><small>Adjust real layout, type, color, and motion.</small></span></div><div class="onboarding-step"><b>03</b><span><strong>Apply</strong><small>Review once, update source, and verify.</small></span></div></div><div class="onboarding-actions"><button class="onboarding-shortcuts">View shortcuts</button><button class="onboarding-start">Select an element</button></div>';
+    '<div class="onboarding-card-head"><span><i data-foundry-icon="sparkles"></i></span><strong>Getting started</strong><button class="onboarding-close" aria-label="Close getting started"><i data-foundry-icon="x"></i></button></div><p>Complete one real design loop. Progress stays in this browser and contains no project content.</p><div class="onboarding-steps"></div><div class="onboarding-actions"><button class="onboarding-shortcuts">View shortcuts</button><button class="onboarding-start">Continue</button></div>';
   shadow.append(onboarding);
   const compareBar = document.createElement('div');
   compareBar.className = 'compare-bar';
@@ -1521,10 +1524,106 @@ export function installFoundryInspector(
   const capturedBaselineRuns = new Set<string>();
   let projectRoot = location.origin;
   let projectRevision = '';
+  let runtimeConnected = false;
+  let recordedChangeCount = 0;
+  let latestApplyState = 'none';
+  type OnboardingStepId = 'setup' | 'agent' | 'selection' | 'change' | 'apply';
+  const onboardingCompleted = new Set<OnboardingStepId>();
   let designMemory: ProjectDesignMemory = emptyDesignMemory();
   let matrixMode = false;
   let lastUtilityTrigger: HTMLElement | null = null;
   const utilityRects = new Map<Exclude<FoundryUtility, null>, FoundryRect>();
+
+  const onboardingSteps: Array<{
+    id: OnboardingStepId;
+    title: string;
+    detail: string;
+  }> = [
+    {
+      id: 'setup',
+      title: 'Setup complete',
+      detail: 'The project adapter and local session are ready.',
+    },
+    {
+      id: 'agent',
+      title: 'Agent restarted and connected',
+      detail: 'Keep the coding agent listening while you design.',
+    },
+    {
+      id: 'selection',
+      title: 'First element selected',
+      detail: 'Click the canvas or choose an item in Layers.',
+    },
+    {
+      id: 'change',
+      title: 'First change recorded',
+      detail: 'Adjust a measured value in the Inspector.',
+    },
+    {
+      id: 'apply',
+      title: 'First batch applied and verified',
+      detail: 'Review once, update source, then measure the rebuild.',
+    },
+  ];
+
+  function onboardingStorageKey(suffix: string): string {
+    return `__foundry_getting_started:${suffix}:${projectRoot}`;
+  }
+
+  function loadOnboardingProgress(): void {
+    onboardingCompleted.clear();
+    try {
+      const stored = JSON.parse(localStorage.getItem(onboardingStorageKey('completed')) ?? '[]');
+      for (const id of stored) {
+        if (onboardingSteps.some((step) => step.id === id)) onboardingCompleted.add(id);
+      }
+    } catch {
+      localStorage.removeItem(onboardingStorageKey('completed'));
+    }
+  }
+
+  function completeOnboardingStep(id: OnboardingStepId): void {
+    if (onboardingCompleted.has(id)) return;
+    onboardingCompleted.add(id);
+    try {
+      localStorage.setItem(
+        onboardingStorageKey('completed'),
+        JSON.stringify([...onboardingCompleted]),
+      );
+    } catch {
+      // Progress remains available for this live session.
+    }
+    renderOnboardingChecklist();
+  }
+
+  function renderOnboardingChecklist(forceOpen = false): void {
+    const nextStep = onboardingSteps.find((step) => !onboardingCompleted.has(step.id));
+    const complete = !nextStep;
+    const stepsRoot = onboarding.querySelector<HTMLElement>('.onboarding-steps')!;
+    stepsRoot.innerHTML = onboardingSteps
+      .map((step, index) => {
+        const done = onboardingCompleted.has(step.id);
+        const current = step.id === nextStep?.id;
+        return `<div class="onboarding-step ${done ? 'complete' : ''} ${current ? 'current' : ''}"><b>${done ? '<i data-foundry-icon="check"></i>' : String(index + 1).padStart(2, '0')}</b><span><strong>${step.title}</strong><small>${step.detail}</small></span></div>`;
+      })
+      .join('');
+    renderIcons(stepsRoot);
+    const continueButton = onboarding.querySelector<HTMLButtonElement>('.onboarding-start')!;
+    const action = nextStep?.id ?? 'done';
+    continueButton.dataset.action = action;
+    continueButton.textContent =
+      action === 'agent'
+        ? 'Copy restart prompt'
+        : action === 'selection'
+          ? 'Select an element'
+          : action === 'change'
+            ? 'Adjust a value'
+            : action === 'apply'
+              ? 'Review changes'
+              : 'Done';
+    const dismissed = localStorage.getItem(onboardingStorageKey('dismissed')) === '1';
+    onboarding.hidden = complete || (!forceOpen && dismissed);
+  }
 
   function utilityStorageKey(utility: Exclude<FoundryUtility, null>): string {
     return `__foundry_utility_rect:${utility}:${projectRoot}`;
@@ -1808,11 +1907,17 @@ export function installFoundryInspector(
   async function hydrateSession(): Promise<void> {
     if (!sessionId || !token) return;
     try {
-      const response = await fetch(`${runtimeUrl}/v1/sessions/${sessionId}`, {
-        headers: { 'x-foundry-token': token },
-      });
+      const [response, presence] = await Promise.all([
+        fetch(`${runtimeUrl}/v1/sessions/${sessionId}`, {
+          headers: { 'x-foundry-token': token },
+        }),
+        sessionRequest('/agent-presence').catch(() => ({ connected: false, presence: null })),
+      ]);
       if (!response.ok) throw new Error('The local session could not be read.');
-      const { changeSet, designGraph: graph } = await response.json();
+      const payload = await response.json();
+      const { changeSet, designGraph: graph } = payload;
+      runtimeConnected = true;
+      activeAgentPresence = presence;
       statusPopover.querySelector<HTMLElement>('[data-status-project]')!.textContent =
         changeSet.context.projectRoot;
       statusPopover.querySelector<HTMLElement>('[data-status-revision]')!.textContent =
@@ -1820,6 +1925,7 @@ export function installFoundryInspector(
       const nextProjectRoot = changeSet.context.projectRoot || location.origin;
       if (projectRoot !== nextProjectRoot || !hydratedOnce) {
         projectRoot = nextProjectRoot;
+        loadOnboardingProgress();
         designMemory = readDesignMemory(localStorage, projectRoot);
         utilityRects.clear();
         positionWorkspaceSurfaces();
@@ -1833,15 +1939,23 @@ export function installFoundryInspector(
         (change: any) =>
           change.status !== 'rejected' && String(change.before) !== String(change.after),
       );
+      recordedChangeCount = activeChanges.length;
+      latestApplyState = payload.applyRuns?.at(-1)?.state ?? 'none';
       updateChangeCount(activeChanges.length, activeChanges.at(-1));
+      completeOnboardingStep('setup');
+      if (activeAgentPresence.connected) completeOnboardingStep('agent');
+      if (selectedElements.length) completeOnboardingStep('selection');
+      if (activeChanges.length) completeOnboardingStep('change');
+      if (latestApplyState === 'passed') completeOnboardingStep('apply');
+      renderOnboardingChecklist();
       setSessionStatus('live');
       if (!libraryPanel.hidden) renderDesignMemory();
       if (changeSet.changes.length === 0 && !hydratedOnce) {
         showToast('Click any element. Shift-click builds a selection.');
-        if (!localStorage.getItem('__foundry_onboarded')) onboarding.hidden = false;
       }
       hydratedOnce = true;
     } catch (error) {
+      runtimeConnected = false;
       setSessionStatus(
         'error',
         error instanceof Error ? error.message : 'The local session could not be read.',
@@ -3297,6 +3411,8 @@ export function installFoundryInspector(
       run.state === 'queued'
         ? 'The reviewed changes are queued. Keep your coding agent active, or ask it to apply your reviewed Foundry changes.'
         : (run.messages.at(-1)?.message ?? run.error ?? 'Apply run created.');
+    latestApplyState = run.state;
+    if (run.state === 'passed') completeOnboardingStep('apply');
     captureVerifiedRun(run);
     reviewCount.textContent = `Attempt ${run.attempts}`;
     reviewBody.innerHTML = `<div class="run-summary"><div class="run-state"><i class="${passed ? 'passed' : attention ? 'attention' : active ? 'active' : ''}"></i><strong>${escapeHtml(runStateLabels[run.state] ?? run.state)}</strong></div><p>${escapeHtml(latestMessage)}</p></div><div class="run-steps">${run.messages
@@ -3383,6 +3499,7 @@ export function installFoundryInspector(
         sessionRequest('/agent-presence'),
       ]);
       activeAgentPresence = presence;
+      if (presence.connected) completeOnboardingStep('agent');
       const latestRun = payload.applyRuns?.at(-1);
       const runNeedsRefresh =
         latestRun &&
@@ -3425,6 +3542,7 @@ export function installFoundryInspector(
       sessionRequest('/agent-presence'),
     ]);
     activeAgentPresence = presence;
+    if (presence.connected) completeOnboardingStep('agent');
     renderReviewPayload(payload);
     requestAnimationFrame(() => {
       reviewBody.scrollTop = reviewScrollTop;
@@ -3771,6 +3889,8 @@ export function installFoundryInspector(
         (change: any) =>
           change.status !== 'rejected' && String(change.before) !== String(change.after),
       );
+      recordedChangeCount = activeChanges.length;
+      completeOnboardingStep('change');
       lastRecordedSummary = `${target.label} · ${control.label} ${before}${control.unit ?? ''} → ${after}${control.unit ?? ''}`;
       updateChangeCount(activeChanges.length, activeChanges.at(-1));
       showToast(ambiguous ? 'Choose the source intent in review' : 'Change recorded');
@@ -5500,6 +5620,7 @@ export function installFoundryInspector(
       selectedElements = [element];
       selected = element;
     }
+    completeOnboardingStep('selection');
     if (!sectionPreferenceTouched) {
       const categoryKeys = [
         'position',
@@ -6188,6 +6309,29 @@ export function installFoundryInspector(
   statusPopover
     .querySelector<HTMLButtonElement>('[data-status-retry]')!
     .addEventListener('click', () => void hydrateSession());
+  statusPopover
+    .querySelector<HTMLButtonElement>('[data-status-checklist]')!
+    .addEventListener('click', () => {
+      localStorage.removeItem(onboardingStorageKey('dismissed'));
+      renderOnboardingChecklist(true);
+      statusPopover.hidden = true;
+      sessionStatus.setAttribute('aria-expanded', 'false');
+    });
+  statusPopover
+    .querySelector<HTMLButtonElement>('[data-status-diagnostics]')!
+    .addEventListener('click', () => {
+      const diagnostics = createSafeDiagnostics({
+        interfaceTheme: resolvedInterfaceTheme(),
+        runtimeConnected,
+        agentConnected: activeAgentPresence.connected,
+        agentName: activeAgentPresence.presence?.agent?.name,
+        selectedCount: selectedElements.length,
+        recordedChangeCount,
+        latestApplyState,
+      });
+      void navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
+      showToast('Privacy-safe diagnostics copied');
+    });
   interfaceThemeTrigger.addEventListener('click', () => {
     if (interfaceThemeMenu.hidden) openInterfaceThemeMenu();
     else closeInterfaceThemeMenu();
@@ -6202,15 +6346,38 @@ export function installFoundryInspector(
     );
   changeDock.querySelector('.dock-undo')?.addEventListener('click', () => void replayHistory(-1));
   changeDock.querySelector('.dock-review')?.addEventListener('click', () => void openReview());
+  onboarding.querySelector('.onboarding-close')?.addEventListener('click', () => {
+    localStorage.setItem(onboardingStorageKey('dismissed'), '1');
+    onboarding.hidden = true;
+  });
   onboarding.querySelector('.onboarding-start')?.addEventListener('click', () => {
-    localStorage.setItem('__foundry_onboarded', '1');
+    const action = onboarding.querySelector<HTMLButtonElement>('.onboarding-start')?.dataset.action;
+    if (action === 'agent') {
+      void navigator.clipboard.writeText(
+        'Start Foundry for this project and keep listening for Apply with agent requests.',
+      );
+      showToast('Restart prompt copied');
+      return;
+    }
+    if (action === 'apply' && recordedChangeCount > 0) {
+      onboarding.hidden = true;
+      void openReview();
+      return;
+    }
+    if (action === 'done') {
+      onboarding.hidden = true;
+      return;
+    }
     onboarding.hidden = true;
     inspecting = true;
     updateInspectionMode();
-    showToast('Select mode stays on · click any element to begin');
+    showToast(
+      action === 'change'
+        ? 'Adjust any Inspector value to record a change'
+        : 'Select mode stays on · click any element to begin',
+    );
   });
   onboarding.querySelector('.onboarding-shortcuts')?.addEventListener('click', () => {
-    localStorage.setItem('__foundry_onboarded', '1');
     onboarding.hidden = true;
     openCommands();
   });

@@ -6,6 +6,7 @@ import test from 'node:test';
 import {
   createSetupPlan,
   createUpdatePlan,
+  installHostAgentIntegration,
   installAgentIntegration,
   setupProject,
   uninstallProject,
@@ -119,6 +120,31 @@ test('uses the public beta MCP package outside the monorepo', async () => {
     '-y',
     'foundry-design-mcp-server@beta',
   ]);
+});
+
+test('installs reusable host integrations without touching a project', async () => {
+  const home = await fixture('host-agent');
+  const skillRoot = await skillFixture();
+
+  for (const agent of ['codex', 'cursor', 'claude'] as const) {
+    const result = await installHostAgentIntegration(home, agent, { skillRoot });
+    assert.match(await readFile(join(result.skillDirectory, 'SKILL.md'), 'utf8'), /Foundry/);
+    const config = await readFile(result.configFile, 'utf8');
+    assert.match(config, /foundry-design-mcp-server@beta/);
+  }
+
+  const codex = await readFile(join(home, '.codex', 'config.toml'), 'utf8');
+  assert.match(codex, /\[mcp_servers\.foundry-design-control\]/);
+  const cursor = JSON.parse(await readFile(join(home, '.cursor', 'mcp.json'), 'utf8'));
+  assert.equal(cursor.mcpServers['foundry-design-control'].command, 'npx');
+  const claude = JSON.parse(await readFile(join(home, '.claude.json'), 'utf8'));
+  assert.equal(claude.mcpServers['foundry-design-control'].command, 'npx');
+
+  const customized = join(home, '.codex', 'skills', 'foundry-design-control', 'SKILL.md');
+  await writeFile(customized, '# Foundry Design Control\n\nProject note.\n');
+  const updated = await installHostAgentIntegration(home, 'codex', { skillRoot });
+  assert.deepEqual(updated.preserved, [customized]);
+  assert.match(await readFile(customized, 'utf8'), /Project note/);
 });
 
 test('prioritizes the active coding agent over stale project configuration', async () => {
@@ -285,7 +311,7 @@ test('integrates and removes a Next.js App Router loader', async () => {
     await readFile(join(root, '.foundry', 'install-manifest.json'), 'utf8'),
   );
   assert.equal(manifest.version, 2);
-  assert.equal(manifest.generatorVersion, '0.2.0-beta.4');
+  assert.equal(manifest.generatorVersion, '0.2.0-beta.5');
   assert.equal(manifest.validation.length, 2);
   await uninstallProject(root);
   const restored = await readFile(join(root, 'app', 'layout.tsx'), 'utf8');

@@ -5,11 +5,13 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
 import { renderChangePrompt, type Platform, type SessionContext } from 'foundry-design-protocol';
 import { FoundryRuntime, SessionStore } from 'foundry-design-runtime';
 import {
   createSetupPlan,
   createUpdatePlan,
+  installHostAgentIntegration,
   installAgentIntegration,
   setupProject,
   updateProject,
@@ -41,7 +43,7 @@ function printHelp(): void {
   console.log(`Foundry Design Control
 
 Usage:
-  foundry-design setup [--project PATH] [--agent codex,cursor,claude] [--url URL] [--yes]
+  foundry-design setup [--project PATH] [--agent codex,cursor,claude] [--global] [--url URL] [--yes]
   foundry-design update [--project PATH] [--agent codex,cursor,claude] [--yes]
   foundry-design init <web|swiftui|react-native> [--project PATH]
   foundry-design start [--project PATH] [--url URL] [--platform PLATFORM] [--no-open] [--no-dev]
@@ -49,7 +51,7 @@ Usage:
   foundry-design index [--project PATH] [--output FILE]
   foundry-design uninstall [--project PATH] [--yes]
   foundry-design export <SESSION_ID> [--format json|prompt|full] [--output FILE]
-  foundry-design install-agent <cursor|claude|codex> [--project PATH]
+  foundry-design install-agent <cursor|claude|codex> [--global | --project PATH]
 
 Foundry is local-only and never edits product source from inspector controls.`);
 }
@@ -124,8 +126,13 @@ function requestedAgents(): Agent[] | undefined {
 
 async function setup(): Promise<void> {
   const root = projectRoot();
+  const requested = requestedAgents();
+  const sharedAgentSetup = has('--global');
+  const detectedPlan = sharedAgentSetup
+    ? await createSetupPlan(root, { agents: requested })
+    : undefined;
   const options = {
-    agents: requestedAgents(),
+    agents: sharedAgentSetup ? [] : requested,
     targetUrl: flag('--url'),
     packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
   };
@@ -133,7 +140,13 @@ async function setup(): Promise<void> {
   console.log(`Foundry setup\n\nProject: ${root}\nPlatform: ${plan.platform}`);
   if (plan.framework) console.log(`Framework: ${plan.framework}`);
   console.log(
-    `Agent integration: ${plan.agents.length ? plan.agents.join(', ') : 'plugin-provided'}`,
+    `Agent integration: ${
+      sharedAgentSetup
+        ? `${detectedPlan?.agents.join(', ')} (shared across projects)`
+        : plan.agents.length
+          ? plan.agents.join(', ')
+          : 'plugin-provided'
+    }`,
   );
   console.log('\nFiles Foundry will manage:');
   for (const path of plan.files) console.log(`  ${path}`);
@@ -147,6 +160,13 @@ async function setup(): Promise<void> {
     return;
   }
   const result = await setupProject(root, options);
+  if (sharedAgentSetup) {
+    for (const agent of detectedPlan?.agents ?? []) {
+      await installHostAgentIntegration(homedir(), agent, {
+        packageRoot: options.packageRoot,
+      });
+    }
+  }
   console.log(`\n✓ Foundry configured ${result.changed.length} files.`);
   for (const check of result.validation) {
     const marker = check.status === 'passed' ? '✓' : check.status === 'skipped' ? '–' : '!';
@@ -155,6 +175,9 @@ async function setup(): Promise<void> {
   if (result.skillDirectories.length) {
     console.log(`✓ Installed the Foundry skill for ${result.agents.join(', ')}.`);
   }
+  if (sharedAgentSetup && detectedPlan?.agents.length) {
+    console.log(`✓ Installed the shared Foundry connection for ${detectedPlan.agents.join(', ')}.`);
+  }
   if (result.targetUrl) console.log(`✓ Preview URL: ${result.targetUrl}`);
   if (result.devCommand)
     console.log(
@@ -162,7 +185,13 @@ async function setup(): Promise<void> {
     );
   console.log('\nSetup complete. One coding-agent restart is required so it can load Foundry.');
   console.log(
-    `1. Restart ${result.agents.length ? result.agents.join(', ') : 'your coding agent'}.`,
+    `1. Restart ${
+      sharedAgentSetup && detectedPlan?.agents.length
+        ? detectedPlan.agents.join(', ')
+        : result.agents.length
+          ? result.agents.join(', ')
+          : 'your coding agent'
+    }.`,
   );
   console.log('2. Reopen this exact project folder.');
   console.log(
@@ -495,6 +524,22 @@ async function installAgent(): Promise<void> {
   const agent = args[1];
   if (!agent || !['cursor', 'claude', 'codex'].includes(agent))
     throw new Error('install-agent requires cursor, claude, or codex');
+  if (has('--global')) {
+    const result = await installHostAgentIntegration(homedir(), agent as Agent, {
+      packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
+    });
+    console.log(`Installed the shared Foundry connection for ${agent}.`);
+    console.log(`MCP configuration: ${result.configFile}`);
+    console.log(`Skill: ${result.skillDirectory}`);
+    if (result.preserved.length) {
+      console.log('Preserved customized skill files:');
+      for (const path of result.preserved) console.log(`  ${path}`);
+    }
+    console.log(
+      `Restart ${agent === 'codex' ? 'Codex' : agent === 'cursor' ? 'Cursor' : 'Claude Code'} once. Future projects can use "npx foundry-design@beta setup --agent none --yes" without another MCP install.`,
+    );
+    return;
+  }
   const root = projectRoot();
   const file = await installAgentIntegration(
     root,

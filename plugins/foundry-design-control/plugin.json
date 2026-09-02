@@ -1,13 +1,13 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "foundry-design-control",
-  "version": "0.2.0-beta.4",
+  "version": "0.2.0-beta.5",
   "description": "Design directly in a running product, review exact changes, apply them with an agent, and verify the rebuilt result.",
   "author": {
     "name": "Sean Lynch"
   },
-  "homepage": "https://github.com/seanx24x/foundry-design-control#readme",
-  "repository": "https://github.com/seanx24x/foundry-design-control",
+  "homepage": "https://withfoundry.ai",
+  "repository": "https://withfoundry.ai",
   "license": "MIT",
   "keywords": ["design", "visual-inspector", "motion", "mcp", "developer-tools"]
 }
