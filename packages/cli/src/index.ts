@@ -9,8 +9,10 @@ import { renderChangePrompt, type Platform, type SessionContext } from 'foundry-
 import { FoundryRuntime, SessionStore } from 'foundry-design-runtime';
 import {
   createSetupPlan,
+  createUpdatePlan,
   installAgentIntegration,
   setupProject,
+  updateProject,
   uninstallProject,
   type Agent,
   type FoundryProjectConfig,
@@ -40,6 +42,7 @@ function printHelp(): void {
 
 Usage:
   foundry-design setup [--project PATH] [--agent codex,cursor,claude] [--url URL] [--yes]
+  foundry-design update [--project PATH] [--agent codex,cursor,claude] [--yes]
   foundry-design init <web|swiftui|react-native> [--project PATH]
   foundry-design start [--project PATH] [--url URL] [--platform PLATFORM] [--no-open] [--no-dev]
   foundry-design doctor [--project PATH]
@@ -159,6 +162,37 @@ async function setup(): Promise<void> {
     );
   console.log('\nRestart your coding agent, then ask: "Start Foundry for this project."');
   console.log('You can also run: foundry-design start');
+}
+
+async function update(): Promise<void> {
+  const root = projectRoot();
+  const options = {
+    agents: requestedAgents(),
+    packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
+  };
+  const plan = await createUpdatePlan(root, options);
+  console.log(`Foundry update\n\nProject: ${root}`);
+  console.log(`Agent integration: ${plan.agents.join(', ')}`);
+  console.log('\nFoundry will refresh these managed paths:');
+  for (const path of plan.files) console.log(`  ${path}`);
+  console.log('\nFiles changed since Foundry installed them will be preserved.');
+  if (!(await confirm('\nContinue with this update?'))) {
+    console.log('Update cancelled.');
+    return;
+  }
+  const result = await updateProject(root, options);
+  console.log(`\n✓ Foundry refreshed ${result.changed.length} managed paths.`);
+  if (result.preserved.length) {
+    console.log('Preserved files containing user changes:');
+    for (const path of result.preserved) console.log(`  ${path}`);
+  }
+  for (const check of result.validation) {
+    const marker = check.status === 'passed' ? '✓' : check.status === 'skipped' ? '–' : '!';
+    console.log(`${marker} ${check.name}: ${check.status.replaceAll('-', ' ')}`);
+  }
+  console.log(
+    '\nRestart your coding agent so it loads the refreshed Foundry connection and skill.',
+  );
 }
 
 async function initProject(): Promise<void> {
@@ -462,6 +496,7 @@ async function installAgent(): Promise<void> {
 
 try {
   if (command === 'setup') await setup();
+  else if (command === 'update') await update();
   else if (command === 'init') await initProject();
   else if (command === 'start') await start();
   else if (command === 'doctor') await doctor();

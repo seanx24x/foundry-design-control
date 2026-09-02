@@ -65,6 +65,10 @@ Read [change-contract.md](references/change-contract.md) when interpreting or tr
 
 For native limitations and motion registration, read [platform-setup.md](references/platform-setup.md).
 
+## Update project integration
+
+When the user asks to update Foundry, run `<skill-root>/scripts/foundry.sh update --project <root> --yes`. The updater refreshes checksum-matched Foundry files, skill bundles, and agent configuration, while preserving files that changed after installation. Run doctor after the update, report every preserved path, and ask the user to restart their coding agent before starting a new apply session.
+
 ## Remove project integration
 
 Run `<skill-root>/scripts/foundry.sh uninstall --project <root>` only when the user explicitly asks. Preserve any Foundry-generated file whose contents changed after setup.

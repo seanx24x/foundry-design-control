@@ -59,9 +59,26 @@ try {
   ]) {
     if (!existsSync(join(fixture, path))) throw new Error(`Setup did not install ${path}`);
   }
+  const customizedSkill = join(fixture, '.agents/skills/foundry-design-control/SKILL.md');
+  writeFileSync(
+    customizedSkill,
+    `${readFileSync(customizedSkill, 'utf8')}\n<!-- project note -->\n`,
+  );
+  run('node', [
+    'node_modules/foundry-design/dist/index.js',
+    'update',
+    '--agent',
+    'codex,cursor,claude',
+    '--yes',
+  ]);
+  if (!readFileSync(customizedSkill, 'utf8').includes('project note')) {
+    throw new Error('Update overwrote a customized skill file.');
+  }
   run('node', ['node_modules/foundry-design/dist/index.js', 'uninstall', '--yes']);
+  if (!existsSync(customizedSkill)) {
+    throw new Error('Uninstall removed a customized skill file.');
+  }
   for (const path of [
-    '.agents/skills/foundry-design-control/SKILL.md',
     '.cursor/skills/foundry-design-control/SKILL.md',
     '.claude/skills/foundry-design-control/SKILL.md',
   ]) {

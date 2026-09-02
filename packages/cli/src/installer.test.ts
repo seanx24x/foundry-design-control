@@ -5,9 +5,11 @@ import { join } from 'node:path';
 import test from 'node:test';
 import {
   createSetupPlan,
+  createUpdatePlan,
   installAgentIntegration,
   setupProject,
   uninstallProject,
+  updateProject,
 } from './installer.js';
 
 async function fixture(name: string): Promise<string> {
@@ -141,6 +143,108 @@ test('installs Codex MCP configuration directly instead of writing a merge snipp
   assert.match(config, /\[mcp_servers\.foundry-design-control\]/);
   assert.match(config, /foundry-design-mcp-server@beta/);
   await assert.rejects(readFile(join(root, '.codex', 'foundry-mcp.toml'), 'utf8'));
+});
+
+test('updates an existing plugin-only install for the active agent and is repeatable', async () => {
+  const root = await fixture('update');
+  const skillRoot = await skillFixture();
+  await mkdir(join(root, 'src'), { recursive: true });
+  await writeFile(join(root, 'package.json'), JSON.stringify({ dependencies: { vite: '7.0.0' } }));
+  await writeFile(join(root, 'src', 'main.ts'), "console.log('product');\n");
+  await setupProject(root, { agents: [], skillRoot });
+
+  await writeFile(join(skillRoot, 'SKILL.md'), '# Foundry Design Control v2\n');
+  const plan = await createUpdatePlan(root, {
+    environment: { CODEX_THREAD_ID: 'thread-1' },
+    skillRoot,
+  });
+  assert.deepEqual(plan.agents, ['codex']);
+  const first = await updateProject(root, {
+    environment: { CODEX_THREAD_ID: 'thread-1' },
+    skillRoot,
+  });
+  assert.deepEqual(first.preserved, []);
+  assert.match(
+    await readFile(join(root, '.agents', 'skills', 'foundry-design-control', 'SKILL.md'), 'utf8'),
+    /v2/,
+  );
+  assert.match(await readFile(join(root, '.codex', 'config.toml'), 'utf8'), /mcp_servers/);
+  const manifest = JSON.parse(
+    await readFile(join(root, '.foundry', 'install-manifest.json'), 'utf8'),
+  );
+  assert.deepEqual(manifest.agents, ['codex']);
+  assert.equal(typeof manifest.updatedAt, 'string');
+
+  const second = await updateProject(root, {
+    environment: { CODEX_THREAD_ID: 'thread-1' },
+    skillRoot,
+  });
+  assert.deepEqual(second.preserved, []);
+});
+
+test('requires setup before update', async () => {
+  const root = await fixture('update-missing');
+  await writeFile(join(root, 'package.json'), JSON.stringify({}));
+  await assert.rejects(createUpdatePlan(root), /Run setup first/);
+  await assert.rejects(updateProject(root), /Run setup first/);
+});
+
+test('retains configured preview and runtime URLs during update', async () => {
+  const root = await fixture('update-urls');
+  const skillRoot = await skillFixture();
+  await writeFile(join(root, 'package.json'), JSON.stringify({}));
+  await setupProject(root, {
+    agents: ['codex'],
+    runtimeUrl: 'http://127.0.0.1:4487',
+    targetUrl: 'http://127.0.0.1:4490',
+    skillRoot,
+  });
+
+  await updateProject(root, { agents: ['codex'], skillRoot });
+  const config = JSON.parse(await readFile(join(root, '.foundry', 'foundry.config.json'), 'utf8'));
+  assert.equal(config.runtimeUrl, 'http://127.0.0.1:4487');
+  assert.equal(config.targetUrl, 'http://127.0.0.1:4490');
+});
+
+test('preserves customized skill files while refreshing unchanged siblings', async () => {
+  const root = await fixture('update-preserve');
+  const skillRoot = await skillFixture();
+  await writeFile(join(root, 'package.json'), JSON.stringify({}));
+  await setupProject(root, { agents: ['codex'], skillRoot });
+  const installedRoot = join(root, '.agents', 'skills', 'foundry-design-control');
+  const customized = join(installedRoot, 'SKILL.md');
+  await writeFile(customized, '# My customized Foundry workflow\n');
+  await writeFile(join(skillRoot, 'SKILL.md'), '# Foundry Design Control v2\n');
+  await writeFile(join(skillRoot, 'references', 'workflow.md'), '# Updated workflow\n');
+
+  const result = await updateProject(root, { agents: ['codex'], skillRoot });
+  assert.deepEqual(result.preserved, [customized]);
+  assert.match(await readFile(customized, 'utf8'), /customized/);
+  assert.match(await readFile(join(installedRoot, 'references', 'workflow.md'), 'utf8'), /Updated/);
+});
+
+test('rolls back an update when refreshed integration introduces a validation failure', async () => {
+  const root = await fixture('update-rollback');
+  const skillRoot = await skillFixture();
+  await writeFile(
+    join(root, 'package.json'),
+    JSON.stringify({
+      scripts: {
+        typecheck: `node -e "const fs=require('fs');const p='.agents/skills/foundry-design-control/SKILL.md';if(fs.existsSync(p)&&fs.readFileSync(p,'utf8').includes('v2'))process.exit(1)"`,
+      },
+    }),
+  );
+  await setupProject(root, { agents: ['codex'], skillRoot });
+  const installed = join(root, '.agents', 'skills', 'foundry-design-control', 'SKILL.md');
+  const before = await readFile(installed, 'utf8');
+  await writeFile(join(skillRoot, 'SKILL.md'), '# Foundry Design Control v2\n');
+
+  await assert.rejects(
+    updateProject(root, { agents: ['codex'], skillRoot }),
+    /introduced a typecheck failure/,
+  );
+  assert.equal(await readFile(installed, 'utf8'), before);
+  await assert.rejects(readFile(join(root, '.foundry', 'setup-transaction.json'), 'utf8'));
 });
 
 test('does not overwrite an existing project skill', async () => {

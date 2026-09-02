@@ -24,7 +24,17 @@ Then start a session with:
 npx foundry-design@beta start
 ```
 
-Foundry reuses an available project server or starts the detected development command, launches the loopback runtime, and opens an authenticated visual preview. Remove only Foundry-managed integration with:
+Foundry reuses an available project server or starts the detected development command, launches the loopback runtime, and opens an authenticated visual preview.
+
+Update an existing installation with:
+
+```bash
+npx foundry-design@beta update
+```
+
+The updater refreshes checksum-matched Foundry files, agent connections, and skill bundles. It preserves and reports files changed since setup, validates the project, and rolls back the update if Foundry introduces a TypeScript or lint failure. Restart the coding agent after updating.
+
+Remove only Foundry-managed integration with:
 
 ```bash
 npx foundry-design@beta uninstall

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added `foundry-design update` for checksum-safe upgrades of project integration, agent connections, and installed skills.
+- Preserved user-customized managed files and retained non-default runtime and preview URLs during updates.
+- Added transactional rollback, repeat-update, customization, and packed npm lifecycle coverage for the updater.
+
 ## 0.2.0-beta.3 - 2026-08-31
 
 - Made setup transactional, validated, and recoverable after interruption.

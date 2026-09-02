@@ -62,6 +62,7 @@ interface InstallManifest {
   jsonConfigs: string[];
   skillDirectories?: string[];
   installedAt: string;
+  updatedAt?: string;
   generatorVersion?: string;
   validation?: SetupValidationResult[];
 }
@@ -73,6 +74,7 @@ export interface SetupOptions {
   packageRoot?: string;
   skillRoot?: string;
   environment?: Record<string, string | undefined>;
+  update?: boolean;
 }
 
 export interface SetupPlan {
@@ -89,6 +91,7 @@ export interface SetupPlan {
 
 export interface SetupResult extends SetupPlan {
   changed: string[];
+  preserved: string[];
   validation: SetupValidationResult[];
 }
 
@@ -526,7 +529,9 @@ async function writeOwnedGenerated(
   content: string,
   ownedFiles: Map<string, string>,
   allowLegacyLoader = false,
-): Promise<ManagedFile> {
+  preserveModified = false,
+  preserved: string[] = [],
+): Promise<ManagedFile | undefined> {
   const existing = await readFile(path, 'utf8').catch(() => undefined);
   if (existing != null && existing !== content) {
     const currentDigest = digest(existing);
@@ -534,6 +539,10 @@ async function writeOwnedGenerated(
     const ownedAndUnchanged = ownedDigest === currentDigest;
     const knownLoader = allowLegacyLoader && LEGACY_NEXT_LOADER_DIGESTS.has(currentDigest);
     if (!ownedAndUnchanged && !knownLoader) {
+      if (preserveModified) {
+        preserved.push(path);
+        return ownedDigest ? { path, sha256: ownedDigest } : undefined;
+      }
       throw new Error(`Foundry preserved your edited generated file at ${path}.`);
     }
   }
@@ -568,17 +577,27 @@ async function validateSkillTarget(
   files: SkillFile[],
   targetRoot: string,
   ownedFiles: Map<string, string>,
+  preserveModified = false,
+  preserved: string[] = [],
 ): Promise<void> {
   for (const file of files) {
     const targetPath = join(targetRoot, file.path);
     const existing = await readFile(targetPath).catch(() => undefined);
     if (existing && !ownedFiles.has(targetPath) && !existing.equals(file.content)) {
+      if (preserveModified) {
+        preserved.push(targetPath);
+        continue;
+      }
       throw new Error(
         `A Foundry skill already exists at ${targetRoot}. Move or remove it before setup.`,
       );
     }
     const ownedDigest = ownedFiles.get(targetPath);
     if (existing && ownedDigest && digest(existing.toString()) !== ownedDigest) {
+      if (preserveModified) {
+        preserved.push(targetPath);
+        continue;
+      }
       throw new Error(
         `Foundry preserved your edited skill at ${targetRoot}. Move it before updating setup.`,
       );
@@ -589,12 +608,19 @@ async function validateSkillTarget(
 async function copySkill(
   skillFiles: SkillFile[],
   targetRoot: string,
+  ownedFiles: Map<string, string> = new Map(),
+  preserved: ReadonlySet<string> = new Set(),
 ): Promise<{ files: ManagedFile[]; directories: string[] }> {
   const managedFiles: ManagedFile[] = [];
   const directories = new Set<string>();
   directories.add(targetRoot);
   for (const file of skillFiles) {
     const targetPath = join(targetRoot, file.path);
+    if (preserved.has(targetPath)) {
+      const ownedDigest = ownedFiles.get(targetPath);
+      if (ownedDigest) managedFiles.push({ path: targetPath, sha256: ownedDigest });
+      continue;
+    }
     const directory = dirname(targetPath);
     directories.add(directory);
     await mkdir(directory, { recursive: true });
@@ -622,6 +648,8 @@ async function configureWebIntegration(
   managedBlocks: string[],
   ownedFiles: Map<string, string>,
   runtimeUrl: string,
+  preserveModified = false,
+  preserved: string[] = [],
 ): Promise<string | undefined> {
   const entry = plan.integrationFile;
   if (!entry) return undefined;
@@ -646,7 +674,15 @@ export function FoundryLoader(): null {
   return null;
 }
 `;
-    generated.push(await writeOwnedGenerated(loader, loaderContent, ownedFiles, true));
+    const generatedLoader = await writeOwnedGenerated(
+      loader,
+      loaderContent,
+      ownedFiles,
+      true,
+      preserveModified,
+      preserved,
+    );
+    if (generatedLoader) generated.push(generatedLoader);
     const original = await readText(entry);
     if (!original.includes('FoundryLoader')) {
       const withImport = `import { FoundryLoader } from './foundry-loader';\n${original}`;
@@ -670,7 +706,7 @@ export function FoundryLoader(): null {
       `<script type="module">
   const query = new URLSearchParams(location.search);
   if (query.has('__foundry_session')) {
-    const module = await import('http://127.0.0.1:4387/adapter.js');
+    const module = await import('${runtimeUrl}/adapter.js');
     module.installFoundryInspector();
   }
 </script>`,
@@ -768,6 +804,44 @@ export async function installAgentIntegration(
   return path;
 }
 
+export async function createUpdatePlan(
+  rootInput: string,
+  options: SetupOptions = {},
+): Promise<SetupPlan> {
+  const root = resolve(rootInput);
+  const manifest = await readFile(join(root, '.foundry', 'install-manifest.json'), 'utf8')
+    .then((content) => JSON.parse(content) as InstallManifest)
+    .catch(() => undefined);
+  if (!manifest) throw new Error(`Foundry is not installed in ${root}. Run setup first.`);
+  const config = await readFile(join(root, '.foundry', 'foundry.config.json'), 'utf8')
+    .then((content) => JSON.parse(content) as FoundryProjectConfig)
+    .catch(() => undefined);
+  return createSetupPlan(root, {
+    ...options,
+    agents: options.agents ?? (manifest.agents.length ? manifest.agents : undefined),
+    targetUrl: options.targetUrl ?? config?.targetUrl,
+    update: true,
+  });
+}
+
+export async function updateProject(
+  rootInput: string,
+  options: SetupOptions = {},
+): Promise<SetupResult> {
+  const root = resolve(rootInput);
+  const plan = await createUpdatePlan(root, options);
+  const config = await readFile(join(root, '.foundry', 'foundry.config.json'), 'utf8')
+    .then((content) => JSON.parse(content) as FoundryProjectConfig)
+    .catch(() => undefined);
+  return setupProject(rootInput, {
+    ...options,
+    agents: plan.agents,
+    targetUrl: plan.targetUrl,
+    runtimeUrl: options.runtimeUrl ?? config?.runtimeUrl,
+    update: true,
+  });
+}
+
 export async function setupProject(
   rootInput: string,
   options: SetupOptions = {},
@@ -781,12 +855,17 @@ export async function setupProject(
   const jsonConfigs: string[] = [];
   const skillDirectories: string[] = [];
   const changed: string[] = [];
+  const preserved: string[] = [];
+  const preserveModified = options.update === true;
   const previousManifest = await readFile(
     join(plan.root, '.foundry', 'install-manifest.json'),
     'utf8',
   )
     .then((content) => JSON.parse(content) as InstallManifest)
     .catch(() => undefined);
+  if (options.update && !previousManifest) {
+    throw new Error(`Foundry is not installed in ${plan.root}. Run setup first.`);
+  }
   const ownedFiles = new Map(
     (previousManifest?.generatedFiles ?? []).map((file) => [file.path, file.sha256]),
   );
@@ -794,7 +873,7 @@ export async function setupProject(
     ? await readSkill(resolve(options.skillRoot ?? DEFAULT_SKILL_ROOT))
     : [];
   for (const directory of plan.skillDirectories) {
-    await validateSkillTarget(skillFiles, directory, ownedFiles);
+    await validateSkillTarget(skillFiles, directory, ownedFiles, preserveModified, preserved);
   }
   const transactionFiles = [
     ...plan.files.filter((path) => !plan.skillDirectories.includes(path)),
@@ -833,20 +912,36 @@ export async function setupProject(
       },
     };
     const configFile = join(plan.root, '.foundry', 'foundry.config.json');
-    generated.push(
-      await writeOwnedGenerated(configFile, `${JSON.stringify(config, null, 2)}\n`, ownedFiles),
+    const generatedConfig = await writeOwnedGenerated(
+      configFile,
+      `${JSON.stringify(config, null, 2)}\n`,
+      ownedFiles,
+      false,
+      preserveModified,
+      preserved,
     );
-    changed.push(configFile);
+    if (generatedConfig) generated.push(generatedConfig);
+    if (!preserved.includes(configFile)) changed.push(configFile);
     if (plan.platform === 'web') {
       const adapter = join(plan.root, '.foundry', 'web-adapter.ts');
-      generated.push(await writeOwnedGenerated(adapter, adapterSource(runtimeUrl), ownedFiles));
-      changed.push(adapter);
+      const generatedAdapter = await writeOwnedGenerated(
+        adapter,
+        adapterSource(runtimeUrl),
+        ownedFiles,
+        false,
+        preserveModified,
+        preserved,
+      );
+      if (generatedAdapter) generated.push(generatedAdapter);
+      if (!preserved.includes(adapter)) changed.push(adapter);
       const integration = await configureWebIntegration(
         plan,
         generated,
         managedBlocks,
         ownedFiles,
         runtimeUrl,
+        preserveModified,
+        preserved,
       );
       if (integration) changed.push(integration);
     } else {
@@ -855,8 +950,16 @@ export async function setupProject(
         plan.platform === 'swiftui'
           ? '# Foundry SwiftUI setup\n\nAdd FoundryDesignControl only to DEBUG builds and mark meaningful views with `.foundryInspectable`.\n'
           : '# Foundry React Native setup\n\nCreate the debug adapter and register semantic targets using `measureInWindow`.\n';
-      generated.push(await writeOwnedGenerated(setup, content, ownedFiles));
-      changed.push(setup);
+      const generatedSetup = await writeOwnedGenerated(
+        setup,
+        content,
+        ownedFiles,
+        false,
+        preserveModified,
+        preserved,
+      );
+      if (generatedSetup) generated.push(generatedSetup);
+      if (!preserved.includes(setup)) changed.push(setup);
     }
     const gitignore = join(plan.root, '.gitignore');
     await setManagedBlock(gitignore, managedBlock('.foundry/sessions/', 'hash'));
@@ -881,7 +984,7 @@ export async function setupProject(
       changed.push(path);
     }
     for (const directory of plan.skillDirectories) {
-      const copied = await copySkill(skillFiles, directory);
+      const copied = await copySkill(skillFiles, directory, ownedFiles, new Set(preserved));
       generated.push(...copied.files);
       skillDirectories.push(...copied.directories);
       changed.push(directory);
@@ -894,7 +997,8 @@ export async function setupProject(
       managedBlocks,
       jsonConfigs,
       skillDirectories: [...new Set(skillDirectories)],
-      installedAt: new Date().toISOString(),
+      installedAt: previousManifest?.installedAt ?? new Date().toISOString(),
+      ...(options.update ? { updatedAt: new Date().toISOString() } : {}),
       generatorVersion: GENERATOR_VERSION,
       validation,
     };
@@ -902,7 +1006,12 @@ export async function setupProject(
     await writeFile(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
     changed.push(manifestFile);
     await rm(transactionPath(plan.root), { force: true });
-    return { ...plan, changed: [...new Set(changed)], validation };
+    return {
+      ...plan,
+      changed: [...new Set(changed)],
+      preserved: [...new Set(preserved)],
+      validation,
+    };
   } catch (error) {
     await restoreSnapshots(plan.root, snapshots);
     await rm(transactionPath(plan.root), { force: true });
