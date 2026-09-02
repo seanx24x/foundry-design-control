@@ -4,27 +4,51 @@ Foundry is a local-first precision design workbench for Codex, Cursor, and Claud
 
 ## Beta installation
 
-Foundry is distributed through npm, so testers do not need access to the private GitHub repository. From the project you want to inspect, run:
+Foundry is distributed through npm, so testers do not need GitHub access.
+
+### Recommended: let your coding agent install it
+
+Open the project in Codex, Cursor, or Claude Code and paste:
+
+```text
+Install Foundry for this project by running npx foundry-design@beta setup --yes. Check the result and tell me when I need to restart.
+```
+
+Setup detects the project and active coding agent, installs development-only instrumentation, configures the local agent connection, validates the integration, and records everything it owns for safe updates or removal.
+
+Restart the coding agent once, reopen the same project folder, and paste:
+
+```text
+Start Foundry for this project and keep listening for Apply with agent requests.
+```
+
+That is the normal workflow. Foundry starts the project when needed, opens an authenticated local preview, and shows **Agent is ready** before it allows an apply request.
+
+### Manual installation
+
+From the project you want to inspect, run:
 
 ```bash
 npx foundry-design@beta setup
 ```
 
-Setup detects the platform, framework, package manager, development command, and installed coding agents. It previews every file it will manage, adds development-only instrumentation for supported web frameworks, installs the Foundry skill for Codex, Cursor, or Claude Code, configures the selected MCP clients, and records a reversible install manifest.
-
-Restart the coding agent after setup, then ask:
+Then restart the coding agent, reopen the same project folder, and ask:
 
 ```text
-Start Foundry for this project.
+Start Foundry for this project and keep listening for Apply with agent requests.
 ```
 
-Then start a session with:
+You do not need to run a second terminal command when the agent starts Foundry for you. For a manual-only preview, run `npx foundry-design@beta start`, but Apply with agent still requires a restarted and actively listening coding agent.
+
+Update an existing installation with:
 
 ```bash
-npx foundry-design@beta start
+npx foundry-design@beta update
 ```
 
-Foundry reuses an available project server or starts the detected development command, launches the loopback runtime, and opens an authenticated visual preview. Remove only Foundry-managed integration with:
+The updater refreshes checksum-matched Foundry files, agent connections, and skill bundles. It preserves and reports files changed since setup, validates the project, and rolls back the update if Foundry introduces a TypeScript or lint failure. Restart the coding agent after updating.
+
+Remove only Foundry-managed integration with:
 
 ```bash
 npx foundry-design@beta uninstall

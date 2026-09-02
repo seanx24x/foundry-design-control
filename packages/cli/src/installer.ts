@@ -102,7 +102,7 @@ export interface UninstallResult {
 
 const START = '>>> Foundry Design Control';
 const END = '<<< Foundry Design Control';
-const GENERATOR_VERSION = '0.2.0-beta.3';
+const GENERATOR_VERSION = '0.2.0-beta.4';
 const TRANSACTION_FILE = 'setup-transaction.json';
 const execFileAsync = promisify(execFile);
 const DEFAULT_SKILL_ROOT = fileURLToPath(

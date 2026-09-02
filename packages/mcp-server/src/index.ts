@@ -106,7 +106,23 @@ serveStdio(() => {
     async ({ sessionId, token, agent, revision, designGraphRevision, waitMs }) => {
       const id = client.sessionId(sessionId);
       const deadline = Date.now() + waitMs;
+      let nextPresenceAt = 0;
       do {
+        if (Date.now() >= nextPresenceAt) {
+          await client.request(
+            `/v1/sessions/${id}/agent-presence`,
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                agent,
+                listening: true,
+                ttlMs: Math.min(Math.max(waitMs + 10_000, 15_000), 70_000),
+              }),
+            },
+            token,
+          );
+          nextPresenceAt = Date.now() + 5_000;
+        }
         const payload = (await client.request(
           `/v1/sessions/${id}/apply-runs?state=queued`,
           {},

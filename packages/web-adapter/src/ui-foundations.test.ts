@@ -39,3 +39,10 @@ test('the Foundry interface contains no off-grid pixel literals', () => {
     [],
   );
 });
+
+test('the review flow requires a live coding-agent listener before apply', () => {
+  const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  assert.match(source, /sessionRequest\('\/agent-presence'\)/);
+  assert.match(source, /Connect agent to apply/);
+  assert.match(source, /keep listening for Apply with agent requests/);
+});

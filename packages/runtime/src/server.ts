@@ -25,6 +25,13 @@ export interface RuntimeOptions {
   store?: SessionStore;
 }
 
+interface AgentPresence {
+  agent: { name: string; version?: string; taskId?: string };
+  listening: boolean;
+  lastSeenAt: string;
+  expiresAt: string;
+}
+
 const inspectorRoot = dirname(
   fileURLToPath(import.meta.resolve('foundry-design-inspector/index.html')),
 );
@@ -119,6 +126,7 @@ export class FoundryRuntime {
   readonly store: SessionStore;
   private surfaces = new Map<string, SurfaceSnapshot>();
   private commands = new Map<string, PreviewCommand[]>();
+  private agentPresence = new Map<string, AgentPresence>();
   private server = createServer((request, response) => void this.handle(request, response));
 
   constructor(options: RuntimeOptions = {}) {
@@ -182,6 +190,44 @@ export class FoundryRuntime {
         if (request.method === 'GET' && parts.length === 3) {
           sendJson(response, 200, publicSession(stored));
           return;
+        }
+        if (parts[3] === 'agent-presence') {
+          if (request.method === 'GET') {
+            const presence = this.agentPresence.get(id);
+            const connected = Boolean(
+              presence?.listening && Date.parse(presence.expiresAt) > Date.now(),
+            );
+            if (!connected) this.agentPresence.delete(id);
+            sendJson(response, 200, {
+              connected,
+              presence: connected ? presence : null,
+            });
+            return;
+          }
+          if (request.method === 'POST') {
+            const input = (await body(request)) as {
+              agent: AgentPresence['agent'];
+              listening?: boolean;
+              ttlMs?: number;
+            };
+            if (!input.agent?.name) throw new Error('Agent presence requires an agent name.');
+            if (input.listening === false) {
+              this.agentPresence.delete(id);
+              sendJson(response, 200, { connected: false, presence: null });
+              return;
+            }
+            const now = new Date();
+            const ttlMs = Math.min(Math.max(input.ttlMs ?? 15_000, 5_000), 70_000);
+            const presence: AgentPresence = {
+              agent: input.agent,
+              listening: true,
+              lastSeenAt: now.toISOString(),
+              expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
+            };
+            this.agentPresence.set(id, presence);
+            sendJson(response, 200, { connected: true, presence });
+            return;
+          }
         }
         if (request.method === 'POST' && parts[3] === 'changes') {
           const updated = await this.store.addChange(id, (await body(request)) as never);

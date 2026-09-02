@@ -160,8 +160,15 @@ async function setup(): Promise<void> {
     console.log(
       `✓ Development command: ${result.devCommand.command} ${result.devCommand.args.join(' ')}`,
     );
-  console.log('\nRestart your coding agent, then ask: "Start Foundry for this project."');
-  console.log('You can also run: foundry-design start');
+  console.log('\nSetup complete. One coding-agent restart is required so it can load Foundry.');
+  console.log(
+    `1. Restart ${result.agents.length ? result.agents.join(', ') : 'your coding agent'}.`,
+  );
+  console.log('2. Reopen this exact project folder.');
+  console.log(
+    '3. Ask: "Start Foundry for this project and keep listening for Apply with agent requests."',
+  );
+  console.log('\nAfter that, the browser will confirm when the agent is ready.');
 }
 
 async function update(): Promise<void> {
@@ -349,6 +356,12 @@ async function start(): Promise<void> {
     console.log('  1. Option-click an element. Shift-click to add more.');
     console.log('  2. Drag a blue handle or use the inspector for exact values.');
     console.log('  3. Review the semantic mapping, then Apply with agent.');
+    console.log('\nAgent handoff:');
+    console.log('  Keep this process running while you design.');
+    console.log('  Foundry will show “Agent is ready” only while a coding agent is listening.');
+    console.log(
+      '  If it is not ready, ask the agent: “Keep listening for Apply with agent requests.”',
+    );
   }
   if (!has('--no-open')) await openUrl(productUrl);
   const shutdown = async () => {

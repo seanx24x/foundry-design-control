@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-beta.4 - 2026-09-02
+
+- Added a live coding-agent listener heartbeat between the MCP bridge and local runtime.
+- Prevented Apply with agent from queuing work when no coding agent is available to claim it.
+- Added clear connected and disconnected states with a copyable recovery instruction in Review.
+- Simplified installation guidance around one agent-led setup prompt and one required restart.
+- Made session startup explain when the handoff is ready and how to reconnect it.
+
 ## 0.2.0-beta.3 - 2026-09-02
 
 - Made setup transactional, validated, and recoverable after interruption.

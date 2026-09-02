@@ -57,6 +57,27 @@ test('protects and serves the apply-run lifecycle over loopback HTTP', async () 
     };
     assert.equal(graphPayload.designGraph.revision, 'rev-1');
 
+    const disconnected = await fetch(`http://127.0.0.1:${port}/v1/sessions/${id}/agent-presence`, {
+      headers: { 'x-foundry-token': session.token },
+    });
+    assert.deepEqual(await disconnected.json(), { connected: false, presence: null });
+
+    const heartbeat = await fetch(`http://127.0.0.1:${port}/v1/sessions/${id}/agent-presence`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-foundry-token': session.token,
+      },
+      body: JSON.stringify({ agent: { name: 'codex' }, ttlMs: 5_000 }),
+    });
+    const heartbeatPayload = (await heartbeat.json()) as {
+      connected: boolean;
+      presence: { agent: { name: string }; expiresAt: string };
+    };
+    assert.equal(heartbeatPayload.connected, true);
+    assert.equal(heartbeatPayload.presence.agent.name, 'codex');
+    assert.ok(Date.parse(heartbeatPayload.presence.expiresAt) > Date.now());
+
     const changed = await store.addChange(id, {
       target: {
         id: 'button',

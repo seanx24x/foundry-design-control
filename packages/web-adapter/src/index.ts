@@ -431,6 +431,14 @@ const PANEL_CSS = `
   .review-overview .review-toolbar { position:static;z-index:auto;flex:none;padding:0;border:0;background:transparent;backdrop-filter:none; }
   .review-overview .review-toolbar button { height:28px;padding:0 8px;border-color:transparent;background:transparent;color:var(--fdc-muted);font-size:8px; }
   .review-overview .review-toolbar button:hover { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }
+  .review-agent { display:grid;grid-template-columns:8px minmax(0,1fr) auto;align-items:center;gap:12px;margin:12px 16px 0;padding:12px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }
+  .review-agent>i { width:8px;height:8px;border-radius:50%;background:#d16d51; }
+  .review-agent.connected>i { background:#2ca67f;box-shadow:0 0 0 4px rgb(44 166 127 / 12%); }
+  .review-agent strong,.review-agent span { display:block; }
+  .review-agent strong { font-size:12px;font-weight:600; }
+  .review-agent span { margin-top:4px;color:var(--fdc-muted);font-size:12px;line-height:1.45; }
+  .review-agent button { height:32px;padding:0 12px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-elevated);color:var(--fdc-ink);font-size:12px;cursor:pointer; }
+  .review-agent button:hover { border-color:var(--fdc-muted); }
   .change-tray .review-group { border-right:0;border-bottom:1px solid var(--fdc-line); }
   .change-tray .review-group-title { position:sticky;top:52px;z-index:2;min-height:40px;padding:0 12px;background:rgb(28 28 31 / 98%); }
   .review-group-title .included-count { font-size:8px; }
@@ -1398,6 +1406,10 @@ export function installFoundryInspector(
   let selectedControls: Control[] = [];
   let resizeObserver: ResizeObserver | undefined;
   let activeReviewPayload: any = null;
+  let activeAgentPresence: {
+    connected: boolean;
+    presence?: { agent?: { name?: string }; expiresAt?: string } | null;
+  } = { connected: false, presence: null };
   const reviewDraftKey = `__foundry_review_draft:${sessionId || 'local'}`;
   let reviewDraft = (() => {
     try {
@@ -3001,10 +3013,37 @@ export function installFoundryInspector(
       const count = group.querySelector<HTMLElement>('.included-count');
       if (count) count.textContent = `${included} included`;
     });
-    applyButton.textContent = selectedCount
-      ? `Apply ${selectedCount} with agent`
-      : 'Apply with agent';
-    applyButton.disabled = selectedCount === 0;
+    applyButton.textContent = !activeAgentPresence.connected
+      ? 'Connect agent to apply'
+      : selectedCount
+        ? `Apply ${selectedCount} with agent`
+        : 'Apply with agent';
+    applyButton.disabled = selectedCount === 0 || !activeAgentPresence.connected;
+  }
+
+  function agentConnectionMarkup(): string {
+    const agentName = activeAgentPresence.presence?.agent?.name;
+    return `<div class="review-agent ${activeAgentPresence.connected ? 'connected' : 'disconnected'}" aria-live="polite"><i></i><div><strong>${activeAgentPresence.connected ? `${escapeHtml(agentName ?? 'Coding agent')} is ready` : 'Connect your coding agent'}</strong><span>${activeAgentPresence.connected ? 'Apply requests will be claimed automatically while this agent keeps listening.' : 'In the same project, ask your agent to start Foundry and keep listening for Apply requests.'}</span></div>${activeAgentPresence.connected ? '' : '<button data-copy-agent-listener>Copy instruction</button>'}</div>`;
+  }
+
+  function updateAgentConnection(): void {
+    const current = reviewBody.querySelector<HTMLElement>('.review-agent');
+    if (!current) {
+      updateReviewSelection();
+      return;
+    }
+    const replacement = document.createElement('div');
+    replacement.innerHTML = agentConnectionMarkup();
+    current.replaceWith(replacement.firstElementChild!);
+    reviewBody
+      .querySelector<HTMLButtonElement>('[data-copy-agent-listener]')
+      ?.addEventListener('click', () => {
+        void navigator.clipboard.writeText(
+          'Start Foundry for this project and keep listening for Apply with agent requests.',
+        );
+        showToast('Agent instruction copied');
+      });
+    updateReviewSelection();
   }
 
   function renderReviewList(changes: any[]): void {
@@ -3025,7 +3064,7 @@ export function installFoundryInspector(
     ).length;
     reviewBody.innerHTML =
       changes.length || rejectedCount
-        ? `<div class="review-overview"><div class="review-summary" data-unresolved="${unresolvedCount}" aria-live="polite"><strong>Preparing review…</strong><span>Only included, exactly mapped changes will be sent to your agent.</span></div><div class="review-toolbar"><button data-review-compare>Compare</button><button data-review-approve-exact>Include all</button><button data-review-toggle-rejected>${reviewShowRejected ? 'Hide removed' : rejectedCount ? `${rejectedCount} removed` : 'Removed'}</button></div></div>${[
+        ? `<div class="review-overview"><div class="review-summary" data-unresolved="${unresolvedCount}" aria-live="polite"><strong>Preparing review…</strong><span>Only included, exactly mapped changes will be sent to your agent.</span></div><div class="review-toolbar"><button data-review-compare>Compare</button><button data-review-approve-exact>Include all</button><button data-review-toggle-rejected>${reviewShowRejected ? 'Hide removed' : rejectedCount ? `${rejectedCount} removed` : 'Removed'}</button></div></div>${agentConnectionMarkup()}${[
             ...groups.values(),
           ]
             .map((group) => {
@@ -3072,6 +3111,14 @@ export function installFoundryInspector(
     reviewCancel.dataset.action = 'back';
     reviewCancel.textContent = 'Back';
     renderIcons(reviewBody);
+    reviewBody
+      .querySelector<HTMLButtonElement>('[data-copy-agent-listener]')
+      ?.addEventListener('click', () => {
+        void navigator.clipboard.writeText(
+          'Start Foundry for this project and keep listening for Apply with agent requests.',
+        );
+        showToast('Agent instruction copied');
+      });
     reviewBody.querySelectorAll<HTMLInputElement>('[data-review-change]').forEach((field) =>
       field.addEventListener('change', () => {
         reviewDraft.selections[field.dataset.reviewChange!] = field.checked;
@@ -3331,7 +3378,11 @@ export function installFoundryInspector(
   async function refreshReview(): Promise<void> {
     if (!workspaceState.reviewOpen || !sessionId || !token) return;
     try {
-      const payload = await sessionRequest();
+      const [payload, presence] = await Promise.all([
+        sessionRequest(),
+        sessionRequest('/agent-presence'),
+      ]);
+      activeAgentPresence = presence;
       const latestRun = payload.applyRuns?.at(-1);
       const runNeedsRefresh =
         latestRun &&
@@ -3346,6 +3397,7 @@ export function installFoundryInspector(
         ].includes(latestRun.state);
       if (applyButton.dataset.action === 'apply' && !runNeedsRefresh) {
         activeReviewPayload = payload;
+        updateAgentConnection();
         return;
       }
       renderReviewPayload(payload);
@@ -3368,7 +3420,12 @@ export function installFoundryInspector(
     workspaceState = updateWorkspace(workspaceState, { type: 'set-review', open: true });
     reviewTakeover.hidden = false;
     outline.hidden = true;
-    renderReviewPayload(await sessionRequest());
+    const [payload, presence] = await Promise.all([
+      sessionRequest(),
+      sessionRequest('/agent-presence'),
+    ]);
+    activeAgentPresence = presence;
+    renderReviewPayload(payload);
     requestAnimationFrame(() => {
       reviewBody.scrollTop = reviewScrollTop;
       shadow.querySelector<HTMLButtonElement>('.review-back')?.focus();
@@ -3413,6 +3470,12 @@ export function installFoundryInspector(
     );
     applyButton.disabled = true;
     try {
+      activeAgentPresence = await sessionRequest('/agent-presence');
+      if (!activeAgentPresence.connected) {
+        updateAgentConnection();
+        showToast('No coding agent is listening yet');
+        return;
+      }
       const payload = await sessionRequest('/apply-runs', {
         method: 'POST',
         body: JSON.stringify({
