@@ -1,17 +1,17 @@
 # Changelog
 
-## Unreleased
-
-- Added `foundry-design update` for checksum-safe upgrades of project integration, agent connections, and installed skills.
-- Preserved user-customized managed files and retained non-default runtime and preview URLs during updates.
-- Added transactional rollback, repeat-update, customization, and packed npm lifecycle coverage for the updater.
-
-## 0.2.0-beta.3 - 2026-08-31
+## 0.2.0-beta.3 - 2026-09-02
 
 - Made setup transactional, validated, and recoverable after interruption.
 - Replaced the Next.js remote import with a bundler-independent local bootstrap.
 - Added safe migration for beta.2 Next.js loader repairs and install-manifest version 2.
+- Added `foundry-design update` for checksum-safe upgrades of project integration, agent connections, and installed skills.
+- Preserved user-customized managed files and retained non-default runtime and preview URLs during updates.
+- Fixed active-agent detection and direct Codex MCP configuration for reliable Apply with agent handoff.
+- Added system-aware Light and Dark interface themes, a focused review modal, a fixed change summary, and shared dock sizing.
+- Normalized Keyline icon rendering and introduced automated 4px interface-foundation audits.
 - Refined Layers density, inspector organization, contextual controls, tokens, and color editing.
+- Replaced the original card fixture with the fully instrumented Morrow signup experience.
 
 ## 0.2.0-beta.2 - 2026-08-30
 
