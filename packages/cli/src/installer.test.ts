@@ -3,7 +3,12 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createSetupPlan, setupProject, uninstallProject } from './installer.js';
+import {
+  createSetupPlan,
+  installAgentIntegration,
+  setupProject,
+  uninstallProject,
+} from './installer.js';
 
 async function fixture(name: string): Promise<string> {
   return mkdtemp(join(tmpdir(), `foundry-${name}-`));
@@ -112,6 +117,30 @@ test('uses the public beta MCP package outside the monorepo', async () => {
     '-y',
     'foundry-design-mcp-server@beta',
   ]);
+});
+
+test('prioritizes the active coding agent over stale project configuration', async () => {
+  const root = await fixture('active-agent');
+  await writeFile(join(root, 'package.json'), JSON.stringify({}));
+  await writeFile(join(root, '.mcp.json'), JSON.stringify({ mcpServers: {} }));
+  const plan = await createSetupPlan(root, {
+    environment: { CODEX_THREAD_ID: 'thread-1' },
+  });
+  assert.deepEqual(plan.agents, ['codex']);
+  assert.ok(plan.files.includes(join(root, '.codex', 'config.toml')));
+});
+
+test('installs Codex MCP configuration directly instead of writing a merge snippet', async () => {
+  const root = await fixture('codex-agent');
+  await mkdir(join(root, '.codex'), { recursive: true });
+  await writeFile(join(root, '.codex', 'config.toml'), 'model = "gpt-5.6"\n');
+  const path = await installAgentIntegration(root, 'codex');
+  assert.equal(path, join(root, '.codex', 'config.toml'));
+  const config = await readFile(path, 'utf8');
+  assert.match(config, /model = "gpt-5\.6"/);
+  assert.match(config, /\[mcp_servers\.foundry-design-control\]/);
+  assert.match(config, /foundry-design-mcp-server@beta/);
+  await assert.rejects(readFile(join(root, '.codex', 'foundry-mcp.toml'), 'utf8'));
 });
 
 test('does not overwrite an existing project skill', async () => {

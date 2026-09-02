@@ -9,6 +9,7 @@ import { renderChangePrompt, type Platform, type SessionContext } from 'foundry-
 import { FoundryRuntime, SessionStore } from 'foundry-design-runtime';
 import {
   createSetupPlan,
+  installAgentIntegration,
   setupProject,
   uninstallProject,
   type Agent,
@@ -448,33 +449,15 @@ async function installAgent(): Promise<void> {
   if (!agent || !['cursor', 'claude', 'codex'].includes(agent))
     throw new Error('install-agent requires cursor, claude, or codex');
   const root = projectRoot();
-  const server = {
-    command: 'npx',
-    args: ['-y', 'foundry-design-mcp-server@beta'],
-    env: { FOUNDRY_DESIGN_RUNTIME_URL: 'http://127.0.0.1:4387' },
-  };
-  if (agent === 'codex') {
-    const directory = join(root, '.codex');
-    await mkdir(directory, { recursive: true });
-    const file = join(directory, 'foundry-mcp.toml');
-    await writeFile(
-      file,
-      `# Merge this project-scoped server into your Codex MCP configuration.\n[mcp_servers.foundry-design-control]\ncommand = "npx"\nargs = ["-y", "foundry-design-mcp-server@beta"]\n[mcp_servers.foundry-design-control.env]\nFOUNDRY_DESIGN_RUNTIME_URL = "http://127.0.0.1:4387"\n`,
-    );
-    console.log(`Wrote Codex MCP snippet: ${file}`);
-    return;
-  }
-  const file = agent === 'cursor' ? join(root, '.cursor', 'mcp.json') : join(root, '.mcp.json');
-  await mkdir(dirname(file), { recursive: true });
-  let current: { mcpServers?: Record<string, unknown> } = {};
-  try {
-    current = JSON.parse(await readFile(file, 'utf8'));
-  } catch {
-    /* Create a new project config. */
-  }
-  current.mcpServers = { ...current.mcpServers, 'foundry-design-control': server };
-  await writeFile(file, `${JSON.stringify(current, null, 2)}\n`);
+  const file = await installAgentIntegration(
+    root,
+    agent as Agent,
+    has('--local-mcp') ? runtimeRepository : undefined,
+  );
   console.log(`Installed Foundry MCP configuration for ${agent}: ${file}`);
+  console.log(
+    `Restart ${agent === 'codex' ? 'Codex' : agent === 'cursor' ? 'Cursor' : 'Claude Code'} before starting a Foundry apply session.`,
+  );
 }
 
 try {

@@ -72,6 +72,7 @@ export interface SetupOptions {
   runtimeUrl?: string;
   packageRoot?: string;
   skillRoot?: string;
+  environment?: Record<string, string | undefined>;
 }
 
 export interface SetupPlan {
@@ -387,7 +388,17 @@ function defaultTarget(framework: WebFramework | undefined): string | undefined 
   return undefined;
 }
 
-async function detectAgents(root: string): Promise<Agent[]> {
+async function detectAgents(
+  root: string,
+  environment: Record<string, string | undefined> = process.env,
+): Promise<Agent[]> {
+  const active: Agent[] = [];
+  if (environment.CODEX_THREAD_ID || environment.CODEX_CI || environment.CODEX_HOME)
+    active.push('codex');
+  if (environment.CLAUDECODE || environment.CLAUDE_CODE_SESSION_ID) active.push('claude');
+  if (environment.CURSOR_TRACE_ID || environment.CURSOR_AGENT) active.push('cursor');
+  if (active.length) return [...new Set(active)];
+
   const detected: Agent[] = [];
   if (await exists(join(root, '.cursor'))) detected.push('cursor');
   if ((await exists(join(root, '.claude'))) || (await exists(join(root, '.mcp.json'))))
@@ -442,7 +453,7 @@ export async function createSetupPlan(
   const root = resolve(rootInput);
   const platform = await detectPlatform(root);
   const framework = platform === 'web' ? await detectWebFramework(root) : undefined;
-  const agents = options.agents ?? (await detectAgents(root));
+  const agents = options.agents ?? (await detectAgents(root, options.environment));
   const integration = await integrationFile(root, framework);
   const skillDirectories = agents.map((agent) => skillDirectory(root, agent));
   const files = [
@@ -739,6 +750,22 @@ async function configureJson(path: string, packageRoot?: string): Promise<void> 
   };
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(current, null, 2)}\n`);
+}
+
+export async function installAgentIntegration(
+  rootInput: string,
+  agent: Agent,
+  packageRoot?: string,
+): Promise<string> {
+  const root = resolve(rootInput);
+  if (agent === 'codex') {
+    const path = join(root, '.codex', 'config.toml');
+    await configureCodex(path, packageRoot);
+    return path;
+  }
+  const path = agent === 'cursor' ? join(root, '.cursor', 'mcp.json') : join(root, '.mcp.json');
+  await configureJson(path, packageRoot);
+  return path;
 }
 
 export async function setupProject(
