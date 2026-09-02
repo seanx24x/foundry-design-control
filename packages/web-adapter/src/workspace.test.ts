@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DEFAULT_WORKSPACE_STATE, clampUtilityRect, updateWorkspace } from './workspace.js';
+import {
+  DEFAULT_WORKSPACE_STATE,
+  clampUtilityRect,
+  resolveInterfaceTheme,
+  updateWorkspace,
+} from './workspace.js';
+
+test('resolves system appearance without overriding explicit interface themes', () => {
+  assert.equal(resolveInterfaceTheme('system', true), 'dark');
+  assert.equal(resolveInterfaceTheme('system', false), 'light');
+  assert.equal(resolveInterfaceTheme('light', true), 'light');
+  assert.equal(resolveInterfaceTheme('dark', false), 'dark');
+});
 
 test('keeps primary docks independent while enforcing one utility', () => {
   const withHealth = updateWorkspace(DEFAULT_WORKSPACE_STATE, {
@@ -16,14 +28,29 @@ test('keeps primary docks independent while enforcing one utility', () => {
   assert.equal(withMemory.utility, 'memory');
 });
 
-test('keeps review tray state separate from inspector visibility', () => {
+test('keeps the change summary and review modal separate from inspector visibility', () => {
   const hiddenInspector = updateWorkspace(DEFAULT_WORKSPACE_STATE, {
     type: 'toggle-inspector',
     open: false,
   });
-  const reviewing = updateWorkspace(hiddenInspector, { type: 'set-tray', tray: 'expanded' });
+  const withSummary = updateWorkspace(hiddenInspector, {
+    type: 'set-change-summary',
+    visible: true,
+  });
+  const reviewing = updateWorkspace(withSummary, { type: 'set-review', open: true });
   assert.equal(reviewing.inspectorOpen, false);
-  assert.equal(reviewing.tray, 'expanded');
+  assert.equal(reviewing.changeSummaryVisible, true);
+  assert.equal(reviewing.reviewOpen, true);
+});
+
+test('closing the last change also closes review', () => {
+  const reviewing = updateWorkspace(
+    updateWorkspace(DEFAULT_WORKSPACE_STATE, { type: 'set-change-summary', visible: true }),
+    { type: 'set-review', open: true },
+  );
+  const empty = updateWorkspace(reviewing, { type: 'set-change-summary', visible: false });
+  assert.equal(empty.changeSummaryVisible, false);
+  assert.equal(empty.reviewOpen, false);
 });
 
 test('clamps remembered utility geometry into the available canvas', () => {

@@ -43,7 +43,7 @@ const expectedSemantics = [
   'x',
 ] as const;
 
-test('every Foundry icon semantic resolves to 24px Keyline artwork', () => {
+test('every Foundry icon semantic resolves to normalized 24px Keyline artwork', () => {
   assert.deepEqual(Object.keys(KEYLINE_ICONS).sort(), [...expectedSemantics].sort());
   for (const semantic of expectedSemantics) {
     const icon = KEYLINE_ICONS[semantic];
@@ -51,5 +51,7 @@ test('every Foundry icon semantic resolves to 24px Keyline artwork', () => {
     assert.equal(icon.width ?? 24, 24, semantic);
     assert.equal(icon.height ?? 24, 24, semantic);
     assert.match(icon.body, /currentColor/, semantic);
+    assert.doesNotMatch(icon.body, /stroke-width="(?!1")/, semantic);
+    assert.match(icon.body, /vector-effect="non-scaling-stroke"/, semantic);
   }
 });

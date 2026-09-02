@@ -43,7 +43,16 @@ interface KeylineIconData {
   width?: number;
 }
 
-export const KEYLINE_ICONS: Record<string, KeylineIconData> = {
+function normalizeKeylineIcon(icon: KeylineIconData): KeylineIconData {
+  const onePixelStroke = icon.body.replace(/stroke-width="[^"]+"/g, 'stroke-width="1"');
+  const nonScalingStroke = onePixelStroke.replace(
+    /<(path|circle|rect|line|polyline|polygon|ellipse)\b(?![^>]*vector-effect)/g,
+    '<$1 vector-effect="non-scaling-stroke"',
+  );
+  return { ...icon, body: nonScalingStroke };
+}
+
+const RAW_KEYLINE_ICONS: Record<string, KeylineIconData> = {
   accessibility: accessibilityIcon,
   activity: activityIcon,
   'align-horizontal-space-around': alignIcon,
@@ -84,6 +93,13 @@ export const KEYLINE_ICONS: Record<string, KeylineIconData> = {
   x: xIcon,
 };
 
+export const KEYLINE_ICONS: Record<string, KeylineIconData> = Object.fromEntries(
+  Object.entries(RAW_KEYLINE_ICONS).map(([semantic, icon]) => [
+    semantic,
+    normalizeKeylineIcon(icon),
+  ]),
+);
+
 export function renderKeylineIcons(root: HTMLElement | ShadowRoot): void {
   root.querySelectorAll<HTMLElement>('[data-foundry-icon]').forEach((placeholder) => {
     const semanticName = placeholder.dataset.foundryIcon;
@@ -95,6 +111,8 @@ export function renderKeylineIcons(root: HTMLElement | ShadowRoot): void {
     svg.setAttribute('viewBox', `0 0 ${icon.width ?? 24} ${icon.height ?? 24}`);
     svg.setAttribute('aria-hidden', 'true');
     svg.setAttribute('focusable', 'false');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke-width', '1');
     svg.setAttribute('data-keyline-icon', semanticName);
     svg.innerHTML = icon.body;
     placeholder.replaceWith(svg);

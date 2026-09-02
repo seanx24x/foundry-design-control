@@ -1,11 +1,20 @@
 export type FoundryUtility = 'health' | 'memory' | null;
-export type FoundryTrayState = 'hidden' | 'collapsed' | 'expanded';
+export type InterfaceThemePreference = 'system' | 'light' | 'dark';
+export type ResolvedInterfaceTheme = 'light' | 'dark';
+
+export function resolveInterfaceTheme(
+  preference: InterfaceThemePreference,
+  systemPrefersDark: boolean,
+): ResolvedInterfaceTheme {
+  return preference === 'system' ? (systemPrefersDark ? 'dark' : 'light') : preference;
+}
 
 export interface FoundryWorkspaceState {
   layersOpen: boolean;
   inspectorOpen: boolean;
   utility: FoundryUtility;
-  tray: FoundryTrayState;
+  changeSummaryVisible: boolean;
+  reviewOpen: boolean;
   workbenchOpen: boolean;
   comparisonOpen: boolean;
 }
@@ -15,7 +24,8 @@ export type FoundryWorkspaceAction =
   | { type: 'toggle-inspector'; open?: boolean }
   | { type: 'open-utility'; utility: Exclude<FoundryUtility, null> }
   | { type: 'close-utility' }
-  | { type: 'set-tray'; tray: FoundryTrayState }
+  | { type: 'set-change-summary'; visible: boolean }
+  | { type: 'set-review'; open: boolean }
   | { type: 'set-workbench'; open: boolean }
   | { type: 'set-comparison'; open: boolean };
 
@@ -37,7 +47,8 @@ export const DEFAULT_WORKSPACE_STATE: FoundryWorkspaceState = {
   layersOpen: true,
   inspectorOpen: true,
   utility: null,
-  tray: 'hidden',
+  changeSummaryVisible: false,
+  reviewOpen: false,
   workbenchOpen: false,
   comparisonOpen: false,
 };
@@ -56,7 +67,14 @@ export function updateWorkspace(
     return { ...state, utility: state.utility === action.utility ? null : action.utility };
   }
   if (action.type === 'close-utility') return { ...state, utility: null };
-  if (action.type === 'set-tray') return { ...state, tray: action.tray };
+  if (action.type === 'set-change-summary') {
+    return {
+      ...state,
+      changeSummaryVisible: action.visible,
+      reviewOpen: action.visible ? state.reviewOpen : false,
+    };
+  }
+  if (action.type === 'set-review') return { ...state, reviewOpen: action.open };
   if (action.type === 'set-workbench') return { ...state, workbenchOpen: action.open };
   return { ...state, comparisonOpen: action.open };
 }

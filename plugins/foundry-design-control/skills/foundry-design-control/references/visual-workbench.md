@@ -2,6 +2,12 @@
 
 Foundry's browser UI records intent while keeping all preview changes temporary.
 
+## Interface appearance
+
+- Foundry follows the operating system light or dark appearance by default and updates live when that setting changes.
+- The global Interface theme menu can override this with Light or Dark. Store that preference locally for the user without changing the inspected product's Theme context.
+- System, Light, and Dark affect Foundry's workspace surfaces only. They do not record a design change or alter rendered verification context.
+
 ## Selection and layers
 
 - Selection mode is persistent: click around the canvas to choose the exact visible layer under the pointer without reactivating the pointer tool.
@@ -34,4 +40,6 @@ Foundry's browser UI records intent while keeping all preview changes temporary.
 
 ## Review boundary
 
-Preview accuracy does not authorize source edits. Review the recorded target, semantic mapping, scope, context, project token, and impact message before submitting Apply with agent. Literal values remain visible as warnings when a project-native value is not used.
+Preview accuracy does not authorize source edits. A compact change summary stays anchored to the bottom-right of the viewport after the first edit. Review opens a focused modal boundary that preserves approvals, edited values, expanded groups, and scroll position across visits.
+
+Review the recorded target, semantic mapping, scope, context, project token, and impact message before submitting Apply with agent. Literal values remain visible as warnings when a project-native value is not used. Locate, Preview, and Compare temporarily return to the canvas; use Return in the change summary to resume the same review. Application, rebuild, verification, mismatches, and authorized retries remain in the review modal.

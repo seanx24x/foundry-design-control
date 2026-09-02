@@ -3,38 +3,331 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Foundry fixture</title>
+    <meta name="theme-color" content="#f3f4f0" />
+    <title>Create your Morrow workspace</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <main
-      data-foundry-id="billing-card"
-      data-foundry-label="Billing card"
-      data-foundry-component="Settings/BillingCard"
-      data-foundry-source="examples/web-fixture/BillingCard.tsx:18:4"
+      class="signup-shell"
+      data-foundry-id="signup-shell"
+      data-foundry-label="Signup page"
+      data-foundry-component="Signup/Page"
+      data-foundry-source="examples/web-fixture/index.html:11:4"
     >
-      <div class="copy">
-        <span class="tag">Workspace plan</span>
-        <h1>Make room for the next release.</h1>
-        <p
-          data-foundry-id="billing-copy"
-          data-foundry-label="Plan description"
-          data-foundry-source="examples/web-fixture/BillingCard.tsx:23:8"
-        >
-          Twelve editors, unlimited review links, and a shared component library.
-        </p>
-      </div>
-      <div class="price"><strong>$48</strong><span>per month</span></div>
-      <button
-        data-foundry-id="upgrade-button"
-        data-foundry-label="Upgrade button"
-        data-foundry-component="Settings/BillingCard/Button"
-        data-foundry-source="examples/web-fixture/BillingCard.tsx:31:8"
+      <header
+        class="site-header"
+        data-foundry-id="signup-navigation"
+        data-foundry-label="Signup navigation"
+        data-foundry-component="Signup/Navigation"
+        data-foundry-source="examples/web-fixture/index.html:18:6"
       >
-        Upgrade workspace <i aria-hidden="true">→</i>
-      </button>
-      <div class="orbit" aria-hidden="true"></div>
+        <a class="wordmark" href="#" aria-label="Morrow home">
+          <span class="wordmark-symbol" aria-hidden="true"><i></i><i></i></span>
+          Morrow
+        </a>
+        <p>Already have an account? <button type="button">Sign in</button></p>
+      </header>
+
+      <div class="signup-layout">
+        <section
+          class="product-story"
+          aria-labelledby="story-title"
+          data-foundry-id="product-story"
+          data-foundry-label="Product introduction"
+          data-foundry-component="Signup/ProductStory"
+          data-foundry-source="examples/web-fixture/index.html:33:8"
+        >
+          <div class="story-copy">
+            <span class="story-eyebrow">A workspace for ideas in progress</span>
+            <h1 id="story-title">Make room for the work that matters.</h1>
+            <p>
+              Bring briefs, feedback, and decisions into one calm place your whole team can shape.
+            </p>
+          </div>
+
+          <article
+            class="working-note"
+            data-foundry-id="working-note"
+            data-foundry-label="Shared working note"
+            data-foundry-component="Signup/WorkingNote"
+            data-foundry-source="examples/web-fixture/index.html:49:10"
+          >
+            <header>
+              <div>
+                <span class="note-kicker">Working note</span>
+                <strong>Autumn release</strong>
+              </div>
+              <div class="collaborators" aria-label="Three collaborators">
+                <span>AM</span><span>JL</span><span>+1</span>
+              </div>
+            </header>
+            <div class="note-body">
+              <p class="note-lead">A quieter way to bring the launch together.</p>
+              <p>
+                Keep the story clear, make ownership visible, and give every decision somewhere to
+                land.
+              </p>
+              <div class="note-selection">
+                <span class="selection-label">Jordan</span>
+                <p>Let’s bring the customer language forward here.</p>
+              </div>
+            </div>
+            <footer>
+              <span><i></i> Saved just now</span>
+              <button type="button" aria-label="Open working note">
+                Open note
+                <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 6H17.5C17.7761 6 18 6.22386 18 6.5V18M7.2 16.8L17.4 6.6" />
+                </svg>
+              </button>
+            </footer>
+          </article>
+
+          <p class="customer-proof">
+            <span class="proof-mark" aria-hidden="true">N</span>
+            <span>“Morrow gives our early thinking somewhere useful to live.”</span>
+            <strong>Nadia, product lead</strong>
+          </p>
+        </section>
+
+        <section
+          class="form-column"
+          aria-labelledby="form-title"
+          data-foundry-id="signup-form"
+          data-foundry-label="Create workspace form"
+          data-foundry-component="Signup/Form"
+          data-foundry-source="examples/web-fixture/index.html:89:8"
+        >
+          <div class="form-intro">
+            <span>Start with Morrow</span>
+            <h2 id="form-title">Create your workspace</h2>
+            <p>No credit card. Set up takes less than a minute.</p>
+          </div>
+
+          <div class="social-actions" aria-label="Quick signup options">
+            <button type="button" class="social-button">
+              <span class="google-mark" aria-hidden="true">G</span> Continue with Google
+            </button>
+            <button type="button" class="icon-button" aria-label="More signup options">
+              <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h.01M12 12h.01M19 12h.01" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="form-divider"><span>or use your email</span></div>
+
+          <form id="create-account" novalidate>
+            <div
+              class="field-group"
+              data-foundry-id="name-field"
+              data-foundry-label="Name field"
+              data-foundry-component="Signup/Field"
+              data-foundry-source="examples/web-fixture/index.html:115:12"
+            >
+              <label for="name">Full name</label>
+              <div class="input-shell">
+                <span aria-hidden="true">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <path
+                      d="M11 14H13C16.3137 14 19 16.6863 19 20C19 20.5523 18.5523 21 18 21H6C5.44772 21 5 20.5523 5 20C5 16.6863 7.68629 14 11 14ZM12 4C13.6569 4 15 5.34315 15 7C15 8.65685 13.6569 10 12 10C10.3431 10 9 8.65685 9 7C9 5.34315 10.3431 4 12 4Z"
+                    />
+                  </svg>
+                </span>
+                <input id="name" name="name" autocomplete="name" placeholder="Ada Lovelace" />
+                <i class="field-status" aria-hidden="true"></i>
+              </div>
+              <p class="field-message" id="name-message"></p>
+            </div>
+
+            <div
+              class="field-group"
+              data-foundry-id="email-field"
+              data-foundry-label="Email field"
+              data-foundry-component="Signup/Field"
+              data-foundry-source="examples/web-fixture/index.html:131:12"
+            >
+              <label for="email">Work email</label>
+              <div class="input-shell">
+                <span aria-hidden="true">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <path
+                      d="M5 4H19C20.6569 4 22 5.34315 22 7V17C22 18.6569 20.6569 20 19 20H5C3.34315 20 2 18.6569 2 17V7C2 5.34315 3.34315 4 5 4ZM2 7L11.2929 11C11.7154 11.2817 12.2846 11.2817 12.7071 11L22 7"
+                    />
+                  </svg>
+                </span>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  inputmode="email"
+                  autocomplete="email"
+                  placeholder="you@company.com"
+                />
+                <i class="field-status" aria-hidden="true"></i>
+              </div>
+              <p class="field-message" id="email-message"></p>
+            </div>
+
+            <div
+              class="field-group password-field"
+              data-foundry-id="password-field"
+              data-foundry-label="Password field"
+              data-foundry-component="Signup/PasswordField"
+              data-foundry-source="examples/web-fixture/index.html:154:12"
+            >
+              <label for="password">Password</label>
+              <div class="input-shell">
+                <span aria-hidden="true">
+                  <svg class="ui-icon" viewBox="0 0 24 24">
+                    <path
+                      d="M7.5 10V6.5C7.5 4.01472 9.51472 2 12 2C14.4853 2 16.5 4.01472 16.5 6.5V10M4 13V19C4 20.6569 5.34315 22 7 22H17C18.6569 22 20 20.6569 20 19V13C20 11.3431 18.6569 10 17 10H7C5.34315 10 4 11.3431 4 13Z"
+                    />
+                  </svg>
+                </span>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="At least 8 characters"
+                />
+                <button type="button" class="reveal-button" aria-label="Show password">Show</button>
+              </div>
+              <div class="strength-row" aria-live="polite">
+                <div class="strength-track" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+                <span>Password strength</span>
+              </div>
+              <p class="field-message" id="password-message"></p>
+            </div>
+
+            <label
+              class="terms-row"
+              data-foundry-id="terms-checkbox"
+              data-foundry-label="Terms agreement"
+              data-foundry-component="Signup/Checkbox"
+              data-foundry-source="examples/web-fixture/index.html:180:12"
+            >
+              <input id="terms" name="terms" type="checkbox" />
+              <span class="custom-checkbox" aria-hidden="true">
+                <svg class="ui-icon" viewBox="0 0 24 24">
+                  <path d="M5 12L9.66667 17L19 7" />
+                </svg>
+              </span>
+              <span>I agree to the <a href="#">Terms</a> and <a href="#">Privacy Policy</a>.</span>
+            </label>
+            <p class="terms-message" id="terms-message"></p>
+
+            <button
+              class="submit-button"
+              type="submit"
+              data-foundry-id="create-workspace-button"
+              data-foundry-label="Create workspace button"
+              data-foundry-component="Signup/PrimaryAction"
+              data-foundry-source="examples/web-fixture/index.html:193:12"
+            >
+              <span>Create workspace</span>
+              <b aria-hidden="true">
+                <svg class="ui-icon" viewBox="0 0 24 24">
+                  <path
+                    d="M5 12H18.0587M12.1229 5L18.8261 11.5875C19.058 11.8153 19.058 12.1847 18.8261 12.4125L12.1229 19"
+                  />
+                </svg>
+              </b>
+            </button>
+          </form>
+
+          <p class="privacy-note">Your workspace stays private until you invite someone.</p>
+        </section>
+      </div>
     </main>
+
+    <script>
+      const form = document.querySelector('#create-account');
+      const nameInput = document.querySelector('#name');
+      const emailInput = document.querySelector('#email');
+      const passwordInput = document.querySelector('#password');
+      const termsInput = document.querySelector('#terms');
+      const revealButton = document.querySelector('.reveal-button');
+      const submitButton = document.querySelector('.submit-button');
+      const touched = new Set();
+
+      const rules = {
+        name: (value) => (value.trim() ? '' : 'Enter your name.'),
+        email: (value) =>
+          !value.trim()
+            ? 'Enter your work email.'
+            : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+              ? ''
+              : 'Enter a valid email address.',
+        password: (value) =>
+          !value ? 'Choose a password.' : value.length < 8 ? 'Use at least 8 characters.' : '',
+      };
+
+      function validateField(input, force = false) {
+        const group = input.closest('.field-group');
+        const message = group.querySelector('.field-message');
+        const error = rules[input.name](input.value);
+        if (force) touched.add(input.name);
+        const shouldShow = touched.has(input.name);
+        group.classList.toggle('has-error', shouldShow && Boolean(error));
+        group.classList.toggle('is-valid', shouldShow && !error && Boolean(input.value));
+        message.textContent = shouldShow ? error : '';
+        input.setAttribute('aria-invalid', String(shouldShow && Boolean(error)));
+        input.setAttribute('aria-describedby', message.id);
+        return !error;
+      }
+
+      [nameInput, emailInput, passwordInput].forEach((input) => {
+        input.addEventListener('blur', () => validateField(input, true));
+        input.addEventListener('input', () => validateField(input));
+      });
+
+      passwordInput.addEventListener('input', () => {
+        const value = passwordInput.value;
+        let score = value.length >= 8 ? 1 : 0;
+        if (value.length >= 12) score += 1;
+        if (/[A-Z]/.test(value) && /\d/.test(value)) score += 1;
+        if (/[^A-Za-z0-9]/.test(value)) score += 1;
+        document.querySelectorAll('.strength-track i').forEach((segment, index) => {
+          segment.classList.toggle('active', index < score);
+        });
+        document.querySelector('.strength-row span').textContent = value
+          ? ['Too short', 'Fair', 'Good', 'Strong'][Math.max(0, score - 1)]
+          : 'Password strength';
+      });
+
+      revealButton.addEventListener('click', () => {
+        const reveal = passwordInput.type === 'password';
+        passwordInput.type = reveal ? 'text' : 'password';
+        revealButton.textContent = reveal ? 'Hide' : 'Show';
+        revealButton.setAttribute('aria-label', reveal ? 'Hide password' : 'Show password');
+      });
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const fieldsValid = [nameInput, emailInput, passwordInput].every((input) =>
+          validateField(input, true),
+        );
+        document.querySelector('#terms-message').textContent = termsInput.checked
+          ? ''
+          : 'Accept the terms to continue.';
+        document.querySelector('.terms-row').classList.toggle('has-error', !termsInput.checked);
+        if (!fieldsValid || !termsInput.checked) return;
+
+        submitButton.disabled = true;
+        submitButton.classList.add('is-loading');
+        submitButton.querySelector('span').textContent = 'Creating workspace';
+        await new Promise((resolve) => window.setTimeout(resolve, 900));
+        submitButton.classList.remove('is-loading');
+        submitButton.classList.add('is-success');
+        submitButton.querySelector('span').textContent = 'Workspace created';
+        submitButton.querySelector('b').innerHTML =
+          '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12L9.66667 17L19 7" /></svg>';
+      });
+    </script>
+
     <script type="module">
       const query = new URLSearchParams(location.search);
       if (query.has('__foundry_session')) {
