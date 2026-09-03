@@ -548,6 +548,7 @@ const PANEL_CSS = `
   .property-control input,.property-control select,.compact-control input,.compact-control select { height:36px;font-size:12px;font-weight:400; }
   .control-field .unit-select { width:44px;padding-right:24px!important;background-position:right 8px center!important; }
   .section-grid { gap:8px;padding:0 16px 16px; }
+  .inspector-category[data-category="position"]>.category-body>.property-section>.section-grid { padding-top:12px; }
   @media (max-width:680px){.panel,.layers-panel{width:auto}.panel-resizer{display:none}.change-tray{right:8px;bottom:8px;left:auto;width:calc(100vw - 16px)}.review-takeover{padding:8px}.review-modal{width:calc(100vw - 16px);height:calc(100vh - 16px);border-radius:12px}.review-modal .review-actions{grid-template-columns:84px 1fr}.panel.change-summary-visible .inspector-scroll{padding-bottom:60px}}
   @media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}.layer-row.entering,.layer-branch{animation:none!important}}
 `;
