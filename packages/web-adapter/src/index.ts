@@ -1424,6 +1424,7 @@ export function installFoundryInspector(
   let reviewShowRejected = false;
   const collapsedReviewGroups = new Set<string>();
   let reviewPoll: ReturnType<typeof setInterval> | undefined;
+  let sessionPoll: ReturnType<typeof setInterval> | undefined;
   let lastReviewTrigger: HTMLElement | null = null;
   let reviewScrollTop = 0;
   let reviewSuspended = false;
@@ -1940,7 +1941,8 @@ export function installFoundryInspector(
           change.status !== 'rejected' && String(change.before) !== String(change.after),
       );
       recordedChangeCount = activeChanges.length;
-      latestApplyState = payload.applyRuns?.at(-1)?.state ?? 'none';
+      const latestRun = payload.applyRuns?.at(-1);
+      latestApplyState = latestRun?.state ?? 'none';
       updateChangeCount(activeChanges.length, activeChanges.at(-1));
       completeOnboardingStep('setup');
       if (activeAgentPresence.connected) completeOnboardingStep('agent');
@@ -1950,6 +1952,7 @@ export function installFoundryInspector(
       renderOnboardingChecklist();
       setSessionStatus('live');
       if (!libraryPanel.hidden) renderDesignMemory();
+      if (latestRun?.state === 'verifying') maybeVerifyRun(latestRun);
       if (changeSet.changes.length === 0 && !hydratedOnce) {
         showToast('Click any element. Shift-click builds a selection.');
       }
@@ -1964,7 +1967,11 @@ export function installFoundryInspector(
   }
 
   void hydrateSession();
-  const healthPoll = setInterval(() => void hydrateSession(), 5000);
+  function startSessionPolling(): void {
+    clearInterval(sessionPoll);
+    sessionPoll = setInterval(() => void hydrateSession(), 5000);
+  }
+  startSessionPolling();
 
   function showToast(message: string): void {
     const toast = shadow.querySelector<HTMLElement>('.toast')!;
@@ -3140,6 +3147,13 @@ export function installFoundryInspector(
     return `<div class="review-agent ${activeAgentPresence.connected ? 'connected' : 'disconnected'}" aria-live="polite"><i></i><div><strong>${activeAgentPresence.connected ? `${escapeHtml(agentName ?? 'Coding agent')} is ready` : 'Agent currently offline'}</strong><span>${activeAgentPresence.connected ? 'Apply requests will be claimed automatically while this agent keeps listening.' : 'You can queue this batch now. Codex, Cursor, or Claude Code will claim it when the Foundry listener reconnects.'}</span></div>${activeAgentPresence.connected ? '' : '<button data-copy-agent-listener>Copy reconnect instruction</button>'}</div>`;
   }
 
+  function copyAgentListenerInstruction(): void {
+    void navigator.clipboard.writeText(
+      'Start Foundry for this project and keep listening for Apply with agent requests.',
+    );
+    showToast('Agent instruction copied');
+  }
+
   function updateAgentConnection(): void {
     const current = reviewBody.querySelector<HTMLElement>('.review-agent');
     if (!current) {
@@ -3151,12 +3165,7 @@ export function installFoundryInspector(
     current.replaceWith(replacement.firstElementChild!);
     reviewBody
       .querySelector<HTMLButtonElement>('[data-copy-agent-listener]')
-      ?.addEventListener('click', () => {
-        void navigator.clipboard.writeText(
-          'Start Foundry for this project and keep listening for Apply with agent requests.',
-        );
-        showToast('Agent instruction copied');
-      });
+      ?.addEventListener('click', copyAgentListenerInstruction);
     updateReviewSelection();
   }
 
@@ -3355,7 +3364,7 @@ export function installFoundryInspector(
 
   const runStateLabels: Record<string, string> = {
     queued: 'Queued for agent',
-    claimed: 'Agent connected',
+    claimed: 'Handoff received',
     applying: 'Applying source changes',
     rebuilding: 'Rebuilding and checking',
     verifying: 'Verifying rendered values',
@@ -3364,6 +3373,23 @@ export function installFoundryInspector(
     failed: 'Apply failed',
     cancelled: 'Apply cancelled',
   };
+
+  function maybeVerifyRun(run: any): void {
+    if (run.state !== 'verifying' || verifyingRuns.has(run.id)) return;
+    const reloadKey = '__foundry_verifying_run';
+    if (sessionStorage.getItem(reloadKey) !== run.id) {
+      sessionStorage.setItem(reloadKey, run.id);
+      location.reload();
+      return;
+    }
+    verifyingRuns.add(run.id);
+    void verify(run.changeIds, run.id)
+      .then(() => sessionStorage.removeItem(reloadKey))
+      .catch((error) => {
+        showToast(error instanceof Error ? error.message : 'Rendered verification was interrupted');
+      })
+      .finally(() => verifyingRuns.delete(run.id));
+  }
 
   function captureVerifiedRun(run: any): void {
     if (run.state !== 'passed' || capturedBaselineRuns.has(run.id)) return;
@@ -3409,8 +3435,14 @@ export function installFoundryInspector(
     const active = ['queued', 'claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state);
     const latestMessage =
       run.state === 'queued'
-        ? 'The reviewed changes are queued. Keep your coding agent active, or ask it to apply your reviewed Foundry changes.'
-        : (run.messages.at(-1)?.message ?? run.error ?? 'Apply run created.');
+        ? run.requeueCount > 0
+          ? 'The previous agent did not begin source work, so Foundry safely returned this batch to the queue.'
+          : 'The reviewed changes are queued and ready for an active coding agent.'
+        : run.state === 'claimed'
+          ? activeAgentPresence.connected
+            ? 'The agent received this batch. Waiting for source work to begin.'
+            : 'The agent disconnected before source work began. Foundry will return this batch to the queue shortly.'
+          : (run.messages.at(-1)?.message ?? run.error ?? 'Apply run created.');
     latestApplyState = run.state;
     if (run.state === 'passed') completeOnboardingStep('apply');
     captureVerifiedRun(run);
@@ -3418,7 +3450,7 @@ export function installFoundryInspector(
     reviewBody.innerHTML = `<div class="run-summary"><div class="run-state"><i class="${passed ? 'passed' : attention ? 'attention' : active ? 'active' : ''}"></i><strong>${escapeHtml(runStateLabels[run.state] ?? run.state)}</strong></div><p>${escapeHtml(latestMessage)}</p></div><div class="run-steps">${run.messages
       .map(
         (message: any, index: number) =>
-          `<div class="run-step"><span>${String(index + 1).padStart(2, '0')}</span><div><strong>${escapeHtml(runStateLabels[message.state] ?? message.state)}</strong><p>${escapeHtml(message.state === 'queued' ? 'Ready for the active coding agent to claim.' : message.message)}</p></div></div>`,
+          `<div class="run-step"><span>${String(index + 1).padStart(2, '0')}</span><div><strong>${escapeHtml(runStateLabels[message.state] ?? message.state)}</strong><p>${escapeHtml(message.message)}</p></div></div>`,
       )
       .join(
         '',
@@ -3426,6 +3458,10 @@ export function installFoundryInspector(
     if (attention) {
       applyButton.dataset.action = 'retry';
       applyButton.textContent = 'Retry with agent';
+      applyButton.disabled = false;
+    } else if (['queued', 'claimed'].includes(run.state) && !activeAgentPresence.connected) {
+      applyButton.dataset.action = 'reconnect';
+      applyButton.textContent = 'Reconnect agent';
       applyButton.disabled = false;
     } else {
       applyButton.dataset.action = 'status';
@@ -3438,19 +3474,7 @@ export function installFoundryInspector(
     }
     reviewCancel.dataset.action = active ? 'cancel' : 'back';
     reviewCancel.textContent = active ? 'Cancel' : 'Back';
-    if (run.state === 'verifying' && !verifyingRuns.has(run.id)) {
-      const reloadKey = '__foundry_verifying_run';
-      if (sessionStorage.getItem(reloadKey) !== run.id) {
-        sessionStorage.setItem(reloadKey, run.id);
-        location.reload();
-        return;
-      }
-      verifyingRuns.add(run.id);
-      void verify(run.changeIds, run.id).finally(() => {
-        verifyingRuns.delete(run.id);
-        sessionStorage.removeItem(reloadKey);
-      });
-    }
+    maybeVerifyRun(run);
   }
 
   function renderReviewPayload(payload: any): void {
@@ -3549,7 +3573,8 @@ export function installFoundryInspector(
       shadow.querySelector<HTMLButtonElement>('.review-back')?.focus();
     });
     clearInterval(reviewPoll);
-    clearInterval(healthPoll);
+    clearInterval(sessionPoll);
+    sessionPoll = undefined;
     reviewPoll = setInterval(() => void refreshReview(), 1000);
   }
 
@@ -3559,6 +3584,7 @@ export function installFoundryInspector(
     reviewTakeover.hidden = true;
     clearInterval(reviewPoll);
     reviewPoll = undefined;
+    startSessionPolling();
     updateOutline();
     if (restoreFocus) lastReviewTrigger?.focus();
   }
@@ -6536,6 +6562,7 @@ export function installFoundryInspector(
   applyButton.addEventListener('click', () => {
     if (applyButton.dataset.action === 'apply') void submitReviewedRun();
     if (applyButton.dataset.action === 'retry') void retryRun();
+    if (applyButton.dataset.action === 'reconnect') copyAgentListenerInstruction();
   });
   function handleGlobalShortcuts(event: KeyboardEvent): void {
     if (workspaceState.reviewOpen && event.key === 'Tab') {
@@ -6652,6 +6679,7 @@ export function installFoundryInspector(
     systemDarkTheme.removeEventListener('change', handleSystemThemeChange);
     document.removeEventListener('pointerdown', handleInterfaceThemeDismiss, true);
     clearInterval(reviewPoll);
+    clearInterval(sessionPoll);
     document.removeEventListener('click', handlePointer, true);
     document.removeEventListener('dblclick', handleTextEdit, true);
     document.removeEventListener('pointermove', handleSelectionHover, true);

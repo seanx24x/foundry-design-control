@@ -132,9 +132,48 @@ test('protects and serves the apply-run lifecycle over loopback HTTP', async () 
     );
     assert.equal(claimed.status, 200);
     const claimPayload = (await claimed.json()) as {
-      applyRuns: Array<{ state: string }>;
+      applyRuns: Array<{ id: string; state: string; claimAttemptId?: string }>;
     };
     assert.equal(claimPayload.applyRuns[0]?.state, 'claimed');
+    const runId = claimPayload.applyRuns[0]!.id;
+    const claimAttemptId = claimPayload.applyRuns[0]!.claimAttemptId!;
+    assert.ok(claimAttemptId);
+
+    const rejectedUpdate = await fetch(
+      `http://127.0.0.1:${port}/v1/sessions/${id}/apply-runs/${runId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          'x-foundry-token': session.token,
+        },
+        body: JSON.stringify({ state: 'applying' }),
+      },
+    );
+    assert.equal(rejectedUpdate.status, 400);
+
+    const leaseHeartbeat = await fetch(
+      `http://127.0.0.1:${port}/v1/sessions/${id}/apply-runs/${runId}/heartbeat`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-foundry-token': session.token,
+        },
+        body: JSON.stringify({ claimAttemptId }),
+      },
+    );
+    assert.equal(leaseHeartbeat.status, 200);
+
+    const applying = await fetch(`http://127.0.0.1:${port}/v1/sessions/${id}/apply-runs/${runId}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        'x-foundry-token': session.token,
+      },
+      body: JSON.stringify({ state: 'applying', claimAttemptId }),
+    });
+    assert.equal(applying.status, 200);
   } finally {
     await runtime.stop();
   }

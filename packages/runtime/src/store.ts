@@ -32,6 +32,11 @@ export interface StoredSession {
   designGraph: ProjectDesignGraph | null;
 }
 
+export interface SessionStoreOptions {
+  claimLeaseMs?: number;
+  now?: () => Date;
+}
+
 function defaultStoreRoot(): string {
   if (process.platform === 'darwin') {
     return join(homedir(), 'Library', 'Application Support', 'Foundry Design Control', 'sessions');
@@ -70,9 +75,14 @@ const activeRunStates = new Set<ApplyRunState>([
 export class SessionStore {
   readonly root: string;
   private readonly changeMutationTails = new Map<string, Promise<void>>();
+  private readonly applyRunMutationTails = new Map<string, Promise<void>>();
+  private readonly claimLeaseMs: number;
+  private readonly now: () => Date;
 
-  constructor(root = defaultStoreRoot()) {
+  constructor(root = defaultStoreRoot(), options: SessionStoreOptions = {}) {
     this.root = root;
+    this.claimLeaseMs = options.claimLeaseMs ?? 45_000;
+    this.now = options.now ?? (() => new Date());
   }
 
   private async serializeChangeMutation<T>(id: string, mutation: () => Promise<T>): Promise<T> {
@@ -90,9 +100,57 @@ export class SessionStore {
     }
   }
 
+  private async serializeApplyRunMutation<T>(id: string, mutation: () => Promise<T>): Promise<T> {
+    const previous = this.applyRunMutationTails.get(id) ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(mutation);
+    const tail = current.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.applyRunMutationTails.set(id, tail);
+    try {
+      return await current;
+    } finally {
+      if (this.applyRunMutationTails.get(id) === tail) this.applyRunMutationTails.delete(id);
+    }
+  }
+
+  private nowIso(): string {
+    return this.now().toISOString();
+  }
+
+  private recoverExpiredClaims(stored: StoredSession): boolean {
+    const now = this.now();
+    const nowIso = now.toISOString();
+    let recovered = false;
+    for (const run of stored.applyRuns) {
+      if (run.state !== 'claimed') continue;
+      const incompleteLegacyClaim = !run.claimAttemptId || !run.claimExpiresAt;
+      const expiredClaim =
+        Boolean(run.claimExpiresAt) && Date.parse(run.claimExpiresAt!) <= now.getTime();
+      if (!incompleteLegacyClaim && !expiredClaim) continue;
+      run.state = 'queued';
+      run.agent = undefined;
+      run.claimAttemptId = undefined;
+      run.claimExpiresAt = undefined;
+      run.claimHeartbeatAt = undefined;
+      run.claimedAt = undefined;
+      run.requeueCount += 1;
+      run.messages.push({
+        state: 'queued',
+        message: 'The agent did not begin source work. Foundry returned the batch to the queue.',
+        createdAt: nowIso,
+      });
+      run.updatedAt = nowIso;
+      recovered = true;
+    }
+    if (recovered) stored.changeSet.updatedAt = nowIso;
+    return recovered;
+  }
+
   async create(contextInput: SessionContext): Promise<StoredSession> {
     const context = sessionContextSchema.parse(contextInput);
-    const now = new Date().toISOString();
+    const now = this.nowIso();
     const stored: StoredSession = {
       token: randomBytes(24).toString('base64url'),
       changeSet: {
@@ -140,7 +198,7 @@ export class SessionStore {
     if (['1.0.0', '1.1.0'].includes(String(changeSetInput.protocolVersion))) {
       changeSetInput.protocolVersion = PROTOCOL_VERSION;
     }
-    return {
+    const stored: StoredSession = {
       token: String(raw.token),
       changeSet: changeSetSchema.parse(changeSetInput),
       verifications: (raw.verifications ?? []).map((result) =>
@@ -149,6 +207,8 @@ export class SessionStore {
       applyRuns: (raw.applyRuns ?? []).map((run) => applyRunSchema.parse(run)),
       designGraph: raw.designGraph ? projectDesignGraphSchema.parse(raw.designGraph) : null,
     };
+    if (this.recoverExpiredClaims(stored)) await this.write(stored);
+    return stored;
   }
 
   async setDesignGraph(id: string, graphInput: ProjectDesignGraph): Promise<StoredSession> {
@@ -171,7 +231,7 @@ export class SessionStore {
       Partial<Pick<DesignOperationInput, 'id' | 'createdAt' | 'updatedAt'>>,
   ): Promise<StoredSession> {
     const stored = await this.read(id);
-    const now = new Date().toISOString();
+    const now = this.nowIso();
     const operation = designOperationSchema.parse({
       ...input,
       id: input.id ?? operationId(),
@@ -264,7 +324,7 @@ export class SessionStore {
     if (stored.applyRuns.some((run) => activeRunStates.has(run.state))) {
       throw new Error('An apply run is already active for this session');
     }
-    const now = new Date().toISOString();
+    const now = this.nowIso();
     const approvedIds: string[] = [];
     for (const review of input.reviews) {
       const change = stored.changeSet.changes.find((candidate) => candidate.id === review.changeId);
@@ -324,41 +384,68 @@ export class SessionStore {
     runId: string,
     input: { agent: ApplyRun['agent']; revision?: string; designGraphRevision?: string },
   ): Promise<StoredSession> {
-    const stored = await this.read(id);
-    const run = stored.applyRuns.find((candidate) => candidate.id === runId);
-    if (!run) throw new Error(`Unknown apply run: ${runId}`);
-    if (run.state !== 'queued') return stored;
-    const now = new Date().toISOString();
-    const sourceChanged =
-      !run.retryOf && run.revision && input.revision && run.revision !== input.revision;
-    const graphChanged =
-      run.designGraphRevision &&
-      input.designGraphRevision &&
-      run.designGraphRevision !== input.designGraphRevision;
-    if (sourceChanged || graphChanged) {
-      run.state = 'needs_attention';
-      run.error = sourceChanged
-        ? `Project revision changed from ${run.revision} to ${input.revision}. Review the batch before retrying.`
-        : `Project design graph changed from ${run.designGraphRevision} to ${input.designGraphRevision}. Review the semantic mappings before retrying.`;
-      run.messages.push({
-        state: run.state,
-        message: run.error,
-        createdAt: now,
-      });
-      run.completedAt = now;
-    } else {
-      run.state = 'claimed';
-      run.agent = input.agent;
-      run.claimedAt = now;
-      run.messages.push({
-        state: run.state,
-        message: `${input.agent?.name ?? 'Agent'} claimed the reviewed batch.`,
-        createdAt: now,
-      });
-    }
-    run.updatedAt = now;
-    await this.write(stored);
-    return stored;
+    return this.serializeApplyRunMutation(id, async () => {
+      const stored = await this.read(id);
+      const run = stored.applyRuns.find((candidate) => candidate.id === runId);
+      if (!run) throw new Error(`Unknown apply run: ${runId}`);
+      if (run.state !== 'queued') return stored;
+      const now = this.nowIso();
+      const sourceChanged =
+        !run.retryOf && run.revision && input.revision && run.revision !== input.revision;
+      const graphChanged =
+        run.designGraphRevision &&
+        input.designGraphRevision &&
+        run.designGraphRevision !== input.designGraphRevision;
+      if (sourceChanged || graphChanged) {
+        run.state = 'needs_attention';
+        run.error = sourceChanged
+          ? `Project revision changed from ${run.revision} to ${input.revision}. Review the batch before retrying.`
+          : `Project design graph changed from ${run.designGraphRevision} to ${input.designGraphRevision}. Review the semantic mappings before retrying.`;
+        run.messages.push({
+          state: run.state,
+          message: run.error,
+          createdAt: now,
+        });
+        run.completedAt = now;
+      } else {
+        run.state = 'claimed';
+        run.agent = input.agent;
+        run.claimAttemptId = `claim_${randomUUID().replaceAll('-', '')}`;
+        run.claimedAt = now;
+        run.claimHeartbeatAt = now;
+        run.claimExpiresAt = new Date(this.now().getTime() + this.claimLeaseMs).toISOString();
+        run.messages.push({
+          state: run.state,
+          message: `${input.agent?.name ?? 'Agent'} received the reviewed batch. Waiting for source work to begin.`,
+          createdAt: now,
+        });
+      }
+      run.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async heartbeatApplyRun(
+    id: string,
+    runId: string,
+    claimAttemptId: string,
+  ): Promise<StoredSession> {
+    return this.serializeApplyRunMutation(id, async () => {
+      const stored = await this.read(id);
+      const run = stored.applyRuns.find((candidate) => candidate.id === runId);
+      if (!run) throw new Error(`Unknown apply run: ${runId}`);
+      if (run.state !== 'claimed') throw new Error('Apply run is not awaiting source work');
+      if (!run.claimAttemptId || run.claimAttemptId !== claimAttemptId) {
+        throw new Error('This claim is no longer active. Reclaim the apply run before continuing.');
+      }
+      const now = this.nowIso();
+      run.claimHeartbeatAt = now;
+      run.claimExpiresAt = new Date(this.now().getTime() + this.claimLeaseMs).toISOString();
+      run.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
   }
 
   async updateApplyRun(
@@ -370,47 +457,58 @@ export class SessionStore {
       changedFiles?: string[];
       validationResults?: ApplyRun['validationResults'];
       error?: string;
+      claimAttemptId?: string;
     },
   ): Promise<StoredSession> {
-    const stored = await this.read(id);
-    const run = stored.applyRuns.find((candidate) => candidate.id === runId);
-    if (!run) throw new Error(`Unknown apply run: ${runId}`);
-    const transitions: Partial<Record<ApplyRunState, ApplyRunState[]>> = {
-      queued: ['cancelled'],
-      claimed: ['applying', 'cancelled', 'failed'],
-      applying: ['rebuilding', 'cancelled', 'failed'],
-      rebuilding: ['verifying', 'cancelled', 'failed'],
-      verifying: ['needs_attention', 'cancelled', 'failed'],
-    };
-    if (input.state && input.state !== run.state) {
-      if (!(transitions[run.state] ?? []).includes(input.state)) {
-        throw new Error(`Invalid apply run transition: ${run.state} -> ${input.state}`);
+    return this.serializeApplyRunMutation(id, async () => {
+      const stored = await this.read(id);
+      const run = stored.applyRuns.find((candidate) => candidate.id === runId);
+      if (!run) throw new Error(`Unknown apply run: ${runId}`);
+      if (
+        input.state &&
+        ['applying', 'rebuilding', 'verifying', 'failed'].includes(input.state) &&
+        run.claimAttemptId !== input.claimAttemptId
+      ) {
+        throw new Error('This claim is no longer active. Reclaim the apply run before continuing.');
       }
-      run.state = input.state;
-    }
-    if (input.changedFiles) run.changedFiles = [...new Set(input.changedFiles)];
-    if (input.validationResults) run.validationResults = input.validationResults;
-    if (input.error !== undefined) run.error = input.error;
-    if (run.state === 'verifying') {
-      if (!run.changedFiles.length) {
-        throw new Error('Verification requires at least one changed source file');
+      const transitions: Partial<Record<ApplyRunState, ApplyRunState[]>> = {
+        queued: ['cancelled'],
+        claimed: ['applying', 'cancelled', 'failed'],
+        applying: ['rebuilding', 'cancelled', 'failed'],
+        rebuilding: ['verifying', 'cancelled', 'failed'],
+        verifying: ['needs_attention', 'cancelled', 'failed'],
+      };
+      if (input.state && input.state !== run.state) {
+        if (!(transitions[run.state] ?? []).includes(input.state)) {
+          throw new Error(`Invalid apply run transition: ${run.state} -> ${input.state}`);
+        }
+        run.state = input.state;
       }
-      for (const change of stored.changeSet.changes) {
-        if (run.changeIds.includes(change.id)) change.status = 'applied';
+      if (input.changedFiles) run.changedFiles = [...new Set(input.changedFiles)];
+      if (input.validationResults) run.validationResults = input.validationResults;
+      if (input.error !== undefined) run.error = input.error;
+      if (run.state === 'applying') run.claimExpiresAt = undefined;
+      if (run.state === 'verifying') {
+        if (!run.changedFiles.length) {
+          throw new Error('Verification requires at least one changed source file');
+        }
+        for (const change of stored.changeSet.changes) {
+          if (run.changeIds.includes(change.id)) change.status = 'applied';
+        }
       }
-    }
-    const now = new Date().toISOString();
-    if (input.message)
-      run.messages.push({
-        state: run.state,
-        message: input.message,
-        createdAt: now,
-      });
-    if (['cancelled', 'failed', 'needs_attention'].includes(run.state)) run.completedAt = now;
-    run.updatedAt = now;
-    stored.changeSet.updatedAt = now;
-    await this.write(stored);
-    return stored;
+      const now = this.nowIso();
+      if (input.message)
+        run.messages.push({
+          state: run.state,
+          message: input.message,
+          createdAt: now,
+        });
+      if (['cancelled', 'failed', 'needs_attention'].includes(run.state)) run.completedAt = now;
+      run.updatedAt = now;
+      stored.changeSet.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
   }
 
   async retryApplyRun(id: string, runId: string): Promise<StoredSession> {

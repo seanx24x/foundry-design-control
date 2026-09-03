@@ -324,6 +324,12 @@ export class FoundryRuntime {
             sendJson(response, 200, publicSession(updated));
             return;
           }
+          if (runId && request.method === 'POST' && parts[5] === 'heartbeat') {
+            const input = (await body(request)) as { claimAttemptId: string };
+            const updated = await this.store.heartbeatApplyRun(id, runId, input.claimAttemptId);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
           if (runId && request.method === 'POST' && parts[5] === 'retry') {
             const updated = await this.store.retryApplyRun(id, runId);
             sendJson(response, 201, publicSession(updated));
@@ -348,6 +354,7 @@ export class FoundryRuntime {
                 summary?: string;
               }>;
               error?: string;
+              claimAttemptId?: string;
             };
             const updated = await this.store.updateApplyRun(id, runId, input);
             sendJson(response, 200, publicSession(updated));

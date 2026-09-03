@@ -47,3 +47,12 @@ test('the review flow queues approved changes when the coding agent is offline',
   assert.match(source, /will claim it when the Foundry listener reconnects/);
   assert.doesNotMatch(source, /selectedCount === 0 \|\| !activeAgentPresence\.connected/);
 });
+
+test('the apply handoff exposes recovery and verifies independently of review visibility', () => {
+  const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  assert.match(source, /claimed: 'Handoff received'/);
+  assert.match(source, /Foundry safely returned this batch to the queue/);
+  assert.match(source, /applyButton\.dataset\.action = 'reconnect'/);
+  assert.match(source, /if \(latestRun\?\.state === 'verifying'\) maybeVerifyRun\(latestRun\)/);
+  assert.match(source, /startSessionPolling\(\)/);
+});

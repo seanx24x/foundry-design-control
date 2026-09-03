@@ -44,13 +44,14 @@ Read [change-contract.md](references/change-contract.md) when interpreting or tr
 
 1. Read the project design graph with `foundry_design_get_project_design`.
 2. For an interactive web session, keep calling `foundry_design_wait_for_apply` in bounded waits as soon as Foundry starts. Include the current source revision, design-graph revision, and agent identity. A reviewed run may already be queued while the agent was offline. A `waiting` result means poll again while the session remains active, not that the workflow is complete.
-3. If a run is claimed, read [apply-run-contract.md](references/apply-run-contract.md) and follow its state transitions. Do not edit from an unreviewed draft ledger.
-4. Reinspect current source before editing. Stop if the claimed run reports a stale revision, stale graph, unresolved target, or unresolved operation.
-5. Report `applying`, then implement the user's selected semantic mapping at the narrowest source of truth.
-6. Preserve existing tokens and component conventions. Prefer a matching token over a new literal. Do not invent a global token for an instance-scoped adjustment.
-7. Apply the batch as a normal, reviewable source diff. Never write generated preview styles into production code.
-8. Report `rebuilding` with changed files and validation results. Report `failed` for a terminal source or validation failure.
-9. Report any request that cannot be represented without changing the requested scope or architecture.
+3. If a run is claimed, retain its `claimAttemptId`, read [apply-run-contract.md](references/apply-run-contract.md), and follow its state transitions. Do not edit from an unreviewed draft ledger.
+4. Immediately report `applying` with the current `claimAttemptId`, then reinspect current source before editing. If a prerequisite prevents that immediate transition, extend the short handoff lease with `foundry_design_heartbeat_apply_run` while the run remains `claimed`.
+5. Stop if the claim is no longer active or the source inspection finds a stale revision, stale graph, unresolved target, or unresolved operation. Return to `foundry_design_wait_for_apply` when Foundry has safely requeued an abandoned handoff.
+6. Implement the user's selected semantic mapping at the narrowest source of truth.
+7. Preserve existing tokens and component conventions. Prefer a matching token over a new literal. Do not invent a global token for an instance-scoped adjustment.
+8. Apply the batch as a normal, reviewable source diff. Never write generated preview styles into production code.
+9. Report `rebuilding` and every later agent state with the same `claimAttemptId`, including changed files and validation results. Report `failed` for a terminal source or validation failure.
+10. Report any request that cannot be represented without changing the requested scope or architecture.
 
 ## Verify
 

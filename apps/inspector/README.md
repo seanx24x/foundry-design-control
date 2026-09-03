@@ -96,7 +96,9 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 - Persistent, coalescing change ledger with JSON and consolidated prompt export
 - Compact in-preview review with editable approved batches and unresolved-target blocking
 - Persistent Apply with agent runs across Codex, Cursor, and Claude Code through MCP
+- Leased agent handoffs that safely return abandoned or interrupted claims to the queue
 - Live source, rebuild, validation, retry, and rendered-verification progress
+- Rendered verification that resumes after refresh and does not depend on Review remaining open
 - Local MCP bridge for agent access
 - Debug adapters for web, SwiftUI, and React Native on iOS Simulator
 - Verification records that compare requested and rendered values

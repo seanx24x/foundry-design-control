@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
@@ -24,6 +25,7 @@ serveStdio(() => {
     version: '0.3.0',
   });
   const client = new FoundryRuntimeClient();
+  const listenerTaskId = `listener_${randomUUID().replaceAll('-', '')}`;
 
   server.registerTool(
     'foundry_design_start_session',
@@ -105,6 +107,7 @@ serveStdio(() => {
     },
     async ({ sessionId, token, agent, revision, designGraphRevision, waitMs }) => {
       const id = client.sessionId(sessionId);
+      const resolvedAgent = { ...agent, taskId: agent.taskId ?? listenerTaskId };
       const deadline = Date.now() + waitMs;
       let nextPresenceAt = 0;
       do {
@@ -114,7 +117,7 @@ serveStdio(() => {
             {
               method: 'POST',
               body: JSON.stringify({
-                agent,
+                agent: resolvedAgent,
                 listening: true,
                 ttlMs: Math.min(Math.max(waitMs + 10_000, 15_000), 70_000),
               }),
@@ -130,22 +133,59 @@ serveStdio(() => {
         )) as { runs?: Array<{ id: string }> };
         const run = payload.runs?.[0];
         if (run) {
-          return result(
-            await client.request(
-              `/v1/sessions/${id}/apply-runs/${run.id}/claim`,
-              {
-                method: 'POST',
-                body: JSON.stringify({ agent, revision, designGraphRevision }),
-              },
-              token,
-            ),
-          );
+          const claimed = (await client.request(
+            `/v1/sessions/${id}/apply-runs/${run.id}/claim`,
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                agent: resolvedAgent,
+                revision,
+                designGraphRevision,
+              }),
+            },
+            token,
+          )) as {
+            applyRuns?: Array<{
+              id: string;
+              state: string;
+              agent?: { name: string; taskId?: string };
+              claimAttemptId?: string;
+            }>;
+          };
+          const claimedRun = claimed.applyRuns?.find((candidate) => candidate.id === run.id);
+          const sameAgent =
+            claimedRun?.state === 'claimed' &&
+            claimedRun.agent?.name === resolvedAgent.name &&
+            claimedRun.agent.taskId === resolvedAgent.taskId;
+          if (sameAgent && claimedRun?.claimAttemptId) return result(claimed);
         }
         if (Date.now() >= deadline) break;
         await new Promise((resolveWait) => setTimeout(resolveWait, 500));
       } while (true);
       return result({ status: 'waiting', sessionId: id, waitedMs: waitMs });
     },
+  );
+
+  server.registerTool(
+    'foundry_design_heartbeat_apply_run',
+    {
+      description:
+        'Extend a claimed Foundry handoff lease while inspecting source before source work begins.',
+      inputSchema: z.object({
+        sessionId: z.string().optional(),
+        token: z.string().optional(),
+        runId: z.string().min(1),
+        claimAttemptId: z.string().min(1),
+      }),
+    },
+    async ({ sessionId, token, runId, claimAttemptId }) =>
+      result(
+        await client.request(
+          `/v1/sessions/${client.sessionId(sessionId)}/apply-runs/${runId}/heartbeat`,
+          { method: 'POST', body: JSON.stringify({ claimAttemptId }) },
+          token,
+        ),
+      ),
   );
 
   server.registerTool(
@@ -177,6 +217,7 @@ serveStdio(() => {
         sessionId: z.string().optional(),
         token: z.string().optional(),
         runId: z.string().min(1),
+        claimAttemptId: z.string().min(1),
         state: z.enum(['applying', 'rebuilding', 'verifying', 'failed']),
         message: z.string().optional(),
         changedFiles: z.array(z.string()).optional(),

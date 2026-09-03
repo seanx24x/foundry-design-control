@@ -117,6 +117,8 @@ test('parses a portable apply run with progress and validation', () => {
     revision: 'abc123',
     state: 'rebuilding',
     agent: { name: 'codex' },
+    claimAttemptId: 'claim_1',
+    claimHeartbeatAt: '2026-08-29T00:00:30.000Z',
     messages: [
       {
         state: 'applying',
@@ -132,6 +134,8 @@ test('parses a portable apply run with progress and validation', () => {
     updatedAt: '2026-08-29T00:01:00.000Z',
   });
   assert.equal(run.state, 'rebuilding');
+  assert.equal(run.claimAttemptId, 'claim_1');
+  assert.equal(run.requeueCount, 0);
   assert.equal(run.validationResults[0]?.passed, true);
 });
 

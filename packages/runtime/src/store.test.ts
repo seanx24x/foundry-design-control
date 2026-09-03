@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { SessionStore } from './store.js';
+import { SessionStore, type SessionStoreOptions } from './store.js';
 
 test('persists and authenticates a coalesced design session', async () => {
   const root = await mkdtemp(join(tmpdir(), 'foundry-store-'));
@@ -159,9 +159,9 @@ test('persists the design graph and resolves an ambiguous semantic operation', a
   assert.equal(stored.changeSet.operations[0]?.selectedMappingId, 'map-basis');
 });
 
-async function reviewedSession() {
+async function reviewedSession(options: SessionStoreOptions = {}) {
   const root = await mkdtemp(join(tmpdir(), 'foundry-apply-'));
-  const store = new SessionStore(root);
+  const store = new SessionStore(root, options);
   const session = await store.create({
     projectRoot: '/project',
     revision: 'rev-1',
@@ -209,6 +209,8 @@ test('reviews, claims, applies, and verifies one idempotent apply run', async ()
     revision: 'rev-1',
   });
   assert.equal(stored.applyRuns[0]?.state, 'claimed');
+  const claimAttemptId = stored.applyRuns[0]!.claimAttemptId!;
+  assert.ok(claimAttemptId);
   stored = await store.claimApplyRun(session.changeSet.sessionId, runId, {
     agent: { name: 'cursor' },
     revision: 'rev-1',
@@ -217,15 +219,18 @@ test('reviews, claims, applies, and verifies one idempotent apply run', async ()
   await store.updateApplyRun(session.changeSet.sessionId, runId, {
     state: 'applying',
     message: 'Editing source.',
+    claimAttemptId,
   });
   await store.updateApplyRun(session.changeSet.sessionId, runId, {
     state: 'rebuilding',
     changedFiles: ['src/Button.tsx'],
     validationResults: [{ name: 'typecheck', passed: true }],
+    claimAttemptId,
   });
   await store.updateApplyRun(session.changeSet.sessionId, runId, {
     state: 'verifying',
     message: 'Source rebuilt.',
+    claimAttemptId,
   });
   stored = await store.addVerifications(
     session.changeSet.sessionId,
@@ -300,16 +305,24 @@ test('records a rendered mismatch and waits for a user-authorized retry', async 
     reviews: [{ changeId, approved: true }],
   });
   const run = stored.applyRuns[0]!;
-  await store.claimApplyRun(session.changeSet.sessionId, run.id, {
+  stored = await store.claimApplyRun(session.changeSet.sessionId, run.id, {
     agent: { name: 'cursor' },
     revision: 'rev-1',
   });
-  await store.updateApplyRun(session.changeSet.sessionId, run.id, { state: 'applying' });
+  const claimAttemptId = stored.applyRuns[0]!.claimAttemptId!;
+  await store.updateApplyRun(session.changeSet.sessionId, run.id, {
+    state: 'applying',
+    claimAttemptId,
+  });
   await store.updateApplyRun(session.changeSet.sessionId, run.id, {
     state: 'rebuilding',
     changedFiles: ['src/Button.tsx'],
+    claimAttemptId,
   });
-  await store.updateApplyRun(session.changeSet.sessionId, run.id, { state: 'verifying' });
+  await store.updateApplyRun(session.changeSet.sessionId, run.id, {
+    state: 'verifying',
+    claimAttemptId,
+  });
   stored = await store.addVerifications(
     session.changeSet.sessionId,
     [
@@ -330,6 +343,77 @@ test('records a rendered mismatch and waits for a user-authorized retry', async 
   stored = await store.retryApplyRun(session.changeSet.sessionId, run.id);
   assert.equal(stored.applyRuns[1]?.state, 'queued');
   assert.equal(stored.applyRuns[1]?.retryOf, run.id);
+});
+
+test('recovers an abandoned claim and rejects updates from the stale agent', async () => {
+  let now = new Date('2026-09-02T20:00:00.000Z');
+  const { store, session, changeId } = await reviewedSession({
+    claimLeaseMs: 1_000,
+    now: () => now,
+  });
+  let stored = await store.createApplyRun(session.changeSet.sessionId, {
+    reviews: [{ changeId, approved: true }],
+  });
+  const runId = stored.applyRuns[0]!.id;
+  stored = await store.claimApplyRun(session.changeSet.sessionId, runId, {
+    agent: { name: 'codex', taskId: 'first' },
+    revision: 'rev-1',
+  });
+  const staleClaimId = stored.applyRuns[0]!.claimAttemptId!;
+  assert.equal(stored.applyRuns[0]?.claimExpiresAt, '2026-09-02T20:00:01.000Z');
+
+  now = new Date('2026-09-02T20:00:00.800Z');
+  stored = await store.heartbeatApplyRun(session.changeSet.sessionId, runId, staleClaimId);
+  assert.equal(stored.applyRuns[0]?.claimExpiresAt, '2026-09-02T20:00:01.800Z');
+
+  now = new Date('2026-09-02T20:00:02.000Z');
+  stored = await store.read(session.changeSet.sessionId);
+  assert.equal(stored.applyRuns[0]?.state, 'queued');
+  assert.equal(stored.applyRuns[0]?.requeueCount, 1);
+  assert.equal(stored.applyRuns[0]?.claimAttemptId, undefined);
+
+  stored = await store.claimApplyRun(session.changeSet.sessionId, runId, {
+    agent: { name: 'codex', taskId: 'second' },
+    revision: 'rev-1',
+  });
+  const currentClaimId = stored.applyRuns[0]!.claimAttemptId!;
+  assert.notEqual(currentClaimId, staleClaimId);
+  await assert.rejects(
+    store.updateApplyRun(session.changeSet.sessionId, runId, {
+      state: 'applying',
+      claimAttemptId: staleClaimId,
+    }),
+    /claim is no longer active/,
+  );
+  stored = await store.updateApplyRun(session.changeSet.sessionId, runId, {
+    state: 'applying',
+    claimAttemptId: currentClaimId,
+  });
+  assert.equal(stored.applyRuns[0]?.state, 'applying');
+  assert.equal(stored.applyRuns[0]?.claimExpiresAt, undefined);
+});
+
+test('requeues a claimed run created before claim leases were introduced', async () => {
+  const { root, store, session, changeId } = await reviewedSession();
+  let stored = await store.createApplyRun(session.changeSet.sessionId, {
+    reviews: [{ changeId, approved: true }],
+  });
+  const runId = stored.applyRuns[0]!.id;
+  stored = await store.claimApplyRun(session.changeSet.sessionId, runId, {
+    agent: { name: 'codex' },
+    revision: 'rev-1',
+  });
+  const path = join(root, `${session.changeSet.sessionId}.json`);
+  const legacy = JSON.parse(await readFile(path, 'utf8'));
+  delete legacy.applyRuns[0].claimAttemptId;
+  delete legacy.applyRuns[0].claimExpiresAt;
+  delete legacy.applyRuns[0].claimHeartbeatAt;
+  await writeFile(path, `${JSON.stringify(legacy, null, 2)}\n`);
+
+  stored = await store.read(session.changeSet.sessionId);
+  assert.equal(stored.applyRuns[0]?.state, 'queued');
+  assert.equal(stored.applyRuns[0]?.requeueCount, 1);
+  assert.match(stored.applyRuns[0]?.messages.at(-1)?.message ?? '', /returned the batch/);
 });
 
 test('blocks unresolved changes from reviewed apply runs', async () => {
