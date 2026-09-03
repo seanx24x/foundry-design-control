@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
-const version = '0.2.0-beta.6';
+const version = '0.2.0-beta.7';
 const packagePaths = [
   'apps/inspector/package.json',
   'packages/cli/package.json',

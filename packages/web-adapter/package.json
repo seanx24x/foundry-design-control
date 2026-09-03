@@ -1,6 +1,6 @@
 {
   "name": "foundry-design-web-adapter",
-  "version": "0.2.0-beta.6",
+  "version": "0.2.0-beta.7",
   "description": "Development-only browser inspector for Foundry",
   "type": "module",
   "main": "dist/adapter.js",

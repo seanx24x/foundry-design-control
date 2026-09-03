@@ -1,6 +1,6 @@
 {
   "name": "foundry-design",
-  "version": "0.2.0-beta.6",
+  "version": "0.2.0-beta.7",
   "description": "Install and run the local-first Foundry visual design control plane",
   "type": "module",
   "files": [

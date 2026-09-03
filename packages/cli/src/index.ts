@@ -26,7 +26,7 @@ import { startBasicPreviewProxy, type BasicPreviewProxy } from './proxy.js';
 const args = process.argv.slice(2);
 const command = args[0]?.startsWith('-') ? 'launch' : (args[0] ?? 'launch');
 const runtimeRepository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const CURRENT_VERSION = '0.2.0-beta.6';
+const CURRENT_VERSION = '0.2.0-beta.7';
 
 function flag(name: string): string | undefined {
   const index = args.indexOf(name);

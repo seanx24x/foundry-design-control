@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-beta.7 - 2026-09-02
+
+- Added leased agent handoffs with per-claim identities so abandoned claims return safely to the queue before source work begins.
+- Added an agent heartbeat for extending an active handoff while the coding agent reinspects source and prerequisites.
+- Distinguished a received handoff from source application and added a copyable reconnect action when the agent disconnects.
+- Continued rendered verification after Review closes, reopens, or the preview refreshes.
+- Corrected the Position and size section rhythm with a grid-aligned inset below its divider.
+
 ## 0.2.0-beta.6 - 2026-09-02
 
 - Added `npx foundry-design@beta` as the single install, update, repair, validate, start, and resume entry point.
