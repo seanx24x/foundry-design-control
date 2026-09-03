@@ -6,6 +6,10 @@ Foundry is a local-first precision design workbench for Codex, Cursor, and Claud
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
+> **Current public beta:** `0.2.0-beta.5`. Install Foundry with the `@beta` tag. The unqualified npm `latest` tag still points to an earlier beta and is not the current testing channel.
+
+Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
+
 ### Recommended: let your coding agent install it
 
 Open the project in Codex, Cursor, or Claude Code and paste:

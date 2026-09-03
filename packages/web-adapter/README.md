@@ -6,15 +6,19 @@ Foundry is a local-first precision design workbench for Codex, Cursor, and Claud
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
+> **Current public beta:** `0.2.0-beta.5`. Install Foundry with the `@beta` tag. The unqualified npm `latest` tag still points to an earlier beta and is not the current testing channel.
+
+Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
+
 ### Recommended: let your coding agent install it
 
 Open the project in Codex, Cursor, or Claude Code and paste:
 
 ```text
-Install Foundry for this project by running npx foundry-design@beta setup --yes. Check the result and tell me when I need to restart.
+Install Foundry for this project by running npx foundry-design@beta setup --global --yes. Check the result and tell me when I need to restart.
 ```
 
-Setup detects the project and active coding agent, installs development-only instrumentation, configures the local agent connection, validates the integration, and records everything it owns for safe updates or removal.
+Setup detects the project and active coding agent, installs development-only instrumentation, configures one reusable user-level agent connection, validates the project integration, and records everything it owns for safe updates or removal. The `--global` flag means future projects do not need another MCP configuration.
 
 Restart the coding agent once, reopen the same project folder, and paste:
 
@@ -26,10 +30,16 @@ That is the normal workflow. Foundry starts the project when needed, opens an au
 
 ### Manual installation
 
-From the project you want to inspect, run:
+From the first project you want to inspect, run:
 
 ```bash
-npx foundry-design@beta setup
+npx foundry-design@beta setup --global
+```
+
+For later projects, keep the shared agent connection and install only the development adapter:
+
+```bash
+npx foundry-design@beta setup --agent none
 ```
 
 Then restart the coding agent, reopen the same project folder, and ask:
@@ -56,7 +66,7 @@ npx foundry-design@beta uninstall
 
 Supported automatic web integration currently includes Next.js App Router, Vite, and plain HTML. Generic web, SwiftUI, and React Native projects receive explicit setup guidance when a safe automatic edit is not available.
 
-The repository also contains a portable plugin bundle for future marketplace distribution. The npm setup above is the public beta installation path.
+The npm setup above is the public beta installation path and includes the same portable skill and MCP connection used by the agent plugin bundle.
 
 The beta supports Node.js 20 or newer. Read [Privacy](PRIVACY.md), [Security](SECURITY.md), and the [beta changelog](CHANGELOG.md) before using it with sensitive work.
 
