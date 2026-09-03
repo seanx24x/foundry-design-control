@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-beta.9 - 2026-09-03
+
+- Pinned generated coding-agent connections to the exact Foundry MCP release so a stale moving tag cannot load a mismatched bridge.
+- Added online revalidation to the installed skill launcher while keeping `npx foundry-design` as the single public command.
+- Added a release preflight that shows the exact CLI and agent-bridge versions before setup, update, repair, or uninstall changes local configuration.
+- Added regression coverage for exact-version MCP configuration and fresh-cache public installation.
+- Removed stale guidance that sent testers through the moving `@beta` tag after `latest` became the current release channel.
+
 ## 0.2.0-beta.8 - 2026-09-03
 
 - Added a fixed-size canvas that preserves real project viewport dimensions, with explicit pan, zoom, actual-size, fit, and fit-width controls.

@@ -6,7 +6,7 @@ Foundry is a local-first precision design workbench for Codex, Cursor, and Claud
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
-> **Current public beta:** `0.2.0-beta.8`. Install Foundry with the `@beta` tag. The unqualified npm `latest` tag still points to an earlier beta and is not the current testing channel.
+> **Current public beta:** `0.2.0-beta.9`. Both npm `latest` and `beta` point to the same tested release. Use the unqualified command below for normal installation.
 
 Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 
@@ -15,10 +15,10 @@ Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 Open a terminal in the project, or ask Codex, Cursor, or Claude Code to run:
 
 ```bash
-npx foundry-design@beta
+npx foundry-design
 ```
 
-That command detects the project and active coding agent, installs or safely updates Foundry, repairs the shared agent connection, validates its integration, starts the project when needed, and opens the visual session. On the first installation only, restart the coding agent once so it can load the shared MCP connection. A reviewed batch can be queued before the restart and will be claimed when the agent reconnects.
+That command detects the project and active coding agent, installs or safely updates Foundry, repairs the shared agent connection, validates its integration, starts the project when needed, and opens the visual session. Before changing local configuration, Foundry prints the exact CLI and MCP bridge versions it will use. On the first installation only, restart the coding agent once so it can load the shared MCP connection. A reviewed batch can be queued before the restart and will be claimed when the agent reconnects.
 
 After the restart, reopen the same project folder and ask:
 
@@ -33,13 +33,13 @@ That is the normal workflow. Foundry resumes the most recent session for the cur
 From the first project you want to inspect, run:
 
 ```bash
-npx foundry-design@beta setup --global
+npx foundry-design setup --global
 ```
 
 For later projects, keep the shared agent connection and install only the development adapter:
 
 ```bash
-npx foundry-design@beta setup --agent none
+npx foundry-design setup --agent none
 ```
 
 Then restart the coding agent, reopen the same project folder, and ask:
@@ -48,12 +48,12 @@ Then restart the coding agent, reopen the same project folder, and ask:
 Start Foundry for this project and keep listening for Apply with agent requests.
 ```
 
-You do not need to run a second terminal command when the agent starts Foundry for you. Apply requests remain queued safely when the agent is offline. Run `npx foundry-design@beta doctor --repair` if the connection or generated integration needs repair.
+You do not need to run a second terminal command when the agent starts Foundry for you. Apply requests remain queued safely when the agent is offline. Run `npx foundry-design doctor --repair` if the connection or generated integration needs repair.
 
 Update an existing installation with:
 
 ```bash
-npx foundry-design@beta update
+npx foundry-design update
 ```
 
 The updater refreshes checksum-matched Foundry files, agent connections, and skill bundles. It preserves and reports files changed since setup, validates the project, and rolls back the update if Foundry introduces a TypeScript or lint failure. Restart the coding agent after updating.
@@ -61,12 +61,19 @@ The updater refreshes checksum-matched Foundry files, agent connections, and ski
 Remove only Foundry-managed integration with:
 
 ```bash
-npx foundry-design@beta uninstall
+npx foundry-design uninstall
 ```
 
 Supported automatic web integration currently includes Next.js App Router, Vite, and plain HTML. Generic web, SwiftUI, and React Native projects receive explicit setup guidance when a safe automatic edit is not available.
 
 The npm setup above is the public beta installation path and includes the same portable skill and MCP connection used by the agent plugin bundle.
+
+If an npm mirror or existing `npx` cache reports an old tag, bypass it with a temporary cache and the exact current release:
+
+```bash
+FOUNDRY_NPX_CACHE="$(mktemp -d)"
+npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.9 foundry-design
+```
 
 The beta supports Node.js 20 or newer. Read the [local-first safety model](https://withfoundry.ai/#safety) before using it with sensitive work.
 

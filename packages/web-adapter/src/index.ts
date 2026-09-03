@@ -7085,7 +7085,7 @@ export function installFoundryInspector(
   statusPopover
     .querySelector<HTMLButtonElement>('[data-status-repair]')!
     .addEventListener('click', () => {
-      void navigator.clipboard.writeText('npx foundry-design@beta doctor --repair');
+      void navigator.clipboard.writeText('npx foundry-design doctor --repair');
       showToast('Repair command copied');
     });
   interfaceThemeTrigger.addEventListener('click', () => {

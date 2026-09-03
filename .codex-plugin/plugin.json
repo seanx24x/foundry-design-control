@@ -1,6 +1,6 @@
 {
   "name": "foundry-design-control",
-  "version": "0.2.0-beta.8",
+  "version": "0.2.0-beta.9",
   "description": "Directly manipulate a running product, resolve semantic source intent, and apply one verified design batch with Codex.",
   "author": {
     "name": "Sean Lynch",

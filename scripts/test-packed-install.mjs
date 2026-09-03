@@ -15,6 +15,10 @@ const root = resolve(import.meta.dirname, '..');
 const artifactDirectory = resolve(root, 'artifacts/npm');
 const matrixRoot = mkdtempSync(join(tmpdir(), 'foundry-packed-install-'));
 const agents = ['codex', 'cursor', 'claude'];
+const releaseVersion = JSON.parse(
+  readFileSync(join(root, 'packages', 'cli', 'package.json'), 'utf8'),
+).version;
+const publicMcpSpec = `foundry-design-mcp-server@${releaseVersion}`;
 
 function run(cwd, command, args, environment = {}) {
   const result = spawnSync(command, args, {
@@ -61,8 +65,8 @@ function assertAgentInstall(fixture, agent) {
     }
   }
   const config = readFileSync(join(fixture, expected.config), 'utf8');
-  if (!config.includes('foundry-design-mcp-server@beta')) {
-    throw new Error(`${agent} setup did not configure the public beta MCP server.`);
+  if (!config.includes(publicMcpSpec)) {
+    throw new Error(`${agent} setup did not configure ${publicMcpSpec}.`);
   }
 }
 
@@ -160,6 +164,23 @@ try {
   );
   if (!readFileSync(bundledSkill, 'utf8').includes('Foundry Design Control')) {
     throw new Error('The CLI package is missing its bundled skill.');
+  }
+  const bundledRunner = join(
+    pluginFixture,
+    'node_modules',
+    'foundry-design',
+    'dist',
+    'skill',
+    'foundry-design-control',
+    'scripts',
+    'foundry.sh',
+  );
+  const runner = readFileSync(bundledRunner, 'utf8');
+  if (!runner.includes('--prefer-online --package=foundry-design@latest')) {
+    throw new Error('The bundled skill launcher does not revalidate the latest Foundry release.');
+  }
+  if (runner.includes('command -v foundry-design')) {
+    throw new Error('The bundled skill launcher can still select a stale global Foundry binary.');
   }
   run(pluginFixture, 'node', [
     '--input-type=module',

@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
-const version = '0.2.0-beta.8';
+const version = '0.2.0-beta.9';
 const packagePaths = [
   'apps/inspector/package.json',
   'packages/cli/package.json',
@@ -34,6 +34,14 @@ const readJson = (path) => JSON.parse(readFileSync(join(root, path), 'utf8'));
 const rootReadmeDigest = createHash('sha256')
   .update(readFileSync(join(root, 'README.md')))
   .digest('hex');
+const rootReadme = readFileSync(join(root, 'README.md'), 'utf8');
+
+if (rootReadme.includes('foundry-design@beta')) {
+  failures.push('README.md still routes installation through the moving beta tag');
+}
+if (!rootReadme.includes('npx foundry-design')) {
+  failures.push('README.md is missing the canonical unqualified install command');
+}
 
 for (const path of requiredDocs) {
   if (!existsSync(join(root, path))) failures.push(`Missing ${path}`);
@@ -89,6 +97,9 @@ for (const path of [
   if (!contents.includes(`foundry-design-mcp-server@${version}`)) {
     failures.push(`${path} does not pin the beta MCP server`);
   }
+  if (!contents.includes('--prefer-online')) {
+    failures.push(`${path} does not revalidate the pinned MCP package online`);
+  }
 }
 
 function filesBelow(directory) {
@@ -105,6 +116,13 @@ const sourceSkill = join(root, 'skills/foundry-design-control');
 const bundledSkill = join(root, 'plugins/foundry-design-control/skills/foundry-design-control');
 const cliSkill = join(root, 'packages/cli/dist/skill/foundry-design-control');
 const digest = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
+const sourceRunner = readFileSync(join(sourceSkill, 'scripts', 'foundry.sh'), 'utf8');
+if (!sourceRunner.includes('--prefer-online --package=foundry-design@latest')) {
+  failures.push('The skill launcher does not revalidate the latest Foundry release');
+}
+if (sourceRunner.includes('command -v foundry-design')) {
+  failures.push('The skill launcher can select a stale global Foundry binary');
+}
 
 for (const [label, copy] of [
   ['Plugin', bundledSkill],

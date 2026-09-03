@@ -22,11 +22,11 @@ import {
 import { addSessionParams, detectPlatform } from './project.js';
 import { indexProjectDesign } from './indexer.js';
 import { startBasicPreviewProxy, type BasicPreviewProxy } from './proxy.js';
+import { FOUNDRY_VERSION, releasePreflight } from './release.js';
 
 const args = process.argv.slice(2);
 const command = args[0]?.startsWith('-') ? 'launch' : (args[0] ?? 'launch');
 const runtimeRepository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const CURRENT_VERSION = '0.2.0-beta.8';
 
 function flag(name: string): string | undefined {
   const index = args.indexOf(name);
@@ -134,6 +134,7 @@ function requestedAgents(): Agent[] | undefined {
 }
 
 async function setup(): Promise<void> {
+  console.log(`${releasePreflight('set up this project')}\n`);
   const root = projectRoot();
   const requested = requestedAgents();
   const sharedAgentSetup = has('--global');
@@ -210,6 +211,7 @@ async function setup(): Promise<void> {
 }
 
 async function update(): Promise<void> {
+  console.log(`${releasePreflight('update this project')}\n`);
   const root = projectRoot();
   const options = {
     agents: requestedAgents(),
@@ -241,6 +243,7 @@ async function update(): Promise<void> {
 }
 
 async function initProject(): Promise<void> {
+  console.log(`${releasePreflight('initialize this project')}\n`);
   const platform = (args[1] ?? 'web') as Platform;
   if (!['web', 'swiftui', 'react-native'].includes(platform))
     throw new Error(`Unsupported platform: ${platform}`);
@@ -459,6 +462,7 @@ async function indexDesign(): Promise<void> {
 }
 
 async function uninstall(): Promise<void> {
+  console.log(`${releasePreflight('remove managed project integration')}\n`);
   const root = projectRoot();
   if (!(await confirm(`Remove Foundry-managed project integration from ${root}?`))) {
     console.log('Uninstall cancelled.');
@@ -507,7 +511,7 @@ async function doctor(): Promise<void> {
     [
       'Managed integration',
       manifest?.generatorVersion ?? 'not installed',
-      manifest?.generatorVersion === CURRENT_VERSION,
+      manifest?.generatorVersion === FOUNDRY_VERSION,
     ],
     [
       'Instrumentation',
@@ -535,6 +539,7 @@ async function doctor(): Promise<void> {
   for (const [label, value, passed] of checks)
     console.log(`${passed ? '✓' : '○'} ${label}: ${value}`);
   if (has('--repair')) {
+    console.log(`\n${releasePreflight('repair this project and agent connection')}\n`);
     const detectedAgents = (await createSetupPlan(root)).agents;
     const result = config
       ? await updateProject(root, { agents: [] })
@@ -552,6 +557,7 @@ async function doctor(): Promise<void> {
 }
 
 async function launch(): Promise<void> {
+  console.log(`${releasePreflight('install, update, and start Foundry')}\n`);
   const root = projectRoot();
   const manifest = join(root, '.foundry', 'install-manifest.json');
   const installed = await pathExists(manifest);
@@ -612,6 +618,7 @@ async function exportSession(): Promise<void> {
 }
 
 async function installAgent(): Promise<void> {
+  console.log(`${releasePreflight('install the coding-agent connection')}\n`);
   const agent = args[1];
   if (!agent || !['cursor', 'claude', 'codex'].includes(agent))
     throw new Error('install-agent requires cursor, claude, or codex');
@@ -627,7 +634,7 @@ async function installAgent(): Promise<void> {
       for (const path of result.preserved) console.log(`  ${path}`);
     }
     console.log(
-      `Restart ${agent === 'codex' ? 'Codex' : agent === 'cursor' ? 'Cursor' : 'Claude Code'} once. Future projects can use "npx foundry-design@beta setup --agent none --yes" without another MCP install.`,
+      `Restart ${agent === 'codex' ? 'Codex' : agent === 'cursor' ? 'Cursor' : 'Claude Code'} once. Future projects can use "npx foundry-design setup --agent none --yes" without another MCP install.`,
     );
     return;
   }
@@ -644,7 +651,7 @@ async function installAgent(): Promise<void> {
 }
 
 try {
-  if (has('--version') || command === 'version') console.log(CURRENT_VERSION);
+  if (has('--version') || command === 'version') console.log(FOUNDRY_VERSION);
   else if (has('--help') || command === 'help') printHelp();
   else if (command === 'launch') await launch();
   else if (command === 'setup') await setup();

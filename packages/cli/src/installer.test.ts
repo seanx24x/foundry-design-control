@@ -12,6 +12,7 @@ import {
   uninstallProject,
   updateProject,
 } from './installer.js';
+import { FOUNDRY_MCP_PACKAGE_SPEC, FOUNDRY_VERSION } from './release.js';
 
 async function fixture(name: string): Promise<string> {
   return mkdtemp(join(tmpdir(), `foundry-${name}-`));
@@ -110,7 +111,7 @@ test('sets up and reversibly removes Vite and all agent integrations', async () 
   }
 });
 
-test('uses the public beta MCP package outside the monorepo', async () => {
+test('uses the exact public MCP package outside the monorepo', async () => {
   const root = await fixture('public-mcp');
   const skillRoot = await skillFixture();
   await writeFile(join(root, 'package.json'), JSON.stringify({}));
@@ -118,7 +119,8 @@ test('uses the public beta MCP package outside the monorepo', async () => {
   const cursor = JSON.parse(await readFile(join(root, '.cursor', 'mcp.json'), 'utf8'));
   assert.deepEqual(cursor.mcpServers['foundry-design-control'].args, [
     '-y',
-    'foundry-design-mcp-server@beta',
+    '--prefer-online',
+    FOUNDRY_MCP_PACKAGE_SPEC,
   ]);
 });
 
@@ -130,7 +132,7 @@ test('installs reusable host integrations without touching a project', async () 
     const result = await installHostAgentIntegration(home, agent, { skillRoot });
     assert.match(await readFile(join(result.skillDirectory, 'SKILL.md'), 'utf8'), /Foundry/);
     const config = await readFile(result.configFile, 'utf8');
-    assert.match(config, /foundry-design-mcp-server@beta/);
+    assert.match(config, new RegExp(FOUNDRY_MCP_PACKAGE_SPEC.replaceAll('.', '\\.')));
   }
 
   const codex = await readFile(join(home, '.codex', 'config.toml'), 'utf8');
@@ -167,7 +169,7 @@ test('installs Codex MCP configuration directly instead of writing a merge snipp
   const config = await readFile(path, 'utf8');
   assert.match(config, /model = "gpt-5\.6"/);
   assert.match(config, /\[mcp_servers\.foundry-design-control\]/);
-  assert.match(config, /foundry-design-mcp-server@beta/);
+  assert.match(config, new RegExp(FOUNDRY_MCP_PACKAGE_SPEC.replaceAll('.', '\\.')));
   await assert.rejects(readFile(join(root, '.codex', 'foundry-mcp.toml'), 'utf8'));
 });
 
@@ -311,7 +313,7 @@ test('integrates and removes a Next.js App Router loader', async () => {
     await readFile(join(root, '.foundry', 'install-manifest.json'), 'utf8'),
   );
   assert.equal(manifest.version, 2);
-  assert.equal(manifest.generatorVersion, '0.2.0-beta.8');
+  assert.equal(manifest.generatorVersion, FOUNDRY_VERSION);
   assert.equal(manifest.validation.length, 2);
   await uninstallProject(root);
   const restored = await readFile(join(root, 'app', 'layout.tsx'), 'utf8');

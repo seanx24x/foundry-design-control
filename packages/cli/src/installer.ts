@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { Platform } from 'foundry-design-protocol';
 import { detectPlatform } from './project.js';
+import { FOUNDRY_MCP_PACKAGE_SPEC, FOUNDRY_VERSION } from './release.js';
 
 export type Agent = 'codex' | 'cursor' | 'claude';
 export type WebFramework = 'next' | 'vite' | 'html' | 'generic';
@@ -103,7 +104,7 @@ export interface UninstallResult {
 
 const START = '>>> Foundry Design Control';
 const END = '<<< Foundry Design Control';
-const GENERATOR_VERSION = '0.2.0-beta.8';
+const GENERATOR_VERSION = FOUNDRY_VERSION;
 const TRANSACTION_FILE = 'setup-transaction.json';
 const execFileAsync = promisify(execFile);
 const DEFAULT_SKILL_ROOT = fileURLToPath(
@@ -755,7 +756,7 @@ function mcpServer(packageRoot?: string): {
   }
   return {
     command: 'npx',
-    args: ['-y', 'foundry-design-mcp-server@beta'],
+    args: ['-y', '--prefer-online', FOUNDRY_MCP_PACKAGE_SPEC],
     env: { FOUNDRY_DESIGN_RUNTIME_URL: 'http://127.0.0.1:4387' },
   };
 }
