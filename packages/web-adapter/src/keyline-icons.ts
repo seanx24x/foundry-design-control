@@ -7,6 +7,7 @@ import arrowUpIcon from '@iconify-icons/keyline-icons/arrow-up';
 import bookmarkIcon from '@iconify-icons/keyline-icons/bookmark';
 import boxIcon from '@iconify-icons/keyline-icons/square';
 import checkIcon from '@iconify-icons/keyline-icons/check';
+import blurIcon from '@iconify-icons/keyline-icons/circle-dashed';
 import chevronDownIcon from '@iconify-icons/keyline-icons/chevron-down';
 import chevronRightIcon from '@iconify-icons/keyline-icons/chevron-right';
 import columnsIcon from '@iconify-icons/keyline-icons/grid-3x2';
@@ -27,6 +28,7 @@ import maximizeIcon from '@iconify-icons/keyline-icons/maximize';
 import paletteIcon from '@iconify-icons/keyline-icons/flower';
 import panelsIcon from '@iconify-icons/keyline-icons/panel-right';
 import playIcon from '@iconify-icons/keyline-icons/play';
+import plusIcon from '@iconify-icons/keyline-icons/plus';
 import redoIcon from '@iconify-icons/keyline-icons/rotate-cw';
 import resetIcon from '@iconify-icons/keyline-icons/refresh-ccw';
 import saveIcon from '@iconify-icons/keyline-icons/download';
@@ -61,6 +63,7 @@ const RAW_KEYLINE_ICONS: Record<string, KeylineIconData> = {
   'arrow-up': arrowUpIcon,
   bookmark: bookmarkIcon,
   box: boxIcon,
+  blur: blurIcon,
   check: checkIcon,
   'chevron-down': chevronDownIcon,
   'chevron-right': chevronRightIcon,
@@ -81,6 +84,7 @@ const RAW_KEYLINE_ICONS: Record<string, KeylineIconData> = {
   palette: paletteIcon,
   'panels-top-left': panelsIcon,
   play: playIcon,
+  plus: plusIcon,
   'redo-2': redoIcon,
   'rotate-ccw': resetIcon,
   save: saveIcon,

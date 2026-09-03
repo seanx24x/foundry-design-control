@@ -59,6 +59,13 @@ import {
   type FoundryWorkspaceState,
   type InterfaceThemePreference,
 } from './workspace.js';
+import {
+  blurAmount,
+  composeShadowEffects,
+  parseShadowEffects,
+  replaceBlur,
+  type ShadowEffectValue,
+} from './effects.js';
 
 export interface FoundryInspectorOptions {
   runtimeUrl?: string;
@@ -229,7 +236,7 @@ const CONTROL_SECTIONS: Partial<Record<Category, ControlSection[]>> = {
     { label: 'Stroke', properties: ['borderWidth', 'borderColor'] },
     {
       label: 'Effects',
-      properties: ['boxShadow', 'filter'],
+      properties: ['boxShadow', 'filter', 'backdropFilter'],
       stacked: true,
     },
   ],
@@ -266,7 +273,9 @@ interface Control {
 
 const PANEL_CSS = `
   ${FOUNDRY_UI_FOUNDATION_CSS}
-  :host { all:initial; color-scheme:dark; --fdc-ink:#f0f1f3; --fdc-paper:#141416; --fdc-surface:#1c1c1f; --fdc-subtle:#242428; --fdc-elevated:#29292e; --fdc-line:#303035; --fdc-signal:#3b82f6; --fdc-signal-soft:#172d50; --fdc-component:#9b87f5; --fdc-component-soft:#28233d; --fdc-muted:#9a9aa2; --fdc-font:"Geist Sans",Geist,Arial,sans-serif; font-family:var(--fdc-font); color:var(--fdc-ink); }
+  @font-face { font-family:"Foundry Inter";src:url("http://127.0.0.1:4387/fonts/inter.woff2") format("woff2");font-style:normal;font-weight:100 900;font-display:swap; }
+  @font-face { font-family:"Foundry JetBrains Mono";src:url("http://127.0.0.1:4387/fonts/jetbrains-mono.woff2") format("woff2");font-style:normal;font-weight:100 800;font-display:swap; }
+  :host { all:initial; color-scheme:dark; --fdc-ink:#f0f1f3; --fdc-paper:#141416; --fdc-surface:#1c1c1f; --fdc-subtle:#242428; --fdc-elevated:#29292e; --fdc-line:#303035; --fdc-signal:var(--fdc-canvas-accent); --fdc-signal-soft:#172d50; --fdc-component:#9b87f5; --fdc-component-soft:#28233d; --fdc-muted:#9a9aa2; --fdc-font:var(--fdc-font-sans); font-family:var(--fdc-font); color:var(--fdc-ink); }
   *,*::before,*::after { box-sizing:border-box;font-family:inherit; }
   button,select,input { font:inherit; }
   button:focus-visible,select:focus-visible,input:focus-visible { outline:4px solid var(--fdc-signal);outline-offset:4px; }
@@ -282,10 +291,11 @@ const PANEL_CSS = `
   .top-identity>.close { flex:none;margin-left:4px; }.top-actions { min-height:40px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));align-items:center;padding:4px 8px;border-top:1px solid var(--fdc-line);background:var(--fdc-surface); }.top-actions .icon-button { justify-self:center; }.icon-button { width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.icon-button:hover { background:var(--fdc-subtle);color:var(--fdc-ink); }.icon-button.active { color:#0761d1;background:#edf6ff; }.icon-button:disabled { opacity:.35;cursor:not-allowed; }.icon-button:disabled:hover { color:var(--fdc-muted);background:transparent; }
   .selection { position:relative;padding:16px;background:var(--fdc-surface);border-bottom:1px solid var(--fdc-line); }.selection::before { content:"";position:absolute;top:12px;left:0;width:4px;height:0;background:var(--fdc-signal);border-radius:0 4px 4px 0;transition:height .18s ease; }.panel.has-selection .selection::before { height:24px; }.selection-heading { display:flex;align-items:center;justify-content:space-between;margin-bottom:8px; }.selection-kind { max-width:220px;overflow:hidden;text-overflow:ellipsis;padding:4px 8px;color:#4d4d4d;background:var(--fdc-subtle);border-radius:4px;font:500 12px/1 var(--fdc-font);text-transform:uppercase;letter-spacing:.025em;white-space:nowrap; }.selection-state { color:var(--fdc-muted);font:450 12px/1 var(--fdc-font); }.panel.has-selection .selection-state { color:#0761d1; }.selection strong { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;line-height:1.3;font-weight:550;letter-spacing:-.025em; }.selection code { display:block;margin-top:4px;overflow:hidden;text-overflow:ellipsis;color:var(--fdc-muted);font:400 12px/1.45 var(--fdc-font);white-space:nowrap; }.selection-hint { display:block;margin-top:8px;color:#858585;font:400 12px/1.45 var(--fdc-font); }.selection-stats { display:flex;gap:4px;margin-top:12px; }.selection-stats[hidden] { display:none; }.selection-stats span { padding:4px 8px;color:#4d4d4d;background:var(--fdc-subtle);border-radius:4px;font:400 12px/1 var(--fdc-font); }.selection-stats span:first-child { color:#0761d1;background:#edf6ff; }.selection.selected-flash strong { animation:fdc-selection-title .2s ease-out; }
   .scope { display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 16px;background:var(--fdc-surface);border-bottom:1px solid var(--fdc-line); }.scope label { display:flex;flex-direction:column;gap:8px;color:var(--fdc-muted);font:500 12px/1.2 var(--fdc-font); }.scope select { width:100%;height:36px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-surface);color:var(--fdc-ink);font:400 12px/1 var(--fdc-font);text-transform:none;letter-spacing:0;outline:none;cursor:pointer; }
+  .fdc-select { position:relative;min-width:0;min-height:32px;display:flex;flex:1;align-self:stretch; }.fdc-select[hidden] { display:none; }.fdc-select>select { position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;opacity:0!important;pointer-events:none!important; }.fdc-select-trigger { width:100%;min-width:0;height:36px;display:grid;grid-template-columns:minmax(0,1fr) 12px;align-items:center;gap:8px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-paper);font:400 12px/1 var(--fdc-font-mono);text-align:left;cursor:pointer; }.fdc-select-trigger:hover { border-color:var(--fdc-line-strong);background:var(--fdc-subtle); }.fdc-select-trigger[aria-expanded="true"],.fdc-select-trigger:focus-visible { border-color:var(--fdc-signal);box-shadow:0 0 0 4px color-mix(in srgb,var(--fdc-signal) 18%,transparent);outline:0; }.fdc-select-trigger:disabled { opacity:.4;cursor:not-allowed; }.fdc-select-value { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.fdc-select-trigger svg { width:12px;height:12px;color:var(--fdc-muted); }.fdc-select-menu { position:fixed;z-index:2147483647;overflow-x:hidden;overflow-y:auto;padding:4px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:rgb(28 28 31 / 98%);box-shadow:0 16px 36px rgb(0 0 0 / 34%);backdrop-filter:blur(16px);pointer-events:auto; }.fdc-select-menu button { width:100%;min-height:36px;display:grid;grid-template-columns:minmax(0,1fr) 12px;align-items:center;gap:8px;padding:0 8px;border:0;border-radius:4px;color:var(--fdc-muted);background:transparent;font:400 12px/1 var(--fdc-font-mono);text-align:left;cursor:pointer; }.fdc-select-menu button:hover,.fdc-select-menu button:focus-visible { color:var(--fdc-ink);background:var(--fdc-subtle);outline:0; }.fdc-select-menu button[aria-selected="true"] { color:#9ec5ff;background:var(--fdc-signal-soft); }.fdc-select-menu button svg { width:12px;height:12px; }.control-field .fdc-select { min-height:32px; }.control-field .fdc-select-trigger { height:32px;border:0;border-radius:4px;background:transparent;box-shadow:none; }.effect-card-head .fdc-select { min-height:32px; }.effect-card-head .fdc-select-trigger { height:32px;padding-left:0;border:0;background:transparent;box-shadow:none;font-family:var(--fdc-font); }.workbench-controls .fdc-select { width:112px;flex:none;align-self:center; }.workbench-controls .fdc-select-trigger { height:32px; }.fdc-canvas-variant { position:fixed;z-index:2147483645;width:180px;min-height:32px;pointer-events:auto; }.fdc-canvas-variant .fdc-select-trigger { height:32px;color:#9ec5ff;background:var(--fdc-signal-soft);border-color:var(--fdc-signal); }
   .tool-shelf { position:fixed;z-index:2147483646;left:50%;bottom:20px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;max-width:calc(100vw - 32px);padding:8px;background:var(--fdc-surface);border:1px solid var(--fdc-line);border-radius:12px;box-shadow:0 4px 4px rgb(0 0 0 / 4%),0 8px 16px -4px rgb(0 0 0 / 14%);pointer-events:auto; }.mode-copy { min-width:96px;display:flex;flex-direction:column;gap:4px;padding:0 8px 0 1px; }.mode-copy strong { font-size:12px;font-weight:550;line-height:1.1; }.mode-copy span { color:var(--fdc-muted);font-size:8px;line-height:1.2;white-space:nowrap; }
   .tool-select,.tab { position:relative;flex:none;width:36px;height:36px;display:grid;place-items:center;padding:0;border:0;border-radius:8px;background:transparent;color:#4d4d4d;cursor:pointer; }.tool-select:hover,.tab:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.tool-select.active,.tab.active { color:white;background:var(--fdc-ink); }.tool-select svg,.icon-button svg { width:20px;height:20px;pointer-events:none; }.tab svg { width:16px;height:16px;pointer-events:none; }.tool-select::after,.tab::after { content:attr(data-tooltip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translate(-50%,4px);padding:8px 8px;border-radius:4px;background:var(--fdc-ink);color:white;font:400 12px/1 var(--fdc-font);white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s ease,transform .12s ease; }.tool-select:hover::after,.tool-select:focus-visible::after,.tab:not(:disabled):hover::after,.tab:not(:disabled):focus-visible::after { opacity:1;transform:translate(-50%,0); }.tool-divider { width:1px;height:24px;flex:none;background:var(--fdc-line); }.tabs { display:flex;gap:4px;overflow:visible;scrollbar-width:none; }.tab:disabled { color:#a1a1a1;cursor:default; }.tab:disabled:hover { background:transparent; }
   .controls { min-height:212px;overflow:auto;background:var(--fdc-surface); }.inspector-heading { position:sticky;top:0;z-index:1;height:44px;display:flex;align-items:center;gap:8px;padding:0 12px;background:rgb(255 255 255 / 96%);border-bottom:1px solid var(--fdc-line);backdrop-filter:blur(8px); }.inspector-heading svg { width:16px;height:16px;color:#4d4d4d; }.inspector-heading strong { font-size:12px;font-weight:550; }.property-count { margin-left:auto;color:var(--fdc-muted);font:400 12px/1 var(--fdc-font);letter-spacing:.01em; }.property-section { padding:0;border-bottom:1px solid var(--fdc-line); }.section-head { width:100%;min-height:40px;display:flex;align-items:center;padding:0 8px 0 4px;background:white;color:#3f3f3f; }.section-head:hover { background:#fcfcfc; }.section-toggle { min-width:0;min-height:40px;flex:1;display:flex;align-items:center;gap:8px;padding:0 8px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer; }.section-toggle>svg { width:12px;height:12px;color:#858585;transition:transform .12s ease; }.property-section.collapsed .section-toggle>svg { transform:rotate(-90deg); }.section-head strong { font-size:12px;font-weight:500; }.section-grid { display:grid;gap:8px;padding:0 12px 12px; }.property-section.collapsed .section-grid { display:none; }.section-grid.two { grid-template-columns:1fr 1fr; }.section-grid.stacked .property-control { grid-template-columns:1fr;gap:8px; }.property-control { display:grid;grid-template-columns:minmax(0,1fr) 132px 24px;align-items:center;gap:8px;min-height:36px; }.property-label { overflow:hidden;text-overflow:ellipsis;color:#4d4d4d;font-size:12px;font-weight:400;white-space:nowrap; }.control-field { position:relative;display:flex;align-items:center;min-width:0;height:32px;border:1px solid var(--fdc-line);border-radius:4px;background:var(--fdc-paper);overflow:hidden;transition:border-color .12s ease,box-shadow .12s ease,background .12s ease; }.control-field:hover { background:var(--fdc-surface); }.control-field:focus-within { border-color:var(--fdc-signal);background:var(--fdc-surface);box-shadow:0 0 0 4px rgb(0 112 243 / 10%); }.control-reset { width:24px;height:24px;display:grid;place-items:center;padding:0;border:0;border-radius:4px;background:transparent;color:#8a8a8a;cursor:pointer;opacity:0; }.property-control:hover .control-reset,.compact-control:hover .control-reset,.control-reset:focus-visible { opacity:1; }.control-reset:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.control-reset svg { width:12px;height:12px; }.compact-control { min-width:0;display:grid;grid-template-columns:minmax(0,1fr) 24px;gap:4px;align-items:center; }.compact-control .control-field { width:100%; }.field-prefix { min-width:28px;padding-left:8px;color:#7a7a7a;font:400 12px/1 var(--fdc-font); }.compact-control .field-prefix.wide { min-width:40px; }.property-control input,.property-control select,.compact-control input,.compact-control select { width:100%;min-width:0;height:32px;padding:0 8px;border:0;background:transparent;color:var(--fdc-ink);font:400 12px/1 var(--fdc-font);outline:none; }.property-control input[type="number"],.compact-control input[type="number"] { appearance:textfield; }.property-control input[type="number"]::-webkit-inner-spin-button,.property-control input[type="number"]::-webkit-outer-spin-button,.compact-control input[type="number"]::-webkit-inner-spin-button,.compact-control input[type="number"]::-webkit-outer-spin-button { margin:0;appearance:none; }.property-control select { font-family:var(--fdc-font); }.control-field .unit-select { width:40px;flex:none;padding:0 4px;color:#707070;font-size:8px;cursor:pointer; }[data-scrub-for] { cursor:ew-resize;user-select:none;touch-action:none; }.property-label[data-scrub-for]:hover,.field-prefix[data-scrub-for]:hover,[data-scrub-for].scrubbing { color:var(--fdc-signal); }.color-swatch { width:16px;height:16px;flex:none;margin-left:8px;border:1px solid rgb(0 0 0 / 10%);border-radius:4px;background:var(--swatch-color); }.color-swatch.transparent { background-color:white;background-image:linear-gradient(45deg,#d9d9d9 25%,transparent 25%),linear-gradient(-45deg,#d9d9d9 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d9d9d9 75%),linear-gradient(-45deg,transparent 75%,#d9d9d9 75%);background-size:8px 8px;background-position:0 0,0 4px,4px -4px,-4px 0; }.color-value { overflow:hidden;text-overflow:ellipsis;margin-left:8px;color:#4d4d4d;font:400 12px/1 var(--fdc-font);white-space:nowrap; }.color-picker { position:absolute;inset:0;width:100%!important;height:100%!important;opacity:0;cursor:pointer; }.unit { padding-right:8px;color:#7a7a7a;font:400 12px/1 var(--fdc-font); }.sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
-  .motion-list { padding:0 12px 12px; }.motion-row { padding:12px 0;border-bottom:1px solid var(--fdc-line); }.motion-title { display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:12px;font-weight:550; }.motion-title code { color:var(--fdc-muted);font:400 12px/1.3 var(--fdc-font); }.motion-actions { display:grid;grid-template-columns:repeat(4,1fr);gap:4px; }.motion-actions button { min-height:32px;padding:0 4px;border:1px solid var(--fdc-line);background:var(--fdc-paper);border-radius:4px;color:var(--fdc-ink);font-size:12px;font-weight:400;cursor:pointer; }.motion-actions button:hover { border-color:#c7c7c7;background:var(--fdc-surface); }
+  .effect-section { display:block;padding:0 12px 12px; }.effects-editor,.effect-stack { display:grid;gap:8px; }.effect-empty { margin:0;padding:16px 12px;border:1px dashed var(--fdc-line);border-radius:8px;color:var(--fdc-muted);font-size:12px;text-align:center; }.effect-card { overflow:hidden;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.effect-card-head { min-height:36px;display:flex;align-items:center;gap:8px;padding:0 4px 0 8px;border-bottom:1px solid var(--fdc-line); }.effect-card-head strong,.effect-card-head select { min-width:0;flex:1;height:32px;border:0;background:transparent;color:var(--fdc-ink);font:500 12px/1 var(--fdc-font);outline:none; }.effect-symbol { width:20px;height:20px;display:grid;place-items:center;color:var(--fdc-muted); }.effect-symbol svg,.effect-remove svg,.effect-add summary svg,.effect-menu svg { width:16px;height:16px; }.effect-remove { width:28px;height:28px;display:grid;place-items:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.effect-remove:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.effect-fields { display:grid;gap:8px;padding:8px; }.effect-shadow-fields { grid-template-columns:1fr 1fr; }.effect-value { min-width:0;height:32px;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;overflow:hidden;border:1px solid var(--fdc-line);border-radius:4px;background:var(--fdc-surface); }.effect-value>span { min-width:28px;padding:0 8px;color:var(--fdc-muted);font:500 12px/1 var(--fdc-font); }.effect-value input { width:100%;height:100%;min-width:0;padding:0 8px;border:0;background:transparent;color:var(--fdc-ink);font:400 12px/1 var(--fdc-font-mono);outline:none; }.effect-color,.effect-blur { display:grid;grid-template-columns:52px minmax(0,1fr);align-items:center;gap:8px;color:var(--fdc-muted);font-size:12px; }.effect-color { grid-column:1/-1; }.effect-color-control { height:32px;display:grid;grid-template-columns:40px minmax(0,1fr) 24px;align-items:center;overflow:hidden;border:1px solid var(--fdc-line);border-radius:4px;background:var(--fdc-surface); }.effect-color-control input[type="color"] { width:40px;height:100%;padding:4px;border:0;background:transparent; }.effect-color-control input[type="color"]::-webkit-color-swatch-wrapper { padding:0; }.effect-color-control input[type="color"]::-webkit-color-swatch { border:0;border-radius:4px; }.effect-color-control input[type="number"] { width:100%;height:100%;min-width:0;padding:0 8px;border:0;border-left:1px solid var(--fdc-line);background:transparent;color:var(--fdc-ink);font:400 12px/1 var(--fdc-font-mono);outline:none; }.effect-color-control>span { color:var(--fdc-muted);font:400 12px/1 var(--fdc-font); }.effect-add { position:relative; }.effect-add summary { min-height:32px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper);color:var(--fdc-ink);font-size:12px;cursor:pointer;list-style:none; }.effect-add summary::-webkit-details-marker { display:none; }.effect-add summary:hover { background:var(--fdc-subtle); }.effect-menu { position:absolute;z-index:8;right:0;bottom:calc(100% + 4px);width:220px;padding:4px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-elevated);box-shadow:0 12px 28px rgb(0 0 0 / 24%); }.effect-menu button { width:100%;height:32px;display:grid;grid-template-columns:20px minmax(0,1fr) auto;align-items:center;gap:8px;padding:0 8px;border:0;border-radius:4px;background:transparent;color:var(--fdc-ink);font-size:12px;text-align:left;cursor:pointer; }.effect-menu button:hover:not(:disabled) { background:var(--fdc-subtle); }.effect-menu button:disabled { color:var(--fdc-muted);cursor:not-allowed; }.effect-menu small { font:500 8px/1 var(--fdc-font-mono); }.motion-list { padding:0 12px 12px; }.motion-row { padding:12px 0;border-bottom:1px solid var(--fdc-line); }.motion-title { display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:12px;font-weight:550; }.motion-title code { color:var(--fdc-muted);font:400 12px/1.3 var(--fdc-font); }.motion-actions { display:grid;grid-template-columns:repeat(4,1fr);gap:4px; }.motion-actions button { min-height:32px;padding:0 4px;border:1px solid var(--fdc-line);background:var(--fdc-paper);border-radius:4px;color:var(--fdc-ink);font-size:12px;font-weight:400;cursor:pointer; }.motion-actions button:hover { border-color:#c7c7c7;background:var(--fdc-surface); }
   .motion-timeline { width:100%;margin:4px 0 12px;accent-color:var(--fdc-signal); }.motion-fields { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px; }.motion-fields label { display:grid;grid-template-columns:auto 1fr;align-items:center;gap:4px;color:var(--fdc-muted);font-size:8px; }.motion-fields input { width:100%;height:28px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:var(--fdc-paper);color:var(--fdc-ink);font-size:12px; }
   .empty { padding:48px 28px;text-align:center;color:var(--fdc-muted);font-size:12px;line-height:1.6; }.empty::before { content:"⌖";display:grid;place-items:center;width:40px;height:40px;margin:0 auto 12px;color:var(--fdc-signal);background:var(--fdc-signal-soft);border-radius:12px;font:20px/1 var(--fdc-font); }
   .change-dock { min-height:48px;display:grid;grid-template-columns:minmax(0,1fr) 32px 68px;align-items:center;gap:8px;padding:8px 8px;border-top:1px solid var(--fdc-line);background:white; }.change-dock[hidden] { display:none; }.change-dock-copy { min-width:0;padding-left:4px; }.change-dock-copy strong,.change-dock-copy span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.change-dock-copy strong { font-size:12px;font-weight:550; }.change-dock-copy span { margin-top:4px;color:var(--fdc-muted);font-size:8px; }.change-dock button { height:32px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:var(--fdc-ink);font-size:8px;cursor:pointer; }.change-dock .dock-review { color:white;border-color:var(--fdc-ink);background:var(--fdc-ink); }.change-dock svg { width:12px;height:12px; }.footer { display:grid;grid-template-columns:84px 1fr;gap:8px;padding:8px;background:var(--fdc-surface);border-top:1px solid var(--fdc-line); }.footer:has(.review[hidden]) { grid-template-columns:1fr; }.footer button[hidden] { display:none; }.footer button { min-height:36px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-surface);color:var(--fdc-ink);font-size:12px;font-weight:450;cursor:pointer; }.footer button:hover { border-color:#d0d0d0;background:var(--fdc-paper); }.footer .review { align-items:center;justify-content:center;gap:8px;color:white;background:var(--fdc-ink);border-color:var(--fdc-ink); }.footer .review:not([hidden]) { display:flex; }.footer .review:hover { background:#2f2f2f; }.change-count { min-width:20px;height:20px;display:inline-grid;place-items:center;padding:0 4px;color:var(--fdc-ink);background:white;border-radius:1000px;font:500 8px/1 var(--fdc-font); }.change-count[hidden] { display:none; }
@@ -524,6 +534,7 @@ const PANEL_CSS = `
   .interface-theme-menu button:not([aria-checked="true"]) svg { visibility:hidden; }
   :host([data-interface-theme="light"]) { color-scheme:light;--fdc-ink:#141416;--fdc-paper:#f0f1f3;--fdc-surface:#ffffff;--fdc-subtle:#f0f1f3;--fdc-elevated:#f7f7f8;--fdc-line:#dedfe2;--fdc-signal:#2563eb;--fdc-signal-soft:#e8f0ff;--fdc-component:#7259d6;--fdc-component-soft:#f0edff;--fdc-muted:#666870; }
   :host([data-interface-theme="light"]) .panel,:host([data-interface-theme="light"]) .layers-panel,:host([data-interface-theme="light"]) .health-panel,:host([data-interface-theme="light"]) .library-panel,:host([data-interface-theme="light"]) .tool-shelf,:host([data-interface-theme="light"]) .onboarding-card,:host([data-interface-theme="light"]) .compare-bar,:host([data-interface-theme="light"]) .command-palette,:host([data-interface-theme="light"]) .status-popover,:host([data-interface-theme="light"]) .canvas-variant,:host([data-interface-theme="light"]) .workspace-bar,:host([data-interface-theme="light"]) .change-tray,:host([data-interface-theme="light"]) .review-modal { color:var(--fdc-ink);background:rgb(255 255 255 / 97%);border-color:var(--fdc-line);box-shadow:0 1px 4px rgb(0 0 0 / 8%),0 16px 36px rgb(0 0 0 / 14%); }
+  :host([data-interface-theme="light"]) .fdc-select-menu { color:var(--fdc-ink);background:rgb(255 255 255 / 98%);border-color:var(--fdc-line);box-shadow:0 1px 4px rgb(0 0 0 / 8%),0 16px 36px rgb(0 0 0 / 14%); }
   :host([data-interface-theme="light"]) .top,:host([data-interface-theme="light"]) .top-actions,:host([data-interface-theme="light"]) .selection,:host([data-interface-theme="light"]) .scope,:host([data-interface-theme="light"]) .controls,:host([data-interface-theme="light"]) .property-section,:host([data-interface-theme="light"]) .change-dock,:host([data-interface-theme="light"]) .footer,:host([data-interface-theme="light"]) .review-view,:host([data-interface-theme="light"]) .review-head,:host([data-interface-theme="light"]) .review-group,:host([data-interface-theme="light"]) .review-group-title,:host([data-interface-theme="light"]) .review-actions,:host([data-interface-theme="light"]) .layers-head,:host([data-interface-theme="light"]) .layer-tree,:host([data-interface-theme="light"]) .health-head,:host([data-interface-theme="light"]) .health-list,:host([data-interface-theme="light"]) .health-footer,:host([data-interface-theme="light"]) .library-head,:host([data-interface-theme="light"]) .library-actions,:host([data-interface-theme="light"]) .library-body,:host([data-interface-theme="light"]) .memory-card,:host([data-interface-theme="light"]) .context-tools,:host([data-interface-theme="light"]) .native-panel,:host([data-interface-theme="light"]) .section-head,:host([data-interface-theme="light"]) .onboarding-step { color:var(--fdc-ink);background:var(--fdc-surface);border-color:var(--fdc-line); }
   :host([data-interface-theme="light"]) .inspector-heading,:host([data-interface-theme="light"]) .review-toolbar,:host([data-interface-theme="light"]) .review-overview,:host([data-interface-theme="light"]) .review-modal .review-actions { color:var(--fdc-ink);background:rgb(255 255 255 / 97%);border-color:var(--fdc-line); }
   :host([data-interface-theme="light"]) .review-modal .review-group-title { background:rgb(247 247 248 / 98%); }
@@ -550,6 +561,23 @@ const PANEL_CSS = `
   .section-grid { gap:8px;padding:0 16px 16px; }
   .inspector-category[data-category="position"]>.category-body>.property-section>.section-grid { padding-top:12px; }
   @media (max-width:680px){.panel,.layers-panel{width:auto}.panel-resizer{display:none}.change-tray{right:8px;bottom:8px;left:auto;width:calc(100vw - 16px)}.review-takeover{padding:8px}.review-modal{width:calc(100vw - 16px);height:calc(100vh - 16px);border-radius:12px}.review-modal .review-actions{grid-template-columns:84px 1fr}.panel.change-summary-visible .inspector-scroll{padding-bottom:60px}}
+  :host([data-embedded="true"]) .workspace-bar,
+  :host([data-embedded="true"]) .interface-theme-menu,
+  :host([data-embedded="true"]) .status-popover,
+  :host([data-embedded="true"]) .layers-panel,
+  :host([data-embedded="true"]) .health-panel,
+  :host([data-embedded="true"]) .panel,
+  :host([data-embedded="true"]) .change-tray,
+  :host([data-embedded="true"]) .review-takeover,
+  :host([data-embedded="true"]) .tool-shelf,
+  :host([data-embedded="true"]) .onboarding-card,
+  :host([data-embedded="true"]) .compare-bar,
+  :host([data-embedded="true"]) .command-palette,
+  :host([data-embedded="true"]) .color-popover,
+  :host([data-embedded="true"]) .library-panel,
+  :host([data-embedded="true"]) .workbench,
+  :host([data-embedded="true"]) .comparison-stage,
+  :host([data-embedded="true"]) .canvas-variant { display:none!important; }
   @media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}.layer-row.entering,.layer-branch{animation:none!important}}
 `;
 
@@ -609,6 +637,22 @@ function styleControl(
         String(value),
       ),
   };
+}
+
+function effectStyleControl(
+  element: HTMLElement,
+  computed: CSSStyleDeclaration,
+  property: 'boxShadow' | 'filter' | 'backdropFilter',
+  label: string,
+): Control {
+  const control = styleControl(element, computed, 'effects', property, label);
+  if (property === 'backdropFilter') {
+    control.apply = (value) => {
+      element.style.setProperty('backdrop-filter', String(value));
+      element.style.setProperty('-webkit-backdrop-filter', String(value));
+    };
+  }
+  return control;
 }
 
 function numberStyleControl(
@@ -818,8 +862,9 @@ function controlsFor(element: HTMLElement): Control[] {
     pxControl(element, computed, 'effects', 'borderBottomRightRadius', 'Bottom right radius', 200),
     pxControl(element, computed, 'effects', 'borderWidth', 'Border width', 32),
     styleControl(element, computed, 'effects', 'borderColor', 'Border color', 'color'),
-    styleControl(element, computed, 'effects', 'boxShadow', 'Shadow'),
-    styleControl(element, computed, 'effects', 'filter', 'Filter'),
+    effectStyleControl(element, computed, 'boxShadow', 'Shadow'),
+    effectStyleControl(element, computed, 'filter', 'Layer effects'),
+    effectStyleControl(element, computed, 'backdropFilter', 'Background effects'),
     {
       category: 'content',
       property: 'textContent',
@@ -1028,6 +1073,58 @@ function displayValue(control: Control): string {
   return String(Math.round(control.value * 100) / 100);
 }
 
+function controlOptionLabel(control: Control, option: string): string {
+  return option;
+}
+
+function renderShadowEffect(
+  effect: ShadowEffectValue,
+  effectIndex: number,
+  controlIndex: number,
+): string {
+  const label = effect.kind === 'inner-shadow' ? 'Inner shadow' : 'Drop shadow';
+  const numberField = (part: 'x' | 'y' | 'blur' | 'spread', prefix: string, value: number) =>
+    `<label class="effect-value"><span>${prefix}</span><input type="number" step="1" value="${value}" data-shadow-control="${controlIndex}" data-shadow-index="${effectIndex}" data-shadow-part="${part}" aria-label="${escapeHtml(`${label} ${part}`)}"/></label>`;
+  return `<article class="effect-card" data-effect-card="${effect.kind}"><header class="effect-card-head"><span class="effect-symbol"><i data-foundry-icon="box"></i></span><select data-shadow-kind="${effectIndex}" data-shadow-control="${controlIndex}" aria-label="Shadow type"><option value="drop-shadow" ${effect.kind === 'drop-shadow' ? 'selected' : ''}>Drop shadow</option><option value="inner-shadow" ${effect.kind === 'inner-shadow' ? 'selected' : ''}>Inner shadow</option></select><button type="button" class="effect-remove" data-remove-shadow="${effectIndex}" data-shadow-control="${controlIndex}" aria-label="Remove ${label}"><i data-foundry-icon="x"></i></button></header><div class="effect-fields effect-shadow-fields">${numberField('x', 'X', effect.x)}${numberField('y', 'Y', effect.y)}${numberField('blur', 'Blur', effect.blur)}${numberField('spread', 'Spread', effect.spread)}<label class="effect-color"><span>Color</span><span class="effect-color-control"><input type="color" value="${escapeHtml(effect.color)}" data-shadow-control="${controlIndex}" data-shadow-index="${effectIndex}" data-shadow-part="color" aria-label="${label} color"/><input type="number" min="0" max="100" step="1" value="${Math.round(effect.opacity * 100)}" data-shadow-control="${controlIndex}" data-shadow-index="${effectIndex}" data-shadow-part="opacity" aria-label="${label} opacity"/><span>%</span></span></label></div></article>`;
+}
+
+function renderBlurEffect(
+  label: string,
+  kind: 'layer-blur' | 'background-blur',
+  amount: number,
+  controlIndex: number,
+): string {
+  return `<article class="effect-card" data-effect-card="${kind}"><header class="effect-card-head"><span class="effect-symbol"><i data-foundry-icon="blur"></i></span><strong>${label}</strong><button type="button" class="effect-remove" data-remove-blur="${kind}" data-blur-control="${controlIndex}" aria-label="Remove ${label}"><i data-foundry-icon="x"></i></button></header><div class="effect-fields"><label class="effect-blur"><span>Blur</span><span class="effect-value"><span>R</span><input type="number" min="0" max="200" step="1" value="${amount}" data-blur-control="${controlIndex}" aria-label="${label} amount"/></span></label></div></article>`;
+}
+
+function renderEffectsEditor(entries: { control: Control; index: number }[]): string {
+  const shadowEntry = entries.find(({ control }) => control.property === 'boxShadow');
+  const filterEntry = entries.find(({ control }) => control.property === 'filter');
+  const backdropEntry = entries.find(({ control }) => control.property === 'backdropFilter');
+  const shadows = shadowEntry ? parseShadowEffects(String(shadowEntry.control.value)) : [];
+  const layerBlur = filterEntry ? blurAmount(String(filterEntry.control.value)) : null;
+  const backgroundBlur = backdropEntry ? blurAmount(String(backdropEntry.control.value)) : null;
+  const active = [
+    ...(shadowEntry
+      ? shadows.map((effect, index) => renderShadowEffect(effect, index, shadowEntry.index))
+      : []),
+    ...(filterEntry && layerBlur != null
+      ? [renderBlurEffect('Layer blur', 'layer-blur', layerBlur, filterEntry.index)]
+      : []),
+    ...(backdropEntry && backgroundBlur != null
+      ? [
+          renderBlurEffect(
+            'Background blur',
+            'background-blur',
+            backgroundBlur,
+            backdropEntry.index,
+          ),
+        ]
+      : []),
+  ].join('');
+  return `<div class="effects-editor"><div class="effect-stack">${active || '<p class="effect-empty">No effects applied</p>'}</div><details class="effect-add"><summary><i data-foundry-icon="plus"></i>Add effect</summary><div class="effect-menu" role="menu"><button type="button" data-add-effect="drop-shadow" data-effect-control="${shadowEntry?.index ?? ''}" role="menuitem"><i data-foundry-icon="box"></i><span>Drop shadow</span></button><button type="button" data-add-effect="inner-shadow" data-effect-control="${shadowEntry?.index ?? ''}" role="menuitem"><i data-foundry-icon="box"></i><span>Inner shadow</span></button><button type="button" data-add-effect="layer-blur" data-effect-control="${filterEntry?.index ?? ''}" role="menuitem" ${layerBlur != null ? 'disabled' : ''}><i data-foundry-icon="blur"></i><span>Layer blur</span></button><button type="button" data-add-effect="background-blur" data-effect-control="${backdropEntry?.index ?? ''}" role="menuitem" ${backgroundBlur != null ? 'disabled' : ''}><i data-foundry-icon="blur"></i><span>Background blur</span></button><button type="button" role="menuitem" disabled title="Available when the project exposes a mapped effect recipe"><i data-foundry-icon="sparkles"></i><span>Noise</span><small>Recipe</small></button><button type="button" role="menuitem" disabled title="Available when the project exposes a mapped effect recipe"><i data-foundry-icon="layout-grid"></i><span>Texture</span><small>Recipe</small></button></div></details></div>`;
+}
+
 function isTransparentColor(value: string): boolean {
   const normalized = value.trim().toLowerCase();
   return (
@@ -1043,7 +1140,7 @@ function renderControlInput(control: Control, index: number): string {
     return `<select id="${id}" data-control="${index}" aria-label="${escapeHtml(control.label)}">${control.options
       ?.map(
         (option) =>
-          `<option ${String(control.value) === option ? 'selected' : ''}>${escapeHtml(option)}</option>`,
+          `<option value="${escapeHtml(option)}" ${String(control.value) === option ? 'selected' : ''}>${escapeHtml(controlOptionLabel(control, option))}</option>`,
       )
       .join('')}</select>`;
   }
@@ -1103,6 +1200,8 @@ export function installFoundryInspector(
   const runtimeUrl = (options.runtimeUrl ?? 'http://127.0.0.1:4387').replace(/\/$/, '');
   const sessionId = options.sessionId ?? query.get('__foundry_session') ?? '';
   const token = options.token ?? query.get('__foundry_token') ?? '';
+  const embeddedWorkspace = query.get('__foundry_embedded') === '1' && window.parent !== window;
+  const runtimeOrigin = new URL(runtimeUrl).origin;
   const host = document.createElement('div');
   const interfaceThemeKey = '__foundry_interface_theme';
   const systemDarkTheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -1114,6 +1213,7 @@ export function installFoundryInspector(
   const resolvedInterfaceTheme = (): 'light' | 'dark' =>
     resolveInterfaceTheme(interfaceThemePreference, systemDarkTheme.matches);
   host.dataset.foundryOverlay = 'true';
+  host.dataset.embedded = String(embeddedWorkspace);
   host.dataset.interfaceTheme = resolvedInterfaceTheme();
   host.dataset.interfaceThemePreference = interfaceThemePreference;
   const shadow = host.attachShadow({ mode: 'open' });
@@ -1281,7 +1381,266 @@ export function installFoundryInspector(
     renderKeylineIcons(root);
   }
 
+  let openFdcSelect:
+    | {
+        select: HTMLSelectElement;
+        trigger: HTMLButtonElement;
+        menu: HTMLElement;
+        typeahead: string;
+        typeaheadTimer?: ReturnType<typeof setTimeout>;
+      }
+    | undefined;
+  let fdcSelectId = 0;
+  let ignoreFdcSelectScrollUntil = 0;
+
+  function closeFdcSelect(restoreFocus = true): boolean {
+    if (!openFdcSelect) return false;
+    const { trigger, menu, typeaheadTimer } = openFdcSelect;
+    if (typeaheadTimer) clearTimeout(typeaheadTimer);
+    trigger.setAttribute('aria-expanded', 'false');
+    menu.remove();
+    openFdcSelect = undefined;
+    if (restoreFocus && trigger.isConnected) trigger.focus();
+    return true;
+  }
+
+  function syncFdcSelect(select: HTMLSelectElement): void {
+    const wrapper = select.parentElement;
+    const trigger = wrapper?.querySelector<HTMLButtonElement>('.fdc-select-trigger');
+    if (!wrapper || !trigger) return;
+    if (wrapper.hidden !== select.hidden) wrapper.hidden = select.hidden;
+    if (select.classList.contains('canvas-variant')) {
+      wrapper.style.left = select.style.left;
+      wrapper.style.top = select.style.top;
+    }
+    const label = select.selectedOptions[0]?.textContent ?? select.options[0]?.textContent ?? '';
+    const value = trigger.querySelector<HTMLElement>('.fdc-select-value');
+    if (value && value.textContent !== label) value.textContent = label;
+    if (trigger.disabled !== select.disabled) trigger.disabled = select.disabled;
+    trigger.setAttribute('aria-disabled', String(select.disabled));
+  }
+
+  function positionFdcSelect(trigger: HTMLButtonElement, menu: HTMLElement): void {
+    const rect = trigger.getBoundingClientRect();
+    const margin = 8;
+    const maxHeight = Math.min(240, window.innerHeight - margin * 2);
+    menu.style.minWidth = `${Math.max(160, rect.width)}px`;
+    menu.style.maxWidth = `${Math.max(160, window.innerWidth - margin * 2)}px`;
+    menu.style.maxHeight = `${maxHeight}px`;
+    const left = Math.max(
+      margin,
+      Math.min(rect.left, window.innerWidth - menu.offsetWidth - margin),
+    );
+    menu.style.left = `${left}px`;
+    const menuHeight = Math.min(menu.scrollHeight, maxHeight);
+    const roomBelow = window.innerHeight - rect.bottom - margin;
+    const openAbove = roomBelow < menuHeight && rect.top > roomBelow;
+    menu.style.top = `${Math.max(
+      margin,
+      openAbove
+        ? rect.top - menuHeight - 4
+        : Math.min(rect.bottom + 4, window.innerHeight - menuHeight - margin),
+    )}px`;
+  }
+
+  function moveFdcSelectFocus(menu: HTMLElement, direction: number | 'first' | 'last'): void {
+    const options = [...menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+    if (!options.length) return;
+    const current = options.indexOf(shadow.activeElement as HTMLButtonElement);
+    const next =
+      direction === 'first'
+        ? 0
+        : direction === 'last'
+          ? options.length - 1
+          : (current + direction + options.length) % options.length;
+    options[next]?.focus({ preventScroll: true });
+    options[next]?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function openFdcSelectMenu(select: HTMLSelectElement, trigger: HTMLButtonElement): void {
+    if (openFdcSelect?.select === select) {
+      closeFdcSelect();
+      return;
+    }
+    closeFdcSelect(false);
+    ignoreFdcSelectScrollUntil = performance.now() + 250;
+    const menu = document.createElement('div');
+    menu.className = 'fdc-select-menu';
+    menu.id = `${select.id}-listbox`;
+    menu.setAttribute('role', 'listbox');
+    menu.setAttribute('aria-label', trigger.getAttribute('aria-label') ?? 'Options');
+    menu.innerHTML = [...select.options]
+      .map(
+        (option, index) =>
+          `<button type="button" role="option" data-fdc-option="${index}" aria-selected="${option.selected}" ${option.disabled ? 'disabled' : ''}><span>${escapeHtml(option.textContent)}</span>${option.selected ? '<i data-foundry-icon="check"></i>' : ''}</button>`,
+      )
+      .join('');
+    shadow.append(menu);
+    renderIcons(menu);
+    trigger.setAttribute('aria-controls', menu.id);
+    trigger.setAttribute('aria-expanded', 'true');
+    positionFdcSelect(trigger, menu);
+    const selected = menu.querySelector<HTMLButtonElement>('[aria-selected="true"]');
+    (selected ?? menu.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus({
+      preventScroll: true,
+    });
+    openFdcSelect = { select, trigger, menu, typeahead: '' };
+    menu.addEventListener('click', (event) => {
+      const option = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-fdc-option]');
+      if (!option || option.disabled) return;
+      select.selectedIndex = Number(option.dataset.fdcOption);
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      syncFdcSelect(select);
+      closeFdcSelect();
+    });
+  }
+
+  function selectAccessibleLabel(select: HTMLSelectElement): string {
+    const explicit = select.getAttribute('aria-label');
+    if (explicit) return explicit;
+    const wrappingLabel = select.closest('label');
+    const textLabel = [...(wrappingLabel?.childNodes ?? [])]
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent?.trim())
+      .filter(Boolean)
+      .join(' ');
+    if (textLabel) return textLabel;
+    const visibleLabel = wrappingLabel?.querySelector<HTMLElement>(
+      ':scope > span:not(.foundry-select):not(.fdc-select), :scope > strong, :scope > small',
+    );
+    return visibleLabel?.textContent?.trim() || 'Choose an option';
+  }
+
+  function upgradeFdcSelect(select: HTMLSelectElement): void {
+    if (select.dataset.foundrySelect === 'true') {
+      syncFdcSelect(select);
+      return;
+    }
+    select.dataset.foundrySelect = 'true';
+    if (!select.id) select.id = `foundry-overlay-select-${++fdcSelectId}`;
+    const wrapper = document.createElement('span');
+    wrapper.className = select.classList.contains('canvas-variant')
+      ? 'fdc-select fdc-canvas-variant'
+      : 'fdc-select';
+    select.before(wrapper);
+    wrapper.append(select);
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'fdc-select-trigger';
+    trigger.setAttribute('role', 'combobox');
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    const accessibleLabel = selectAccessibleLabel(select);
+    select.setAttribute('aria-hidden', 'true');
+    select.tabIndex = -1;
+    trigger.setAttribute('aria-label', accessibleLabel);
+    trigger.innerHTML =
+      '<span class="fdc-select-value"></span><i data-foundry-icon="chevron-down"></i>';
+    wrapper.append(trigger);
+    renderIcons(trigger);
+    trigger.addEventListener('click', () => openFdcSelectMenu(select, trigger));
+    trigger.addEventListener('keydown', (event) => {
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(event.key)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!openFdcSelect || openFdcSelect.select !== select) openFdcSelectMenu(select, trigger);
+      if (!openFdcSelect) return;
+      if (event.key === 'ArrowUp') moveFdcSelectFocus(openFdcSelect.menu, -1);
+      if (event.key === 'Home') moveFdcSelectFocus(openFdcSelect.menu, 'first');
+      if (event.key === 'End') moveFdcSelectFocus(openFdcSelect.menu, 'last');
+    });
+    select.addEventListener('focus', () => trigger.focus());
+    select.addEventListener('change', () => syncFdcSelect(select));
+    syncFdcSelect(select);
+  }
+
+  function upgradeFdcSelects(root: HTMLElement | ShadowRoot = shadow): void {
+    root.querySelectorAll<HTMLSelectElement>('select').forEach(upgradeFdcSelect);
+  }
+
+  const fdcSelectObserver = new MutationObserver(() => upgradeFdcSelects());
+
+  function handleFdcSelectKeydown(event: Event): void {
+    if (!(event instanceof KeyboardEvent)) return;
+    if (!openFdcSelect) return;
+    const { menu } = openFdcSelect;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeFdcSelect();
+      return;
+    }
+    if (event.key === 'Tab') {
+      closeFdcSelect(false);
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      moveFdcSelectFocus(menu, event.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      moveFdcSelectFocus(menu, event.key === 'Home' ? 'first' : 'last');
+      return;
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      const option = (shadow.activeElement as HTMLElement | null)?.closest<HTMLButtonElement>(
+        '[data-fdc-option]',
+      );
+      if (option) {
+        event.preventDefault();
+        option.click();
+      }
+      return;
+    }
+    if (event.key.length === 1 && /\S/.test(event.key)) {
+      if (openFdcSelect.typeaheadTimer) clearTimeout(openFdcSelect.typeaheadTimer);
+      openFdcSelect.typeahead += event.key.toLowerCase();
+      const match = [...menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')].find(
+        (button) =>
+          button.textContent
+            ?.trim()
+            .toLowerCase()
+            .startsWith(openFdcSelect?.typeahead ?? ''),
+      );
+      match?.focus({ preventScroll: true });
+      openFdcSelect.typeaheadTimer = setTimeout(() => {
+        if (openFdcSelect) openFdcSelect.typeahead = '';
+      }, 500);
+    }
+  }
+
+  function handleFdcSelectDismiss(event: PointerEvent): void {
+    if (!openFdcSelect) return;
+    const path = event.composedPath();
+    if (!path.includes(openFdcSelect.menu) && !path.includes(openFdcSelect.trigger))
+      closeFdcSelect(false);
+  }
+
+  function closeFdcSelectForViewportChange(event?: Event): void {
+    if (event?.type === 'scroll' && performance.now() < ignoreFdcSelectScrollUntil) return;
+    if (
+      event?.type === 'scroll' &&
+      event.target instanceof Node &&
+      openFdcSelect?.menu.contains(event.target)
+    )
+      return;
+    closeFdcSelect(false);
+  }
+
   renderIcons(shadow);
+  upgradeFdcSelects();
+  fdcSelectObserver.observe(shadow, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['disabled', 'hidden'],
+  });
+  shadow.addEventListener('keydown', handleFdcSelectKeydown);
+  document.addEventListener('pointerdown', handleFdcSelectDismiss, true);
+  window.addEventListener('resize', closeFdcSelectForViewportChange);
+  window.addEventListener('scroll', closeFdcSelectForViewportChange, true);
 
   const outline = shadow.querySelector<HTMLElement>('.outline')!;
   const panel = shadow.querySelector<HTMLElement>('.panel')!;
@@ -1534,7 +1893,259 @@ export function installFoundryInspector(
   let designMemory: ProjectDesignMemory = emptyDesignMemory();
   let matrixMode = false;
   let lastUtilityTrigger: HTMLElement | null = null;
+  let workspaceCanvasTool: 'select' | 'interact' | 'pan' = inspecting ? 'select' : 'interact';
+  let embeddedSpaceHeld = false;
+  let embeddedPanActive = false;
+  let embeddedPanPointer: Element | null = null;
   const utilityRects = new Map<Exclude<FoundryUtility, null>, FoundryRect>();
+  let workspacePublishFrame = 0;
+
+  function workspaceSnapshot(): Record<string, unknown> {
+    if (!layerEntries.length) discoverLayers();
+    const rect = selected?.getBoundingClientRect();
+    return {
+      version: 1,
+      mode: inspecting ? 'select' : 'interact',
+      interfaceTheme: resolvedInterfaceTheme(),
+      context: {
+        scope: scope.value,
+        breakpoint: breakpoint.value,
+        theme: theme.value,
+        state: state.value,
+      },
+      selection: selected
+        ? {
+            id: foundryTargetId(selected),
+            selector: foundrySelector(selected),
+            label: targetFor(selected).label,
+            kind: selected.tagName.toLowerCase(),
+            source: selected.dataset.foundrySource ?? foundrySelector(selected),
+            confidence: targetFor(selected).confidence,
+            width: rect ? Math.round(rect.width * 100) / 100 : 0,
+            height: rect ? Math.round(rect.height * 100) / 100 : 0,
+            count: selectedElements.length,
+          }
+        : null,
+      layers: layerEntries.slice(0, 500).map((entry) => ({
+        id: foundryTargetId(entry.element),
+        selector: foundrySelector(entry.element),
+        label: entry.label,
+        kind: entry.kind,
+        depth: entry.depth,
+        instrumented: entry.instrumented,
+        hasChildren: entry.hasChildren,
+        selected: selectedElements.includes(entry.element),
+      })),
+      controls: selectedControls.map((control, index) => ({
+        index,
+        category: control.category,
+        property: control.property,
+        label: control.label,
+        kind: control.kind,
+        value: control.read(),
+        unit: control.unit,
+        min: control.min,
+        max: control.max,
+        step: control.step,
+        options: control.options,
+      })),
+      history: { canUndo: historyCursor > 0, canRedo: historyCursor < previewHistory.length },
+      project: {
+        tokens: designGraph?.tokens ?? [],
+        components: designGraph?.components ?? [],
+        breakpoints: designGraph?.breakpoints ?? [],
+        themes: designGraph?.themes ?? [],
+        states: designGraph?.states ?? [],
+      },
+      health: healthIssues.map((issue) => ({
+        id: issue.id,
+        kind: issue.category,
+        title: issue.title,
+        detail: `${issue.elementLabel}: ${issue.description}`,
+        severity: issue.severity,
+      })),
+      memory: designMemory,
+    };
+  }
+
+  function publishWorkspaceState(): void {
+    if (!embeddedWorkspace) return;
+    cancelAnimationFrame(workspacePublishFrame);
+    workspacePublishFrame = requestAnimationFrame(() => {
+      window.parent.postMessage(
+        { type: 'foundry:workspace-state', sessionId, payload: workspaceSnapshot() },
+        runtimeOrigin,
+      );
+    });
+  }
+
+  function publishCanvasInput(action: string, payload: Record<string, unknown> = {}): void {
+    if (!embeddedWorkspace) return;
+    window.parent.postMessage(
+      { type: 'foundry:canvas-input', sessionId, payload: { action, ...payload } },
+      runtimeOrigin,
+    );
+  }
+
+  function handleWorkspaceMessage(event: MessageEvent): void {
+    if (!embeddedWorkspace || event.source !== window.parent || event.origin !== runtimeOrigin)
+      return;
+    const message = event.data as {
+      type?: string;
+      sessionId?: string;
+      command?: string;
+      payload?: Record<string, unknown>;
+    };
+    if (message.type !== 'foundry:workspace-command' || message.sessionId !== sessionId) return;
+    const payload = message.payload ?? {};
+    if (message.command === 'request-state') publishWorkspaceState();
+    if (message.command === 'set-mode') {
+      workspaceCanvasTool =
+        payload.mode === 'pan' ? 'pan' : payload.mode === 'interact' ? 'interact' : 'select';
+      inspecting = workspaceCanvasTool === 'select';
+      document.documentElement.style.cursor = workspaceCanvasTool === 'pan' ? 'grab' : '';
+      updateInspectionMode();
+      publishWorkspaceState();
+    }
+    if (message.command === 'select') {
+      const element = resolveFoundrySelector(document, String(payload.selector ?? ''));
+      if (element) select(element, Boolean(payload.additive));
+    }
+    if (message.command === 'set-control') {
+      const control =
+        selectedControls[Number(payload.index)] ??
+        selectedControls.find((item) => item.property === payload.property);
+      if (control) {
+        void applyControlValue(
+          control,
+          payload.value as string | number,
+          `Adjust ${control.label}`,
+        ).then(() => {
+          if (selected) selectedControls = controlsFor(selected);
+          renderControls();
+          publishWorkspaceState();
+        });
+      }
+    }
+    if (message.command === 'set-context') {
+      const fields = { scope, breakpoint, theme, state } as const;
+      const key = String(payload.key) as keyof typeof fields;
+      const field = fields[key];
+      if (field) {
+        field.value = String(payload.value ?? 'current');
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+        publishWorkspaceState();
+      }
+    }
+    if (message.command === 'undo') void replayHistory(-1).then(publishWorkspaceState);
+    if (message.command === 'redo') void replayHistory(1).then(publishWorkspaceState);
+    if (message.command === 'compare') {
+      const mode = payload.mode === 'before' ? 'before' : 'after';
+      showComparison(mode);
+      publishWorkspaceState();
+    }
+    if (message.command === 'interface-theme') {
+      const preference = String(payload.value);
+      if (preference === 'system' || preference === 'light' || preference === 'dark') {
+        applyInterfaceTheme(preference);
+        publishWorkspaceState();
+      }
+    }
+    if (message.command === 'scan-health') {
+      scanDesignHealth();
+      window.setTimeout(publishWorkspaceState, 0);
+    }
+  }
+
+  function handleEmbeddedCanvasKeyDown(event: KeyboardEvent): void {
+    if (
+      !embeddedWorkspace ||
+      event.target instanceof HTMLInputElement ||
+      event.target instanceof HTMLTextAreaElement ||
+      event.target instanceof HTMLSelectElement ||
+      (event.target instanceof HTMLElement && event.target.isContentEditable)
+    )
+      return;
+    if (event.code === 'Space') {
+      event.preventDefault();
+      embeddedSpaceHeld = true;
+      publishCanvasInput('space', { pressed: true });
+      return;
+    }
+    const key = event.key.toLowerCase();
+    if (key === 'h' || key === 'v') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      publishCanvasInput('shortcut', { key });
+    }
+  }
+
+  function handleEmbeddedCanvasKeyUp(event: KeyboardEvent): void {
+    if (!embeddedWorkspace || event.code !== 'Space') return;
+    embeddedSpaceHeld = false;
+    publishCanvasInput('space', { pressed: false });
+  }
+
+  function handleEmbeddedCanvasPointerDown(event: PointerEvent): void {
+    if (!embeddedWorkspace) return;
+    const shouldPan = workspaceCanvasTool === 'pan' || embeddedSpaceHeld || event.button === 1;
+    if (!shouldPan || event.composedPath().includes(host)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    embeddedPanActive = true;
+    embeddedPanPointer = event.target instanceof Element ? event.target : null;
+    if (embeddedPanPointer instanceof HTMLElement)
+      embeddedPanPointer.setPointerCapture(event.pointerId);
+    document.documentElement.style.cursor = 'grabbing';
+    publishCanvasInput('pan-start', { screenX: event.screenX, screenY: event.screenY });
+  }
+
+  function handleEmbeddedCanvasPointerMove(event: PointerEvent): void {
+    if (!embeddedPanActive) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    publishCanvasInput('pan-move', { screenX: event.screenX, screenY: event.screenY });
+  }
+
+  function handleEmbeddedCanvasPointerUp(event: PointerEvent): void {
+    if (!embeddedPanActive) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    embeddedPanActive = false;
+    if (
+      embeddedPanPointer instanceof HTMLElement &&
+      embeddedPanPointer.hasPointerCapture(event.pointerId)
+    )
+      embeddedPanPointer.releasePointerCapture(event.pointerId);
+    embeddedPanPointer = null;
+    document.documentElement.style.cursor = workspaceCanvasTool === 'pan' ? 'grab' : '';
+    publishCanvasInput('pan-end');
+  }
+
+  function handleEmbeddedCanvasWheel(event: WheelEvent): void {
+    if (!embeddedWorkspace || event.composedPath().includes(host)) return;
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      publishCanvasInput('zoom-wheel', {
+        deltaY: event.deltaY,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+      return;
+    }
+    if (workspaceCanvasTool === 'interact') return;
+    event.preventDefault();
+    publishCanvasInput('pan-wheel', { deltaX: event.deltaX, deltaY: event.deltaY });
+  }
+
+  window.addEventListener('message', handleWorkspaceMessage);
+  document.addEventListener('keydown', handleEmbeddedCanvasKeyDown, true);
+  document.addEventListener('keyup', handleEmbeddedCanvasKeyUp, true);
+  document.addEventListener('pointerdown', handleEmbeddedCanvasPointerDown, true);
+  document.addEventListener('pointermove', handleEmbeddedCanvasPointerMove, true);
+  document.addEventListener('pointerup', handleEmbeddedCanvasPointerUp, true);
+  document.addEventListener('pointercancel', handleEmbeddedCanvasPointerUp, true);
+  document.addEventListener('wheel', handleEmbeddedCanvasWheel, { capture: true, passive: false });
 
   const onboardingSteps: Array<{
     id: OnboardingStepId;
@@ -1866,6 +2477,13 @@ export function installFoundryInspector(
 
   function populateDesignContext(): void {
     if (!designGraph) return;
+    const selectedBreakpoint = breakpoint.value || 'current';
+    const selectedTheme = theme.value || 'current';
+    const selectedState = state.value || 'current';
+    const workbenchViewport = shadow.querySelector<HTMLSelectElement>('[data-workbench-viewport]')!;
+    const selectedWorkbenchViewport = workbenchViewport.value;
+    const workbenchTheme = shadow.querySelector<HTMLSelectElement>('[data-workbench-theme]')!;
+    const selectedWorkbenchTheme = workbenchTheme.value || 'current';
     breakpoint.innerHTML = [
       '<option value="current">Current</option>',
       ...designGraph.breakpoints.map(
@@ -1890,20 +2508,28 @@ export function installFoundryInspector(
       '<option value="disabled">Disabled</option>',
       '<option value="reduced-motion">Reduced motion</option>',
     ].join('');
-    const workbenchViewport = shadow.querySelector<HTMLSelectElement>('[data-workbench-viewport]')!;
     workbenchViewport.innerHTML = designGraph.breakpoints
       .map(
         (item) =>
           `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)} · ${item.width}px</option>`,
       )
       .join('');
-    const workbenchTheme = shadow.querySelector<HTMLSelectElement>('[data-workbench-theme]')!;
     workbenchTheme.innerHTML = [
       '<option value="current">Current theme</option>',
       ...designGraph.themes.map(
         (item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`,
       ),
     ].join('');
+    const restoreValue = (field: HTMLSelectElement, value: string, fallback?: string): void => {
+      const available = [...field.options].some((option) => option.value === value);
+      field.value = available ? value : (fallback ?? field.options[0]?.value ?? '');
+      syncFdcSelect(field);
+    };
+    restoreValue(breakpoint, selectedBreakpoint, 'current');
+    restoreValue(theme, selectedTheme, 'current');
+    restoreValue(state, selectedState, 'current');
+    restoreValue(workbenchViewport, selectedWorkbenchViewport);
+    restoreValue(workbenchTheme, selectedWorkbenchTheme, 'current');
   }
 
   async function hydrateSession(): Promise<void> {
@@ -2172,12 +2798,18 @@ export function installFoundryInspector(
     root: Document | ShadowRoot,
     selector: string,
   ): HTMLElement | null {
+    if (!selector.trim()) return null;
     const parts = selector.split('>>>').map((part) => part.trim());
     let currentRoot: Document | ShadowRoot = root;
     for (let index = 0; index < parts.length; index += 1) {
       const part = parts[index];
       if (!part) return null;
-      const element = currentRoot.querySelector<HTMLElement>(part);
+      let element: HTMLElement | null;
+      try {
+        element = currentRoot.querySelector<HTMLElement>(part);
+      } catch {
+        return null;
+      }
       if (!element) return null;
       if (index === parts.length - 1) return element;
       if (!element.shadowRoot) return null;
@@ -3921,6 +4553,7 @@ export function installFoundryInspector(
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not record change');
     }
+    publishWorkspaceState();
   }
 
   function renderToolTabs(): void {
@@ -4135,6 +4768,7 @@ export function installFoundryInspector(
     const component = selectedComponent();
     if (!rect || !component?.variants.length) {
       canvasVariant.hidden = true;
+      syncFdcSelect(canvasVariant);
       return;
     }
     const signature = component.variants.map((variant) => variant.id).join('|');
@@ -4151,6 +4785,7 @@ export function installFoundryInspector(
     canvasVariant.style.left = `${Math.max(8, Math.min(window.innerWidth - 188, rect.left))}px`;
     canvasVariant.style.top = `${Math.max(8, rect.bottom + 8)}px`;
     canvasVariant.hidden = false;
+    syncFdcSelect(canvasVariant);
   }
 
   function opaqueBackground(element: HTMLElement): string {
@@ -4213,6 +4848,91 @@ export function installFoundryInspector(
     });
     updateOutline();
     await record(control, before, after, element, operationLabel);
+  }
+
+  function installEffectEditor(): void {
+    const finish = async (control: Control, value: string, label: string): Promise<void> => {
+      await applyControlValue(control, value, label);
+      if (selected) selectedControls = controlsFor(selected);
+      renderControls();
+      publishWorkspaceState();
+    };
+    controlsRoot.querySelectorAll<HTMLInputElement>('[data-shadow-part]').forEach((field) => {
+      field.addEventListener('change', () => {
+        const control = selectedControls[Number(field.dataset.shadowControl)];
+        const effectIndex = Number(field.dataset.shadowIndex);
+        const part = field.dataset.shadowPart as keyof ShadowEffectValue;
+        if (!control || !part) return;
+        const effects = parseShadowEffects(String(control.read()));
+        const effect = effects[effectIndex];
+        if (!effect) return;
+        if (part === 'color') effect.color = field.value;
+        else if (part === 'opacity') effect.opacity = Number(field.value) / 100;
+        else if (part !== 'kind') effect[part] = Number(field.value);
+        void finish(control, composeShadowEffects(effects), `Adjust ${effect.kind}`);
+      });
+    });
+    controlsRoot.querySelectorAll<HTMLSelectElement>('[data-shadow-kind]').forEach((field) => {
+      field.addEventListener('change', () => {
+        const control = selectedControls[Number(field.dataset.shadowControl)];
+        const effectIndex = Number(field.dataset.shadowKind);
+        if (!control) return;
+        const effects = parseShadowEffects(String(control.read()));
+        const effect = effects[effectIndex];
+        if (!effect) return;
+        effect.kind = field.value === 'inner-shadow' ? 'inner-shadow' : 'drop-shadow';
+        void finish(control, composeShadowEffects(effects), `Change to ${field.value}`);
+      });
+    });
+    controlsRoot.querySelectorAll<HTMLButtonElement>('[data-remove-shadow]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const control = selectedControls[Number(button.dataset.shadowControl)];
+        if (!control) return;
+        const effects = parseShadowEffects(String(control.read()));
+        effects.splice(Number(button.dataset.removeShadow), 1);
+        void finish(control, composeShadowEffects(effects), 'Remove shadow');
+      });
+    });
+    controlsRoot.querySelectorAll<HTMLInputElement>('[data-blur-control]').forEach((field) => {
+      field.addEventListener('change', () => {
+        const control = selectedControls[Number(field.dataset.blurControl)];
+        if (!control) return;
+        void finish(
+          control,
+          replaceBlur(String(control.read()), Number(field.value)),
+          `Adjust ${control.label}`,
+        );
+      });
+    });
+    controlsRoot.querySelectorAll<HTMLButtonElement>('[data-remove-blur]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const control = selectedControls[Number(button.dataset.blurControl)];
+        if (!control) return;
+        void finish(control, replaceBlur(String(control.read()), null), `Remove ${control.label}`);
+      });
+    });
+    controlsRoot.querySelectorAll<HTMLButtonElement>('[data-add-effect]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const control = selectedControls[Number(button.dataset.effectControl)];
+        const type = button.dataset.addEffect;
+        if (!control || !type) return;
+        if (type === 'drop-shadow' || type === 'inner-shadow') {
+          const effects = parseShadowEffects(String(control.read()));
+          effects.push({
+            kind: type,
+            x: 0,
+            y: 4,
+            blur: 8,
+            spread: 0,
+            color: '#000000',
+            opacity: 0.12,
+          });
+          void finish(control, composeShadowEffects(effects), `Add ${type}`);
+          return;
+        }
+        void finish(control, replaceBlur(String(control.read()), 4), `Add ${type}`);
+      });
+    });
   }
 
   function installContextActions(controls: Control[]): void {
@@ -5314,6 +6034,9 @@ export function installFoundryInspector(
             entries.forEach(({ control }) => renderedProperties.add(control.property));
             if (!entries.length) return '';
             const sectionKey = `${group.key}:${section.label}`;
+            if (section.label === 'Effects') {
+              return `<section class="property-section ${collapsedSections.has(sectionKey) ? 'collapsed' : ''}" data-section-key="${escapeHtml(sectionKey)}"><div class="section-head"><button class="section-toggle" aria-expanded="${String(!collapsedSections.has(sectionKey))}"><i data-foundry-icon="chevron-down"></i><strong>Effects</strong></button></div><div class="section-grid effect-section">${renderEffectsEditor(entries)}</div></section>`;
+            }
             const sectionActions =
               section.label === 'Position and size'
                 ? '<span class="section-actions"><button class="section-action" data-layout-action="lock" aria-label="Lock aspect ratio" title="Lock aspect ratio"><i data-foundry-icon="lock"></i></button></span>'
@@ -5620,6 +6343,7 @@ export function installFoundryInspector(
         field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
       });
     });
+    installEffectEditor();
     installContextActions(selectedControls);
     installNumberScrubbing();
     installMotionControls(animations);
@@ -5714,6 +6438,7 @@ export function installFoundryInspector(
     if (!workbench.hidden) applyWorkbenchState();
     if (!libraryPanel.hidden) renderDesignMemory();
     if (matrixMode) renderWorkbenchMatrix();
+    publishWorkspaceState();
   }
 
   function renderSelectionEmptyState(): void {
@@ -5757,6 +6482,7 @@ export function installFoundryInspector(
     renderLayers();
     if (!libraryPanel.hidden) renderDesignMemory();
     if (matrixMode) renderWorkbenchMatrix();
+    publishWorkspaceState();
   }
 
   function simpleStyleControl(
@@ -6671,14 +7397,32 @@ export function installFoundryInspector(
       sessionStorage.removeItem('__foundry_selected_selector');
     }
   }
+  if (embeddedWorkspace) {
+    discoverLayers();
+    publishWorkspaceState();
+  }
 
   function destroyInspector(): void {
     resizeObserver?.disconnect();
+    fdcSelectObserver.disconnect();
+    closeFdcSelect(false);
     cancelAnimationFrame(layerScrollFrame);
     cancelAnimationFrame(mutationFrame);
     layerMutationObserver.disconnect();
     systemDarkTheme.removeEventListener('change', handleSystemThemeChange);
+    window.removeEventListener('message', handleWorkspaceMessage);
+    document.removeEventListener('keydown', handleEmbeddedCanvasKeyDown, true);
+    document.removeEventListener('keyup', handleEmbeddedCanvasKeyUp, true);
+    document.removeEventListener('pointerdown', handleEmbeddedCanvasPointerDown, true);
+    document.removeEventListener('pointermove', handleEmbeddedCanvasPointerMove, true);
+    document.removeEventListener('pointerup', handleEmbeddedCanvasPointerUp, true);
+    document.removeEventListener('pointercancel', handleEmbeddedCanvasPointerUp, true);
+    document.removeEventListener('wheel', handleEmbeddedCanvasWheel, true);
     document.removeEventListener('pointerdown', handleInterfaceThemeDismiss, true);
+    document.removeEventListener('pointerdown', handleFdcSelectDismiss, true);
+    shadow.removeEventListener('keydown', handleFdcSelectKeydown);
+    window.removeEventListener('resize', closeFdcSelectForViewportChange);
+    window.removeEventListener('scroll', closeFdcSelectForViewportChange, true);
     clearInterval(reviewPoll);
     clearInterval(sessionPoll);
     document.removeEventListener('click', handlePointer, true);
@@ -6690,6 +7434,7 @@ export function installFoundryInspector(
     window.removeEventListener('scroll', updateOutline, true);
     window.removeEventListener('resize', handleWorkspaceResize);
     cancelAnimationFrame(selectionHoverFrame);
+    cancelAnimationFrame(workspacePublishFrame);
     host.remove();
   }
 

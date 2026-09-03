@@ -3,10 +3,16 @@ export const FOUNDRY_UI_GRID = 4;
 export const FOUNDRY_UI_ICON_SIZES = [12, 16, 20] as const;
 export const FOUNDRY_UI_CONTROL_SIZES = [32, 36, 40, 44, 48] as const;
 export const FOUNDRY_UI_RADII = [0, 4, 8, 12, 16, 20, 24, 32] as const;
-export const FOUNDRY_UI_TYPE_SIZES = [8, 12, 16, 20, 24, 28, 32, 40, 48, 64, 68, 76] as const;
+export const FOUNDRY_UI_TYPE_SIZES = [12, 16, 20, 24, 28, 32, 40, 48, 64, 68, 76] as const;
 
 export const FOUNDRY_UI_FOUNDATION_CSS = `
   :host {
+    --fdc-font-sans:"Foundry Inter",Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    --fdc-font-mono:"Foundry JetBrains Mono","JetBrains Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+    --fdc-canvas-accent:#2f6fed;
+    --fdc-positive:#138a63;
+    --fdc-warning:#b7791f;
+    --fdc-negative:#cf3f4f;
     --fdc-space-1:4px;
     --fdc-space-2:8px;
     --fdc-space-3:12px;

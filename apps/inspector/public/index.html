@@ -3,110 +3,337 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="light" />
-    <title>Foundry — Design control</title>
+    <meta name="color-scheme" content="light dark" />
+    <title>Foundry workspace</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="shell">
-      <header class="masthead">
-        <a class="wordmark" href="/" aria-label="Foundry home">
-          <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span>Foundry</span>
-        </a>
-        <div class="runtime-status"><span class="pulse"></span> Local runtime</div>
+    <div class="app-shell" id="app-shell" data-mode="canvas">
+      <header class="app-bar">
+        <div class="app-identity">
+          <strong>Foundry</strong>
+          <span class="live-status"><i></i><span>Live</span></span>
+          <span class="project-name" id="project-name">Design workspace</span>
+        </div>
+        <nav class="app-actions" aria-label="Workspace controls">
+          <button
+            class="icon-button is-active"
+            data-dock-toggle="layers"
+            aria-label="Toggle Layers"
+            aria-pressed="true"
+          >
+            <i data-icon="layers"></i>
+          </button>
+          <button
+            class="icon-button is-active"
+            data-dock-toggle="inspector"
+            aria-label="Toggle Inspector"
+            aria-pressed="true"
+          >
+            <i data-icon="panel"></i>
+          </button>
+          <button class="icon-button" id="command-trigger" aria-label="Open commands">
+            <i data-icon="command"></i>
+          </button>
+          <button
+            class="icon-button"
+            id="workspace-menu-trigger"
+            aria-label="Open workspace menu"
+            aria-expanded="false"
+          >
+            <i data-icon="menu"></i>
+          </button>
+        </nav>
+        <div class="workspace-menu" id="workspace-menu" hidden>
+          <button data-workspace-mode="canvas">
+            <i data-icon="cursor"></i><span>Canvas</span><kbd>1</kbd>
+          </button>
+          <button data-workspace-mode="review">
+            <i data-icon="file"></i><span>Review changes</span><kbd>2</kbd>
+          </button>
+          <button data-workspace-mode="states">
+            <i data-icon="play"></i><span>State workbench</span><kbd>3</kbd>
+          </button>
+          <button data-workspace-mode="health">
+            <i data-icon="activity"></i><span>Design health</span><kbd>4</kbd>
+          </button>
+          <button data-workspace-mode="memory">
+            <i data-icon="bookmark"></i><span>Design memory</span><kbd>5</kbd>
+          </button>
+          <span class="menu-rule"></span>
+          <button data-theme-choice="system">
+            <i data-icon="contrast"></i><span>Theme: System</span>
+          </button>
+          <a id="direct-preview-menu" target="_blank"
+            ><i data-icon="external"></i><span>Open direct preview</span></a
+          >
+        </div>
       </header>
 
-      <main>
-        <section class="intro" id="intro">
-          <div>
-            <p class="eyebrow">Design control plane</p>
-            <h1>Shape the interface.<br /><em>Keep the evidence.</em></h1>
+      <main class="workspace">
+        <aside class="dock layers-dock" id="layers-dock" aria-label="Layers and components">
+          <header class="dock-head">
+            <strong>Structure</strong><span id="layer-total">0</span>
+          </header>
+          <div class="segmented" role="tablist">
+            <button class="is-active" data-structure-tab="layers" role="tab" aria-selected="true">
+              Layers
+            </button>
+            <button data-structure-tab="components" role="tab" aria-selected="false">
+              Components
+            </button>
           </div>
-          <p class="lede">
-            Select real rendered elements, tune them in context, and return one exact change batch
-            to your coding agent.
-          </p>
-        </section>
+          <label class="search-field"
+            ><i data-icon="search"></i
+            ><input
+              id="structure-search"
+              type="search"
+              placeholder="Search layers"
+              aria-label="Search layers"
+          /></label>
+          <div
+            class="structure-list"
+            id="structure-list"
+            role="tree"
+            aria-label="Product structure"
+          ></div>
+        </aside>
 
-        <section class="session-view hidden" id="session-view" aria-live="polite">
-          <div class="session-header">
-            <div>
-              <p class="eyebrow" id="session-platform">Active session</p>
-              <h2 id="session-title">Loading session…</h2>
-              <p class="session-meta" id="session-meta"></p>
+        <section class="center-workspace" aria-label="Foundry canvas">
+          <section class="mode-surface canvas-mode" data-mode-surface="canvas">
+            <header class="canvas-context">
+              <div>
+                <strong>Canvas</strong
+                ><span id="canvas-detail">Waiting for the product adapter</span>
+              </div>
+              <div class="context-fields">
+                <label
+                  ><span>Viewport</span
+                  ><select id="canvas-viewport">
+                    <option value="current">Current</option>
+                  </select></label
+                >
+                <label
+                  ><span>Theme</span
+                  ><select id="canvas-theme">
+                    <option value="current">Current</option>
+                  </select></label
+                >
+                <label
+                  ><span>State</span
+                  ><select id="canvas-state">
+                    <option value="current">Current</option>
+                  </select></label
+                >
+              </div>
+            </header>
+            <div class="canvas-stage" id="canvas-stage">
+              <div class="preview-frame" id="preview-frame">
+                <iframe id="product-preview" title="Live product preview"></iframe>
+                <div class="preview-loading" id="preview-loading">
+                  <span class="spinner"></span><strong>Connecting to the product</strong>
+                  <p>Foundry is waiting for the local adapter.</p>
+                </div>
+                <div class="preview-fallback" id="preview-fallback" hidden>
+                  <i data-icon="external"></i><strong>This product blocks embedded previews</strong>
+                  <p>Open the direct overlay preview. Your session and changes stay connected.</p>
+                  <a class="primary-button" id="direct-preview" target="_blank"
+                    >Open overlay preview</a
+                  >
+                </div>
+              </div>
             </div>
-            <div class="session-actions">
-              <button class="button secondary" id="copy-prompt">Copy agent prompt</button>
-              <button class="button secondary" id="download-json">Export JSON</button>
-              <button class="button primary" id="apply-agent">Apply with agent</button>
+            <div class="canvas-toolbar" role="toolbar" aria-label="Canvas tools">
+              <button class="tool-button is-active" data-canvas-mode="select" aria-pressed="true">
+                <i data-icon="cursor"></i><span>Select</span>
+              </button>
+              <button class="tool-button" data-canvas-mode="interact" aria-pressed="false">
+                <i data-icon="interact"></i><span>Interact</span>
+              </button>
+              <button class="tool-button" data-canvas-mode="pan" aria-pressed="false">
+                <i data-icon="pan"></i><span>Pan</span>
+              </button>
+              <span class="tool-rule"></span>
+              <button class="icon-button" id="undo" aria-label="Undo" disabled>
+                <i data-icon="undo"></i>
+              </button>
+              <button class="icon-button" id="redo" aria-label="Redo" disabled>
+                <i data-icon="redo"></i>
+              </button>
+              <span class="tool-rule"></span>
+              <div class="zoom-controls" aria-label="Canvas zoom controls">
+                <button class="icon-button" id="zoom-out" aria-label="Zoom out">
+                  <i data-icon="minus"></i>
+                </button>
+                <select id="canvas-zoom" aria-label="Canvas zoom">
+                  <option value="actual">Actual size</option>
+                  <option value="fit">Fit</option>
+                  <option value="fit-width">Fit width</option>
+                  <option value="0.25">25%</option>
+                  <option value="0.5">50%</option>
+                  <option value="0.75">75%</option>
+                  <option value="1" selected>100%</option>
+                  <option value="1.5">150%</option>
+                  <option value="2">200%</option>
+                </select>
+                <button class="icon-button" id="zoom-in" aria-label="Zoom in">
+                  <i data-icon="plus"></i>
+                </button>
+              </div>
             </div>
-          </div>
+          </section>
 
-          <section class="apply-run hidden" id="apply-run"></section>
+          <section class="mode-surface centered-mode" data-mode-surface="review" hidden>
+            <header class="mode-head">
+              <div>
+                <span class="eyebrow">Change set</span>
+                <h1>Review and apply</h1>
+                <p>Approve exact changes before the active agent edits source.</p>
+              </div>
+              <div class="mode-actions">
+                <button class="secondary-button" id="review-compare">Compare on canvas</button>
+                <span class="mode-count" id="review-count">0 included</span>
+              </div>
+            </header>
+            <div class="review-list" id="changes"></div>
+            <footer class="review-footer">
+              <button class="secondary-button" data-workspace-mode="canvas">Back to canvas</button
+              ><button class="primary-button" id="apply-agent">Apply with agent</button>
+            </footer>
+          </section>
 
-          <div class="native-stage hidden" id="native-stage">
-            <div class="native-canvas" id="native-canvas">
-              <img id="native-frame" alt="Live Simulator preview" />
-              <div id="native-targets"></div>
-            </div>
-            <aside class="native-properties" id="native-properties">
-              <p class="eyebrow">Live selection</p>
-              <h3>Select an element</h3>
+          <section class="mode-surface centered-mode" data-mode-surface="states" hidden>
+            <header class="mode-head">
+              <div>
+                <span class="eyebrow">Conditions</span>
+                <h1>State workbench</h1>
+                <p>Inspect one surface across viewport, theme, interaction, and motion contexts.</p>
+              </div>
+            </header>
+            <div class="workbench-grid" id="state-grid"></div>
+          </section>
+
+          <section class="mode-surface centered-mode" data-mode-surface="health" hidden>
+            <header class="mode-head">
+              <div>
+                <span class="eyebrow">Quality</span>
+                <h1>Design health</h1>
+                <p>Review measurable issues without changing the product automatically.</p>
+              </div>
+              <div class="mode-actions">
+                <button class="secondary-button" id="run-health">Scan canvas</button>
+                <button
+                  class="icon-button mode-close"
+                  data-close-mode="health"
+                  aria-label="Close Design health"
+                  data-tooltip="Close Design health"
+                >
+                  <i data-icon="close"></i>
+                </button>
+              </div>
+            </header>
+            <div class="health-summary">
+              <strong>Live checks stay local</strong>
               <p>
-                Choose a measured region in the mirrored preview to expose its registered controls.
+                Contrast, overflow, accessible naming, and reduced-motion checks use the current
+                rendered product.
               </p>
-            </aside>
-          </div>
-
-          <div class="workbench">
-            <aside class="rail" aria-label="Change summary">
-              <div class="count-block">
-                <strong id="change-count">0</strong><span>Changes</span>
-              </div>
-              <div class="count-block">
-                <strong id="approved-count">0</strong><span>Reviewed</span>
-              </div>
-              <div class="count-block">
-                <strong id="verified-count">0</strong><span>Verified</span>
-              </div>
-              <div class="rail-rule"></div>
-              <p>Changes are grouped by their measured target and final property value.</p>
-            </aside>
-            <div class="ledger">
-              <div class="ledger-title">
-                <h3>Change ledger</h3>
-                <span id="updated-at"></span>
-              </div>
-              <div id="changes" class="changes"></div>
             </div>
-          </div>
-        </section>
+            <div class="empty-mode">
+              <i data-icon="activity"></i><strong>No scan results yet</strong>
+              <p>Run a scan after the preview connects.</p>
+            </div>
+          </section>
 
-        <section class="sessions" id="sessions-section">
-          <div class="section-heading">
+          <section class="mode-surface centered-mode" data-mode-surface="memory" hidden>
+            <header class="mode-head">
+              <div>
+                <span class="eyebrow">Project language</span>
+                <h1>Design memory</h1>
+                <p>Verified decisions, native tokens, and reusable treatments for this project.</p>
+              </div>
+              <div class="mode-actions">
+                <button
+                  class="icon-button mode-close"
+                  data-close-mode="memory"
+                  aria-label="Close Design memory"
+                  data-tooltip="Close Design memory"
+                >
+                  <i data-icon="close"></i>
+                </button>
+              </div>
+            </header>
+            <div class="memory-grid" id="memory-grid"></div>
+          </section>
+
+          <section class="apply-run" id="apply-run" hidden></section>
+          <section class="change-summary" id="change-summary" hidden>
             <div>
-              <p class="eyebrow">Recent work</p>
-              <h2>Design sessions</h2>
+              <strong id="change-count">0 changes</strong
+              ><span id="latest-change">Edits will appear here</span>
             </div>
-            <button class="button secondary" id="refresh">Refresh</button>
-          </div>
-          <div class="session-grid" id="session-grid"></div>
+            <button class="icon-button" id="compare" aria-label="Compare changes" disabled>
+              <i data-icon="contrast"></i>
+            </button>
+            <button class="primary-button compact" data-workspace-mode="review">Review</button>
+          </section>
         </section>
 
-        <section class="empty-guide" id="empty-guide">
-          <p class="eyebrow">Start here</p>
-          <div class="command">
-            <code>pnpm foundry start --url http://localhost:3000</code
-            ><button id="copy-command">Copy</button>
+        <aside class="dock inspector-dock" id="inspector-dock" aria-label="Inspector">
+          <header class="dock-head"><strong>Inspector</strong><span>Selection</span></header>
+          <div class="inspector-scroll">
+            <section class="selection-summary" id="selection-summary">
+              <span class="selection-kind">No layer</span><strong>Nothing selected</strong
+              ><code>Click the canvas or choose a layer</code>
+              <p>Select mode stays active while you edit.</p>
+            </section>
+            <section class="context-grid" aria-label="Selection context">
+              <label
+                ><span>Scope</span
+                ><select data-context="scope">
+                  <option value="instance">Instance</option>
+                  <option value="component">Component</option>
+                </select></label
+              >
+              <label
+                ><span>Breakpoint</span
+                ><select data-context="breakpoint">
+                  <option value="current">Current</option>
+                </select></label
+              >
+              <label
+                ><span>Theme</span
+                ><select data-context="theme">
+                  <option value="current">Current</option>
+                </select></label
+              >
+              <label
+                ><span>State</span
+                ><select data-context="state">
+                  <option value="current">Current</option>
+                </select></label
+              >
+            </section>
+            <div class="inspector-sections" id="inspector-sections"></div>
           </div>
-          <p>
-            Then load the development-only adapter in your product. Hold
-            <kbd>⌥</kbd> and click any rendered element to open its controls.
-          </p>
-        </section>
+          <button class="dock-resizer" id="dock-resizer" aria-label="Resize panels"></button>
+        </aside>
       </main>
     </div>
+
+    <dialog class="command-dialog" id="command-dialog">
+      <div class="command-search">
+        <i data-icon="search"></i
+        ><input
+          id="command-input"
+          placeholder="Type a command"
+          aria-label="Search commands"
+        /><button class="icon-button" id="close-commands" aria-label="Close commands">
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <div id="command-list" class="command-list"></div>
+    </dialog>
     <div class="toast" id="toast" role="status"></div>
     <script type="module" src="/app.js"></script>
   </body>

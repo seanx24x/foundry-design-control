@@ -6,7 +6,7 @@ Foundry is a local-first precision design workbench for Codex, Cursor, and Claud
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
-> **Current public beta:** `0.2.0-beta.7`. Install Foundry with the `@beta` tag. The unqualified npm `latest` tag still points to an earlier beta and is not the current testing channel.
+> **Current public beta:** `0.2.0-beta.8`. Install Foundry with the `@beta` tag. The unqualified npm `latest` tag still points to an earlier beta and is not the current testing channel.
 
 Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 
@@ -82,7 +82,8 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 
 ## Current capabilities
 
-- Measured browser selection with overlap cycling, parent/child traversal, hover previews, and an isolated Shadow DOM inspector
+- A dedicated local design workspace with a live product canvas, equal Layers and Inspector docks, and a direct-overlay fallback when a product blocks framing
+- Measured browser selection with overlap cycling, parent/child traversal, hover previews, and isolated Shadow DOM canvas instrumentation
 - A searchable, collapsible, virtualized live layer hierarchy with mapped-source context, Shadow DOM traversal, drag reordering, and selection persistence across HMR
 - Multi-selection, measured spacing annotations, sibling-aware resize snapping, keyboard nudging, alignment, distribution, and preview undo/redo
 - A revisioned local design graph for CSS tokens, components, Storybook variants, breakpoints, themes, states, and motion presets
@@ -94,7 +95,7 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 - Design Health scans for contrast, overflow and clipping, touch targets, accessible names, reduced-motion coverage, and project spacing consistency, with evidence, intentional-issue ignores, and safe corrections routed into review
 - An in-app state workbench with real viewport frames, theme switching, forced interaction states, motion controls, and contextual verification
 - Persistent, coalescing change ledger with JSON and consolidated prompt export
-- Compact in-preview review with editable approved batches and unresolved-target blocking
+- Center-workspace review with editable approved batches, grouped targets, and unresolved-target blocking
 - Persistent Apply with agent runs across Codex, Cursor, and Claude Code through MCP
 - Leased agent handoffs that safely return abandoned or interrupted claims to the queue
 - Live source, rebuild, validation, retry, and rendered-verification progress
@@ -132,7 +133,7 @@ The runtime binds to `127.0.0.1:4387`. Inspector preview changes remain temporar
 - `packages/react-native-adapter`: React Native debug bridge
 - `packages/mcp-server`: agent tools backed by the runtime
 - `packages/swiftui-adapter`: Swift package for inspectable SwiftUI views
-- `apps/inspector`: session dashboard and review surface
+- `apps/inspector`: authenticated local design workspace, canvas shell, and review surface
 - `examples/web-fixture`: end-to-end browser fixture
 
 ## Safety model

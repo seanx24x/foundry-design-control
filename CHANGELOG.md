@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-beta.8 - 2026-09-03
+
+- Added a fixed-size canvas that preserves real project viewport dimensions, with explicit pan, zoom, actual-size, fit, and fit-width controls.
+- Replaced browser-native property selectors with accessible, theme-aware Foundry menus across the workspace and direct overlay.
+- Added editable drop shadows, inner shadows, layer blur, and background blur without changing the existing design-change contract.
+- Added clear dismissal, Escape handling, state preservation, and focus restoration for Design Health and Design Memory.
+- Refined the Light and Dark workspace, Layers, Inspector, Review, Compare, controls, typography, and Keyline icon presentation around the shared 4px interface system.
+
 ## 0.2.0-beta.7 - 2026-09-02
 
 - Added leased agent handoffs with per-claim identities so abandoned claims return safely to the queue before source work begins.

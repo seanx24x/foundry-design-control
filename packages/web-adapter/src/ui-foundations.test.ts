@@ -40,6 +40,41 @@ test('the Foundry interface contains no off-grid pixel literals', () => {
   );
 });
 
+test('the smallest supported interface text is 12px', () => {
+  assert.equal(Math.min(...FOUNDRY_UI_TYPE_SIZES), 12);
+});
+
+test('embedded mode keeps canvas measurement visible and moves chrome to the workspace', () => {
+  const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  assert.match(source, /__foundry_embedded/);
+  assert.match(source, /foundry:workspace-state/);
+  assert.match(source, /foundry:workspace-command/);
+  assert.match(source, /foundry:canvas-input/);
+  assert.match(source, /workspaceCanvasTool/);
+  assert.match(source, /handleEmbeddedCanvasWheel/);
+  assert.match(source, /event\.origin !== runtimeOrigin/);
+  assert.match(source, /if \(!selector\.trim\(\)\) return null/);
+  assert.match(source, /data-add-effect="drop-shadow"/);
+  assert.match(source, /data-shadow-part=/);
+  assert.match(source, /'spread'/);
+  assert.match(source, /backdropFilter/);
+  assert.match(source, /Available when the project exposes a mapped effect recipe/);
+});
+
+test('overlay selects use one accessible theme-aware menu system', () => {
+  const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  assert.match(source, /className = 'fdc-select-trigger'/);
+  assert.match(source, /setAttribute\('role', 'combobox'\)/);
+  assert.match(source, /setAttribute\('role', 'listbox'\)/);
+  assert.match(source, /role="option"/);
+  assert.match(source, /moveFdcSelectFocus/);
+  assert.match(source, /typeahead/);
+  assert.match(source, /select\.setAttribute\('aria-hidden', 'true'\)/);
+  assert.match(source, /selectAccessibleLabel/);
+  assert.match(source, /restoreValue\(breakpoint, selectedBreakpoint, 'current'\)/);
+  assert.match(source, /:host\(\[data-interface-theme="light"\]\) \.fdc-select-menu/);
+});
+
 test('the review flow queues approved changes when the coding agent is offline', () => {
   const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
   assert.match(source, /sessionRequest\('\/agent-presence'\)/);

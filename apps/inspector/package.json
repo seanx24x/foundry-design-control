@@ -1,6 +1,6 @@
 {
   "name": "foundry-design-inspector",
-  "version": "0.2.0-beta.7",
+  "version": "0.2.0-beta.8",
   "description": "Local review dashboard for Foundry design sessions",
   "type": "module",
   "files": [
@@ -27,5 +27,10 @@
     "build": "node build.mjs",
     "typecheck": "node --check public/app.js",
     "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "5.2.6",
+    "@fontsource-variable/jetbrains-mono": "5.2.6",
+    "@iconify-icons/keyline-icons": "2.0.0"
   }
 }

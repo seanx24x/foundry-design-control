@@ -26,7 +26,7 @@ import { startBasicPreviewProxy, type BasicPreviewProxy } from './proxy.js';
 const args = process.argv.slice(2);
 const command = args[0]?.startsWith('-') ? 'launch' : (args[0] ?? 'launch');
 const runtimeRepository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const CURRENT_VERSION = '0.2.0-beta.7';
+const CURRENT_VERSION = '0.2.0-beta.8';
 
 function flag(name: string): string | undefined {
   const index = args.indexOf(name);
@@ -345,12 +345,22 @@ async function start(): Promise<void> {
     }
   }
   const projectRevision = await revision(root);
+  const configuredViewports = config?.design?.viewports ?? [];
+  const initialViewport = configuredViewports.find(
+    (viewport) =>
+      viewport.id.toLowerCase() === 'desktop' || viewport.label.toLowerCase() === 'desktop',
+  ) ??
+    [...configuredViewports].sort((left, right) => right.width - left.width)[0] ?? {
+      width: 1440,
+      height: 900,
+    };
   const context: SessionContext = {
     projectRoot: root,
     revision: projectRevision,
     platform,
     targetUrl,
     targetName: basename(root),
+    viewport: { width: initialViewport.width, height: initialViewport.height ?? 900 },
     theme: 'system',
     breakpoint: 'current',
     state: 'current',
@@ -400,10 +410,14 @@ async function start(): Promise<void> {
     targetUrl && platform === 'web'
       ? addSessionParams(basicPreview?.url ?? targetUrl, session.changeSet.sessionId, session.token)
       : reviewUrl;
+  const workspaceUrl =
+    platform === 'web' && targetUrl
+      ? `${reviewUrl}&preview=${encodeURIComponent(productUrl)}`
+      : reviewUrl;
   console.log(`Foundry session ${session.changeSet.sessionId}`);
   if (resumable) console.log('Resumed the most recent session for this project revision.');
   console.log(`Platform: ${platform}`);
-  console.log(`Inspector: ${reviewUrl}`);
+  console.log(`Workspace: ${workspaceUrl}`);
   if (targetUrl && platform === 'web')
     console.log(`${basicPreview ? 'Basic' : 'Precision'} preview: ${productUrl}`);
   if (platform === 'web') {
@@ -418,7 +432,7 @@ async function start(): Promise<void> {
       '  If it is not ready, ask the agent: “Keep listening for Apply with agent requests.”',
     );
   }
-  if (!has('--no-open')) await openUrl(productUrl);
+  if (!has('--no-open')) await openUrl(workspaceUrl);
   const shutdown = async () => {
     if (ownsRuntime) await runtime.stop();
     await basicPreview?.stop();

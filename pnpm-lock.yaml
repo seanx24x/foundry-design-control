@@ -30,7 +30,17 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
-  apps/inspector: {}
+  apps/inspector:
+    dependencies:
+      '@fontsource-variable/inter':
+        specifier: 5.2.6
+        version: 5.2.6
+      '@fontsource-variable/jetbrains-mono':
+        specifier: 5.2.6
+        version: 5.2.6
+      '@iconify-icons/keyline-icons':
+        specifier: 2.0.0
+        version: 2.0.0
 
   examples/web-fixture: {}
 
@@ -394,6 +404,12 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@fontsource-variable/inter@5.2.6':
+    resolution: {integrity: sha512-jks/bficUPQ9nn7GvXvHtlQIPudW7Wx8CrlZoY8bhxgeobNxlQan8DclUJuYF2loYRrGpfrhCIZZspXYysiVGg==}
+
+  '@fontsource-variable/jetbrains-mono@5.2.6':
+    resolution: {integrity: sha512-1pvtyK6H1paBOixbtZ9xfQgArVQ4SJMW3WSGZPOd5PiW3yg0t8umwKnjDMzW2ofb7qSdiXnsnIaHPT36vEOdlg==}
 
   '@iconify-icons/keyline-icons@2.0.0':
     resolution: {integrity: sha512-8LiN6gKISjVqUOidlL6dgDsSYE0iqrtL//lUeh95xDm9gpTnQAPGp1ggizaEqTKfvmxJZeRXJ3Wc3RuWoDbbWA==}
@@ -799,6 +815,10 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.2':
     optional: true
+
+  '@fontsource-variable/inter@5.2.6': {}
+
+  '@fontsource-variable/jetbrains-mono@5.2.6': {}
 
   '@iconify-icons/keyline-icons@2.0.0':
     dependencies:

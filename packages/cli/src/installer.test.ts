@@ -311,7 +311,7 @@ test('integrates and removes a Next.js App Router loader', async () => {
     await readFile(join(root, '.foundry', 'install-manifest.json'), 'utf8'),
   );
   assert.equal(manifest.version, 2);
-  assert.equal(manifest.generatorVersion, '0.2.0-beta.7');
+  assert.equal(manifest.generatorVersion, '0.2.0-beta.8');
   assert.equal(manifest.validation.length, 2);
   await uninstallProject(root);
   const restored = await readFile(join(root, 'app', 'layout.tsx'), 'utf8');
