@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node ./scripts/cursor-session-start.mjs",
+        "timeout": 5
+      }
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "description": "Prepare Foundry-enabled workspaces for reviewed apply requests.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/claude-session-start.mjs"],
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

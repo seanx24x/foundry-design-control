@@ -365,7 +365,7 @@ const PANEL_CSS = `
   .review-head strong { font-size:12px; }.review-summary { padding:12px 16px 12px;border-bottom:1px solid var(--fdc-line);background:#fcfcfc; }.review-summary strong { display:block;font-size:12px;font-weight:550;letter-spacing:-.01em; }.review-summary span { display:block;margin-top:4px;color:var(--fdc-muted);font-size:12px;line-height:1.45; }.review-summary.attention strong { color:#8b4d3d; }.review-toolbar button { height:28px;padding:0 8px;font-size:12px; }
   .onboarding-card { bottom:84px;width:340px;padding:16px;border-radius:12px;box-shadow:0 16px 40px rgb(0 0 0 / 15%); }.onboarding-card-head { gap:8px; }.onboarding-card-head span { width:28px;height:28px;display:grid;place-items:center;color:#a75031;background:#fbf1ed;border-radius:8px; }.onboarding-card-head svg { width:16px;height:16px;color:inherit; }.onboarding-card-head strong { font-size:12px;letter-spacing:-.015em; }.onboarding-card>p { margin:8px 0 16px;font-size:12px;line-height:1.55; }.onboarding-steps { display:grid;grid-template-columns:1fr;gap:1px;border:1px solid var(--fdc-line);border-radius:8px;overflow:hidden;background:var(--fdc-line); }.onboarding-step { display:grid;grid-template-columns:24px 1fr;gap:8px;padding:8px 12px;background:white;text-align:left; }.onboarding-step b { color:#8a8a8a;font-size:8px;font-weight:500;letter-spacing:.04em; }.onboarding-step strong { display:block;font-size:12px;font-weight:550; }.onboarding-step small { display:block;margin-top:4px;color:var(--fdc-muted);font-size:8px;line-height:1.35; }.onboarding-actions { gap:8px;margin-top:12px; }.onboarding-actions button { height:32px;padding:0 12px;border-radius:8px;font-size:12px; }
   .onboarding-card,.onboarding-step { color:var(--fdc-ink);background:var(--fdc-surface); }.onboarding-card-head span { color:#e7a68c;background:#36231d; }.onboarding-actions button { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }.onboarding-actions .onboarding-start { color:#141416;background:#f0f1f3;border-color:#f0f1f3; }
-  .status-popover { width:256px; }.status-popover-actions { display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px; }.status-popover .status-popover-actions button { height:32px;margin:0; }.status-popover .status-popover-actions [data-status-retry] { grid-column:1/-1; }
+  .status-popover { width:256px; }.status-popover-actions { display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px; }.status-popover .status-popover-actions button { height:32px;margin:0; }.status-popover .status-popover-actions [data-status-retry],.status-popover .status-popover-actions [data-status-repair] { grid-column:1/-1; }
   .onboarding-card { width:360px; }.onboarding-card-head>strong { flex:1; }.onboarding-card-head .onboarding-close { width:28px;height:28px;display:grid;place-items:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.onboarding-card-head .onboarding-close:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.onboarding-card-head .onboarding-close svg { width:12px;height:12px; }.onboarding-steps { gap:4px;border:0;overflow:visible;background:transparent; }.onboarding-step { min-height:40px;grid-template-columns:24px minmax(0,1fr);align-items:center;gap:8px;padding:8px;border:1px solid var(--fdc-line);border-radius:8px; }.onboarding-step b { width:20px;height:20px;display:grid;place-items:center;border:1px solid var(--fdc-line);border-radius:50%;color:var(--fdc-muted);font:500 8px/1 var(--fdc-font);letter-spacing:0; }.onboarding-step b svg { width:12px;height:12px; }.onboarding-step.complete>b { color:#141416;background:#8ae0c2;border-color:#8ae0c2; }.onboarding-step.current { border-color:var(--fdc-signal);box-shadow:0 0 0 4px rgb(59 130 246 / 10%); }
   .review-summary { color:var(--fdc-ink);background:var(--fdc-paper); }.empty-state-icon { color:#9ec5ff;background:var(--fdc-signal-soft); }
   .component-card,.health-card { color:var(--fdc-ink);background:var(--fdc-surface);border-color:var(--fdc-line); }.component-card.selected { color:var(--fdc-ink);background:var(--fdc-component-soft);border-color:#5c4b9e;box-shadow:0 0 0 4px rgb(155 135 245 / 10%); }.component-variants span,.component-actions button,.component-variants button { color:#c1b5f5;background:var(--fdc-component-soft);border-color:#4a406f; }.health-score::before { background:var(--fdc-surface); }.health-filters button { color:var(--fdc-muted); }.health-filters button:hover,.health-filters button.active { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }.health-card p,.health-evidence { color:var(--fdc-muted); }.mapping-chooser { color:#f0c9a8;background:#35291d;border-color:#665039; }.mapping-chooser>strong,.mapping-option,.mapping-option small { color:#e7c29f; }.review-card.locating { background:var(--fdc-signal-soft); }.baseline-badge { color:#83d8bb;background:#18352c; }
@@ -1174,7 +1174,7 @@ export function installFoundryInspector(
   statusPill.setAttribute('aria-label', 'Foundry session status');
   statusPill.insertAdjacentHTML(
     'afterend',
-    '<div class="status-popover" hidden><strong data-status-title>Session connected</strong><span data-status-detail>Changes are stored locally.</span><code data-status-project></code><code data-status-revision></code><div class="status-popover-actions"><button data-status-checklist>Getting started</button><button data-status-diagnostics>Copy diagnostics</button><button data-status-retry>Check connection</button></div></div>',
+    '<div class="status-popover" hidden><strong data-status-title>Session connected</strong><span data-status-detail>Changes are stored locally.</span><code data-status-project></code><code data-status-revision></code><div class="status-popover-actions"><button data-status-checklist>Getting started</button><button data-status-diagnostics>Copy diagnostics</button><button data-status-retry>Check connection</button><button data-status-repair>Copy repair command</button></div></div>',
   );
   shadow
     .querySelector<HTMLElement>('.panel')!
@@ -1546,8 +1546,8 @@ export function installFoundryInspector(
     },
     {
       id: 'agent',
-      title: 'Agent restarted and connected',
-      detail: 'Keep the coding agent listening while you design.',
+      title: 'Agent connection',
+      detail: 'Keep it listening while you design. Offline batches wait safely.',
     },
     {
       id: 'selection',
@@ -3127,17 +3127,17 @@ export function installFoundryInspector(
       const count = group.querySelector<HTMLElement>('.included-count');
       if (count) count.textContent = `${included} included`;
     });
-    applyButton.textContent = !activeAgentPresence.connected
-      ? 'Connect agent to apply'
-      : selectedCount
+    applyButton.textContent = selectedCount
+      ? activeAgentPresence.connected
         ? `Apply ${selectedCount} with agent`
-        : 'Apply with agent';
-    applyButton.disabled = selectedCount === 0 || !activeAgentPresence.connected;
+        : `Queue ${selectedCount} for agent`
+      : 'Apply with agent';
+    applyButton.disabled = selectedCount === 0;
   }
 
   function agentConnectionMarkup(): string {
     const agentName = activeAgentPresence.presence?.agent?.name;
-    return `<div class="review-agent ${activeAgentPresence.connected ? 'connected' : 'disconnected'}" aria-live="polite"><i></i><div><strong>${activeAgentPresence.connected ? `${escapeHtml(agentName ?? 'Coding agent')} is ready` : 'Connect your coding agent'}</strong><span>${activeAgentPresence.connected ? 'Apply requests will be claimed automatically while this agent keeps listening.' : 'In the same project, ask your agent to start Foundry and keep listening for Apply requests.'}</span></div>${activeAgentPresence.connected ? '' : '<button data-copy-agent-listener>Copy instruction</button>'}</div>`;
+    return `<div class="review-agent ${activeAgentPresence.connected ? 'connected' : 'disconnected'}" aria-live="polite"><i></i><div><strong>${activeAgentPresence.connected ? `${escapeHtml(agentName ?? 'Coding agent')} is ready` : 'Agent currently offline'}</strong><span>${activeAgentPresence.connected ? 'Apply requests will be claimed automatically while this agent keeps listening.' : 'You can queue this batch now. Codex, Cursor, or Claude Code will claim it when the Foundry listener reconnects.'}</span></div>${activeAgentPresence.connected ? '' : '<button data-copy-agent-listener>Copy reconnect instruction</button>'}</div>`;
   }
 
   function updateAgentConnection(): void {
@@ -3589,11 +3589,6 @@ export function installFoundryInspector(
     applyButton.disabled = true;
     try {
       activeAgentPresence = await sessionRequest('/agent-presence');
-      if (!activeAgentPresence.connected) {
-        updateAgentConnection();
-        showToast('No coding agent is listening yet');
-        return;
-      }
       const payload = await sessionRequest('/apply-runs', {
         method: 'POST',
         body: JSON.stringify({
@@ -3603,6 +3598,8 @@ export function installFoundryInspector(
       });
       clearReviewDraft();
       renderReviewPayload(payload);
+      if (!activeAgentPresence.connected)
+        showToast('Queued. Your coding agent will claim this batch when it reconnects.');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not start apply run');
       updateReviewSelection();
@@ -6332,6 +6329,12 @@ export function installFoundryInspector(
       void navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
       showToast('Privacy-safe diagnostics copied');
     });
+  statusPopover
+    .querySelector<HTMLButtonElement>('[data-status-repair]')!
+    .addEventListener('click', () => {
+      void navigator.clipboard.writeText('npx foundry-design@beta doctor --repair');
+      showToast('Repair command copied');
+    });
   interfaceThemeTrigger.addEventListener('click', () => {
     if (interfaceThemeMenu.hidden) openInterfaceThemeMenu();
     else closeInterfaceThemeMenu();
@@ -6356,7 +6359,7 @@ export function installFoundryInspector(
       void navigator.clipboard.writeText(
         'Start Foundry for this project and keep listening for Apply with agent requests.',
       );
-      showToast('Restart prompt copied');
+      showToast('Listener prompt copied');
       return;
     }
     if (action === 'apply' && recordedChangeCount > 0) {

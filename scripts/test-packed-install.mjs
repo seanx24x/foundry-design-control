@@ -134,6 +134,9 @@ try {
     ['node_modules/foundry-design/dist/index.js', 'setup', '--global', '--yes'],
     { HOME: hostFixture },
   );
+  run(pluginFixture, 'node', ['node_modules/foundry-design/dist/index.js', '--yes', '--no-start'], {
+    HOME: hostFixture,
+  });
   for (const path of ['.codex/config.toml', '.cursor/mcp.json', '.mcp.json']) {
     if (existsSync(join(pluginFixture, path))) {
       throw new Error(`Plugin-provided setup unexpectedly created ${path}`);

@@ -13,9 +13,9 @@ Resolve `<skill-root>` to the directory containing this `SKILL.md` before runnin
 
 1. Inspect the project, current worktree, framework, development command, and existing Foundry configuration.
 2. Run `<skill-root>/scripts/foundry.sh doctor --project <root>`.
-3. If setup is absent, read [platform-setup.md](references/platform-setup.md), then run `<skill-root>/scripts/foundry.sh setup --project <root> --yes`. Setup prints the complete managed-file plan before applying it and detects the active coding agent. Use `--agent none` only when `foundry_design_wait_for_apply` is already callable from a plugin-provided MCP server.
+3. If setup is absent or Doctor reports a missing connection, read [platform-setup.md](references/platform-setup.md), then run `<skill-root>/scripts/foundry.sh doctor --project <root> --repair`. Repair is transactional, detects the active coding agent, validates the project, and restores every touched file if Foundry introduces a failure.
 4. Confirm that `foundry_design_wait_for_apply` is callable before promising Apply with agent. If setup just added MCP configuration but the tool is unavailable in the current process, stop and ask the user to restart their coding agent and reopen the same project root. Do not start a session or describe the connection as ready.
-5. Run `<skill-root>/scripts/foundry.sh start --project <root>`. It may start the detected development command when the configured preview URL is not already available.
+5. Run `<skill-root>/scripts/foundry.sh start --project <root>`. It may start the detected development command and resumes the most recent session for the same source revision. Use `--new` only when the user explicitly wants a clean ledger.
 6. Read the project design graph, then immediately call `foundry_design_wait_for_apply` in bounded waits using the returned session credentials and current revisions. This call publishes the agent-listener heartbeat that unlocks Apply with agent in the browser. Repeat the wait while the session is active. Do not finish the turn merely because one wait returns `waiting`; the browser cannot initiate a new agent turn by itself.
 7. Keep the Foundry runtime and apply listener alive while the user selects and refines elements. End the wait loop only when the user exits Foundry, cancels the workflow, or asks to stop.
 
@@ -43,7 +43,7 @@ Read [change-contract.md](references/change-contract.md) when interpreting or tr
 ## Apply the reviewed batch
 
 1. Read the project design graph with `foundry_design_get_project_design`.
-2. For an interactive web session, keep calling `foundry_design_wait_for_apply` in bounded waits as soon as Foundry starts. Include the current source revision, design-graph revision, and agent identity. A `waiting` result means poll again while the session remains active, not that the workflow is complete.
+2. For an interactive web session, keep calling `foundry_design_wait_for_apply` in bounded waits as soon as Foundry starts. Include the current source revision, design-graph revision, and agent identity. A reviewed run may already be queued while the agent was offline. A `waiting` result means poll again while the session remains active, not that the workflow is complete.
 3. If a run is claimed, read [apply-run-contract.md](references/apply-run-contract.md) and follow its state transitions. Do not edit from an unreviewed draft ledger.
 4. Reinspect current source before editing. Stop if the claimed run reports a stale revision, stale graph, unresolved target, or unresolved operation.
 5. Report `applying`, then implement the user's selected semantic mapping at the narrowest source of truth.

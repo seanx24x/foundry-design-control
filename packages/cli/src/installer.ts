@@ -19,6 +19,7 @@ export interface FoundryProjectConfig {
   targetUrl?: string;
   devCommand?: { command: string; args: string[] };
   instrumented: boolean;
+  mode?: 'precision' | 'basic';
   design?: {
     tokenFiles?: string[];
     componentRoots?: string[];
@@ -102,7 +103,7 @@ export interface UninstallResult {
 
 const START = '>>> Foundry Design Control';
 const END = '<<< Foundry Design Control';
-const GENERATOR_VERSION = '0.2.0-beta.5';
+const GENERATOR_VERSION = '0.2.0-beta.6';
 const TRANSACTION_FILE = 'setup-transaction.json';
 const execFileAsync = promisify(execFile);
 const DEFAULT_SKILL_ROOT = fileURLToPath(
@@ -959,6 +960,7 @@ export async function setupProject(
       ...(plan.targetUrl ? { targetUrl: plan.targetUrl } : {}),
       ...(plan.devCommand ? { devCommand: plan.devCommand } : {}),
       instrumented: plan.platform !== 'web' || Boolean(plan.integrationFile),
+      mode: plan.platform === 'web' && !plan.integrationFile ? 'basic' : 'precision',
       design: {
         componentRoots: ['src', 'app', 'components'],
         exclude: ['node_modules', 'dist', 'build', '.next', 'coverage'],

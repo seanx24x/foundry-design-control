@@ -6,27 +6,27 @@ Foundry is a local-first precision design workbench for Codex, Cursor, and Claud
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
-> **Current public beta:** `0.2.0-beta.5`. Install Foundry with the `@beta` tag. The unqualified npm `latest` tag still points to an earlier beta and is not the current testing channel.
+> **Current public beta:** `0.2.0-beta.6`. Install Foundry with the `@beta` tag. The unqualified npm `latest` tag still points to an earlier beta and is not the current testing channel.
 
 Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 
-### Recommended: let your coding agent install it
+### Recommended: one command
 
-Open the project in Codex, Cursor, or Claude Code and paste:
+Open a terminal in the project, or ask Codex, Cursor, or Claude Code to run:
 
-```text
-Install Foundry for this project by running npx foundry-design@beta setup --global --yes. Check the result and tell me when I need to restart.
+```bash
+npx foundry-design@beta
 ```
 
-Setup detects the project and active coding agent, installs development-only instrumentation, configures one reusable user-level agent connection, validates the project integration, and records everything it owns for safe updates or removal. The `--global` flag means future projects do not need another MCP configuration.
+That command detects the project and active coding agent, installs or safely updates Foundry, repairs the shared agent connection, validates its integration, starts the project when needed, and opens the visual session. On the first installation only, restart the coding agent once so it can load the shared MCP connection. A reviewed batch can be queued before the restart and will be claimed when the agent reconnects.
 
-Restart the coding agent once, reopen the same project folder, and paste:
+After the restart, reopen the same project folder and ask:
 
 ```text
 Start Foundry for this project and keep listening for Apply with agent requests.
 ```
 
-That is the normal workflow. Foundry starts the project when needed, opens an authenticated local preview, and shows **Agent is ready** before it allows an apply request.
+That is the normal workflow. Foundry resumes the most recent session for the current source revision and keeps all review and apply state local.
 
 ### Manual installation
 
@@ -48,7 +48,7 @@ Then restart the coding agent, reopen the same project folder, and ask:
 Start Foundry for this project and keep listening for Apply with agent requests.
 ```
 
-You do not need to run a second terminal command when the agent starts Foundry for you. For a manual-only preview, run `npx foundry-design@beta start`, but Apply with agent still requires a restarted and actively listening coding agent.
+You do not need to run a second terminal command when the agent starts Foundry for you. Apply requests remain queued safely when the agent is offline. Run `npx foundry-design@beta doctor --repair` if the connection or generated integration needs repair.
 
 Update an existing installation with:
 
@@ -68,7 +68,7 @@ Supported automatic web integration currently includes Next.js App Router, Vite,
 
 The npm setup above is the public beta installation path and includes the same portable skill and MCP connection used by the agent plugin bundle.
 
-The beta supports Node.js 20 or newer. Read [Privacy](PRIVACY.md), [Security](SECURITY.md), and the [beta changelog](CHANGELOG.md) before using it with sensitive work.
+The beta supports Node.js 20 or newer. Read the [local-first safety model](https://withfoundry.ai/#safety) before using it with sensitive work.
 
 ## Agent plugin
 

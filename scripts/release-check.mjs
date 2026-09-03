@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
-const version = '0.2.0-beta.5';
+const version = '0.2.0-beta.6';
 const packagePaths = [
   'apps/inspector/package.json',
   'packages/cli/package.json',
@@ -31,6 +31,9 @@ const manifestPaths = [
 
 const failures = [];
 const readJson = (path) => JSON.parse(readFileSync(join(root, path), 'utf8'));
+const rootReadmeDigest = createHash('sha256')
+  .update(readFileSync(join(root, 'README.md')))
+  .digest('hex');
 
 for (const path of requiredDocs) {
   if (!existsSync(join(root, path))) failures.push(`Missing ${path}`);
@@ -45,6 +48,29 @@ for (const path of packagePaths) {
   if (!manifest.repository) failures.push(`${path} is missing repository metadata`);
   if (!manifest.homepage) failures.push(`${path} is missing homepage metadata`);
   if (!manifest.bugs) failures.push(`${path} is missing issue tracker metadata`);
+}
+
+for (const path of packagePaths.map((path) => path.replace('package.json', 'README.md'))) {
+  if (!existsSync(join(root, path))) {
+    failures.push(`${path} is missing`);
+    continue;
+  }
+  if (
+    createHash('sha256')
+      .update(readFileSync(join(root, path)))
+      .digest('hex') !== rootReadmeDigest
+  )
+    failures.push(`${path} drifted from the canonical README.md`);
+}
+
+for (const path of [
+  'plugins/foundry-design-control/hooks/hooks.json',
+  'plugins/foundry-design-control/hooks/cursor-hooks.json',
+  'plugins/foundry-design-control/scripts/claude-session-start.mjs',
+  'plugins/foundry-design-control/scripts/cursor-session-start.mjs',
+  'plugins/foundry-design-control/commands/foundry.md',
+]) {
+  if (!existsSync(join(root, path))) failures.push(`Missing plugin lifecycle file ${path}`);
 }
 
 for (const path of manifestPaths) {

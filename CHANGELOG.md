@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0-beta.6 - 2026-09-02
+
+- Added `npx foundry-design@beta` as the single install, update, repair, validate, start, and resume entry point.
+- Made reviewed apply runs durable while the coding agent is offline, with automatic claiming after the MCP listener reconnects.
+- Added loopback-only basic preview injection for web projects without a safely detectable client entry, while preserving precision instrumentation for exact source mapping.
+- Added shared-connection checks and `doctor --repair`, plus a copyable repair command in the live session status panel.
+- Added current-revision session resume and safe reuse of an already running local Foundry runtime.
+- Added Cursor and Claude Code plugin session hooks and a Cursor command that prepare Foundry-enabled workspaces for the apply listener workflow.
+- Made the root README the canonical source for all seven public package READMEs and automated their release synchronization.
+
 ## 0.2.0-beta.5 - 2026-09-02
 
 - Added one-command shared agent setup with `setup --global`, so the MCP connection and Foundry skill can be reused across projects.
