@@ -75,6 +75,52 @@ test('overlay selects use one accessible theme-aware menu system', () => {
   assert.match(source, /:host\(\[data-interface-theme="light"\]\) \.fdc-select-menu/);
 });
 
+test('Typography Studio separates source-safe project fonts from local previews', () => {
+  const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  assert.match(source, /data-open-typography-studio/);
+  assert.match(source, /data-typography-search/);
+  assert.match(source, /queryLocalFonts/);
+  assert.match(source, /origin === 'local'/);
+  assert.match(source, /await applyControlValue/);
+  assert.match(source, /Local fonts remain preview-only/);
+});
+
+test('Typography Studio requires a source strategy for new Google Fonts', () => {
+  const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  assert.match(source, /\/google-fonts\?query=/);
+  assert.match(source, /data-google-font/);
+  assert.match(source, /data-font-strategy/);
+  assert.match(source, /data-review-google-font/);
+  assert.match(source, /font integration strategy:/);
+  assert.match(source, /Google Fonts CSS2 preview loaded/);
+  assert.match(source, /data-font-weight/);
+  assert.match(source, /data-font-style/);
+  assert.match(source, /data-font-axis/);
+  assert.match(source, /Script coverage/);
+  assert.match(source, /googleFontVariationSettings/);
+  assert.match(source, /variable axes:/);
+});
+
+test('Typography Studio reports rendered face and wrapping diagnostics', () => {
+  const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  assert.match(source, /typographyDiagnosticsMarkup/);
+  assert.match(source, /document\.fonts\.check/);
+  assert.match(source, /measuredTextLineCount/);
+  assert.match(source, /Rendered type/);
+  assert.match(source, /Face and wrapping look stable at this viewport/);
+});
+
+test('Typography Studio previews treatments and scale values before review', () => {
+  const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  assert.match(source, /typographyLabMarkup/);
+  assert.match(source, /data-type-treatment/);
+  assert.match(source, /data-preview-type-scale/);
+  assert.match(source, /data-type-scale-fluid/);
+  assert.match(source, /reviewTypeTreatment/);
+  assert.match(source, /reviewTypeScale/);
+  assert.match(source, /Typography Studio modular scale:/);
+});
+
 test('the review flow queues approved changes when the coding agent is offline', () => {
   const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
   assert.match(source, /sessionRequest\('\/agent-presence'\)/);

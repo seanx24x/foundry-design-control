@@ -5,11 +5,22 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { FoundryRuntime } from './server.js';
 import { SessionStore } from './store.js';
+import { GoogleFontsCatalog } from './google-fonts.js';
 
 test('protects and serves the apply-run lifecycle over loopback HTTP', async () => {
   const port = 46_000 + Math.floor(Math.random() * 1_000);
   const store = new SessionStore(await mkdtemp(join(tmpdir(), 'foundry-runtime-')));
-  const runtime = new FoundryRuntime({ port, store });
+  const runtime = new FoundryRuntime({
+    port,
+    store,
+    googleFontsCatalog: new GoogleFontsCatalog(async () =>
+      Response.json({
+        familyMetadataList: [
+          { family: 'Newsreader', category: 'Serif', fonts: { '400': {} }, popularity: 1 },
+        ],
+      }),
+    ),
+  });
   await runtime.start();
   try {
     const session = await store.create({
@@ -23,6 +34,25 @@ test('protects and serves the apply-run lifecycle over loopback HTTP', async () 
     const id = session.changeSet.sessionId;
     const unauthorized = await fetch(`http://127.0.0.1:${port}/v1/sessions/${id}/apply-runs`);
     assert.equal(unauthorized.status, 401);
+
+    const fontCatalog = await fetch(
+      `http://127.0.0.1:${port}/v1/sessions/${id}/google-fonts?query=news`,
+      { headers: { 'x-foundry-token': session.token } },
+    );
+    assert.equal(fontCatalog.status, 200);
+    assert.deepEqual(await fontCatalog.json(), {
+      fonts: [
+        {
+          family: 'Newsreader',
+          category: 'Serif',
+          variants: ['400'],
+          subsets: [],
+          axes: [],
+          popularity: 1,
+        },
+      ],
+      source: 'google',
+    });
 
     const bootstrap = await fetch(`http://127.0.0.1:${port}/adapter-bootstrap.js`);
     assert.equal(bootstrap.status, 200);

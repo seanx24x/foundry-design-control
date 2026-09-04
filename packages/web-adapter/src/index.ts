@@ -66,6 +66,28 @@ import {
   replaceBlur,
   type ShadowEffectValue,
 } from './effects.js';
+import {
+  analyzeTypography,
+  collectProjectFonts,
+  defaultGoogleFontSelection,
+  fontInstallStrategies,
+  fontFamilyDeclaration,
+  fluidTypeClamp,
+  googleFontStyles,
+  googleFontVariationSettings,
+  googleFontWeights,
+  googleFontsCssUrl,
+  localFontRecords,
+  modularTypeSize,
+  parseFontFamilyStack,
+  typeTreatments,
+  type FontInstallStrategy,
+  type GoogleFontFamily,
+  type GoogleFontSelection,
+  type LocalFontRecord,
+  type RenderedFontFace,
+  type TypographyFontFace,
+} from './typography.js';
 
 export interface FoundryInspectorOptions {
   runtimeUrl?: string;
@@ -361,6 +383,12 @@ const PANEL_CSS = `
   .section-actions { flex:none;display:flex;align-items:center;gap:4px; }.section-action,.section-actions button,.category-action,.token-menu-trigger { height:28px;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:0 8px;border:1px solid transparent;border-radius:4px;color:var(--fdc-muted);background:transparent;font:500 8px/1 var(--fdc-font);cursor:pointer; }.section-action:hover,.section-actions button:hover,.category-action:hover,.token-menu-trigger:hover { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }.section-action svg,.category-action svg,.token-menu-trigger svg { width:12px;height:12px; }.type-presets button { width:28px;padding:0; }.category-action { margin-left:auto; }.inspector-heading .property-count { margin-left:4px; }
   .token-menu-wrap { position:relative;display:flex;align-items:center;margin-top:4px; }.token-menu-trigger { width:28px;padding:0; }.token-menu { position:absolute;z-index:8;top:32px;right:0;width:232px;max-height:220px;overflow:auto;padding:4px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-elevated);box-shadow:0 16px 36px rgb(0 0 0 / 38%); }.token-menu[hidden] { display:none; }.token-option { width:100%;height:32px;display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:8px;padding:0 8px;border:0;border-radius:4px;color:var(--fdc-ink);background:transparent;text-align:left;cursor:pointer; }.token-option:hover { background:var(--fdc-subtle); }.token-option .swatch { width:12px;height:12px;border:1px solid rgb(255 255 255 / 14%);border-radius:4px;background:var(--token-color); }.token-option span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:8px; }.token-option code { color:var(--fdc-muted);font:400 8px/1 var(--fdc-font); }
   .color-picker-trigger { width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 32px 0 8px;border:0;background:transparent;color:var(--fdc-ink);font:400 12px/1 var(--fdc-font);text-align:left;cursor:pointer; }.color-picker-trigger .color-swatch { margin-left:0; }.color-popover { position:fixed;z-index:2147483647;width:280px;padding:12px;border:1px solid var(--fdc-line);border-radius:12px;color:var(--fdc-ink);background:var(--fdc-elevated);box-shadow:0 20px 60px rgb(0 0 0 / 48%);pointer-events:auto; }.color-popover[hidden] { display:none; }.color-popover-head { height:28px;display:flex;align-items:center;margin-bottom:8px; }.color-popover-head strong { font-size:12px;font-weight:550; }.color-popover-head button { margin-left:auto; }.color-plane { position:relative;width:100%;height:152px;overflow:hidden;border-radius:8px;background:linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent),hsl(var(--picker-hue) 100% 50%);cursor:crosshair;touch-action:none; }.color-plane-handle { position:absolute;width:12px;height:12px;transform:translate(-50%,-50%);border:4px solid white;border-radius:50%;box-shadow:0 1px 4px #000;pointer-events:none; }.color-sliders { display:grid;gap:8px;margin-top:8px; }.color-sliders label { display:grid;grid-template-columns:36px minmax(0,1fr);align-items:center;gap:8px;color:var(--fdc-muted);font-size:8px; }.color-sliders input[type="range"] { width:100%;accent-color:var(--fdc-signal); }.color-fields { display:grid;grid-template-columns:minmax(0,1fr) 36px;gap:8px;margin-top:8px; }.color-fields input { min-width:0;height:32px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-ink);background:var(--fdc-paper);font:400 12px/1 var(--fdc-font);outline:none; }.color-fields button { height:32px;display:grid;place-items:center;padding:0;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-muted);background:var(--fdc-paper);cursor:pointer; }.color-fields button:hover { color:var(--fdc-ink); }.color-fields svg { width:12px;height:12px; }.color-popover-section { margin-top:12px;padding-top:8px;border-top:1px solid var(--fdc-line); }.color-popover-section strong { display:block;margin-bottom:8px;color:var(--fdc-muted);font-size:8px;font-weight:500;text-transform:uppercase;letter-spacing:.04em; }.color-swatches { display:flex;flex-wrap:wrap;gap:8px; }.color-swatches button { width:24px;height:24px;padding:0;border:1px solid rgb(255 255 255 / 16%);border-radius:4px;background:var(--picker-swatch);cursor:pointer; }.color-swatches button:hover { box-shadow:0 0 0 4px var(--fdc-signal); }
+  .typography-popover { position:fixed;z-index:2147483647;width:360px;max-width:calc(100vw - 16px);max-height:min(560px,calc(100vh - 16px));overflow:hidden;display:flex;flex-direction:column;border:1px solid var(--fdc-line);border-radius:12px;color:var(--fdc-ink);background:var(--fdc-elevated);box-shadow:0 20px 60px rgb(0 0 0 / 48%);pointer-events:auto; }.typography-popover[hidden] { display:none; }.typography-popover-head { min-height:44px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line); }.typography-popover-head>span { width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:#9ec5ff;background:var(--fdc-signal-soft); }.typography-popover-head>span svg { width:16px;height:16px; }.typography-popover-head strong { font-size:12px;font-weight:550; }.typography-popover-head small { margin-left:4px;color:var(--fdc-muted);font-size:8px; }.typography-popover-head button { margin-left:auto; }.typography-search { padding:8px 12px;border-bottom:1px solid var(--fdc-line); }.typography-search input { width:100%;height:36px;padding:0 12px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-paper);font:400 12px/1 var(--fdc-font);outline:none; }.typography-search input:focus { border-color:var(--fdc-signal);box-shadow:0 0 0 4px color-mix(in srgb,var(--fdc-signal) 18%,transparent); }.typography-fonts { min-height:0;overflow:auto;padding:8px; }.typography-group+.typography-group { margin-top:12px;padding-top:12px;border-top:1px solid var(--fdc-line); }.typography-group-head { display:flex;align-items:center;min-height:24px;padding:0 4px 4px; }.typography-group-head strong { color:var(--fdc-muted);font-size:8px;font-weight:550; }.typography-group-head span { margin-left:auto;color:var(--fdc-muted);font:400 8px/1 var(--fdc-font-mono); }.typography-font-row { width:100%;min-height:52px;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px;border:0;border-radius:8px;color:var(--fdc-ink);background:transparent;text-align:left;cursor:pointer; }.typography-font-row:hover,.typography-font-row:focus-visible { background:var(--fdc-subtle);outline:0; }.typography-font-row.active { background:var(--fdc-signal-soft); }.typography-font-copy { min-width:0;display:grid;gap:4px; }.typography-font-copy strong { overflow:hidden;text-overflow:ellipsis;font-size:16px;line-height:20px;font-weight:450;white-space:nowrap; }.typography-font-copy span { overflow:hidden;text-overflow:ellipsis;color:var(--fdc-muted);font-size:8px;line-height:12px;white-space:nowrap; }.typography-font-meta { padding:4px 8px;border-radius:4px;color:var(--fdc-muted);background:var(--fdc-paper);font:400 8px/1 var(--fdc-font-mono); }.typography-local-empty { display:grid;gap:8px;padding:12px;border:1px dashed var(--fdc-line);border-radius:8px; }.typography-local-empty p { margin:0;color:var(--fdc-muted);font-size:12px;line-height:16px; }.typography-local-empty button { justify-self:start;height:32px;padding:0 12px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-paper);font-size:12px;cursor:pointer; }.typography-local-empty button:hover { background:var(--fdc-subtle); }.typography-preview-note { display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-top:1px solid var(--fdc-line);color:var(--fdc-muted);font-size:8px;line-height:12px; }.typography-preview-note svg { width:12px;height:12px;flex:none; }.typography-preview-note strong { color:var(--fdc-ink);font-weight:550; }
+  .typography-google-plan { display:grid;gap:8px;margin-top:8px;padding:12px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.typography-google-plan>div:first-child { display:grid;gap:4px; }.typography-google-plan>div:first-child strong { font-size:12px;font-weight:550; }.typography-google-plan>div:first-child span { color:var(--fdc-muted);font-size:12px;line-height:16px; }.typography-strategies { display:grid;grid-template-columns:1fr 1fr;gap:4px; }.typography-strategies button { min-width:0;min-height:48px;display:grid;grid-template-columns:minmax(0,1fr) 12px;align-items:center;gap:4px;padding:8px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-ink);background:var(--fdc-surface);text-align:left;cursor:pointer; }.typography-strategies button:hover,.typography-strategies button[aria-checked="true"] { border-color:var(--fdc-signal);background:var(--fdc-signal-soft); }.typography-strategies button>span { min-width:0;display:grid;gap:4px; }.typography-strategies strong { font-size:12px;font-weight:550; }.typography-strategies small { overflow:hidden;color:var(--fdc-muted);font-size:8px;line-height:12px;text-overflow:ellipsis;white-space:nowrap; }.typography-strategies svg { width:12px;height:12px;color:var(--fdc-signal); }.typography-strategies button[aria-checked="false"] svg { visibility:hidden; }.typography-review-font { height:32px;border:1px solid var(--fdc-ink);border-radius:8px;color:var(--fdc-paper);background:var(--fdc-ink);font-size:12px;font-weight:550;cursor:pointer; }.typography-review-font:hover { opacity:.88; }
+  .typography-strategies button { min-height:64px;align-items:start; }.typography-strategies small { overflow:visible;line-height:12px;text-overflow:clip;white-space:normal; }
+  .typography-google-summary { display:grid;gap:4px;padding-bottom:8px;border-bottom:1px solid var(--fdc-line); }.typography-google-summary strong { font-size:16px;line-height:20px;font-weight:550; }.typography-google-summary span { color:var(--fdc-muted);font-size:8px;line-height:12px; }.typography-choice-section { display:grid;gap:8px; }.typography-choice-label { color:var(--fdc-muted);font-size:8px;line-height:12px;font-weight:550; }.typography-weight-options { display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px; }.typography-weight-options button,.typography-style-options button { min-width:0;height:32px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-muted);background:var(--fdc-surface);font:400 8px/1 var(--fdc-font-mono);cursor:pointer; }.typography-weight-options button:hover,.typography-style-options button:hover,.typography-weight-options button[aria-checked="true"],.typography-style-options button[aria-checked="true"] { border-color:var(--fdc-signal);color:var(--fdc-signal);background:var(--fdc-signal-soft); }.typography-style-options { display:grid;grid-template-columns:1fr 1fr;gap:4px; }.typography-style-options button { font-family:var(--fdc-font);font-size:12px; }.typography-axis-list { max-height:208px;overflow:auto;display:grid;gap:4px;padding-right:4px; }.typography-axis { min-height:40px;display:grid;grid-template-columns:92px minmax(0,1fr) 40px;align-items:center;gap:8px;padding:4px 8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-surface); }.typography-axis>span { min-width:0;display:grid;grid-template-columns:32px minmax(0,1fr);align-items:baseline;gap:4px; }.typography-axis strong { font:550 8px/1 var(--fdc-font-mono); }.typography-axis small { overflow:hidden;color:var(--fdc-muted);font-size:8px;line-height:12px;text-overflow:ellipsis;white-space:nowrap; }.typography-axis input { width:100%;height:16px;margin:0;accent-color:var(--fdc-signal); }.typography-axis output { color:var(--fdc-ink);font:400 8px/1 var(--fdc-font-mono);text-align:right; }.typography-subsets { display:flex;flex-wrap:wrap;gap:4px; }.typography-subsets span { padding:4px 8px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-muted);background:var(--fdc-surface);font:400 8px/1 var(--fdc-font-mono);text-transform:capitalize; }
+  .typography-diagnostics { display:grid;gap:8px;margin-bottom:12px;padding:12px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.typography-diagnostics-head { display:grid;gap:4px; }.typography-diagnostics-head strong { font-size:12px;font-weight:550; }.typography-diagnostics-head span { color:var(--fdc-muted);font:400 8px/12px var(--fdc-font-mono); }.typography-diagnostic-list { display:grid;gap:4px; }.typography-diagnostic { display:grid;grid-template-columns:16px minmax(0,1fr);align-items:start;gap:8px;padding:8px;border:1px solid #634236;border-radius:4px;color:#efb39e;background:#2b201d; }.typography-diagnostic[data-severity="warning"] { border-color:#62502d;color:#e5c477;background:#29251b; }.typography-diagnostic>svg { width:12px;height:12px;place-self:center; }.typography-diagnostic>span { min-width:0;display:grid;gap:4px; }.typography-diagnostic strong { font-size:12px;line-height:16px;font-weight:550; }.typography-diagnostic small { color:var(--fdc-muted);font-size:8px;line-height:12px; }.typography-diagnostic-clear { display:flex;align-items:center;gap:8px;padding:8px;border-radius:4px;color:#74c7aa;background:#182922;font-size:8px;line-height:12px; }.typography-diagnostic-clear svg { width:12px;height:12px;flex:none; }:host([data-interface-theme="light"]) .typography-diagnostic { border-color:#efc5b7;color:#8b4431;background:#fff3ee; }:host([data-interface-theme="light"]) .typography-diagnostic[data-severity="warning"] { border-color:#ead69f;color:#735714;background:#fff9e8; }:host([data-interface-theme="light"]) .typography-diagnostic-clear { color:#236c59;background:#eef8f4; }
+  .typography-lab { display:grid;gap:12px;margin-bottom:12px;padding:12px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.typography-lab-head { display:grid;gap:4px; }.typography-lab-head strong { font-size:12px;font-weight:550; }.typography-lab-head span { color:var(--fdc-muted);font-size:12px;line-height:16px; }.typography-treatment-options { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px; }.typography-treatment { min-width:0;height:64px;display:grid;align-content:center;gap:4px;padding:8px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-elevated);text-align:left;cursor:pointer; }.typography-treatment:hover,.typography-treatment:focus-visible,.typography-treatment[aria-pressed="true"] { border-color:var(--fdc-signal);background:var(--fdc-signal-soft);outline:0; }.typography-treatment strong { font-size:12px;font-weight:550; }.typography-treatment span { overflow:hidden;color:var(--fdc-muted);font-size:12px;line-height:16px;text-overflow:ellipsis;white-space:nowrap; }.typography-lab-actions { display:flex;align-items:center;gap:8px; }.typography-lab-actions button { height:32px;padding:0 12px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-elevated);font-size:12px;cursor:pointer; }.typography-lab-actions button.primary { margin-left:auto;color:white;background:var(--fdc-signal);border-color:var(--fdc-signal); }.typography-lab-actions button:disabled { opacity:.42;cursor:default; }.typography-scale { display:grid;gap:8px;padding-top:12px;border-top:1px solid var(--fdc-line); }.typography-scale-row { display:grid;grid-template-columns:72px minmax(0,1fr) 40px;align-items:center;gap:8px; }.typography-scale-row>span { color:var(--fdc-muted);font-size:12px; }.typography-scale-row input[type="range"] { width:100%;accent-color:var(--fdc-signal); }.typography-scale-row output { font:400 12px/16px var(--fdc-font-mono);text-align:right; }.typography-scale-ratios,.typography-scale-steps { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px; }.typography-scale-steps { grid-template-columns:repeat(5,minmax(0,1fr)); }.typography-scale-ratios button,.typography-scale-steps button { height:28px;padding:0;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-muted);background:var(--fdc-elevated);font:400 12px/1 var(--fdc-font-mono);cursor:pointer; }.typography-scale-ratios button[aria-pressed="true"],.typography-scale-steps button[aria-pressed="true"] { color:var(--fdc-ink);border-color:var(--fdc-signal);background:var(--fdc-signal-soft); }.typography-scale-result { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px;border-radius:4px;background:var(--fdc-elevated); }.typography-scale-result code { overflow:hidden;color:var(--fdc-muted);font:400 12px/16px var(--fdc-font-mono);text-overflow:ellipsis;white-space:nowrap; }.typography-scale-result button { height:28px;padding:0 8px;border:0;border-radius:4px;color:var(--fdc-ink);background:var(--fdc-subtle);font-size:12px;cursor:pointer; }
   .review-summary { background:var(--fdc-paper); }.review-before { color:var(--fdc-muted);background:var(--fdc-subtle); }.review-sample { color:var(--fdc-muted);background:var(--fdc-paper);border-color:var(--fdc-line); }.review-sample::after { color:var(--fdc-muted);background:rgb(28 28 31 / 88%); }
   .confidence-pill { color:#9ec5ff;background:var(--fdc-signal-soft); }.confidence-pill.unresolved { color:#f2ae8f;background:#42271d; }
   .session-status,.session-status.saved { color:#83d8bb;background:#18352c; }.session-status.saving { color:#efd979;background:#3d3417; }.session-status.error,.session-status.offline { color:#f0a18b;background:#40251f; }
@@ -574,6 +602,7 @@ const PANEL_CSS = `
   :host([data-embedded="true"]) .compare-bar,
   :host([data-embedded="true"]) .command-palette,
   :host([data-embedded="true"]) .color-popover,
+  :host([data-embedded="true"]) .typography-popover,
   :host([data-embedded="true"]) .library-panel,
   :host([data-embedded="true"]) .workbench,
   :host([data-embedded="true"]) .comparison-stage,
@@ -1309,6 +1338,12 @@ export function installFoundryInspector(
   colorPopover.setAttribute('role', 'dialog');
   colorPopover.setAttribute('aria-label', 'Color editor');
   shadow.append(colorPopover);
+  const typographyPopover = document.createElement('section');
+  typographyPopover.className = 'typography-popover';
+  typographyPopover.hidden = true;
+  typographyPopover.setAttribute('role', 'dialog');
+  typographyPopover.setAttribute('aria-label', 'Typography Studio');
+  shadow.append(typographyPopover);
   const libraryPanel = document.createElement('aside');
   libraryPanel.className = 'library-panel utility-panel';
   libraryPanel.dataset.utility = 'memory';
@@ -1853,6 +1888,43 @@ export function installFoundryInspector(
         saturation: number;
         value: number;
         alpha: number;
+      }
+    | undefined;
+  let localTypographyFonts: TypographyFontFace[] = [];
+  let googleTypographyFonts: GoogleFontFamily[] = [];
+  let googleTypographySource: 'google' | 'fallback' | 'loading' | 'error' = 'loading';
+  let googleTypographySelection: GoogleFontSelection | undefined;
+  const pendingGoogleFontFamilies = new Set<string>();
+  let googleTypographyStrategy: FontInstallStrategy = 'framework';
+  let typographyQuery = '';
+  let typographySearchTimer: ReturnType<typeof setTimeout> | undefined;
+  let typographyCatalogRequest = 0;
+  let typographyTrigger: HTMLButtonElement | null = null;
+  let typographyScaleBase = 16;
+  let typographyScaleRatio = 1.25;
+  let typographyScaleStep = 1;
+  let typographyScaleFluid = false;
+  let typographyTreatmentPreview:
+    | {
+        element: HTMLElement;
+        inlineFontSize: string;
+        inlineLineHeight: string;
+        inlineLetterSpacing: string;
+        baselineFontSize: number;
+        treatmentId?: string;
+        scaleValue?: string;
+      }
+    | undefined;
+  let typographyPreview:
+    | {
+        element: HTMLElement;
+        inlineFamily: string;
+        inlineWeight: string;
+        inlineStyle: string;
+        inlineVariationSettings: string;
+        family: string;
+        origin: 'local' | 'google';
+        link?: HTMLLinkElement;
       }
     | undefined;
   let lastRecordedSummary = '';
@@ -4459,6 +4531,7 @@ export function installFoundryInspector(
     after: string | number,
     element = selected,
     operationLabel?: string,
+    extraEvidence: string[] = [],
   ): Promise<void> {
     if (!element || !sessionId || !token) {
       showToast('Session connection is missing');
@@ -4515,6 +4588,7 @@ export function installFoundryInspector(
       evidence: [
         'live preview override',
         'computed style',
+        ...extraEvidence,
         ...candidates.flatMap((candidate) => candidate.evidence),
       ],
       status: ambiguous ? 'unresolved' : 'draft',
@@ -4830,6 +4904,7 @@ export function installFoundryInspector(
     control: Control,
     value: string | number,
     operationLabel: string,
+    extraEvidence: string[] = [],
   ): Promise<void> {
     if (!selected) return;
     const element = selected;
@@ -4847,7 +4922,808 @@ export function installFoundryInspector(
       label: control.label,
     });
     updateOutline();
-    await record(control, before, after, element, operationLabel);
+    await record(control, before, after, element, operationLabel, extraEvidence);
+  }
+
+  function restoreTypographyPreview(): void {
+    if (typographyPreview) {
+      typographyPreview.element.style.fontFamily = typographyPreview.inlineFamily;
+      typographyPreview.element.style.fontWeight = typographyPreview.inlineWeight;
+      typographyPreview.element.style.fontStyle = typographyPreview.inlineStyle;
+      typographyPreview.element.style.fontVariationSettings =
+        typographyPreview.inlineVariationSettings;
+      typographyPreview.link?.remove();
+      typographyPreview = undefined;
+    }
+    restoreTypeTreatmentPreview();
+    if (selected) selectedControls = controlsFor(selected);
+    updateOutline();
+  }
+
+  function restoreTypeTreatmentPreview(): void {
+    if (!typographyTreatmentPreview) return;
+    const preview = typographyTreatmentPreview;
+    preview.element.style.fontSize = preview.inlineFontSize;
+    preview.element.style.lineHeight = preview.inlineLineHeight;
+    preview.element.style.letterSpacing = preview.inlineLetterSpacing;
+    typographyTreatmentPreview = undefined;
+  }
+
+  function ensureTypeTreatmentPreview():
+    NonNullable<typeof typographyTreatmentPreview> | undefined {
+    if (!selected) return undefined;
+    if (typographyTreatmentPreview?.element === selected) return typographyTreatmentPreview;
+    restoreTypeTreatmentPreview();
+    typographyTreatmentPreview = {
+      element: selected,
+      inlineFontSize: selected.style.fontSize,
+      inlineLineHeight: selected.style.lineHeight,
+      inlineLetterSpacing: selected.style.letterSpacing,
+      baselineFontSize: Number.parseFloat(getComputedStyle(selected).fontSize) || 16,
+    };
+    return typographyTreatmentPreview;
+  }
+
+  function previewTypeTreatment(treatmentId: string): void {
+    const treatment = typeTreatments.find((item) => item.id === treatmentId);
+    const preview = ensureTypeTreatmentPreview();
+    if (!selected || !treatment || !preview) return;
+    const lineHeight = Math.max(
+      4,
+      Math.round((preview.baselineFontSize * treatment.lineHeight) / 4) * 4,
+    );
+    selected.style.fontSize = preview.inlineFontSize;
+    selected.style.lineHeight = `${lineHeight}px`;
+    selected.style.letterSpacing = treatment.letterSpacing;
+    preview.treatmentId = treatment.id;
+    preview.scaleValue = undefined;
+    if (selected) selectedControls = controlsFor(selected);
+    updateOutline();
+  }
+
+  function currentScaleValue(): string {
+    const maximum = modularTypeSize(typographyScaleBase, typographyScaleRatio, typographyScaleStep);
+    if (!typographyScaleFluid) return `${maximum}px`;
+    const minimum = modularTypeSize(
+      typographyScaleBase,
+      typographyScaleRatio,
+      typographyScaleStep - 1,
+    );
+    return fluidTypeClamp(minimum, maximum);
+  }
+
+  function previewTypeScale(): void {
+    const preview = ensureTypeTreatmentPreview();
+    if (!selected || !preview) return;
+    const value = currentScaleValue();
+    selected.style.fontSize = value;
+    selected.style.lineHeight = preview.inlineLineHeight;
+    selected.style.letterSpacing = preview.inlineLetterSpacing;
+    preview.treatmentId = undefined;
+    preview.scaleValue = value;
+    if (selected) selectedControls = controlsFor(selected);
+    updateOutline();
+  }
+
+  function closeTypographyStudio(restoreFocus = false, restorePreview = true): void {
+    if (typographySearchTimer) clearTimeout(typographySearchTimer);
+    typographyCatalogRequest += 1;
+    if (restorePreview) restoreTypographyPreview();
+    typographyPopover.hidden = true;
+    if (restoreFocus) typographyTrigger?.focus();
+    typographyTrigger = null;
+  }
+
+  async function loadGoogleFonts(query: string): Promise<void> {
+    const request = ++typographyCatalogRequest;
+    googleTypographySource = 'loading';
+    renderTypographyStudio(query);
+    try {
+      const payload = (await sessionRequest(
+        `/google-fonts?query=${encodeURIComponent(query)}&limit=60`,
+      )) as { fonts: GoogleFontFamily[]; source: 'google' | 'fallback' };
+      if (request !== typographyCatalogRequest) return;
+      googleTypographyFonts = payload.fonts;
+      googleTypographySource = payload.source;
+    } catch {
+      if (request !== typographyCatalogRequest) return;
+      googleTypographyFonts = [];
+      googleTypographySource = 'error';
+    }
+    renderTypographyStudio(query);
+  }
+
+  async function loadGoogleFontStylesheet(
+    selection: GoogleFontSelection,
+    committed = false,
+  ): Promise<HTMLLinkElement> {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = googleFontsCssUrl(selection.font, {
+      weight: selection.weight,
+      style: selection.style,
+      axes: selection.axes,
+      variableRanges: selection.font.axes.length > 0,
+    });
+    link.dataset.foundryGoogleFont = committed ? 'committed' : 'preview';
+    const loaded = new Promise<void>((resolveLoad, rejectLoad) => {
+      link.addEventListener('load', () => resolveLoad(), { once: true });
+      link.addEventListener('error', () => rejectLoad(new Error('Google Font failed to load')), {
+        once: true,
+      });
+    });
+    document.head.append(link);
+    await loaded;
+    await document.fonts.load(
+      `${selection.style} ${selection.weight} 16px "${selection.font.family.replaceAll('"', '\\"')}"`,
+    );
+    return link;
+  }
+
+  function applyGoogleFontPreview(selection: GoogleFontSelection): void {
+    if (!typographyPreview) return;
+    const element = typographyPreview.element;
+    const currentStack = getComputedStyle(element).fontFamily;
+    element.style.fontFamily = fontFamilyDeclaration(selection.font.family, currentStack);
+    element.style.fontWeight = String(selection.weight);
+    element.style.fontStyle = selection.style;
+    element.style.fontVariationSettings = googleFontVariationSettings(selection);
+    if (selected) selectedControls = controlsFor(selected);
+    updateOutline();
+  }
+
+  async function refreshGoogleFontPreviewStylesheet(selection: GoogleFontSelection): Promise<void> {
+    if (!typographyPreview || typographyPreview.origin !== 'google') return;
+    const currentPreview = typographyPreview;
+    try {
+      const link = await loadGoogleFontStylesheet(selection);
+      if (typographyPreview !== currentPreview || googleTypographySelection !== selection) {
+        link.remove();
+        return;
+      }
+      currentPreview.link?.remove();
+      currentPreview.link = link;
+      applyGoogleFontPreview(selection);
+    } catch {
+      showToast(`${selection.font.family} could not load that style`);
+    }
+  }
+
+  async function previewGoogleFont(font: GoogleFontFamily): Promise<void> {
+    if (!selected) return;
+    const element = selected;
+    const control = selectedControls.find((item) => item.property === 'fontFamily');
+    if (!control) return;
+    restoreTypographyPreview();
+    const computed = getComputedStyle(element);
+    const selection = defaultGoogleFontSelection(
+      font,
+      Number.parseInt(computed.fontWeight, 10) || 400,
+      computed.fontStyle,
+    );
+    try {
+      const link = await loadGoogleFontStylesheet(selection);
+      typographyPreview = {
+        element,
+        inlineFamily: element.style.fontFamily,
+        inlineWeight: element.style.fontWeight,
+        inlineStyle: element.style.fontStyle,
+        inlineVariationSettings: element.style.fontVariationSettings,
+        family: font.family,
+        origin: 'google',
+        link,
+      };
+      googleTypographySelection = selection;
+      applyGoogleFontPreview(selection);
+      renderTypographyStudio(typographyQuery);
+      showToast(`${font.family} previewed from Google Fonts`);
+    } catch {
+      showToast(`${font.family} could not be loaded`);
+    }
+  }
+
+  async function reviewGoogleFont(): Promise<void> {
+    const selection = googleTypographySelection;
+    if (!selected || !selection) return;
+    const font = selection.font;
+    restoreTypographyPreview();
+    try {
+      await loadGoogleFontStylesheet(selection, true);
+      const strategy = fontInstallStrategies.find((item) => item.id === googleTypographyStrategy)!;
+      const evidence = [
+        'Google Fonts CSS2 preview loaded',
+        `font integration strategy: ${googleTypographyStrategy}`,
+        `Google Fonts family: ${font.family}`,
+        `font weight: ${selection.weight}`,
+        `font style: ${selection.style}`,
+        ...(font.axes.length ? [`variable axes: ${googleFontVariationSettings(selection)}`] : []),
+      ];
+      const controls = controlsFor(selected);
+      const familyControl = controls.find((item) => item.property === 'fontFamily');
+      if (!familyControl) return;
+      await applyControlValue(
+        familyControl,
+        fontFamilyDeclaration(font.family, String(familyControl.read())),
+        `Use ${font.family} through ${strategy.label.toLocaleLowerCase()}`,
+        evidence,
+      );
+      const weightControl = controls.find((item) => item.property === 'fontWeight');
+      if (weightControl)
+        await applyControlValue(
+          weightControl,
+          String(selection.weight),
+          `Set ${font.family} weight to ${selection.weight}`,
+          evidence,
+        );
+      const styleControl = controls.find((item) => item.property === 'fontStyle');
+      if (styleControl)
+        await applyControlValue(
+          styleControl,
+          selection.style,
+          `Set ${font.family} style to ${selection.style}`,
+          evidence,
+        );
+      const variationControl = controls.find((item) => item.property === 'fontVariationSettings');
+      if (variationControl && font.axes.some((axis) => !['ital', 'wght'].includes(axis.tag)))
+        await applyControlValue(
+          variationControl,
+          googleFontVariationSettings(selection),
+          `Set ${font.family} variable axes`,
+          evidence,
+        );
+      pendingGoogleFontFamilies.add(font.family.toLocaleLowerCase());
+      if (selected) selectedControls = controlsFor(selected);
+      closeTypographyStudio(false, false);
+      renderControls();
+      publishWorkspaceState();
+    } catch {
+      showToast(`${font.family} could not be prepared for review`);
+    }
+  }
+
+  function typographyFontRows(
+    fonts: TypographyFontFace[],
+    activeFamilies: string[],
+    origin: 'project' | 'local',
+  ): string {
+    return fonts
+      .map((font) => {
+        const active = activeFamilies.some(
+          (family) => family.toLocaleLowerCase() === font.family.toLocaleLowerCase(),
+        );
+        const detail = [
+          font.weights.length
+            ? `${font.weights.length} ${font.weights.length === 1 ? 'weight' : 'weights'}`
+            : '',
+          font.styles.length
+            ? `${font.styles.length} ${font.styles.length === 1 ? 'style' : 'styles'}`
+            : '',
+          font.status === 'fallback' ? 'Fallback' : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        const declaration = fontFamilyDeclaration(
+          font.family,
+          getComputedStyle(selected!).fontFamily,
+        );
+        return `<button type="button" class="typography-font-row ${active ? 'active' : ''}" data-typography-family="${escapeHtml(font.family)}" data-typography-origin="${origin}" style="--preview-family:${escapeHtml(declaration)}"><span class="typography-font-copy"><strong style="font-family:var(--preview-family)">${escapeHtml(font.family)}</strong><span>${escapeHtml(detail || (origin === 'local' ? 'Available on this device' : 'Used in this project'))}</span></span><span class="typography-font-meta">${active ? 'Active' : origin === 'local' ? 'Preview' : 'Use'}</span></button>`;
+      })
+      .join('');
+  }
+
+  function googleFontRows(activeFamilies: string[]): string {
+    return googleTypographyFonts
+      .map((font) => {
+        const active = activeFamilies.some(
+          (family) => family.toLocaleLowerCase() === font.family.toLocaleLowerCase(),
+        );
+        const selectedFont = googleTypographySelection?.font.family === font.family;
+        const weights = new Set(
+          font.variants.map((variant) => variant.match(/\d+/)?.[0]).filter(Boolean),
+        );
+        const detail = [
+          font.category,
+          weights.size ? `${weights.size} ${weights.size === 1 ? 'weight' : 'weights'}` : '',
+          font.axes.length
+            ? `${font.axes.length} variable ${font.axes.length === 1 ? 'axis' : 'axes'}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        return `<button type="button" class="typography-font-row ${active || selectedFont ? 'active' : ''}" data-google-font="${escapeHtml(font.family)}"><span class="typography-font-copy"><strong>${escapeHtml(font.family)}</strong><span>${escapeHtml(detail)}</span></span><span class="typography-font-meta">${active ? 'Active' : selectedFont ? 'Previewing' : 'Preview'}</span></button>`;
+      })
+      .join('');
+  }
+
+  function measuredTextLineCount(element: HTMLElement): number | undefined {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const tops = new Set(
+      [...range.getClientRects()]
+        .filter((rect) => rect.width > 0 && rect.height > 0)
+        .map((rect) => Math.round(rect.top * 2) / 2),
+    );
+    return tops.size || undefined;
+  }
+
+  function typographyDiagnosticsMarkup(): string {
+    if (!selected) return '';
+    const computed = getComputedStyle(selected);
+    const family = parseFontFamilyStack(computed.fontFamily)[0] ?? computed.fontFamily;
+    const fontSize = Number.parseFloat(computed.fontSize) || 16;
+    const parsedLineHeight = Number.parseFloat(computed.lineHeight);
+    const lineHeight = Number.isFinite(parsedLineHeight) ? parsedLineHeight : fontSize * 1.2;
+    const faces: RenderedFontFace[] = [...document.fonts].map((face) => ({
+      family: face.family,
+      weight: face.weight,
+      style: face.style,
+      status: face.status,
+    }));
+    const escapedFamily = family.replaceAll('"', '\\"');
+    const analysis = analyzeTypography({
+      primaryFamily: family,
+      requestedWeight: Number.parseInt(computed.fontWeight, 10) || 400,
+      requestedStyle: computed.fontStyle,
+      fontSynthesis: computed.fontSynthesis,
+      fontCheck: document.fonts.check(
+        `${computed.fontStyle} ${computed.fontWeight} ${fontSize}px "${escapedFamily}"`,
+        selected.textContent?.trim().slice(0, 32) || 'BESbswy',
+      ),
+      faces,
+      text: selected.textContent ?? '',
+      fontSize,
+      lineHeight,
+      clientWidth: selected.clientWidth,
+      clientHeight: selected.clientHeight,
+      scrollWidth: selected.scrollWidth,
+      scrollHeight: selected.scrollHeight,
+      whiteSpace: computed.whiteSpace,
+      overflowX: computed.overflowX,
+      overflowY: computed.overflowY,
+      measuredLineCount: measuredTextLineCount(selected),
+    });
+    const statusLabel =
+      analysis.faceStatus === 'system'
+        ? 'System face'
+        : analysis.faceStatus === 'loaded'
+          ? 'Loaded face'
+          : analysis.faceStatus === 'failed'
+            ? 'Load failed'
+            : 'Fallback';
+    const metrics = `${analysis.lineCount} ${analysis.lineCount === 1 ? 'line' : 'lines'} · ${analysis.charactersPerLine} chars/line · ${statusLabel}`;
+    const findings = analysis.diagnostics.length
+      ? `<div class="typography-diagnostic-list">${analysis.diagnostics
+          .map(
+            (finding) =>
+              `<div class="typography-diagnostic" data-severity="${finding.severity}"><i data-foundry-icon="triangle-alert"></i><span><strong>${escapeHtml(finding.title)}</strong><small>${escapeHtml(finding.detail)}</small></span></div>`,
+          )
+          .join('')}</div>`
+      : '<div class="typography-diagnostic-clear"><i data-foundry-icon="check"></i><span>Face and wrapping look stable at this viewport.</span></div>';
+    return `<section class="typography-diagnostics" aria-label="Rendered typography diagnostics"><div class="typography-diagnostics-head"><strong>Rendered type</strong><span>${escapeHtml(metrics)}</span></div>${findings}</section>`;
+  }
+
+  function typographyLabMarkup(): string {
+    const activeTreatment = typographyTreatmentPreview?.treatmentId;
+    const scaleValue = currentScaleValue();
+    const scaleActive = typographyTreatmentPreview?.scaleValue === scaleValue;
+    return `<section class="typography-lab" aria-label="Type treatment previews"><div class="typography-lab-head"><strong>Try a treatment</strong><span>Preview rhythm on the selected text before adding it to review.</span></div><div class="typography-treatment-options">${typeTreatments
+      .map(
+        (treatment) =>
+          `<button type="button" class="typography-treatment" data-type-treatment="${treatment.id}" aria-pressed="${String(activeTreatment === treatment.id)}"><strong>${treatment.label}</strong><span>${treatment.detail}</span></button>`,
+      )
+      .join(
+        '',
+      )}</div><div class="typography-lab-actions"><button type="button" data-reset-type-preview ${typographyTreatmentPreview ? '' : 'disabled'}>Reset</button><button type="button" class="primary" data-review-type-treatment ${activeTreatment ? '' : 'disabled'}>Add treatment</button></div><div class="typography-scale"><div class="typography-lab-head"><strong>Type scale</strong><span>Grid-aligned modular steps with an optional fluid range.</span></div><label class="typography-scale-row"><span>Base size</span><input type="range" min="8" max="128" step="4" value="${typographyScaleBase}" data-type-scale-base aria-label="Base type size"/><output>${typographyScaleBase}px</output></label><div class="typography-scale-ratios" aria-label="Type scale ratio">${[
+      1.125, 1.2, 1.25, 1.333,
+    ]
+      .map(
+        (ratio) =>
+          `<button type="button" data-type-scale-ratio="${ratio}" aria-pressed="${String(typographyScaleRatio === ratio)}">${ratio}</button>`,
+      )
+      .join('')}</div><div class="typography-scale-steps" aria-label="Type scale step">${[
+      -1, 0, 1, 2, 3,
+    ]
+      .map(
+        (step) =>
+          `<button type="button" data-type-scale-step="${step}" aria-pressed="${String(typographyScaleStep === step)}">${step > 0 ? '+' : ''}${step}</button>`,
+      )
+      .join(
+        '',
+      )}</div><div class="typography-scale-result"><code title="${escapeHtml(scaleValue)}">${escapeHtml(scaleValue)}</code><button type="button" data-type-scale-fluid aria-pressed="${String(typographyScaleFluid)}">${typographyScaleFluid ? 'Fluid' : 'Fixed'}</button></div><div class="typography-lab-actions"><button type="button" data-preview-type-scale>${scaleActive ? 'Previewing' : 'Preview scale'}</button><button type="button" class="primary" data-review-type-scale ${scaleActive ? '' : 'disabled'}>Add scale value</button></div></div></section>`;
+  }
+
+  async function reviewTypeTreatment(): Promise<void> {
+    const preview = typographyTreatmentPreview;
+    const treatment = typeTreatments.find((item) => item.id === preview?.treatmentId);
+    if (!selected || !preview || !treatment) return;
+    const lineHeight = Math.max(
+      4,
+      Math.round((preview.baselineFontSize * treatment.lineHeight) / 4) * 4,
+    );
+    restoreTypographyPreview();
+    const controls = controlsFor(selected);
+    const lineHeightControl = controls.find((item) => item.property === 'lineHeight');
+    const spacingControl = controls.find((item) => item.property === 'letterSpacing');
+    const evidence = [
+      `Typography Studio treatment: ${treatment.label}`,
+      `grid-aligned line height: ${lineHeight}px`,
+      `letter spacing: ${treatment.letterSpacing}`,
+    ];
+    if (lineHeightControl)
+      await applyControlValue(
+        lineHeightControl,
+        `${lineHeight}px`,
+        `Apply ${treatment.label.toLocaleLowerCase()} type rhythm`,
+        evidence,
+      );
+    if (spacingControl)
+      await applyControlValue(
+        spacingControl,
+        treatment.letterSpacing,
+        `Apply ${treatment.label.toLocaleLowerCase()} tracking`,
+        evidence,
+      );
+    if (selected) selectedControls = controlsFor(selected);
+    closeTypographyStudio(false, false);
+    renderControls();
+    publishWorkspaceState();
+  }
+
+  async function reviewTypeScale(): Promise<void> {
+    const preview = typographyTreatmentPreview;
+    if (!selected || !preview?.scaleValue) return;
+    const value = preview.scaleValue;
+    restoreTypographyPreview();
+    const element = selected;
+    const control: Control = {
+      category: 'typography',
+      property: 'fontSize',
+      label: 'Font size',
+      kind: 'text',
+      value: element.style.fontSize || getComputedStyle(element).fontSize,
+      read: () => element.style.fontSize || getComputedStyle(element).fontSize,
+      apply: (nextValue) => element.style.setProperty('font-size', String(nextValue)),
+    };
+    await applyControlValue(control, value, 'Apply type scale value', [
+      `Typography Studio modular scale: base ${typographyScaleBase}px`,
+      `scale ratio: ${typographyScaleRatio}`,
+      `scale step: ${typographyScaleStep}`,
+      typographyScaleFluid ? 'fluid range: 320px to 1440px' : 'fixed scale value',
+    ]);
+    if (selected) selectedControls = controlsFor(selected);
+    closeTypographyStudio(false, false);
+    renderControls();
+    publishWorkspaceState();
+  }
+
+  function axisLabel(tag: string): string {
+    return (
+      (
+        {
+          GRAD: 'Grade',
+          XOPQ: 'Thick stroke',
+          XTRA: 'Counter width',
+          YOPQ: 'Thin stroke',
+          YTAS: 'Ascender height',
+          YTDE: 'Descender depth',
+          YTFI: 'Figure height',
+          YTLC: 'Lowercase height',
+          YTUC: 'Uppercase height',
+          opsz: 'Optical size',
+          slnt: 'Slant',
+          wdth: 'Width',
+        } as Record<string, string>
+      )[tag] ?? tag
+    );
+  }
+
+  function googleFontPlan(): string {
+    const selection = googleTypographySelection;
+    if (!selection) return '';
+    const font = selection.font;
+    const weights = googleFontWeights(font);
+    const styles = googleFontStyles(font);
+    const editableAxes = font.axes.filter((axis) => !['ital', 'wght'].includes(axis.tag));
+    const subsets = font.subsets.filter((subset) => subset !== 'menu');
+    return `<div class="typography-google-plan"><div class="typography-google-summary"><strong>${escapeHtml(font.family)}</strong><span>${escapeHtml(font.category)} · ${weights.length} ${weights.length === 1 ? 'weight' : 'weights'}${editableAxes.length ? ` · ${editableAxes.length} variable ${editableAxes.length === 1 ? 'axis' : 'axes'}` : ''}</span></div><section class="typography-choice-section"><span class="typography-choice-label">Weight</span><div class="typography-weight-options" role="radiogroup" aria-label="Font weight">${weights
+      .map(
+        (weight) =>
+          `<button type="button" role="radio" aria-checked="${String(weight === selection.weight)}" data-font-weight="${weight}">${weight}</button>`,
+      )
+      .join('')}</div></section>${
+      styles.length > 1
+        ? `<section class="typography-choice-section"><span class="typography-choice-label">Style</span><div class="typography-style-options" role="radiogroup" aria-label="Font style">${styles.map((style) => `<button type="button" role="radio" aria-checked="${String(style === selection.style)}" data-font-style="${style}">${style === 'normal' ? 'Normal' : 'Italic'}</button>`).join('')}</div></section>`
+        : ''
+    }${
+      editableAxes.length
+        ? `<section class="typography-choice-section"><span class="typography-choice-label">Variable axes</span><div class="typography-axis-list">${editableAxes
+            .map((axis) => {
+              const value = selection.axes[axis.tag] ?? axis.defaultValue;
+              const step = axis.max - axis.min <= 10 ? 0.1 : 1;
+              return `<label class="typography-axis"><span><strong>${escapeHtml(axis.tag)}</strong><small>${escapeHtml(axisLabel(axis.tag))}</small></span><input type="range" min="${axis.min}" max="${axis.max}" step="${step}" value="${value}" data-font-axis="${escapeHtml(axis.tag)}" aria-label="${escapeHtml(axisLabel(axis.tag))}"/><output>${Number(value.toFixed(2))}</output></label>`;
+            })
+            .join('')}</div></section>`
+        : ''
+    }${
+      subsets.length
+        ? `<section class="typography-choice-section"><span class="typography-choice-label">Script coverage</span><div class="typography-subsets">${subsets
+            .slice(0, 6)
+            .map((subset) => `<span>${escapeHtml(subset.replaceAll('-', ' '))}</span>`)
+            .join(
+              '',
+            )}${subsets.length > 6 ? `<span>+${subsets.length - 6}</span>` : ''}</div></section>`
+        : ''
+    }<section class="typography-choice-section"><span class="typography-choice-label">Add to source</span><div class="typography-strategies" role="radiogroup" aria-label="Font integration strategy">${fontInstallStrategies
+      .map(
+        (strategy) =>
+          `<button type="button" role="radio" aria-checked="${String(strategy.id === googleTypographyStrategy)}" data-font-strategy="${strategy.id}"><span><strong>${strategy.label}</strong><small>${strategy.detail}</small></span><i data-foundry-icon="check"></i></button>`,
+      )
+      .join(
+        '',
+      )}</div></section><button type="button" class="typography-review-font" data-review-google-font>Add font to review</button></div>`;
+  }
+
+  function renderTypographyStudio(query = ''): void {
+    if (!selected) return;
+    typographyQuery = query;
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    const previewGoogleFamily =
+      typographyPreview?.origin === 'google'
+        ? typographyPreview.family.toLocaleLowerCase()
+        : undefined;
+    const projectFonts = collectProjectFonts(document, selected).filter((font) => {
+      const family = font.family.toLocaleLowerCase();
+      return (
+        family.includes(normalizedQuery) &&
+        family !== previewGoogleFamily &&
+        !pendingGoogleFontFamilies.has(family)
+      );
+    });
+    const localFonts = localTypographyFonts.filter((font) =>
+      font.family.toLocaleLowerCase().includes(normalizedQuery),
+    );
+    const activeFamilies = parseFontFamilyStack(getComputedStyle(selected).fontFamily);
+    const supportsLocalFonts =
+      typeof (window as Window & { queryLocalFonts?: unknown }).queryLocalFonts === 'function';
+    const googleStatus =
+      googleTypographySource === 'loading'
+        ? 'Loading'
+        : googleTypographySource === 'fallback'
+          ? 'Offline set'
+          : googleTypographySource === 'error'
+            ? 'Unavailable'
+            : `${googleTypographyFonts.length}`;
+    typographyPopover.innerHTML = `<div class="typography-popover-head"><span><i data-foundry-icon="type"></i></span><strong>Typography Studio</strong><small>${projectFonts.length} project ${projectFonts.length === 1 ? 'font' : 'fonts'}</small><button class="icon-button" data-close-typography aria-label="Close Typography Studio"><i data-foundry-icon="x"></i></button></div><div class="typography-search"><input type="search" data-typography-search aria-label="Search fonts" placeholder="Search project, Google, and local fonts" value="${escapeHtml(query)}"/></div><div class="typography-fonts">${typographyDiagnosticsMarkup()}${typographyLabMarkup()}<section class="typography-group"><div class="typography-group-head"><strong>In this project</strong><span>${projectFonts.length}</span></div>${projectFonts.length ? typographyFontRows(projectFonts, activeFamilies, 'project') : '<div class="typography-local-empty"><p>No project fonts match this search.</p></div>'}</section><section class="typography-group"><div class="typography-group-head"><strong>Google Fonts</strong><span>${googleStatus}</span></div>${googleTypographySource === 'loading' ? '<div class="typography-local-empty"><p>Reading the current Google Fonts catalog…</p></div>' : googleTypographyFonts.length ? googleFontRows(activeFamilies) : '<div class="typography-local-empty"><p>Google Fonts could not be reached. Search remains available for project and local fonts.</p></div>'}${googleFontPlan()}</section><section class="typography-group"><div class="typography-group-head"><strong>On this device</strong><span>${localFonts.length || 'Private'}</span></div>${
+      localFonts.length
+        ? typographyFontRows(localFonts, activeFamilies, 'local')
+        : `<div class="typography-local-empty"><p>${supportsLocalFonts ? 'Foundry only reads font names after you allow access. Font files stay on this device.' : 'Local font access is not available in this browser. Project fonts remain available.'}</p>${supportsLocalFonts ? '<button type="button" data-load-local-fonts>Allow local font access</button>' : ''}</div>`
+    }</section></div><div class="typography-preview-note"><i data-foundry-icon="type"></i><span>${typographyPreview ? `<strong>${escapeHtml(typographyPreview.family)}</strong> is a ${typographyPreview.origin === 'google' ? 'Google Fonts' : 'local'} preview. Close this panel to restore the source-backed font.` : 'Project fonts create reviewed changes. Local fonts remain preview-only. New Google Fonts require an installation strategy before review.'}</span></div>`;
+    renderIcons(typographyPopover);
+    typographyPopover
+      .querySelector<HTMLButtonElement>('[data-close-typography]')
+      ?.addEventListener('click', () => closeTypographyStudio(true));
+    typographyPopover
+      .querySelectorAll<HTMLButtonElement>('[data-type-treatment]')
+      .forEach((button) => {
+        button.addEventListener('click', () => {
+          previewTypeTreatment(button.dataset.typeTreatment ?? '');
+          refreshTypographyStudio();
+        });
+      });
+    typographyPopover
+      .querySelector<HTMLButtonElement>('[data-reset-type-preview]')
+      ?.addEventListener('click', () => {
+        restoreTypeTreatmentPreview();
+        if (selected) selectedControls = controlsFor(selected);
+        updateOutline();
+        refreshTypographyStudio();
+      });
+    typographyPopover
+      .querySelector<HTMLButtonElement>('[data-review-type-treatment]')
+      ?.addEventListener('click', () => void reviewTypeTreatment());
+    typographyPopover
+      .querySelector<HTMLInputElement>('[data-type-scale-base]')
+      ?.addEventListener('change', (event) => {
+        const wasScale = Boolean(typographyTreatmentPreview?.scaleValue);
+        typographyScaleBase = Number((event.currentTarget as HTMLInputElement).value);
+        if (wasScale) previewTypeScale();
+        refreshTypographyStudio();
+      });
+    typographyPopover
+      .querySelectorAll<HTMLButtonElement>('[data-type-scale-ratio]')
+      .forEach((button) => {
+        button.addEventListener('click', () => {
+          const wasScale = Boolean(typographyTreatmentPreview?.scaleValue);
+          typographyScaleRatio = Number(button.dataset.typeScaleRatio);
+          if (wasScale) previewTypeScale();
+          refreshTypographyStudio();
+        });
+      });
+    typographyPopover
+      .querySelectorAll<HTMLButtonElement>('[data-type-scale-step]')
+      .forEach((button) => {
+        button.addEventListener('click', () => {
+          const wasScale = Boolean(typographyTreatmentPreview?.scaleValue);
+          typographyScaleStep = Number(button.dataset.typeScaleStep);
+          if (wasScale) previewTypeScale();
+          refreshTypographyStudio();
+        });
+      });
+    typographyPopover
+      .querySelector<HTMLButtonElement>('[data-type-scale-fluid]')
+      ?.addEventListener('click', () => {
+        const wasScale = Boolean(typographyTreatmentPreview?.scaleValue);
+        typographyScaleFluid = !typographyScaleFluid;
+        if (wasScale) previewTypeScale();
+        refreshTypographyStudio();
+      });
+    typographyPopover
+      .querySelector<HTMLButtonElement>('[data-preview-type-scale]')
+      ?.addEventListener('click', () => {
+        previewTypeScale();
+        refreshTypographyStudio();
+      });
+    typographyPopover
+      .querySelector<HTMLButtonElement>('[data-review-type-scale]')
+      ?.addEventListener('click', () => void reviewTypeScale());
+    const search = typographyPopover.querySelector<HTMLInputElement>('[data-typography-search]');
+    search?.addEventListener('input', () => {
+      const nextQuery = search.value;
+      renderTypographyStudio(nextQuery);
+      if (typographySearchTimer) clearTimeout(typographySearchTimer);
+      typographySearchTimer = setTimeout(() => void loadGoogleFonts(nextQuery), 240);
+      const nextSearch = typographyPopover.querySelector<HTMLInputElement>(
+        '[data-typography-search]',
+      );
+      nextSearch?.focus();
+      nextSearch?.setSelectionRange(nextQuery.length, nextQuery.length);
+    });
+    typographyPopover
+      .querySelector<HTMLButtonElement>('[data-load-local-fonts]')
+      ?.addEventListener('click', async () => {
+        const queryLocalFonts = (
+          window as Window & { queryLocalFonts?: () => Promise<LocalFontRecord[]> }
+        ).queryLocalFonts;
+        if (!queryLocalFonts) return;
+        try {
+          localTypographyFonts = localFontRecords(await queryLocalFonts.call(window));
+          renderTypographyStudio(query);
+        } catch (error) {
+          showToast(
+            error instanceof DOMException && error.name === 'NotAllowedError'
+              ? 'Local font access was not allowed'
+              : 'Local fonts could not be read in this browser',
+          );
+        }
+      });
+    typographyPopover
+      .querySelectorAll<HTMLButtonElement>('[data-typography-family]')
+      .forEach((button) => {
+        button.addEventListener('click', async () => {
+          if (!selected) return;
+          const family = button.dataset.typographyFamily ?? '';
+          const origin = button.dataset.typographyOrigin;
+          const control = selectedControls.find((item) => item.property === 'fontFamily');
+          if (!family || !control) return;
+          if (origin === 'local') {
+            restoreTypographyPreview();
+            typographyPreview = {
+              element: selected,
+              inlineFamily: selected.style.fontFamily,
+              inlineWeight: selected.style.fontWeight,
+              inlineStyle: selected.style.fontStyle,
+              inlineVariationSettings: selected.style.fontVariationSettings,
+              family,
+              origin: 'local',
+            };
+            selected.style.fontFamily = fontFamilyDeclaration(family, String(control.read()));
+            updateOutline();
+            renderTypographyStudio(query);
+            showToast(`${family} previewed locally`);
+            return;
+          }
+          restoreTypographyPreview();
+          await applyControlValue(
+            control,
+            fontFamilyDeclaration(family, String(control.read())),
+            `Use ${family}`,
+          );
+          if (selected) selectedControls = controlsFor(selected);
+          closeTypographyStudio(false, false);
+          renderControls();
+          publishWorkspaceState();
+        });
+      });
+    typographyPopover
+      .querySelectorAll<HTMLButtonElement>('[data-google-font]')
+      .forEach((button) => {
+        button.addEventListener('click', () => {
+          const font = googleTypographyFonts.find(
+            (candidate) => candidate.family === button.dataset.googleFont,
+          );
+          if (font) void previewGoogleFont(font);
+        });
+      });
+    typographyPopover
+      .querySelectorAll<HTMLButtonElement>('[data-font-strategy]')
+      .forEach((button) => {
+        button.addEventListener('click', () => {
+          googleTypographyStrategy = button.dataset.fontStrategy as FontInstallStrategy;
+          renderTypographyStudio(query);
+        });
+      });
+    typographyPopover
+      .querySelectorAll<HTMLButtonElement>('[data-font-weight]')
+      .forEach((button) => {
+        button.addEventListener('click', () => {
+          if (!googleTypographySelection) return;
+          googleTypographySelection.weight = Number(button.dataset.fontWeight);
+          googleTypographySelection.axes.wght = googleTypographySelection.weight;
+          applyGoogleFontPreview(googleTypographySelection);
+          void refreshGoogleFontPreviewStylesheet(googleTypographySelection);
+          renderTypographyStudio(query);
+        });
+      });
+    typographyPopover.querySelectorAll<HTMLButtonElement>('[data-font-style]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (!googleTypographySelection) return;
+        googleTypographySelection.style = button.dataset.fontStyle as 'normal' | 'italic';
+        googleTypographySelection.axes.ital = googleTypographySelection.style === 'italic' ? 1 : 0;
+        applyGoogleFontPreview(googleTypographySelection);
+        void refreshGoogleFontPreviewStylesheet(googleTypographySelection);
+        renderTypographyStudio(query);
+      });
+    });
+    typographyPopover.querySelectorAll<HTMLInputElement>('[data-font-axis]').forEach((input) => {
+      input.addEventListener('input', () => {
+        if (!googleTypographySelection) return;
+        const tag = input.dataset.fontAxis;
+        if (!tag) return;
+        googleTypographySelection.axes[tag] = Number(input.value);
+        input.closest('label')?.querySelector('output')?.replaceChildren(input.value);
+        applyGoogleFontPreview(googleTypographySelection);
+      });
+    });
+    typographyPopover
+      .querySelector<HTMLButtonElement>('[data-review-google-font]')
+      ?.addEventListener('click', () => void reviewGoogleFont());
+  }
+
+  function refreshTypographyStudio(): void {
+    const scrollTop =
+      typographyPopover.querySelector<HTMLElement>('.typography-fonts')?.scrollTop ?? 0;
+    renderTypographyStudio(typographyQuery);
+    const scroller = typographyPopover.querySelector<HTMLElement>('.typography-fonts');
+    if (scroller) scroller.scrollTop = scrollTop;
+  }
+
+  function openTypographyStudio(trigger: HTMLButtonElement): void {
+    if (!selected) return;
+    colorPopover.hidden = true;
+    activeColor = undefined;
+    closeFdcSelect(false);
+    typographyTrigger = trigger;
+    typographyScaleBase = Math.max(
+      8,
+      Math.round((Number.parseFloat(getComputedStyle(selected).fontSize) || 16) / 4) * 4,
+    );
+    renderTypographyStudio();
+    void loadGoogleFonts('');
+    typographyPopover.hidden = false;
+    const triggerRect = trigger.getBoundingClientRect();
+    const popoverRect = typographyPopover.getBoundingClientRect();
+    const left = Math.max(
+      8,
+      Math.min(window.innerWidth - popoverRect.width - 8, triggerRect.right - popoverRect.width),
+    );
+    const preferredTop = triggerRect.bottom + 8;
+    const top =
+      preferredTop + popoverRect.height <= window.innerHeight - 8
+        ? preferredTop
+        : Math.max(8, triggerRect.top - popoverRect.height - 8);
+    typographyPopover.style.left = `${Math.round(left)}px`;
+    typographyPopover.style.top = `${Math.round(top)}px`;
+    typographyPopover.querySelector<HTMLInputElement>('[data-typography-search]')?.focus();
   }
 
   function installEffectEditor(): void {
@@ -6043,7 +6919,7 @@ export function installFoundryInspector(
                 : section.label === 'Padding'
                   ? `<span class="section-actions"><button class="section-action ${paddingLinked ? 'active' : ''}" data-padding-link aria-label="${paddingLinked ? 'Unlink padding values' : 'Link padding values'}"><i data-foundry-icon="${paddingLinked ? 'link-2' : 'unlink-2'}"></i></button></span>`
                   : section.label === 'Typeface'
-                    ? '<span class="section-actions type-presets"><button data-type-preset="compact">S</button><button data-type-preset="body">M</button><button data-type-preset="display">L</button></span>'
+                    ? '<span class="section-actions type-presets"><button class="section-action" data-open-typography-studio aria-label="Browse project and local fonts" title="Browse fonts"><i data-foundry-icon="type"></i></button><button data-type-preset="compact" aria-label="Apply compact type preset">S</button><button data-type-preset="body" aria-label="Apply body type preset">M</button><button data-type-preset="display" aria-label="Apply display type preset">L</button></span>'
                     : section.label === 'Fill'
                       ? '<span class="section-actions"><button class="section-action" data-color-action="gradient" aria-label="Add linear gradient" title="Add gradient"><i data-foundry-icon="sparkles"></i></button><button class="section-action" data-color-action="clear" aria-label="Clear fill" title="Clear fill"><i data-foundry-icon="x"></i></button></span>'
                       : section.label === 'Corners'
@@ -6082,6 +6958,11 @@ export function installFoundryInspector(
     const animations = selected.getAnimations();
     controlsRoot.innerHTML = `${currentBaseline ? `<div class="inspector-baseline"><span class="baseline-badge">Verified baseline · ${escapeHtml(new Date(currentBaseline.verifiedAt).toLocaleDateString())}</span></div>` : ''}${categoryMarkup}${renderMotionControls(animations)}`;
     renderIcons(controlsRoot);
+    controlsRoot
+      .querySelector<HTMLButtonElement>('[data-open-typography-studio]')
+      ?.addEventListener('click', (event) =>
+        openTypographyStudio(event.currentTarget as HTMLButtonElement),
+      );
     controlsRoot.querySelectorAll<HTMLButtonElement>('.section-toggle').forEach((button) => {
       button.addEventListener('click', () => {
         const section = button.closest<HTMLElement>('.property-section');
@@ -6351,6 +7232,7 @@ export function installFoundryInspector(
 
   function select(element: HTMLElement, additive = false): void {
     if (element === host || host.contains(element)) return;
+    closeTypographyStudio(false);
     colorPopover.hidden = true;
     activeColor = undefined;
     if (additive && selectedElements.includes(element)) {
@@ -6458,6 +7340,7 @@ export function installFoundryInspector(
   }
 
   function clearSelection(): void {
+    closeTypographyStudio(false);
     colorPopover.hidden = true;
     activeColor = undefined;
     selected = null;
@@ -7363,7 +8246,8 @@ export function installFoundryInspector(
     else if (!colorPopover.hidden) {
       colorPopover.hidden = true;
       activeColor = undefined;
-    } else if (!comparisonStage.hidden) closeSplitComparison();
+    } else if (!typographyPopover.hidden) closeTypographyStudio(true);
+    else if (!comparisonStage.hidden) closeSplitComparison();
     else if (!commandPalette.hidden) closeCommands();
     else if (!libraryPanel.hidden) closeDesignMemory();
     else if (!healthPanel.hidden) closeHealth();
@@ -7403,6 +8287,7 @@ export function installFoundryInspector(
   }
 
   function destroyInspector(): void {
+    restoreTypographyPreview();
     resizeObserver?.disconnect();
     fdcSelectObserver.disconnect();
     closeFdcSelect(false);

@@ -18,11 +18,13 @@ import {
   type VerificationResult,
 } from 'foundry-design-protocol';
 import { SessionStore, type StoredSession } from './store.js';
+import { GoogleFontsCatalog } from './google-fonts.js';
 
 export interface RuntimeOptions {
   host?: string;
   port?: number;
   store?: SessionStore;
+  googleFontsCatalog?: GoogleFontsCatalog;
 }
 
 interface AgentPresence {
@@ -124,6 +126,7 @@ export class FoundryRuntime {
   readonly host: string;
   readonly port: number;
   readonly store: SessionStore;
+  readonly googleFontsCatalog: GoogleFontsCatalog;
   private surfaces = new Map<string, SurfaceSnapshot>();
   private commands = new Map<string, PreviewCommand[]>();
   private agentPresence = new Map<string, AgentPresence>();
@@ -133,6 +136,7 @@ export class FoundryRuntime {
     this.host = options.host ?? '127.0.0.1';
     this.port = options.port ?? 4387;
     this.store = options.store ?? new SessionStore();
+    this.googleFontsCatalog = options.googleFontsCatalog ?? new GoogleFontsCatalog();
   }
 
   async start(): Promise<void> {
@@ -228,6 +232,14 @@ export class FoundryRuntime {
             sendJson(response, 200, { connected: true, presence });
             return;
           }
+        }
+        if (request.method === 'GET' && parts[3] === 'google-fonts') {
+          const catalog = await this.googleFontsCatalog.search(
+            url.searchParams.get('query') ?? '',
+            Number(url.searchParams.get('limit') ?? 60),
+          );
+          sendJson(response, 200, catalog);
+          return;
         }
         if (request.method === 'POST' && parts[3] === 'changes') {
           const updated = await this.store.addChange(id, (await body(request)) as never);
