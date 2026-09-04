@@ -19,7 +19,7 @@ const supportsProvenance = process.env.GITHUB_ACTIONS === 'true';
 
 function run(command, args, options = {}) {
   return spawnSync(command, args, {
-    cwd: root,
+    cwd: options.cwd ?? root,
     encoding: 'utf8',
     stdio: options.capture ? 'pipe' : 'inherit',
   });
@@ -45,15 +45,13 @@ for (const entry of packages) {
     continue;
   }
   const publishArgs = [
-    '--dir',
-    entry.directory,
     'publish',
     '--tag',
     'beta',
     '--no-git-checks',
   ];
   if (supportsProvenance) publishArgs.push('--provenance');
-  const result = run('pnpm', publishArgs);
+  const result = run('pnpm', publishArgs, { cwd: join(root, entry.directory) });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
