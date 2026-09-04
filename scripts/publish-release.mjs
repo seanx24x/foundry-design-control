@@ -15,6 +15,7 @@ const packageDirectories = [
 ];
 const registry = 'https://registry.npmjs.org';
 const promoteLatest = process.argv.includes('--promote-latest');
+const supportsProvenance = process.env.GITHUB_ACTIONS === 'true';
 
 function run(command, args, options = {}) {
   return spawnSync(command, args, {
@@ -43,15 +44,16 @@ for (const entry of packages) {
     console.log(`✓ ${entry.name}@${version} already exists; skipping immutable publication.`);
     continue;
   }
-  const result = run('pnpm', [
+  const publishArgs = [
     '--dir',
     entry.directory,
     'publish',
     '--tag',
     'beta',
-    '--provenance',
     '--no-git-checks',
-  ]);
+  ];
+  if (supportsProvenance) publishArgs.push('--provenance');
+  const result = run('pnpm', publishArgs);
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
