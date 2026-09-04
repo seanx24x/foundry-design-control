@@ -47,6 +47,8 @@ test('apply progress reuses the review hierarchy and reports the complete run', 
   assert.match(source, /Changed files/);
   assert.match(source, /Rendered verification/);
   assert.match(source, /run\.state === 'passed'/);
+  assert.match(source, /run\.interruptedState \? 'resume' : 'retry'/);
+  assert.match(source, /Resume with agent/);
   assert.match(css, /\.apply-surface\s*\{[\s\S]*flex-direction:\s*column/);
   assert.doesNotMatch(css, /\.apply-card\s*\{/);
 });

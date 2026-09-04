@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-beta.12 - 2026-09-04
+
+- Keep agent claim leases alive through source application, rebuild, and rendered verification.
+- Preserve interrupted runs and require an explicit in-product resume before another agent can continue them.
+- Distinguish installed MCP configuration from a live listening agent in Doctor and connection messaging.
+- Repair Claude hosts where a bare `~/.mcp.json` prevents user MCP servers from loading.
+- Report the published MCP server version from package metadata instead of a hard-coded value.
+
 ## 0.2.0-beta.11 - 2026-09-04
 
 - Kept claimed Apply with agent handoffs alive automatically while the coding agent inspects source, edits files, rebuilds, and verifies the result.

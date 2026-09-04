@@ -336,6 +336,8 @@ export const applyRunSchema = z.object({
   claimExpiresAt: z.string().datetime().optional(),
   claimHeartbeatAt: z.string().datetime().optional(),
   requeueCount: z.number().int().nonnegative().default(0),
+  interruptedState: z.enum(['applying', 'rebuilding', 'verifying']).optional(),
+  resumedAt: z.string().datetime().optional(),
   retryOf: z.string().optional(),
   error: z.string().optional(),
   requestedAt: z.string().datetime(),

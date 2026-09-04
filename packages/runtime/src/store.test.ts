@@ -432,7 +432,52 @@ test('recovers an abandoned claim and rejects updates from the stale agent', asy
     claimAttemptId: currentClaimId,
   });
   assert.equal(stored.applyRuns[0]?.state, 'applying');
-  assert.equal(stored.applyRuns[0]?.claimExpiresAt, undefined);
+  assert.equal(stored.applyRuns[0]?.claimExpiresAt, '2026-09-02T20:00:03.000Z');
+});
+
+test('marks interrupted source work for explicit resume and preserves run identity', async () => {
+  let now = new Date('2026-09-02T20:00:00.000Z');
+  const { store, session, changeId } = await reviewedSession({
+    claimLeaseMs: 1_000,
+    now: () => now,
+  });
+  let stored = await store.createApplyRun(session.changeSet.sessionId, {
+    reviews: [{ changeId, approved: true }],
+  });
+  const runId = stored.applyRuns[0]!.id;
+  stored = await store.claimApplyRun(session.changeSet.sessionId, runId, {
+    agent: { name: 'codex', taskId: 'first' },
+    revision: 'rev-1',
+  });
+  const firstClaim = stored.applyRuns[0]!.claimAttemptId!;
+  stored = await store.updateApplyRun(session.changeSet.sessionId, runId, {
+    state: 'applying',
+    claimAttemptId: firstClaim,
+  });
+  assert.equal(stored.applyRuns[0]?.claimExpiresAt, '2026-09-02T20:00:01.000Z');
+
+  now = new Date('2026-09-02T20:00:02.000Z');
+  stored = await store.read(session.changeSet.sessionId);
+  assert.equal(stored.applyRuns[0]?.id, runId);
+  assert.equal(stored.applyRuns[0]?.state, 'needs_attention');
+  assert.equal(stored.applyRuns[0]?.interruptedState, 'applying');
+  assert.match(stored.applyRuns[0]?.error ?? '', /disconnected while applying/);
+
+  stored = await store.authorizeApplyRunResume(session.changeSet.sessionId, runId);
+  assert.equal(stored.applyRuns.length, 1);
+  assert.equal(stored.applyRuns[0]?.state, 'queued');
+  assert.equal(stored.applyRuns[0]?.agent, undefined);
+  assert.equal(stored.applyRuns[0]?.claimAttemptId, undefined);
+  assert.equal(stored.applyRuns[0]?.completedAt, undefined);
+
+  stored = await store.claimApplyRun(session.changeSet.sessionId, runId, {
+    agent: { name: 'codex', taskId: 'second' },
+    revision: 'rev-after-partial-source-work',
+  });
+  assert.equal(stored.applyRuns[0]?.state, 'claimed');
+  assert.equal(stored.applyRuns[0]?.agent?.taskId, 'second');
+  assert.notEqual(stored.applyRuns[0]?.claimAttemptId, firstClaim);
+  assert.ok(stored.applyRuns[0]?.resumedAt);
 });
 
 test('requeues a claimed run created before claim leases were introduced', async () => {

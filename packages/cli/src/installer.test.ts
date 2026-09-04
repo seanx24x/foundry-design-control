@@ -127,6 +127,7 @@ test('uses the exact public MCP package outside the monorepo', async () => {
 test('installs reusable host integrations without touching a project', async () => {
   const home = await fixture('host-agent');
   const skillRoot = await skillFixture();
+  await writeFile(join(home, '.mcp.json'), '{}\n');
 
   for (const agent of ['codex', 'cursor', 'claude'] as const) {
     const result = await installHostAgentIntegration(home, agent, { skillRoot });
@@ -141,6 +142,8 @@ test('installs reusable host integrations without touching a project', async () 
   assert.equal(cursor.mcpServers['foundry-design-control'].command, 'npx');
   const claude = JSON.parse(await readFile(join(home, '.claude.json'), 'utf8'));
   assert.equal(claude.mcpServers['foundry-design-control'].command, 'npx');
+  const sharedClaudeConfig = JSON.parse(await readFile(join(home, '.mcp.json'), 'utf8'));
+  assert.deepEqual(sharedClaudeConfig.mcpServers, {});
 
   const customized = join(home, '.codex', 'skills', 'foundry-design-control', 'SKILL.md');
   await writeFile(customized, '# Foundry Design Control\n\nProject note.\n');

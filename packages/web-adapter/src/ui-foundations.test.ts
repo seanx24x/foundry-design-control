@@ -159,13 +159,18 @@ test('the review flow queues approved changes when the coding agent is offline',
 
 test('the apply handoff exposes recovery and verifies independently of review visibility', () => {
   const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  const runSource = readFileSync(new URL('./apply-run.ts', import.meta.url), 'utf8');
   assert.match(source, /claimed: 'Handoff received'/);
-  assert.match(source, /Foundry safely returned this batch to the queue/);
-  assert.match(source, /applyButton\.dataset\.action = 'reconnect'/);
+  assert.match(runSource, /Foundry safely returned this batch to the queue/);
+  assert.match(runSource, /action: 'reconnect'/);
+  assert.match(source, /applyButton\.dataset\.action = primaryAction\.action/);
+  assert.match(source, /applyRunAction\(run, activeAgentPresence\.connected/);
+  assert.match(runSource, /Resume with agent/);
+  assert.match(source, /\/resume/);
   assert.match(source, /Stop apply/);
   assert.match(source, /Confirm stop/);
   assert.match(source, /Press Confirm stop within 5 seconds/);
-  assert.match(source, /Foundry is keeping the handoff active while source work begins/);
+  assert.match(runSource, /Foundry is keeping the handoff active while source work begins/);
   assert.match(source, /if \(latestRun\?\.state === 'verifying'\) maybeVerifyRun\(latestRun\)/);
   assert.match(source, /startSessionPolling\(\)/);
 });

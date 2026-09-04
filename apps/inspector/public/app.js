@@ -1334,7 +1334,7 @@ function renderReview() {
 const RUN_ORDER = ['queued', 'claimed', 'applying', 'rebuilding', 'verifying', 'passed'];
 const RUN_LABELS = {
   queued: 'Queued for agent',
-  claimed: 'Agent connected',
+  claimed: 'Handoff received',
   applying: 'Applying source edits',
   rebuilding: 'Rebuilding project',
   verifying: 'Verifying rendered values',
@@ -1420,7 +1420,7 @@ function renderApplyRun(runs = []) {
     ? `<button class="secondary-button" data-run-action="cancel" data-run-id="${run.id}">${confirmingCancel ? 'Confirm stop' : 'Stop apply'}</button>`
     : `<button class="secondary-button" data-run-navigation="back">Back to canvas</button>`;
   const primaryAction = attention
-    ? `<button class="primary-button" data-run-action="retry" data-run-id="${run.id}">Retry with agent</button>`
+    ? `<button class="primary-button" data-run-action="${run.interruptedState ? 'resume' : 'retry'}" data-run-id="${run.id}">${run.interruptedState ? 'Resume with agent' : 'Retry with agent'}</button>`
     : passed
       ? `<button class="primary-button" data-run-navigation="back">Done</button>`
       : `<button class="primary-button" disabled>${escapeText(RUN_LABELS[run.state] ?? run.state)}</button>`;

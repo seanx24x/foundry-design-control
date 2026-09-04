@@ -73,7 +73,8 @@ export class ClaimLeaseKeeper {
       const run = payload.applyRuns?.find((candidate) => candidate.id === active.runId);
       active.failedPulses = 0;
       if (
-        run?.state !== 'claimed' ||
+        !run ||
+        !['claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state) ||
         !run.claimAttemptId ||
         run.claimAttemptId !== active.claimAttemptId
       ) {

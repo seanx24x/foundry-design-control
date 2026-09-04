@@ -78,7 +78,9 @@ try {
 
   for (const agent of agents) {
     const fixture = join(matrixRoot, agent);
+    const isolatedHome = join(matrixRoot, `home-${agent}`);
     mkdirSync(fixture, { recursive: true });
+    mkdirSync(isolatedHome, { recursive: true });
     writeFileSync(
       join(fixture, 'package.json'),
       `${JSON.stringify({
@@ -90,34 +92,48 @@ try {
     );
     writeFileSync(join(fixture, 'index.html'), '<main>Unrelated product</main>\n');
 
-    run(fixture, 'npm', ['install', '--ignore-scripts', ...tarballs]);
-    run(fixture, 'node', ['node_modules/foundry-design/dist/index.js', '--help']);
-    run(fixture, 'node', [
-      'node_modules/foundry-design/dist/index.js',
-      'setup',
-      '--agent',
-      agent,
-      '--yes',
-    ]);
+    const isolatedEnvironment = { HOME: isolatedHome };
+    run(fixture, 'npm', ['install', '--ignore-scripts', ...tarballs], isolatedEnvironment);
+    run(
+      fixture,
+      'node',
+      ['node_modules/foundry-design/dist/index.js', '--help'],
+      isolatedEnvironment,
+    );
+    run(
+      fixture,
+      'node',
+      ['node_modules/foundry-design/dist/index.js', 'setup', '--agent', agent, '--yes'],
+      isolatedEnvironment,
+    );
     assertAgentInstall(fixture, agent);
-    run(fixture, 'node', ['node_modules/foundry-design/dist/index.js', 'doctor']);
+    run(
+      fixture,
+      'node',
+      ['node_modules/foundry-design/dist/index.js', 'doctor'],
+      isolatedEnvironment,
+    );
 
     const customizedSkill = join(fixture, expectedPaths(agent).skill);
     writeFileSync(
       customizedSkill,
       `${readFileSync(customizedSkill, 'utf8')}\n<!-- project note -->\n`,
     );
-    run(fixture, 'node', [
-      'node_modules/foundry-design/dist/index.js',
-      'update',
-      '--agent',
-      agent,
-      '--yes',
-    ]);
+    run(
+      fixture,
+      'node',
+      ['node_modules/foundry-design/dist/index.js', 'update', '--agent', agent, '--yes'],
+      isolatedEnvironment,
+    );
     if (!readFileSync(customizedSkill, 'utf8').includes('project note')) {
       throw new Error(`${agent} update overwrote a customized skill file.`);
     }
-    run(fixture, 'node', ['node_modules/foundry-design/dist/index.js', 'uninstall', '--yes']);
+    run(
+      fixture,
+      'node',
+      ['node_modules/foundry-design/dist/index.js', 'uninstall', '--yes'],
+      isolatedEnvironment,
+    );
     if (!existsSync(customizedSkill)) {
       throw new Error(`${agent} uninstall removed a customized skill file.`);
     }

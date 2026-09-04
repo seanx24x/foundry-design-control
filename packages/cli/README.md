@@ -6,7 +6,7 @@ Foundry is a local-first precision design workbench for Codex, Cursor, and Claud
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
-> **Current public beta:** `0.2.0-beta.11`. Both npm `latest` and `beta` point to the same tested release. Use the unqualified command below for normal installation.
+> **Current public beta:** `0.2.0-beta.12`. Both npm `latest` and `beta` point to the same tested release. Use the unqualified command below for normal installation.
 
 Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 
@@ -48,7 +48,15 @@ Then restart the coding agent, reopen the same project folder, and ask:
 Start Foundry for this project and keep listening for Apply with agent requests.
 ```
 
-You do not need to run a second terminal command when the agent starts Foundry for you. Apply requests remain queued safely when the agent is offline. After an active agent claims a batch, the MCP bridge keeps that handoff alive while the agent inspects source and begins the edit. If the agent process exits, Foundry releases the abandoned claim back to the queue instead of losing it. Run `npx foundry-design doctor --repair` if the connection or generated integration needs repair.
+You do not need to run a second terminal command when the agent starts Foundry for you. Apply requests remain queued safely when the agent is offline. After an active agent claims a batch, the MCP bridge keeps that handoff alive through source edits, rebuilding, and verification. A claim abandoned before source work begins returns to the queue. If the agent disappears during source work, Foundry preserves the same run in **Needs attention** and waits for you to choose **Resume with agent**. It never guesses whether a half-finished edit is safe to repeat.
+
+Check the complete connection at any time with:
+
+```bash
+npx foundry-design status
+```
+
+Foundry reports project integration, the exact MCP package version, runtime health, and the live agent listener separately. Run `npx foundry-design doctor --repair` if configuration or generated integration needs repair.
 
 Update an existing installation with:
 
@@ -68,11 +76,15 @@ Supported automatic web integration currently includes Next.js App Router, Vite,
 
 The npm setup above is the public beta installation path and includes the same portable skill and MCP connection used by the agent plugin bundle.
 
+### Claude Desktop extension
+
+The repository also produces a validated `.mcpb` extension for Claude Desktop. It bundles the local Foundry MCP bridge and can be installed through **Settings → Extensions → Advanced → Install Extension**. This provides a host-native alternative when a Claude Desktop surface does not merge the normal user-level Claude Code MCP configuration. Project instrumentation is still installed with `npx foundry-design`.
+
 If an npm mirror or existing `npx` cache reports an old tag, bypass it with a temporary cache and the exact current release:
 
 ```bash
 FOUNDRY_NPX_CACHE="$(mktemp -d)"
-npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.11 foundry-design
+npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.12 foundry-design
 ```
 
 The beta supports Node.js 20 or newer. Read the [local-first safety model](https://withfoundry.ai/#safety) before using it with sensitive work.
@@ -105,6 +117,7 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 - Center-workspace review with editable approved batches, grouped targets, and unresolved-target blocking
 - Persistent Apply with agent runs across Codex, Cursor, and Claude Code through MCP
 - Automatically renewed agent handoffs that remain claimed during source inspection and safely return abandoned work to the queue
+- Explicit same-run recovery when an agent disappears during source editing, rebuilding, or verification
 - Live source, rebuild, validation, retry, and rendered-verification progress
 - Rendered verification that resumes after refresh and does not depend on Review remaining open
 - Local MCP bridge for agent access
@@ -123,6 +136,8 @@ pnpm check
 pnpm release:check
 pnpm release:pack
 pnpm release:test-install
+pnpm test:e2e
+pnpm mcpb:build
 pnpm build
 pnpm foundry setup --project /path/to/project --agent codex --local-mcp
 pnpm foundry index --project /path/to/project --output /tmp/foundry-design-graph.json

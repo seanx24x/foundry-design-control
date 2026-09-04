@@ -3,7 +3,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
-const version = '0.2.0-beta.11';
+const release = JSON.parse(readFileSync(join(root, 'release.json'), 'utf8'));
+const version = release.version;
 const packagePaths = [
   'apps/inspector/package.json',
   'packages/cli/package.json',
@@ -35,6 +36,12 @@ const rootReadmeDigest = createHash('sha256')
   .update(readFileSync(join(root, 'README.md')))
   .digest('hex');
 const rootReadme = readFileSync(join(root, 'README.md'), 'utf8');
+
+if (release.packageCount !== packagePaths.length) {
+  failures.push(
+    `release.json expects ${release.packageCount} packages but ${packagePaths.length} are configured`,
+  );
+}
 
 if (rootReadme.includes('foundry-design@beta')) {
   failures.push('README.md still routes installation through the moving beta tag');
@@ -86,6 +93,17 @@ for (const path of manifestPaths) {
   if (manifest.version !== version) failures.push(`${path} has version ${manifest.version}`);
   if (manifest.name !== 'foundry-design-control')
     failures.push(`${path} has an unexpected plugin name`);
+}
+
+const mcpbManifest = readJson('extensions/claude-desktop/manifest.json');
+if (mcpbManifest.manifest_version !== '0.4') {
+  failures.push('Claude Desktop MCPB manifest must use manifest version 0.4');
+}
+if (mcpbManifest.version !== version) {
+  failures.push(`Claude Desktop MCPB manifest has version ${mcpbManifest.version}`);
+}
+if (mcpbManifest.server?.type !== 'node' || !mcpbManifest.server?.entry_point) {
+  failures.push('Claude Desktop MCPB manifest is missing its bundled Node entry point');
 }
 
 for (const path of [

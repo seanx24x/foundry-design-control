@@ -2,6 +2,12 @@ name: Publish beta
 
 on:
   workflow_dispatch:
+    inputs:
+      promote_latest:
+        description: Move npm latest to this validated beta
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -20,22 +26,14 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm check
+      - run: pnpm test:e2e
       - run: pnpm release:check
       - run: pnpm release:pack
       - run: pnpm release:test-install
+      - run: pnpm mcpb:build
       - name: Publish beta packages
-        run: |
-          for package in \
-            apps/inspector \
-            packages/protocol \
-            packages/web-adapter \
-            packages/runtime \
-            packages/cli \
-            packages/mcp-server \
-            packages/react-native-adapter
-          do
-            pnpm --dir "$package" publish --tag beta --provenance --no-git-checks
-          done
+        run: pnpm release:publish -- ${{ inputs.promote_latest && '--promote-latest' || '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

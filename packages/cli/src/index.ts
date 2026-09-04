@@ -23,6 +23,7 @@ import { addSessionParams, detectPlatform } from './project.js';
 import { indexProjectDesign } from './indexer.js';
 import { startBasicPreviewProxy, type BasicPreviewProxy } from './proxy.js';
 import { FOUNDRY_VERSION, releasePreflight } from './release.js';
+import { collectDoctorReport } from './doctor.js';
 
 const args = process.argv.slice(2);
 const command = args[0]?.startsWith('-') ? 'launch' : (args[0] ?? 'launch');
@@ -50,7 +51,8 @@ Usage:
   foundry-design update [--project PATH] [--agent codex,cursor,claude] [--yes]
   foundry-design init <web|swiftui|react-native> [--project PATH]
   foundry-design start [--project PATH] [--url URL] [--platform PLATFORM] [--new] [--no-open] [--no-dev]
-  foundry-design doctor [--project PATH] [--repair]
+  foundry-design doctor [--project PATH] [--repair] [--json]
+  foundry-design status [--project PATH] [--json]
   foundry-design index [--project PATH] [--output FILE]
   foundry-design uninstall [--project PATH] [--yes]
   foundry-design export <SESSION_ID> [--format json|prompt|full] [--output FILE]
@@ -478,70 +480,24 @@ async function uninstall(): Promise<void> {
 
 async function doctor(): Promise<void> {
   const root = projectRoot();
-  const platform = await detectPlatform(root);
-  const configPath = join(root, '.foundry', 'foundry.config.json');
-  let config: FoundryProjectConfig | undefined;
-  const manifest = await readFile(join(root, '.foundry', 'install-manifest.json'), 'utf8')
-    .then((content) => JSON.parse(content) as { generatorVersion?: string })
-    .catch(() => undefined);
-  try {
-    config = JSON.parse(await readFile(configPath, 'utf8')) as FoundryProjectConfig;
-  } catch {
-    /* Report setup as missing below. */
+  const report = await collectDoctorReport(root);
+  if (has('--json')) console.log(JSON.stringify(report, null, 2));
+  else {
+    for (const check of report.checks) {
+      const marker = check.status === 'passed' ? '✓' : check.status === 'warning' ? '△' : '○';
+      console.log(`${marker} ${check.label}: ${check.detail}`);
+    }
+    console.log(
+      report.ready
+        ? '\nFoundry is ready and an agent is actively listening.'
+        : '\nFoundry is not yet ready for Apply with agent. Configuration and a live listener are separate checks.',
+    );
   }
-  const projectAgentFiles = [
-    join(root, '.codex', 'config.toml'),
-    join(root, '.cursor', 'mcp.json'),
-    join(root, '.mcp.json'),
-  ];
-  const sharedAgentFiles = [
-    join(homedir(), '.codex', 'config.toml'),
-    join(homedir(), '.cursor', 'mcp.json'),
-    join(homedir(), '.claude.json'),
-  ];
-  const configuredAgents: string[] = [];
-  for (const path of [...projectAgentFiles, ...sharedAgentFiles]) {
-    if ((await readFile(path, 'utf8').catch(() => '')).includes('foundry-design-control'))
-      configuredAgents.push(path);
-  }
-  const checks: Array<readonly [string, string, boolean]> = [
-    ['Project', root, true],
-    ['Detected platform', platform, true],
-    ['Foundry config', configPath, Boolean(config)],
-    [
-      'Managed integration',
-      manifest?.generatorVersion ?? 'not installed',
-      manifest?.generatorVersion === FOUNDRY_VERSION,
-    ],
-    [
-      'Instrumentation',
-      config?.instrumented ? `${config.framework ?? config.platform}` : 'integration pending',
-      Boolean(config?.instrumented),
-    ],
-    [
-      'Agent connection',
-      configuredAgents.length ? configuredAgents.join(', ') : 'not configured',
-      configuredAgents.length > 0,
-    ],
-    [
-      'Project preview',
-      config?.targetUrl ?? 'not configured',
-      config?.targetUrl ? await urlAvailable(config.targetUrl) : platform !== 'web',
-    ],
-    [
-      'Runtime health',
-      'http://127.0.0.1:4387/v1/health',
-      await fetch('http://127.0.0.1:4387/v1/health')
-        .then((response) => response.ok)
-        .catch(() => false),
-    ],
-  ];
-  for (const [label, value, passed] of checks)
-    console.log(`${passed ? '✓' : '○'} ${label}: ${value}`);
   if (has('--repair')) {
     console.log(`\n${releasePreflight('repair this project and agent connection')}\n`);
     const detectedAgents = (await createSetupPlan(root)).agents;
-    const result = config
+    const configured = report.checks.find((check) => check.id === 'config')?.status === 'passed';
+    const result = configured
       ? await updateProject(root, { agents: [] })
       : await setupProject(root, { agents: [], targetUrl: flag('--url') });
     for (const agent of detectedAgents)
@@ -551,7 +507,7 @@ async function doctor(): Promise<void> {
     console.log(
       `✓ Repaired ${result.changed.length} managed paths and the shared ${detectedAgents.join(', ')} connection.`,
     );
-  } else if (!config || !configuredAgents.length) {
+  } else if (report.checks.some((check) => check.status === 'failed')) {
     console.log('Run: foundry-design doctor --repair');
   }
 }
@@ -658,7 +614,7 @@ try {
   else if (command === 'update') await update();
   else if (command === 'init') await initProject();
   else if (command === 'start') await start();
-  else if (command === 'doctor') await doctor();
+  else if (command === 'doctor' || command === 'status') await doctor();
   else if (command === 'index') await indexDesign();
   else if (command === 'uninstall') await uninstall();
   else if (command === 'export') await exportSession();

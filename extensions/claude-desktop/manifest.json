@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/mcpb/main/schemas/mcpb-manifest-v0.4.schema.json",
+  "manifest_version": "0.4",
+  "name": "foundry-design-control",
+  "display_name": "Foundry Design Control",
+  "version": "0.2.0-beta.12",
+  "description": "Connect Claude Desktop to a local Foundry design session for reviewed apply and verify workflows.",
+  "author": {
+    "name": "Sean Lynch",
+    "url": "https://withfoundry.ai"
+  },
+  "homepage": "https://withfoundry.ai",
+  "documentation": "https://withfoundry.ai/#docs",
+  "support": "https://github.com/seanx24x/foundry-design-control/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seanx24x/foundry-design-control.git"
+  },
+  "license": "MIT",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {
+        "FOUNDRY_DESIGN_RUNTIME_URL": "http://127.0.0.1:4387"
+      }
+    }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "claude_desktop": ">=1.0.0",
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=20"
+    }
+  }
+}

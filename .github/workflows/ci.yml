@@ -19,7 +19,10 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm check
+      - run: pnpm test:e2e
       - run: pnpm release:check
       - run: pnpm release:pack
       - run: pnpm release:test-install
+      - run: pnpm mcpb:build

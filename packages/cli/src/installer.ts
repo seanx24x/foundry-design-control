@@ -790,6 +790,23 @@ async function configureJson(path: string, packageRoot?: string): Promise<void> 
   await writeFile(path, `${JSON.stringify(current, null, 2)}\n`);
 }
 
+async function ensureMcpServersShape(path: string): Promise<void> {
+  const content = await readFile(path, 'utf8').catch(() => '');
+  if (!content) return;
+  let current: unknown;
+  try {
+    current = JSON.parse(content);
+  } catch {
+    return;
+  }
+  if (!current || typeof current !== 'object' || Array.isArray(current)) return;
+  const config = current as { mcpServers?: unknown };
+  if (config.mcpServers === undefined) {
+    config.mcpServers = {};
+    await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+  }
+}
+
 export async function installAgentIntegration(
   rootInput: string,
   agent: Agent,
@@ -835,6 +852,12 @@ export async function installHostAgentIntegration(
 
   if (agent === 'codex') await configureCodex(configFile, options.packageRoot);
   else await configureJson(configFile, options.packageRoot);
+  if (agent === 'claude') {
+    // Some Claude hosts validate ~/.mcp.json before loading ~/.claude.json. A bare
+    // object is valid JSON but fails that schema and can prevent every user MCP
+    // server from loading, including Foundry.
+    await ensureMcpServersShape(join(home, '.mcp.json'));
+  }
 
   const skillFiles = await readSkill(resolve(options.skillRoot ?? DEFAULT_SKILL_ROOT));
   const manifestFile = join(skillDirectory, '.foundry-install.json');

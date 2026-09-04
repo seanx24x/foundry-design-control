@@ -49,6 +49,7 @@ import {
 import { renderKeylineIcons } from './keyline-icons.js';
 import { FOUNDRY_UI_FOUNDATION_CSS } from './ui-foundations.js';
 import { createSafeDiagnostics } from './diagnostics.js';
+import { applyRunAction, applyRunMessage, isActiveApplyRun } from './apply-run.js';
 import {
   DEFAULT_WORKSPACE_STATE,
   clampUtilityRect,
@@ -4268,17 +4269,8 @@ export function installFoundryInspector(
   function renderApplyRun(run: any): void {
     const attention = ['needs_attention', 'failed'].includes(run.state);
     const passed = run.state === 'passed';
-    const active = ['queued', 'claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state);
-    const latestMessage =
-      run.state === 'queued'
-        ? run.requeueCount > 0
-          ? 'The previous agent did not begin source work, so Foundry safely returned this batch to the queue.'
-          : 'The reviewed changes are queued and ready for an active coding agent.'
-        : run.state === 'claimed'
-          ? activeAgentPresence.connected
-            ? 'The agent received this batch. Foundry is keeping the handoff active while source work begins.'
-            : 'The agent disconnected before source work began. Foundry will return this batch to the queue shortly.'
-          : (run.messages.at(-1)?.message ?? run.error ?? 'Apply run created.');
+    const active = isActiveApplyRun(run);
+    const latestMessage = applyRunMessage(run, activeAgentPresence.connected);
     latestApplyState = run.state;
     if (run.state === 'passed') completeOnboardingStep('apply');
     captureVerifiedRun(run);
@@ -4291,23 +4283,10 @@ export function installFoundryInspector(
       .join(
         '',
       )}</div>${run.changedFiles.length ? `<div class="run-files"><strong>Changed files</strong>${run.changedFiles.map((file: string) => `<code>${escapeHtml(file)}</code>`).join('')}</div>` : ''}${run.validationResults.length ? `<div class="result-list">${run.validationResults.map((result: any) => `<div class="result-row ${result.passed ? 'pass' : 'fail'}"><span>${result.passed ? 'Passed' : 'Failed'} · ${escapeHtml(result.name)}</span><span>${escapeHtml(result.summary ?? '')}</span></div>`).join('')}</div>` : ''}${run.verificationResults.length ? `<div class="result-list">${run.verificationResults.map((result: any) => `<div class="result-row ${result.passed ? 'pass' : 'fail'}"><span>${result.passed ? 'Matched' : 'Mismatch'} · ${escapeHtml(result.property)}</span><span>${escapeHtml(verificationResultValue(result))}${result.reason ? `<br/>${escapeHtml(result.reason)}` : ''}</span></div>`).join('')}</div>` : ''}`;
-    if (attention) {
-      applyButton.dataset.action = 'retry';
-      applyButton.textContent = 'Retry with agent';
-      applyButton.disabled = false;
-    } else if (['queued', 'claimed'].includes(run.state) && !activeAgentPresence.connected) {
-      applyButton.dataset.action = 'reconnect';
-      applyButton.textContent = 'Reconnect agent';
-      applyButton.disabled = false;
-    } else {
-      applyButton.dataset.action = 'status';
-      applyButton.textContent = passed
-        ? 'Verified'
-        : active
-          ? (runStateLabels[run.state] ?? run.state)
-          : 'Run complete';
-      applyButton.disabled = true;
-    }
+    const primaryAction = applyRunAction(run, activeAgentPresence.connected, runStateLabels);
+    applyButton.dataset.action = primaryAction.action;
+    applyButton.textContent = primaryAction.label;
+    applyButton.disabled = primaryAction.disabled;
     const confirmingCancel =
       active && cancelConfirmationRunId === run.id && Date.now() < cancelConfirmationUntil;
     reviewCancel.dataset.action = active ? 'cancel' : 'back';
@@ -4482,6 +4461,22 @@ export function installFoundryInspector(
       );
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not retry apply run');
+    }
+  }
+
+  async function resumeRun(): Promise<void> {
+    const run = activeReviewPayload?.applyRuns?.at(-1);
+    if (!run) return;
+    try {
+      renderReviewPayload(
+        await sessionRequest(`/apply-runs/${encodeURIComponent(run.id)}/resume`, {
+          method: 'POST',
+          body: '{}',
+        }),
+      );
+      showToast('Resume authorized. Waiting for an agent to reinspect this run.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not resume apply run');
     }
   }
 
@@ -8816,6 +8811,7 @@ export function installFoundryInspector(
   applyButton.addEventListener('click', () => {
     if (applyButton.dataset.action === 'apply') void submitReviewedRun();
     if (applyButton.dataset.action === 'retry') void retryRun();
+    if (applyButton.dataset.action === 'resume') void resumeRun();
     if (applyButton.dataset.action === 'reconnect') copyAgentListenerInstruction();
   });
   function handleGlobalShortcuts(event: KeyboardEvent): void {

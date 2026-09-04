@@ -19,7 +19,11 @@ Report state with `foundry_design_update_apply_run`. Include the same `claimAtte
 3. `verifying` only when changed files are present and the affected surface rebuilt successfully.
 4. `failed` for a terminal edit, build, or validation failure, including a concise error.
 
-Do not skip states, claim a non-queued run, or start another run in the same session. Repeating a claim for the same run and agent identity is idempotent. If the MCP process exits or the lease cannot be renewed before `applying`, Foundry clears the abandoned claim and returns the run to `queued`. A stale agent must not edit source or send progress after that point. Wait for and claim the queued run again. Cancelling an active run is destructive because it ends the approved batch, so the Foundry interface requires a second confirmation before it sends the cancellation.
+Do not skip states, claim a non-queued run, or start another run in the same session. Repeating a claim for the same run and agent identity is idempotent. If the MCP process exits or the lease cannot be renewed before `applying`, Foundry clears the abandoned claim and returns the run to `queued`. A stale agent must not edit source or send progress after that point. Wait for and claim the queued run again.
+
+If the lease expires during `applying`, `rebuilding`, or `verifying`, Foundry preserves the same run ID and moves it to `needs_attention` with `interruptedState`. Do not continue editing from the stale claim. The user must choose **Resume with agent** in Foundry. That authorization returns the same run to `queued`; claim it through `foundry_design_wait_for_apply`, reinspect current source and validation state, then continue from the safe next transition. A normal verification mismatch or terminal failure still uses **Retry with agent**, which creates a new `retryOf` run.
+
+Cancelling an active run is destructive because it ends the approved batch, so the Foundry interface requires a second confirmation before it sends the cancellation.
 
 ## Verification
 

@@ -352,6 +352,11 @@ export class FoundryRuntime {
             sendJson(response, 201, publicSession(updated));
             return;
           }
+          if (runId && request.method === 'POST' && parts[5] === 'resume') {
+            const updated = await this.store.authorizeApplyRunResume(id, runId);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
           if (runId && request.method === 'POST' && parts[5] === 'cancel') {
             const updated = await this.store.updateApplyRun(id, runId, {
               state: 'cancelled',

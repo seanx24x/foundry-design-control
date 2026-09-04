@@ -5,6 +5,7 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 import { ClaimLeaseKeeper } from './claim-lease.js';
 import { FoundryRuntimeClient } from './client.js';
+import packageJson from '../package.json' with { type: 'json' };
 
 function result(value: unknown) {
   return {
@@ -23,7 +24,7 @@ function result(value: unknown) {
 serveStdio(() => {
   const server = new McpServer({
     name: 'foundry-design-control',
-    version: '0.3.0',
+    version: packageJson.version,
   });
   const client = new FoundryRuntimeClient();
   const claimLeases = new ClaimLeaseKeeper(client);
@@ -251,7 +252,7 @@ serveStdio(() => {
         { method: 'PATCH', body: JSON.stringify(update) },
         token,
       );
-      claimLeases.stop(runId);
+      if (update.state === 'failed') claimLeases.stop(runId);
       return result(payload);
     },
   );

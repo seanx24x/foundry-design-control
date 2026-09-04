@@ -124,12 +124,22 @@ export class SessionStore {
     const nowIso = now.toISOString();
     let recovered = false;
     for (const run of stored.applyRuns) {
-      if (run.state !== 'claimed') continue;
+      if (!['claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state)) continue;
       const incompleteLegacyClaim = !run.claimAttemptId || !run.claimExpiresAt;
       const expiredClaim =
         Boolean(run.claimExpiresAt) && Date.parse(run.claimExpiresAt!) <= now.getTime();
       if (!incompleteLegacyClaim && !expiredClaim) continue;
-      run.state = 'queued';
+      const interruptedState = run.state;
+      run.state = interruptedState === 'claimed' ? 'queued' : 'needs_attention';
+      if (
+        interruptedState === 'applying' ||
+        interruptedState === 'rebuilding' ||
+        interruptedState === 'verifying'
+      ) {
+        run.interruptedState = interruptedState;
+        run.error = `The agent disconnected while ${interruptedState}. Reinspect the current source before resuming this run.`;
+        run.completedAt = nowIso;
+      }
       run.agent = undefined;
       run.claimAttemptId = undefined;
       run.claimExpiresAt = undefined;
@@ -137,8 +147,11 @@ export class SessionStore {
       run.claimedAt = undefined;
       run.requeueCount += 1;
       run.messages.push({
-        state: 'queued',
-        message: 'The agent did not begin source work. Foundry returned the batch to the queue.',
+        state: run.state,
+        message:
+          interruptedState === 'claimed'
+            ? 'The agent did not begin source work. Foundry returned the batch to the queue.'
+            : run.error!,
         createdAt: nowIso,
       });
       run.updatedAt = nowIso;
@@ -438,7 +451,11 @@ export class SessionStore {
       if (run.state !== 'queued') return stored;
       const now = this.nowIso();
       const sourceChanged =
-        !run.retryOf && run.revision && input.revision && run.revision !== input.revision;
+        !run.retryOf &&
+        !run.interruptedState &&
+        run.revision &&
+        input.revision &&
+        run.revision !== input.revision;
       const graphChanged =
         run.designGraphRevision &&
         input.designGraphRevision &&
@@ -461,9 +478,14 @@ export class SessionStore {
         run.claimedAt = now;
         run.claimHeartbeatAt = now;
         run.claimExpiresAt = new Date(this.now().getTime() + this.claimLeaseMs).toISOString();
+        if (run.interruptedState) run.resumedAt = now;
+        run.completedAt = undefined;
+        run.error = undefined;
         run.messages.push({
           state: run.state,
-          message: `${input.agent?.name ?? 'Agent'} received the reviewed batch. Waiting for source work to begin.`,
+          message: run.interruptedState
+            ? `${input.agent?.name ?? 'Agent'} received the resumed ${run.interruptedState} run. Reinspect source before continuing.`
+            : `${input.agent?.name ?? 'Agent'} received the reviewed batch. Waiting for source work to begin.`,
           createdAt: now,
         });
       }
@@ -482,7 +504,9 @@ export class SessionStore {
       const stored = await this.read(id);
       const run = stored.applyRuns.find((candidate) => candidate.id === runId);
       if (!run) throw new Error(`Unknown apply run: ${runId}`);
-      if (run.state !== 'claimed') throw new Error('Apply run is not awaiting source work');
+      if (!['claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state)) {
+        throw new Error('Apply run does not have an active agent lease');
+      }
       if (!run.claimAttemptId || run.claimAttemptId !== claimAttemptId) {
         throw new Error('This claim is no longer active. Reclaim the apply run before continuing.');
       }
@@ -534,7 +558,10 @@ export class SessionStore {
       if (input.changedFiles) run.changedFiles = [...new Set(input.changedFiles)];
       if (input.validationResults) run.validationResults = input.validationResults;
       if (input.error !== undefined) run.error = input.error;
-      if (run.state === 'applying') run.claimExpiresAt = undefined;
+      if (['claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state)) {
+        run.claimHeartbeatAt = this.nowIso();
+        run.claimExpiresAt = new Date(this.now().getTime() + this.claimLeaseMs).toISOString();
+      }
       if (run.state === 'verifying') {
         if (!run.changedFiles.length) {
           throw new Error('Verification requires at least one changed source file');
@@ -569,6 +596,35 @@ export class SessionStore {
       reviews: run.changeIds.map((changeId) => ({ changeId, approved: true })),
       revision: stored.changeSet.context.revision,
       retryOf: run.id,
+    });
+  }
+
+  async authorizeApplyRunResume(id: string, runId: string): Promise<StoredSession> {
+    return this.serializeApplyRunMutation(id, async () => {
+      const stored = await this.read(id);
+      const run = stored.applyRuns.find((candidate) => candidate.id === runId);
+      if (!run) throw new Error(`Unknown apply run: ${runId}`);
+      if (run.state !== 'needs_attention' || !run.interruptedState) {
+        throw new Error('Only an interrupted apply run can be resumed');
+      }
+      const now = this.nowIso();
+      run.state = 'queued';
+      run.agent = undefined;
+      run.claimAttemptId = undefined;
+      run.claimedAt = undefined;
+      run.claimHeartbeatAt = undefined;
+      run.claimExpiresAt = undefined;
+      run.completedAt = undefined;
+      run.error = undefined;
+      run.messages.push({
+        state: 'queued',
+        message: `Resume authorized. Waiting for an agent to reinspect the interrupted ${run.interruptedState} run.`,
+        createdAt: now,
+      });
+      run.updatedAt = now;
+      stored.changeSet.updatedAt = now;
+      await this.write(stored);
+      return stored;
     });
   }
 

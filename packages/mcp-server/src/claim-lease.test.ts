@@ -9,7 +9,7 @@ const claim = {
   claimAttemptId: 'claim',
 };
 
-test('renews a claimed run and stops when source work begins', async () => {
+test('renews a claim throughout source work and stops at a terminal state', async () => {
   const requests: string[] = [];
   let state = 'claimed';
   const client: ClaimLeaseRequestClient = {
@@ -28,6 +28,14 @@ test('renews a claimed run and stops when source work begins', async () => {
   assert.deepEqual(requests, ['/v1/sessions/session/apply-runs/run/heartbeat']);
 
   state = 'applying';
+  await keeper.pulse(claim.runId);
+  assert.equal(keeper.has(claim.runId), true);
+
+  state = 'rebuilding';
+  await keeper.pulse(claim.runId);
+  assert.equal(keeper.has(claim.runId), true);
+
+  state = 'passed';
   await keeper.pulse(claim.runId);
   assert.equal(keeper.has(claim.runId), false);
 });
