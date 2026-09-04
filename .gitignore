@@ -6,3 +6,9 @@ artifacts/
 *.log
 .swiftpm/
 .build/
+
+# Local Foundry agent integration generated during development and fixture tests.
+/.codex/
+/examples/web-fixture/.agents/
+/examples/web-fixture/.codex/
+/examples/web-fixture/.gitignore
