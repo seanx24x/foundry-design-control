@@ -90,6 +90,7 @@ let openCustomSelect = null;
 let selectId = 0;
 let ignoreSelectScrollUntil = 0;
 let commandRequestId = 0;
+let dismissedApplyRunId = null;
 const pendingCommandRequests = new Map();
 const changedControls = new Set();
 const effectCommitTimers = new Map();
@@ -363,8 +364,10 @@ function setMode(mode, restoreFocus = true, returnFocus = null) {
     surface.hidden = surface.dataset.modeSurface !== mode;
   });
   if (mode === 'review') {
+    dismissedApplyRunId = null;
     lastReviewFocus = document.activeElement;
     renderReview();
+    renderApplyRun(activeSession?.applyRuns ?? []);
   } else if (mode === 'canvas' && restoreFocus) {
     const target = modeFocusReturn ?? lastModeFocus ?? lastReviewFocus;
     if (target instanceof HTMLElement && target.isConnected) target.focus();
@@ -1327,24 +1330,101 @@ function renderReview() {
 }
 
 const RUN_ORDER = ['queued', 'claimed', 'applying', 'rebuilding', 'verifying', 'passed'];
+const RUN_LABELS = {
+  queued: 'Queued for agent',
+  claimed: 'Agent connected',
+  applying: 'Applying source edits',
+  rebuilding: 'Rebuilding project',
+  verifying: 'Verifying rendered values',
+  passed: 'Applied and verified',
+  needs_attention: 'Needs attention',
+  failed: 'Apply failed',
+};
+
+function runValue(value) {
+  if (value == null) return 'Not reported';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+function runStageIndex(run) {
+  if (run.state === 'passed') return RUN_ORDER.length;
+  if (run.state === 'needs_attention') return RUN_ORDER.indexOf('verifying');
+  const directIndex = RUN_ORDER.indexOf(run.state);
+  if (directIndex >= 0) return directIndex;
+  const previousState = [...(run.messages ?? [])]
+    .reverse()
+    .find((message) => RUN_ORDER.includes(message.state))?.state;
+  return Math.max(0, RUN_ORDER.indexOf(previousState));
+}
+
 function renderApplyRun(runs = []) {
   const root = $('#apply-run');
   const run = runs.at(-1);
-  if (!run || ['passed', 'cancelled'].includes(run.state)) {
+  if (!run || run.state === 'cancelled' || run.id === dismissedApplyRunId) {
     root.hidden = true;
+    root.dataset.signature = '';
     return;
   }
   root.hidden = false;
-  const activeIndex = Math.max(0, RUN_ORDER.indexOf(run.state));
-  const labels = [
-    'Queued for agent',
-    'Agent connected',
-    'Applying source edits',
-    'Rebuilding project',
-    'Verifying rendered values',
-    'Complete',
-  ];
-  root.innerHTML = `<div class="apply-card"><span class="eyebrow">Attempt ${run.attempts}</span><h1>${escapeText(run.state.replaceAll('_', ' '))}</h1><p>${escapeText(run.messages?.at(-1)?.message ?? run.error ?? 'The reviewed batch is ready.')}</p><div class="run-steps">${labels.map((label, index) => `<div class="run-step ${index < activeIndex ? 'is-complete' : ''} ${index === activeIndex ? 'is-active' : ''}"><i></i><strong>${label}</strong></div>`).join('')}</div>${['needs_attention', 'failed'].includes(run.state) ? `<button class="primary-button" data-run-action="retry" data-run-id="${run.id}">Retry with agent</button>` : `<button class="secondary-button" data-run-action="cancel" data-run-id="${run.id}">Cancel</button>`}</div>`;
+  const attention = ['needs_attention', 'failed'].includes(run.state);
+  const passed = run.state === 'passed';
+  const active = ['queued', 'claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state);
+  const stageIndex = runStageIndex(run);
+  const latestMessage =
+    run.messages?.at(-1)?.message ?? run.error ?? 'The reviewed batch is ready.';
+  const signature = JSON.stringify([
+    run.id,
+    run.state,
+    run.attempts,
+    latestMessage,
+    run.messages,
+    run.changedFiles,
+    run.validationResults,
+    run.verificationResults,
+  ]);
+  if (root.dataset.signature === signature) return;
+  root.dataset.signature = signature;
+  const stageRows = RUN_ORDER.map((state, index) => {
+    const complete = passed || index < stageIndex;
+    const current = !passed && index === stageIndex;
+    const stateClass = complete
+      ? 'is-complete'
+      : current
+        ? attention
+          ? 'needs-attention'
+          : 'is-active'
+        : '';
+    return `<div class="run-step ${stateClass}"><span class="run-step-index">${String(index + 1).padStart(2, '0')}</span><i></i><strong>${escapeText(RUN_LABELS[state])}</strong><span>${complete ? 'Complete' : current ? 'In progress' : 'Waiting'}</span></div>`;
+  }).join('');
+  const changedFiles = run.changedFiles?.length
+    ? `<section class="apply-result-group"><header class="change-group-head"><strong>Changed files</strong><span>${run.changedFiles.length}</span></header>${run.changedFiles.map((file) => `<div class="apply-result-row"><code>${escapeText(file)}</code><span>Edited</span></div>`).join('')}</section>`
+    : '';
+  const validationResults = run.validationResults?.length
+    ? `<section class="apply-result-group"><header class="change-group-head"><strong>Validation</strong><span>${run.validationResults.filter((result) => result.passed).length} of ${run.validationResults.length} passed</span></header>${run.validationResults.map((result) => `<div class="apply-result-row ${result.passed ? 'is-passed' : 'is-failed'}"><div><strong>${escapeText(result.name)}</strong>${result.summary ? `<span>${escapeText(result.summary)}</span>` : ''}</div><span>${result.passed ? 'Passed' : 'Failed'}</span></div>`).join('')}</section>`
+    : '';
+  const verificationResults = run.verificationResults?.length
+    ? `<section class="apply-result-group"><header class="change-group-head"><strong>Rendered verification</strong><span>${run.verificationResults.filter((result) => result.passed).length} of ${run.verificationResults.length} matched</span></header>${run.verificationResults.map((result) => `<div class="apply-result-row ${result.passed ? 'is-passed' : 'is-failed'}"><div><strong>${escapeText(result.property)}</strong><span>${escapeText(runValue(result.requested))} → ${escapeText(runValue(result.rendered))}${result.reason ? ` · ${escapeText(result.reason)}` : ''}</span></div><span>${result.passed ? 'Matched' : 'Mismatch'}</span></div>`).join('')}</section>`
+    : '';
+  const completedStages = passed ? RUN_ORDER.length : stageIndex;
+  const secondaryAction = active
+    ? `<button class="secondary-button" data-run-action="cancel" data-run-id="${run.id}">Cancel</button>`
+    : `<button class="secondary-button" data-run-navigation="back">Back to canvas</button>`;
+  const primaryAction = attention
+    ? `<button class="primary-button" data-run-action="retry" data-run-id="${run.id}">Retry with agent</button>`
+    : passed
+      ? `<button class="primary-button" data-run-navigation="back">Done</button>`
+      : `<button class="primary-button" disabled>${escapeText(RUN_LABELS[run.state] ?? run.state)}</button>`;
+  root.innerHTML = `<div class="apply-surface"><header class="mode-head apply-head"><div><span class="eyebrow">Change set</span><h1>Review and apply</h1><p>Follow the approved source changes through rebuild and rendered verification.</p></div><div class="mode-actions"><span class="mode-count">Attempt ${run.attempts}</span></div></header><div class="apply-progress-list"><section class="apply-result-group apply-status-group"><header class="change-group-head"><strong>Apply and verify</strong><span>${completedStages} of ${RUN_ORDER.length} complete</span></header><div class="apply-status-row"><i class="${passed ? 'is-passed' : attention ? 'needs-attention' : 'is-active'}"></i><div><strong>${escapeText(RUN_LABELS[run.state] ?? run.state)}</strong><span>${escapeText(latestMessage)}</span></div></div><div class="run-steps">${stageRows}</div></section>${changedFiles}${validationResults}${verificationResults}</div><footer class="review-footer apply-footer">${secondaryAction}${primaryAction}</footer></div>`;
+  $$('[data-run-navigation="back"]', root).forEach((button) =>
+    button.addEventListener('click', () => {
+      dismissedApplyRunId = run.id;
+      root.hidden = true;
+      setMode('canvas');
+    }),
+  );
   $$('[data-run-action]', root).forEach((button) =>
     button.addEventListener('click', async () => {
       await api(
@@ -1650,6 +1730,7 @@ $('#apply-agent').addEventListener('click', async () => {
     };
   });
   try {
+    dismissedApplyRunId = null;
     await api(`/v1/sessions/${sessionId}/apply-runs`, {
       method: 'POST',
       body: JSON.stringify({ reviews, revision: activeSession.changeSet.context.revision }),

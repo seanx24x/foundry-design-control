@@ -36,6 +36,21 @@ test('review and project utilities are center workspace modes', async () => {
   assert.match(html, /aria-label="Close Design memory"/);
 });
 
+test('apply progress reuses the review hierarchy and reports the complete run', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(html, /id="apply-run" aria-live="polite"/);
+  assert.match(source, /class="mode-head apply-head"/);
+  assert.match(source, /class="apply-progress-list"/);
+  assert.match(source, /class="review-footer apply-footer"/);
+  assert.match(source, /Changed files/);
+  assert.match(source, /Rendered verification/);
+  assert.match(source, /run\.state === 'passed'/);
+  assert.match(css, /\.apply-surface\s*\{[\s\S]*flex-direction:\s*column/);
+  assert.doesNotMatch(css, /\.apply-card\s*\{/);
+});
+
 test('canvas preserves native viewport dimensions and exposes explicit navigation', async () => {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
