@@ -68,7 +68,10 @@ import {
 } from './effects.js';
 import {
   analyzeTypography,
+  buildFontIntegrationPlan,
+  buildTypographyValidationPlan,
   collectProjectFonts,
+  createProjectTypographyStyle,
   defaultGoogleFontSelection,
   fontInstallStrategies,
   fontFamilyDeclaration,
@@ -79,14 +82,23 @@ import {
   googleFontsCssUrl,
   localFontRecords,
   modularTypeSize,
+  parseFontIntegrationPlan,
   parseFontFamilyStack,
+  parseTypographyVerificationContexts,
+  readProjectTypographyStyles,
   typeTreatments,
+  typographyValidationEvidence,
+  typographyPropertyMatches,
+  writeProjectTypographyStyles,
   type FontInstallStrategy,
   type GoogleFontFamily,
   type GoogleFontSelection,
   type LocalFontRecord,
   type RenderedFontFace,
+  type ProjectTypographyStyle,
+  type ProjectTypographyStyleValues,
   type TypographyFontFace,
+  type TypographyVerificationContext,
 } from './typography.js';
 
 export interface FoundryInspectorOptions {
@@ -387,8 +399,10 @@ const PANEL_CSS = `
   .typography-google-plan { display:grid;gap:8px;margin-top:8px;padding:12px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.typography-google-plan>div:first-child { display:grid;gap:4px; }.typography-google-plan>div:first-child strong { font-size:12px;font-weight:550; }.typography-google-plan>div:first-child span { color:var(--fdc-muted);font-size:12px;line-height:16px; }.typography-strategies { display:grid;grid-template-columns:1fr 1fr;gap:4px; }.typography-strategies button { min-width:0;min-height:48px;display:grid;grid-template-columns:minmax(0,1fr) 12px;align-items:center;gap:4px;padding:8px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-ink);background:var(--fdc-surface);text-align:left;cursor:pointer; }.typography-strategies button:hover,.typography-strategies button[aria-checked="true"] { border-color:var(--fdc-signal);background:var(--fdc-signal-soft); }.typography-strategies button>span { min-width:0;display:grid;gap:4px; }.typography-strategies strong { font-size:12px;font-weight:550; }.typography-strategies small { overflow:hidden;color:var(--fdc-muted);font-size:8px;line-height:12px;text-overflow:ellipsis;white-space:nowrap; }.typography-strategies svg { width:12px;height:12px;color:var(--fdc-signal); }.typography-strategies button[aria-checked="false"] svg { visibility:hidden; }.typography-review-font { height:32px;border:1px solid var(--fdc-ink);border-radius:8px;color:var(--fdc-paper);background:var(--fdc-ink);font-size:12px;font-weight:550;cursor:pointer; }.typography-review-font:hover { opacity:.88; }
   .typography-strategies button { min-height:64px;align-items:start; }.typography-strategies small { overflow:visible;line-height:12px;text-overflow:clip;white-space:normal; }
   .typography-google-summary { display:grid;gap:4px;padding-bottom:8px;border-bottom:1px solid var(--fdc-line); }.typography-google-summary strong { font-size:16px;line-height:20px;font-weight:550; }.typography-google-summary span { color:var(--fdc-muted);font-size:8px;line-height:12px; }.typography-choice-section { display:grid;gap:8px; }.typography-choice-label { color:var(--fdc-muted);font-size:8px;line-height:12px;font-weight:550; }.typography-weight-options { display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px; }.typography-weight-options button,.typography-style-options button { min-width:0;height:32px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-muted);background:var(--fdc-surface);font:400 8px/1 var(--fdc-font-mono);cursor:pointer; }.typography-weight-options button:hover,.typography-style-options button:hover,.typography-weight-options button[aria-checked="true"],.typography-style-options button[aria-checked="true"] { border-color:var(--fdc-signal);color:var(--fdc-signal);background:var(--fdc-signal-soft); }.typography-style-options { display:grid;grid-template-columns:1fr 1fr;gap:4px; }.typography-style-options button { font-family:var(--fdc-font);font-size:12px; }.typography-axis-list { max-height:208px;overflow:auto;display:grid;gap:4px;padding-right:4px; }.typography-axis { min-height:40px;display:grid;grid-template-columns:92px minmax(0,1fr) 40px;align-items:center;gap:8px;padding:4px 8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-surface); }.typography-axis>span { min-width:0;display:grid;grid-template-columns:32px minmax(0,1fr);align-items:baseline;gap:4px; }.typography-axis strong { font:550 8px/1 var(--fdc-font-mono); }.typography-axis small { overflow:hidden;color:var(--fdc-muted);font-size:8px;line-height:12px;text-overflow:ellipsis;white-space:nowrap; }.typography-axis input { width:100%;height:16px;margin:0;accent-color:var(--fdc-signal); }.typography-axis output { color:var(--fdc-ink);font:400 8px/1 var(--fdc-font-mono);text-align:right; }.typography-subsets { display:flex;flex-wrap:wrap;gap:4px; }.typography-subsets span { padding:4px 8px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-muted);background:var(--fdc-surface);font:400 8px/1 var(--fdc-font-mono);text-transform:capitalize; }
+  .typography-source-plan { display:grid;gap:8px;padding:8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-elevated); }.typography-source-plan-head { display:flex;align-items:center;gap:8px; }.typography-source-plan-head strong { font-size:12px;line-height:16px;font-weight:550; }.typography-source-plan-head span { margin-left:auto;color:var(--fdc-muted);font:400 8px/12px var(--fdc-font-mono); }.typography-source-plan code { overflow-wrap:anywhere;padding:8px;border-radius:4px;color:var(--fdc-ink);background:var(--fdc-subtle);font:400 8px/12px var(--fdc-font-mono); }.typography-source-plan ol { display:grid;gap:4px;margin:0;padding-left:20px;color:var(--fdc-muted);font-size:8px;line-height:12px; }.typography-source-plan-foot { display:flex;align-items:flex-start;gap:8px;padding-top:8px;border-top:1px solid var(--fdc-line);color:var(--fdc-muted);font-size:8px;line-height:12px; }.typography-source-plan-foot svg { width:12px;height:12px;flex:none;color:var(--fdc-signal); }.typography-source-plan[data-requires-assets="true"] .typography-source-plan-foot svg { color:#d08b43; }
   .typography-diagnostics { display:grid;gap:8px;margin-bottom:12px;padding:12px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.typography-diagnostics-head { display:grid;gap:4px; }.typography-diagnostics-head strong { font-size:12px;font-weight:550; }.typography-diagnostics-head span { color:var(--fdc-muted);font:400 8px/12px var(--fdc-font-mono); }.typography-diagnostic-list { display:grid;gap:4px; }.typography-diagnostic { display:grid;grid-template-columns:16px minmax(0,1fr);align-items:start;gap:8px;padding:8px;border:1px solid #634236;border-radius:4px;color:#efb39e;background:#2b201d; }.typography-diagnostic[data-severity="warning"] { border-color:#62502d;color:#e5c477;background:#29251b; }.typography-diagnostic>svg { width:12px;height:12px;place-self:center; }.typography-diagnostic>span { min-width:0;display:grid;gap:4px; }.typography-diagnostic strong { font-size:12px;line-height:16px;font-weight:550; }.typography-diagnostic small { color:var(--fdc-muted);font-size:8px;line-height:12px; }.typography-diagnostic-clear { display:flex;align-items:center;gap:8px;padding:8px;border-radius:4px;color:#74c7aa;background:#182922;font-size:8px;line-height:12px; }.typography-diagnostic-clear svg { width:12px;height:12px;flex:none; }:host([data-interface-theme="light"]) .typography-diagnostic { border-color:#efc5b7;color:#8b4431;background:#fff3ee; }:host([data-interface-theme="light"]) .typography-diagnostic[data-severity="warning"] { border-color:#ead69f;color:#735714;background:#fff9e8; }:host([data-interface-theme="light"]) .typography-diagnostic-clear { color:#236c59;background:#eef8f4; }
   .typography-lab { display:grid;gap:12px;margin-bottom:12px;padding:12px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.typography-lab-head { display:grid;gap:4px; }.typography-lab-head strong { font-size:12px;font-weight:550; }.typography-lab-head span { color:var(--fdc-muted);font-size:12px;line-height:16px; }.typography-treatment-options { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px; }.typography-treatment { min-width:0;height:64px;display:grid;align-content:center;gap:4px;padding:8px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-elevated);text-align:left;cursor:pointer; }.typography-treatment:hover,.typography-treatment:focus-visible,.typography-treatment[aria-pressed="true"] { border-color:var(--fdc-signal);background:var(--fdc-signal-soft);outline:0; }.typography-treatment strong { font-size:12px;font-weight:550; }.typography-treatment span { overflow:hidden;color:var(--fdc-muted);font-size:12px;line-height:16px;text-overflow:ellipsis;white-space:nowrap; }.typography-lab-actions { display:flex;align-items:center;gap:8px; }.typography-lab-actions button { height:32px;padding:0 12px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-elevated);font-size:12px;cursor:pointer; }.typography-lab-actions button.primary { margin-left:auto;color:white;background:var(--fdc-signal);border-color:var(--fdc-signal); }.typography-lab-actions button:disabled { opacity:.42;cursor:default; }.typography-scale { display:grid;gap:8px;padding-top:12px;border-top:1px solid var(--fdc-line); }.typography-scale-row { display:grid;grid-template-columns:72px minmax(0,1fr) 40px;align-items:center;gap:8px; }.typography-scale-row>span { color:var(--fdc-muted);font-size:12px; }.typography-scale-row input[type="range"] { width:100%;accent-color:var(--fdc-signal); }.typography-scale-row output { font:400 12px/16px var(--fdc-font-mono);text-align:right; }.typography-scale-ratios,.typography-scale-steps { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px; }.typography-scale-steps { grid-template-columns:repeat(5,minmax(0,1fr)); }.typography-scale-ratios button,.typography-scale-steps button { height:28px;padding:0;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-muted);background:var(--fdc-elevated);font:400 12px/1 var(--fdc-font-mono);cursor:pointer; }.typography-scale-ratios button[aria-pressed="true"],.typography-scale-steps button[aria-pressed="true"] { color:var(--fdc-ink);border-color:var(--fdc-signal);background:var(--fdc-signal-soft); }.typography-scale-result { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px;border-radius:4px;background:var(--fdc-elevated); }.typography-scale-result code { overflow:hidden;color:var(--fdc-muted);font:400 12px/16px var(--fdc-font-mono);text-overflow:ellipsis;white-space:nowrap; }.typography-scale-result button { height:28px;padding:0 8px;border:0;border-radius:4px;color:var(--fdc-ink);background:var(--fdc-subtle);font-size:12px;cursor:pointer; }
+  .typography-project-style { display:grid;gap:8px;padding-top:12px;border-top:1px solid var(--fdc-line); }.typography-style-name { display:grid;gap:4px;color:var(--fdc-muted);font-size:8px;line-height:12px; }.typography-style-name input { width:100%;height:36px;padding:0 12px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-elevated);font:400 12px/16px var(--fdc-font-mono);outline:none; }.typography-style-name input:focus { border-color:var(--fdc-signal);box-shadow:0 0 0 4px color-mix(in srgb,var(--fdc-signal) 18%,transparent); }.typography-validation-plan { display:grid;gap:4px;padding:8px;border-radius:8px;background:var(--fdc-elevated); }.typography-validation-plan strong { font-size:8px;line-height:12px;font-weight:550; }.typography-validation-plan span { color:var(--fdc-muted);font-size:8px;line-height:12px; }.typography-style-list { display:grid;gap:4px; }.typography-style-row { min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-elevated); }.typography-style-copy { min-width:0;display:grid;gap:4px; }.typography-style-copy strong { overflow:hidden;font-size:12px;line-height:16px;font-weight:550;text-overflow:ellipsis;white-space:nowrap; }.typography-style-copy span { overflow:hidden;color:var(--fdc-muted);font:400 8px/12px var(--fdc-font-mono);text-overflow:ellipsis;white-space:nowrap; }.typography-style-actions { display:flex;gap:4px; }.typography-style-actions button { width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:4px;color:var(--fdc-muted);background:transparent;cursor:pointer; }.typography-style-actions button:hover,.typography-style-actions button:focus-visible { color:var(--fdc-ink);background:var(--fdc-subtle);outline:0; }.typography-style-actions svg { width:12px;height:12px; }
   .review-summary { background:var(--fdc-paper); }.review-before { color:var(--fdc-muted);background:var(--fdc-subtle); }.review-sample { color:var(--fdc-muted);background:var(--fdc-paper);border-color:var(--fdc-line); }.review-sample::after { color:var(--fdc-muted);background:rgb(28 28 31 / 88%); }
   .confidence-pill { color:#9ec5ff;background:var(--fdc-signal-soft); }.confidence-pill.unresolved { color:#f2ae8f;background:#42271d; }
   .session-status,.session-status.saved { color:#83d8bb;background:#18352c; }.session-status.saving { color:#efd979;background:#3d3417; }.session-status.error,.session-status.offline { color:#f0a18b;background:#40251f; }
@@ -1904,6 +1918,8 @@ export function installFoundryInspector(
   let typographyScaleRatio = 1.25;
   let typographyScaleStep = 1;
   let typographyScaleFluid = false;
+  let projectTypographyStyles: ProjectTypographyStyle[] = [];
+  let typographyStyleName = '';
   let typographyTreatmentPreview:
     | {
         element: HTMLElement;
@@ -2627,6 +2643,7 @@ export function installFoundryInspector(
         projectRoot = nextProjectRoot;
         loadOnboardingProgress();
         designMemory = readDesignMemory(localStorage, projectRoot);
+        projectTypographyStyles = readProjectTypographyStyles(localStorage, projectRoot);
         utilityRects.clear();
         positionWorkspaceSurfaces();
       }
@@ -3788,6 +3805,25 @@ export function installFoundryInspector(
     return `${rendered}${unit ?? ''}`;
   }
 
+  function verificationResultValue(result: any): string {
+    const rendered = result.rendered;
+    if (!rendered || typeof rendered !== 'object' || !Array.isArray(rendered.contexts))
+      return `${reviewValue(result.requested)} → ${reviewValue(rendered)}`;
+    const contexts = rendered.contexts as Array<{
+      lineCount?: number;
+      fontLoaded?: boolean;
+      clipped?: boolean;
+    }>;
+    const lineCounts = [...new Set(contexts.map((context) => context.lineCount).filter(Boolean))];
+    const loaded = contexts.every((context) => context.fontLoaded !== false);
+    const unclipped = contexts.every((context) => !context.clipped);
+    const contextCopy = `${contexts.length} context${contexts.length === 1 ? '' : 's'}`;
+    const lineCopy = lineCounts.length
+      ? ` · ${lineCounts.join('–')} line${lineCounts.length === 1 && lineCounts[0] === 1 ? '' : 's'}`
+      : '';
+    return `${reviewValue(result.requested)} · ${contextCopy} · ${loaded ? 'font loaded' : 'font missing'} · ${unclipped ? 'not clipped' : 'clipped'}${lineCopy}`;
+  }
+
   function reviewSource(change: any): string {
     if (change.target.source) {
       return `${change.target.source.file}${change.target.source.line ? `:${change.target.source.line}` : ''}`;
@@ -4159,7 +4195,7 @@ export function installFoundryInspector(
       )
       .join(
         '',
-      )}</div>${run.changedFiles.length ? `<div class="run-files"><strong>Changed files</strong>${run.changedFiles.map((file: string) => `<code>${escapeHtml(file)}</code>`).join('')}</div>` : ''}${run.validationResults.length ? `<div class="result-list">${run.validationResults.map((result: any) => `<div class="result-row ${result.passed ? 'pass' : 'fail'}"><span>${result.passed ? 'Passed' : 'Failed'} · ${escapeHtml(result.name)}</span><span>${escapeHtml(result.summary ?? '')}</span></div>`).join('')}</div>` : ''}${run.verificationResults.length ? `<div class="result-list">${run.verificationResults.map((result: any) => `<div class="result-row ${result.passed ? 'pass' : 'fail'}"><span>${result.passed ? 'Matched' : 'Mismatch'} · ${escapeHtml(result.property)}</span><span>${escapeHtml(reviewValue(result.requested))} → ${escapeHtml(reviewValue(result.rendered))}</span></div>`).join('')}</div>` : ''}`;
+      )}</div>${run.changedFiles.length ? `<div class="run-files"><strong>Changed files</strong>${run.changedFiles.map((file: string) => `<code>${escapeHtml(file)}</code>`).join('')}</div>` : ''}${run.validationResults.length ? `<div class="result-list">${run.validationResults.map((result: any) => `<div class="result-row ${result.passed ? 'pass' : 'fail'}"><span>${result.passed ? 'Passed' : 'Failed'} · ${escapeHtml(result.name)}</span><span>${escapeHtml(result.summary ?? '')}</span></div>`).join('')}</div>` : ''}${run.verificationResults.length ? `<div class="result-list">${run.verificationResults.map((result: any) => `<div class="result-row ${result.passed ? 'pass' : 'fail'}"><span>${result.passed ? 'Matched' : 'Mismatch'} · ${escapeHtml(result.property)}</span><span>${escapeHtml(verificationResultValue(result))}${result.reason ? `<br/>${escapeHtml(result.reason)}` : ''}</span></div>`).join('')}</div>` : ''}`;
     if (attention) {
       applyButton.dataset.action = 'retry';
       applyButton.textContent = 'Retry with agent';
@@ -5130,13 +5166,23 @@ export function installFoundryInspector(
     try {
       await loadGoogleFontStylesheet(selection, true);
       const strategy = fontInstallStrategies.find((item) => item.id === googleTypographyStrategy)!;
+      const integration = buildFontIntegrationPlan(
+        selection,
+        googleTypographyStrategy,
+        getComputedStyle(selected).fontFamily,
+      );
+      const validation = currentTypographyValidationPlan();
       const evidence = [
         'Google Fonts CSS2 preview loaded',
+        `font integration plan: ${JSON.stringify(integration)}`,
         `font integration strategy: ${googleTypographyStrategy}`,
         `Google Fonts family: ${font.family}`,
         `font weight: ${selection.weight}`,
         `font style: ${selection.style}`,
         ...(font.axes.length ? [`variable axes: ${googleFontVariationSettings(selection)}`] : []),
+        ...integration.sourceActions.map((action) => `source action: ${action}`),
+        ...integration.verificationChecks.map((check) => `verification check: ${check}`),
+        ...typographyValidationEvidence(validation),
       ];
       const controls = controlsFor(selected);
       const familyControl = controls.find((item) => item.property === 'fontFamily');
@@ -5236,7 +5282,7 @@ export function installFoundryInspector(
   }
 
   function measuredTextLineCount(element: HTMLElement): number | undefined {
-    const range = document.createRange();
+    const range = element.ownerDocument.createRange();
     range.selectNodeContents(element);
     const tops = new Set(
       [...range.getClientRects()]
@@ -5302,10 +5348,75 @@ export function installFoundryInspector(
     return `<section class="typography-diagnostics" aria-label="Rendered typography diagnostics"><div class="typography-diagnostics-head"><strong>Rendered type</strong><span>${escapeHtml(metrics)}</span></div>${findings}</section>`;
   }
 
+  function currentTypographyValidationPlan() {
+    return buildTypographyValidationPlan({
+      breakpoints: designGraph?.breakpoints ?? [],
+      themes: designGraph?.themes ?? [],
+      states: designGraph?.states ?? [],
+      currentBreakpoint: breakpoint.value,
+      currentTheme: theme.value,
+      currentState: state.value,
+    });
+  }
+
+  function currentTypographyStyleValues(): ProjectTypographyStyleValues | undefined {
+    if (!selected) return undefined;
+    const computed = getComputedStyle(selected);
+    return {
+      fontFamily: computed.fontFamily,
+      fontWeight: computed.fontWeight,
+      fontStyle: computed.fontStyle,
+      fontSize: computed.fontSize,
+      lineHeight: computed.lineHeight,
+      letterSpacing: computed.letterSpacing,
+      fontVariationSettings: computed.fontVariationSettings,
+    };
+  }
+
+  function defaultTypographyStyleName(): string {
+    const target = selected ? targetFor(selected).label.replace(/\s+/g, ' ').slice(0, 28) : 'Type';
+    const treatment = typeTreatments.find(
+      (item) => item.id === typographyTreatmentPreview?.treatmentId,
+    );
+    return `${target} / ${treatment?.label ?? 'Scale'}`;
+  }
+
+  function persistProjectTypographyStyles(): void {
+    try {
+      writeProjectTypographyStyles(localStorage, projectRoot, projectTypographyStyles);
+    } catch {
+      showToast('Project type styles could not be saved in this browser');
+    }
+  }
+
+  function projectTypographyStyleEvidence(style: ProjectTypographyStyle): string[] {
+    return [
+      `Project typography style: ${style.name}`,
+      'source intent: create or update a project-native typography token or reusable style',
+      `style values: ${Object.entries(style.values)
+        .map(([property, value]) => `${property}=${value}`)
+        .join(', ')}`,
+      ...typographyValidationEvidence(style.validation),
+    ];
+  }
+
+  function savedTypographyStylesMarkup(): string {
+    if (!projectTypographyStyles.length) return '';
+    return `<div class="typography-project-style"><div class="typography-lab-head"><strong>Saved project styles</strong><span>Reusable, source-accountable type decisions for this project.</span></div><div class="typography-style-list">${projectTypographyStyles
+      .map(
+        (style) =>
+          `<div class="typography-style-row"><span class="typography-style-copy"><strong>${escapeHtml(style.name)}</strong><span>${style.validation.breakpoints.length} viewport${style.validation.breakpoints.length === 1 ? '' : 's'} · ${style.validation.states.length} state${style.validation.states.length === 1 ? '' : 's'}</span></span><span class="typography-style-actions"><button type="button" data-apply-type-style="${escapeHtml(style.id)}" aria-label="Apply ${escapeHtml(style.name)}"><i data-foundry-icon="check"></i></button><button type="button" data-remove-type-style="${escapeHtml(style.id)}" aria-label="Remove ${escapeHtml(style.name)}"><i data-foundry-icon="x"></i></button></span></div>`,
+      )
+      .join('')}</div></div>`;
+  }
+
   function typographyLabMarkup(): string {
     const activeTreatment = typographyTreatmentPreview?.treatmentId;
     const scaleValue = currentScaleValue();
     const scaleActive = typographyTreatmentPreview?.scaleValue === scaleValue;
+    const canSaveStyle = Boolean(activeTreatment || scaleActive);
+    const validation = currentTypographyValidationPlan();
+    const styleName = typographyStyleName || defaultTypographyStyleName();
     return `<section class="typography-lab" aria-label="Type treatment previews"><div class="typography-lab-head"><strong>Try a treatment</strong><span>Preview rhythm on the selected text before adding it to review.</span></div><div class="typography-treatment-options">${typeTreatments
       .map(
         (treatment) =>
@@ -5329,10 +5440,10 @@ export function installFoundryInspector(
       )
       .join(
         '',
-      )}</div><div class="typography-scale-result"><code title="${escapeHtml(scaleValue)}">${escapeHtml(scaleValue)}</code><button type="button" data-type-scale-fluid aria-pressed="${String(typographyScaleFluid)}">${typographyScaleFluid ? 'Fluid' : 'Fixed'}</button></div><div class="typography-lab-actions"><button type="button" data-preview-type-scale>${scaleActive ? 'Previewing' : 'Preview scale'}</button><button type="button" class="primary" data-review-type-scale ${scaleActive ? '' : 'disabled'}>Add scale value</button></div></div></section>`;
+      )}</div><div class="typography-scale-result"><code title="${escapeHtml(scaleValue)}">${escapeHtml(scaleValue)}</code><button type="button" data-type-scale-fluid aria-pressed="${String(typographyScaleFluid)}">${typographyScaleFluid ? 'Fluid' : 'Fixed'}</button></div><div class="typography-lab-actions"><button type="button" data-preview-type-scale>${scaleActive ? 'Previewing' : 'Preview scale'}</button><button type="button" class="primary" data-review-type-scale ${scaleActive ? '' : 'disabled'}>Add scale value</button></div></div><div class="typography-project-style"><div class="typography-lab-head"><strong>Project style</strong><span>Save the complete treatment and ask the agent to map it into the project’s native type system.</span></div><label class="typography-style-name"><span>Style name</span><input type="text" data-type-style-name value="${escapeHtml(styleName)}" aria-label="Project typography style name"/></label><div class="typography-validation-plan"><strong>Validation plan</strong><span>${validation.breakpoints.length} responsive viewport${validation.breakpoints.length === 1 ? '' : 's'} · ${validation.themes.length} theme${validation.themes.length === 1 ? '' : 's'} · ${validation.states.length} state${validation.states.length === 1 ? '' : 's'}</span></div><div class="typography-lab-actions"><button type="button" class="primary" data-save-type-style ${canSaveStyle ? '' : 'disabled'}>Save as style</button></div></div>${savedTypographyStylesMarkup()}</section>`;
   }
 
-  async function reviewTypeTreatment(): Promise<void> {
+  async function reviewTypeTreatment(extraEvidence: string[] = []): Promise<void> {
     const preview = typographyTreatmentPreview;
     const treatment = typeTreatments.find((item) => item.id === preview?.treatmentId);
     if (!selected || !preview || !treatment) return;
@@ -5348,6 +5459,7 @@ export function installFoundryInspector(
       `Typography Studio treatment: ${treatment.label}`,
       `grid-aligned line height: ${lineHeight}px`,
       `letter spacing: ${treatment.letterSpacing}`,
+      ...extraEvidence,
     ];
     if (lineHeightControl)
       await applyControlValue(
@@ -5369,7 +5481,7 @@ export function installFoundryInspector(
     publishWorkspaceState();
   }
 
-  async function reviewTypeScale(): Promise<void> {
+  async function reviewTypeScale(extraEvidence: string[] = []): Promise<void> {
     const preview = typographyTreatmentPreview;
     if (!selected || !preview?.scaleValue) return;
     const value = preview.scaleValue;
@@ -5389,11 +5501,59 @@ export function installFoundryInspector(
       `scale ratio: ${typographyScaleRatio}`,
       `scale step: ${typographyScaleStep}`,
       typographyScaleFluid ? 'fluid range: 320px to 1440px' : 'fixed scale value',
+      ...extraEvidence,
     ]);
     if (selected) selectedControls = controlsFor(selected);
     closeTypographyStudio(false, false);
     renderControls();
     publishWorkspaceState();
+  }
+
+  async function saveCurrentProjectTypographyStyle(): Promise<void> {
+    const preview = typographyTreatmentPreview;
+    const values = currentTypographyStyleValues();
+    if (!selected || !preview || !values) return;
+    const next = createProjectTypographyStyle({
+      name: typographyStyleName || defaultTypographyStyleName(),
+      values,
+      validation: currentTypographyValidationPlan(),
+    });
+    const existing = projectTypographyStyles.find((style) => style.id === next.id);
+    const style = existing ? { ...next, createdAt: existing.createdAt } : next;
+    projectTypographyStyles = [
+      style,
+      ...projectTypographyStyles.filter((item) => item.id !== style.id),
+    ];
+    persistProjectTypographyStyles();
+    typographyStyleName = '';
+    const evidence = projectTypographyStyleEvidence(style);
+    if (preview.treatmentId) await reviewTypeTreatment(evidence);
+    else await reviewTypeScale(evidence);
+    showToast(`${style.name} added to review and saved locally`);
+  }
+
+  async function applyProjectTypographyStyle(styleId: string): Promise<void> {
+    if (!selected) return;
+    const style = projectTypographyStyles.find((item) => item.id === styleId);
+    if (!style) return;
+    restoreTypographyPreview();
+    const controls = controlsFor(selected);
+    const evidence = projectTypographyStyleEvidence(style);
+    for (const [property, value] of Object.entries(style.values)) {
+      const control = controls.find((item) => item.property === property);
+      if (!control || String(control.read()) === String(value)) continue;
+      await applyControlValue(control, value, `Apply ${style.name}`, evidence);
+    }
+    if (selected) selectedControls = controlsFor(selected);
+    closeTypographyStudio(false, false);
+    renderControls();
+    publishWorkspaceState();
+  }
+
+  function removeProjectTypographyStyle(styleId: string): void {
+    projectTypographyStyles = projectTypographyStyles.filter((style) => style.id !== styleId);
+    persistProjectTypographyStyles();
+    refreshTypographyStudio();
   }
 
   function axisLabel(tag: string): string {
@@ -5425,6 +5585,19 @@ export function installFoundryInspector(
     const styles = googleFontStyles(font);
     const editableAxes = font.axes.filter((axis) => !['ital', 'wght'].includes(axis.tag));
     const subsets = font.subsets.filter((subset) => subset !== 'menu');
+    const integration = buildFontIntegrationPlan(
+      selection,
+      googleTypographyStrategy,
+      selected ? getComputedStyle(selected).fontFamily : 'system-ui, sans-serif',
+    );
+    const validation = currentTypographyValidationPlan();
+    const integrationReference =
+      integration.importStatement ??
+      (integration.strategy === 'stylesheet'
+        ? integration.cssUrl
+        : integration.strategy === 'framework'
+          ? `${font.family} · framework-native loader`
+          : `${font.family} · licensed WOFF2 asset required`);
     return `<div class="typography-google-plan"><div class="typography-google-summary"><strong>${escapeHtml(font.family)}</strong><span>${escapeHtml(font.category)} · ${weights.length} ${weights.length === 1 ? 'weight' : 'weights'}${editableAxes.length ? ` · ${editableAxes.length} variable ${editableAxes.length === 1 ? 'axis' : 'axes'}` : ''}</span></div><section class="typography-choice-section"><span class="typography-choice-label">Weight</span><div class="typography-weight-options" role="radiogroup" aria-label="Font weight">${weights
       .map(
         (weight) =>
@@ -5460,7 +5633,7 @@ export function installFoundryInspector(
       )
       .join(
         '',
-      )}</div></section><button type="button" class="typography-review-font" data-review-google-font>Add font to review</button></div>`;
+      )}</div></section><section class="typography-choice-section"><span class="typography-choice-label">Reviewed source plan</span><div class="typography-source-plan" data-requires-assets="${String(integration.requiresAssetSelection)}"><div class="typography-source-plan-head"><strong>${escapeHtml(integration.label)}</strong><span>${validation.breakpoints.length * validation.themes.length * validation.states.length} contexts</span></div><code>${escapeHtml(integrationReference)}</code><ol>${integration.sourceActions.map((action) => `<li>${escapeHtml(action)}</li>`).join('')}</ol><div class="typography-source-plan-foot"><i data-foundry-icon="${integration.requiresAssetSelection ? 'warning' : 'check'}"></i><span>${integration.requiresAssetSelection ? 'The agent must map an existing licensed asset before applying.' : 'Preview remains temporary until the reviewed source plan is applied and rebuilt.'}</span></div></div></section><button type="button" class="typography-review-font" data-review-google-font>Add font and source plan</button></div>`;
   }
 
   function renderTypographyStudio(query = ''): void {
@@ -5566,6 +5739,29 @@ export function installFoundryInspector(
     typographyPopover
       .querySelector<HTMLButtonElement>('[data-review-type-scale]')
       ?.addEventListener('click', () => void reviewTypeScale());
+    typographyPopover
+      .querySelector<HTMLInputElement>('[data-type-style-name]')
+      ?.addEventListener('input', (event) => {
+        typographyStyleName = (event.currentTarget as HTMLInputElement).value;
+      });
+    typographyPopover
+      .querySelector<HTMLButtonElement>('[data-save-type-style]')
+      ?.addEventListener('click', () => void saveCurrentProjectTypographyStyle());
+    typographyPopover
+      .querySelectorAll<HTMLButtonElement>('[data-apply-type-style]')
+      .forEach((button) => {
+        button.addEventListener(
+          'click',
+          () => void applyProjectTypographyStyle(button.dataset.applyTypeStyle ?? ''),
+        );
+      });
+    typographyPopover
+      .querySelectorAll<HTMLButtonElement>('[data-remove-type-style]')
+      .forEach((button) => {
+        button.addEventListener('click', () =>
+          removeProjectTypographyStyle(button.dataset.removeTypeStyle ?? ''),
+        );
+      });
     const search = typographyPopover.querySelector<HTMLInputElement>('[data-typography-search]');
     search?.addEventListener('input', () => {
       const nextQuery = search.value;
@@ -5703,6 +5899,7 @@ export function installFoundryInspector(
     activeColor = undefined;
     closeFdcSelect(false);
     typographyTrigger = trigger;
+    typographyStyleName = '';
     typographyScaleBase = Math.max(
       8,
       Math.round((Number.parseFloat(getComputedStyle(selected).fontSize) || 16) / 4) * 4,
@@ -7578,15 +7775,16 @@ export function installFoundryInspector(
 
   async function verificationDocument(
     change: any,
+    context: TypographyVerificationContext = change.context,
   ): Promise<{ documentRoot: Document; cleanup(): void } | null> {
     if (
-      change.context.breakpoint === 'current' &&
-      change.context.theme === 'current' &&
-      change.context.state === 'current'
+      context.breakpoint === 'current' &&
+      context.theme === 'current' &&
+      context.state === 'current'
     ) {
       return { documentRoot: document, cleanup() {} };
     }
-    const viewport = designGraph?.breakpoints.find((item) => item.id === change.context.breakpoint);
+    const viewport = designGraph?.breakpoints.find((item) => item.id === context.breakpoint);
     const frame = document.createElement('iframe');
     frame.title = 'Foundry verification frame';
     Object.assign(frame.style, {
@@ -7617,7 +7815,7 @@ export function installFoundryInspector(
       frame.remove();
       return null;
     }
-    const requestedTheme = designGraph?.themes.find((item) => item.id === change.context.theme);
+    const requestedTheme = designGraph?.themes.find((item) => item.id === context.theme);
     if (requestedTheme?.attribute)
       frameDocument.documentElement.setAttribute(
         requestedTheme.attribute,
@@ -7628,7 +7826,7 @@ export function installFoundryInspector(
     const framedTarget = frameDocument.querySelector(
       change.target.locator.selector,
     ) as HTMLElement | null;
-    const requestedState = change.context.state as string;
+    const requestedState = context.state;
     if (framedTarget && ['hover', 'focus', 'active', 'disabled'].includes(requestedState)) {
       framedTarget.setAttribute(`data-foundry-force-${requestedState}`, 'true');
       const style = frameDocument.createElement('style');
@@ -7646,6 +7844,7 @@ export function installFoundryInspector(
         '*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}';
       frameDocument.head.append(style);
     }
+    await frameDocument.fonts?.ready;
     await new Promise((resolveWait) => setTimeout(resolveWait, 180));
     return { documentRoot: frameDocument, cleanup: () => frame.remove() };
   }
@@ -7711,6 +7910,60 @@ export function installFoundryInspector(
     );
   }
 
+  const typographyVerificationProperties = new Set([
+    'fontFamily',
+    'fontWeight',
+    'fontStyle',
+    'fontSize',
+    'lineHeight',
+    'letterSpacing',
+    'wordSpacing',
+    'textIndent',
+    'fontVariationSettings',
+  ]);
+
+  function typographyVerificationSnapshot(
+    element: HTMLElement,
+    change: any,
+    context: TypographyVerificationContext,
+  ) {
+    const documentRoot = element.ownerDocument;
+    const computed = documentRoot.defaultView!.getComputedStyle(element);
+    const family = parseFontFamilyStack(computed.fontFamily)[0] ?? computed.fontFamily;
+    const escapedFamily = family.replaceAll('"', '\\"');
+    const fontCheck = documentRoot.fonts.check(
+      `${computed.fontStyle} ${computed.fontWeight} 16px "${escapedFamily}"`,
+    );
+    const integration = parseFontIntegrationPlan(change.evidence);
+    const matchingFaces = [...documentRoot.fonts].filter(
+      (face) =>
+        parseFontFamilyStack(face.family)[0]?.toLocaleLowerCase() === family.toLocaleLowerCase(),
+    );
+    const fontLoaded = integration
+      ? fontCheck && matchingFaces.some((face) => face.status === 'loaded')
+      : fontCheck;
+    const clipsX = ['hidden', 'clip'].includes(computed.overflowX);
+    const clipsY = ['hidden', 'clip'].includes(computed.overflowY);
+    const clipped =
+      (clipsX && element.scrollWidth > element.clientWidth + 1) ||
+      (clipsY && element.scrollHeight > element.clientHeight + 1);
+    return {
+      ...context,
+      value: renderedValue(element, change),
+      family,
+      weight: computed.fontWeight,
+      style: computed.fontStyle,
+      axes: computed.fontVariationSettings,
+      fontLoaded,
+      width: Number(element.getBoundingClientRect().width.toFixed(2)),
+      height: Number(element.getBoundingClientRect().height.toFixed(2)),
+      lineCount: measuredTextLineCount(element) ?? 1,
+      scrollWidth: element.scrollWidth,
+      scrollHeight: element.scrollHeight,
+      clipped,
+    };
+  }
+
   async function verify(changeIds?: string[], runId?: string): Promise<void> {
     if (!sessionId || !token) {
       showToast('Session connection is missing');
@@ -7725,6 +7978,75 @@ export function installFoundryInspector(
     await waitForStableGeometry(changes);
     const results: any[] = [];
     for (const change of changes) {
+      const typographyContexts = parseTypographyVerificationContexts(change.evidence);
+      if (typographyVerificationProperties.has(change.property) && typographyContexts.length) {
+        const snapshots: ReturnType<typeof typographyVerificationSnapshot>[] = [];
+        let missingContext = false;
+        let missingTarget = false;
+        let geometry: any = undefined;
+        for (const context of typographyContexts) {
+          const verificationContext = await verificationDocument(change, context);
+          const documentRoot = verificationContext?.documentRoot;
+          const element = documentRoot
+            ? resolveFoundrySelector(documentRoot, change.target.locator.selector)
+            : null;
+          if (!verificationContext) missingContext = true;
+          else if (!element) missingTarget = true;
+          else {
+            const rect = element.getBoundingClientRect();
+            geometry ??= {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+              scale: element.ownerDocument.defaultView?.devicePixelRatio || 1,
+            };
+            snapshots.push(typographyVerificationSnapshot(element, change, context));
+          }
+          verificationContext?.cleanup();
+        }
+        const valueMismatch = snapshots.some(
+          (snapshot) => !typographyPropertyMatches(change.property, snapshot.value, change.after),
+        );
+        const missingFont = snapshots.some((snapshot) => !snapshot.fontLoaded);
+        const clipped = snapshots.some((snapshot) => snapshot.clipped);
+        const passed =
+          snapshots.length === typographyContexts.length &&
+          !missingContext &&
+          !missingTarget &&
+          !valueMismatch &&
+          !missingFont &&
+          !clipped;
+        const failures = [
+          missingContext ? 'one or more validation contexts could not be reproduced' : '',
+          missingTarget ? 'the target locator did not resolve in every context' : '',
+          valueMismatch ? 'the rendered value differs from the reviewed value' : '',
+          missingFont ? 'the requested font face did not report loaded' : '',
+          clipped ? 'text clips in one or more validation contexts' : '',
+        ].filter(Boolean);
+        results.push({
+          changeId: change.id,
+          property: change.property,
+          requested: change.after,
+          rendered: {
+            value: snapshots[0]?.value ?? null,
+            family: snapshots[0]?.family ?? null,
+            weight: snapshots[0]?.weight ?? null,
+            style: snapshots[0]?.style ?? null,
+            axes: snapshots[0]?.axes ?? null,
+            contexts: snapshots,
+          },
+          passed,
+          reason: passed
+            ? undefined
+            : failures.length
+              ? failures.join('; ')
+              : 'Typography verification did not complete',
+          geometry,
+          verifiedAt: new Date().toISOString(),
+        });
+        continue;
+      }
       const verificationContext = await verificationDocument(change);
       const documentRoot = verificationContext?.documentRoot;
       const element = documentRoot

@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   analyzeTypography,
+  buildFontIntegrationPlan,
+  buildTypographyValidationPlan,
+  createProjectTypographyStyle,
   defaultGoogleFontSelection,
   fontFamilyDeclaration,
   fluidTypeClamp,
@@ -13,7 +16,14 @@ import {
   mergeTypographyFonts,
   modularTypeSize,
   normalizeFontFamily,
+  parseFontIntegrationPlan,
   parseFontFamilyStack,
+  parseTypographyVerificationContexts,
+  readProjectTypographyStyles,
+  typographyValidationEvidence,
+  typographyPropertyMatches,
+  typographyVerificationContexts,
+  writeProjectTypographyStyles,
 } from './typography.js';
 
 const diagnosticBaseline = {
@@ -205,4 +215,121 @@ test('builds grid-aligned modular type sizes', () => {
 test('creates a deterministic fluid clamp between viewport-safe endpoints', () => {
   assert.equal(fluidTypeClamp(20, 32), 'clamp(20px, calc(16.571px + 1.071vw), 32px)');
   assert.equal(fluidTypeClamp(32, 20), 'clamp(20px, calc(16.571px + 1.071vw), 32px)');
+});
+
+test('builds a responsive and state validation plan without duplicate contexts', () => {
+  const plan = buildTypographyValidationPlan({
+    breakpoints: [
+      { id: 'mobile', label: 'Mobile' },
+      { id: 'desktop', label: 'Desktop' },
+    ],
+    themes: [
+      { id: 'light', label: 'Light' },
+      { id: 'dark', label: 'Dark' },
+    ],
+    states: ['current', { id: 'focus', label: 'Focus' }, 'focus'],
+    currentBreakpoint: 'desktop',
+    currentTheme: 'dark',
+    currentState: 'current',
+  });
+  assert.deepEqual(plan, {
+    breakpoints: [
+      { id: 'mobile', label: 'Mobile' },
+      { id: 'desktop', label: 'Desktop' },
+    ],
+    themes: [
+      { id: 'dark', label: 'dark' },
+      { id: 'light', label: 'Light' },
+    ],
+    states: [
+      { id: 'current', label: 'current' },
+      { id: 'focus', label: 'Focus' },
+    ],
+  });
+  assert.deepEqual(typographyValidationEvidence(plan), [
+    'responsive validation contexts: Mobile, Desktop',
+    'theme validation contexts: dark, Light',
+    'state validation contexts: current, Focus',
+    `typography verification plan: ${JSON.stringify(typographyVerificationContexts(plan))}`,
+    'verify the rebuilt style in every listed context',
+  ]);
+  assert.equal(typographyVerificationContexts(plan).length, 8);
+  assert.deepEqual(
+    parseTypographyVerificationContexts(typographyValidationEvidence(plan)),
+    typographyVerificationContexts(plan),
+  );
+});
+
+test('builds exact, reviewable font integration plans for each source strategy', () => {
+  const selection = defaultGoogleFontSelection(variableFont, 600, 'normal');
+  const stylesheet = buildFontIntegrationPlan(selection, 'stylesheet', 'Inter, sans-serif');
+  assert.equal(stylesheet.strategy, 'stylesheet');
+  assert.match(stylesheet.cssUrl, /fonts\.googleapis\.com\/css2/);
+  assert.match(stylesheet.sourceActions[0]!, /exact stylesheet request/);
+  assert.equal(stylesheet.requiresAssetSelection, false);
+
+  const packagePlan = buildFontIntegrationPlan(selection, 'package', 'Inter, sans-serif');
+  assert.equal(packagePlan.packageName, '@fontsource-variable/roboto-flex');
+  assert.equal(packagePlan.importStatement, "import '@fontsource-variable/roboto-flex';");
+
+  const selfHosted = buildFontIntegrationPlan(selection, 'self-hosted', 'Inter, sans-serif');
+  assert.equal(selfHosted.requiresAssetSelection, true);
+  assert.match(selfHosted.sourceActions.join(' '), /licensed Roboto Flex WOFF2 asset/);
+
+  const evidence = [`font integration plan: ${JSON.stringify(packagePlan)}`];
+  assert.deepEqual(parseFontIntegrationPlan(evidence), packagePlan);
+});
+
+test('matches rendered typography semantically instead of comparing browser formatting', () => {
+  assert.equal(
+    typographyPropertyMatches(
+      'fontFamily',
+      '"Roboto Flex", Arial, sans-serif',
+      'Roboto Flex, sans-serif',
+    ),
+    true,
+  );
+  assert.equal(typographyPropertyMatches('fontWeight', 'normal', '400'), true);
+  assert.equal(
+    typographyPropertyMatches(
+      'fontVariationSettings',
+      '"opsz" 14, "wdth" 100',
+      '"opsz" 14,"wdth" 100',
+    ),
+    true,
+  );
+  assert.equal(typographyPropertyMatches('fontSize', '31.999px', '32px'), true);
+  assert.equal(typographyPropertyMatches('fontStyle', 'normal', 'italic'), false);
+});
+
+test('stores project typography styles locally and replaces matching names deterministically', () => {
+  const values = {
+    fontFamily: 'Inter, sans-serif',
+    fontWeight: '600',
+    fontStyle: 'normal',
+    fontSize: '32px',
+    lineHeight: '40px',
+    letterSpacing: '-0.02em',
+    fontVariationSettings: 'normal',
+  };
+  const validation = buildTypographyValidationPlan({
+    breakpoints: [{ id: 'desktop', label: 'Desktop' }],
+    currentTheme: 'light',
+    states: ['current'],
+  });
+  const style = createProjectTypographyStyle({
+    name: 'Display / Tight',
+    values,
+    validation,
+    now: '2026-09-04T12:00:00.000Z',
+  });
+  assert.equal(style.id, 'type_display-tight');
+  const valuesByKey = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => valuesByKey.get(key) ?? null,
+    setItem: (key: string, value: string) => void valuesByKey.set(key, value),
+  };
+  writeProjectTypographyStyles(storage, '/project', [style]);
+  assert.deepEqual(readProjectTypographyStyles(storage, '/project'), [style]);
+  assert.deepEqual(readProjectTypographyStyles(storage, '/another-project'), []);
 });

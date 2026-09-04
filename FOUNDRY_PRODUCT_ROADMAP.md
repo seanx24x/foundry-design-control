@@ -14,6 +14,16 @@ This document is the canonical product backlog for the next phase of Foundry. We
 - Keep project data, fonts, decisions, and sessions local by default.
 - Add controls only when they improve the user's next decision.
 
+## Delivery rule: product and Figma move together
+
+Every roadmap milestone that adds or changes visible interface behavior must update the matching Figma components in the same delivery.
+
+- The running product is the source of truth for layout, copy, states, and behavior.
+- Update both Light and Dark component variants, including nested components and interaction states.
+- Preserve auto layout, shared variables, real Keyline icon components, and the 4px foundation system.
+- Compare Figma against fresh product screenshots at the same dimensions before marking the milestone complete.
+- Do not treat a visual or functional roadmap item as complete while its Figma component is missing or out of date.
+
 ## Roadmap order
 
 1. Typography Studio
@@ -229,7 +239,7 @@ Every roadmap item must include:
 
 Use this section to record the active roadmap item and completed milestones without deleting the original scope.
 
-- Current item: Typography Studio
+- Current item: Motion Studio
 - Completed milestones:
   - Added a searchable font browser inside the contextual Inspector.
   - Inventories active, loaded, and rendered project font families with available styles and weights.
@@ -252,4 +262,12 @@ Use this section to record the active roadmap item and completed milestones with
   - Builds grid-aligned modular type steps from an adjustable base, ratio, and scale position.
   - Produces fixed values or responsive CSS clamp values across the 320px to 1440px viewport range.
   - Keeps treatments and scale experiments preview-only until the user explicitly adds the exact values to review.
-- Next milestone: Save approved type treatments as project-native styles and validate them across responsive and state contexts.
+  - Saves complete approved type treatments as reusable, project-local styles with source intent attached.
+  - Reapplies saved styles through the normal reviewed change workflow rather than bypassing source accountability.
+  - Shows the exact framework, package, stylesheet, or self-hosted integration plan before a Google Font enters review.
+  - Keeps self-hosted plans unresolved until an existing licensed project asset can be mapped.
+  - Verifies family, weight, style, axes, font loading, wrapping, line count, geometry, and clipping across recorded breakpoint, theme, and state contexts.
+  - Summarizes multi-context typography verification in the ApplyRun result instead of exposing raw diagnostic JSON.
+  - Updates the matching Light and Dark Figma variants for source planning, verification, success, and mismatch states.
+- Completed item: Typography Studio
+- Next milestone: Discover and scrub existing CSS, Web Animations, and supported library motion in Motion Studio.

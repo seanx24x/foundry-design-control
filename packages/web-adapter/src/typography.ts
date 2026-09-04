@@ -95,6 +95,230 @@ export interface TypeTreatment {
   letterSpacing: string;
 }
 
+export interface ProjectTypographyStyleValues {
+  fontFamily: string;
+  fontWeight: string;
+  fontStyle: string;
+  fontSize: string;
+  lineHeight: string;
+  letterSpacing: string;
+  fontVariationSettings: string;
+}
+
+export interface ProjectTypographyStyle {
+  id: string;
+  name: string;
+  values: ProjectTypographyStyleValues;
+  validation: TypographyValidationPlan;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TypographyValidationPlan {
+  breakpoints: Array<{ id: string; label: string }>;
+  themes: Array<{ id: string; label: string }>;
+  states: Array<{ id: string; label: string }>;
+}
+
+export interface TypographyVerificationContext {
+  breakpoint: string;
+  theme: string;
+  state: string;
+}
+
+export interface FontIntegrationPlan {
+  strategy: FontInstallStrategy;
+  label: string;
+  family: string;
+  weight: number;
+  style: 'normal' | 'italic';
+  declaration: string;
+  cssUrl: string;
+  packageName?: string;
+  importStatement?: string;
+  sourceActions: string[];
+  verificationChecks: string[];
+  requiresAssetSelection: boolean;
+}
+
+export interface TypographyValidationInput {
+  breakpoints?: Array<{ id: string; label?: string }>;
+  themes?: Array<{ id: string; label?: string }>;
+  states?: Array<string | { id: string; label?: string }>;
+  currentBreakpoint?: string;
+  currentTheme?: string;
+  currentState?: string;
+}
+
+interface TypographyStyleStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+function contextOption(value: string | { id: string; label?: string }): {
+  id: string;
+  label: string;
+} {
+  return typeof value === 'string'
+    ? { id: value, label: value }
+    : { id: value.id, label: value.label || value.id };
+}
+
+function uniqueContextOptions(
+  values: Array<string | { id: string; label?: string }>,
+): Array<{ id: string; label: string }> {
+  const seen = new Set<string>();
+  return values.map(contextOption).filter((item) => {
+    if (!item.id || seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
+export function buildTypographyValidationPlan(
+  input: TypographyValidationInput,
+): TypographyValidationPlan {
+  const breakpoints = uniqueContextOptions(
+    input.breakpoints?.length ? input.breakpoints : [input.currentBreakpoint || 'current'],
+  );
+  const themes = uniqueContextOptions([input.currentTheme || 'current', ...(input.themes ?? [])]);
+  const states = uniqueContextOptions([input.currentState || 'current', ...(input.states ?? [])]);
+  return { breakpoints, themes, states };
+}
+
+export function typographyVerificationContexts(
+  plan: TypographyValidationPlan,
+): TypographyVerificationContext[] {
+  return plan.breakpoints.flatMap((breakpoint) =>
+    plan.themes.flatMap((theme) =>
+      plan.states.map((state) => ({
+        breakpoint: breakpoint.id,
+        theme: theme.id,
+        state: state.id,
+      })),
+    ),
+  );
+}
+
+export function typographyValidationEvidence(plan: TypographyValidationPlan): string[] {
+  const list = (items: Array<{ label: string }>): string =>
+    items.map((item) => item.label).join(', ');
+  return [
+    `responsive validation contexts: ${list(plan.breakpoints)}`,
+    `theme validation contexts: ${list(plan.themes)}`,
+    `state validation contexts: ${list(plan.states)}`,
+    `typography verification plan: ${JSON.stringify(typographyVerificationContexts(plan))}`,
+    'verify the rebuilt style in every listed context',
+  ];
+}
+
+export function parseTypographyVerificationContexts(
+  evidence: string[] | undefined,
+): TypographyVerificationContext[] {
+  const prefix = 'typography verification plan:';
+  const encoded = evidence
+    ?.find((item) => item.startsWith(prefix))
+    ?.slice(prefix.length)
+    .trim();
+  if (!encoded) return [];
+  try {
+    const parsed = JSON.parse(encoded) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((context): context is TypographyVerificationContext =>
+      Boolean(
+        context &&
+        typeof context === 'object' &&
+        typeof (context as TypographyVerificationContext).breakpoint === 'string' &&
+        typeof (context as TypographyVerificationContext).theme === 'string' &&
+        typeof (context as TypographyVerificationContext).state === 'string',
+      ),
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function parseFontIntegrationPlan(
+  evidence: string[] | undefined,
+): FontIntegrationPlan | undefined {
+  const prefix = 'font integration plan:';
+  const encoded = evidence
+    ?.find((item) => item.startsWith(prefix))
+    ?.slice(prefix.length)
+    .trim();
+  if (!encoded) return undefined;
+  try {
+    const parsed = JSON.parse(encoded) as Partial<FontIntegrationPlan>;
+    return parsed &&
+      typeof parsed.family === 'string' &&
+      typeof parsed.strategy === 'string' &&
+      typeof parsed.weight === 'number' &&
+      typeof parsed.style === 'string' &&
+      Array.isArray(parsed.sourceActions) &&
+      Array.isArray(parsed.verificationChecks)
+      ? (parsed as FontIntegrationPlan)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function typographyStyleSlug(name: string): string {
+  return (
+    name
+      .trim()
+      .toLocaleLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || 'type-style'
+  );
+}
+
+export function createProjectTypographyStyle(input: {
+  name: string;
+  values: ProjectTypographyStyleValues;
+  validation: TypographyValidationPlan;
+  now?: string;
+}): ProjectTypographyStyle {
+  const timestamp = input.now ?? new Date().toISOString();
+  const name = input.name.trim() || 'Untitled type style';
+  return {
+    id: `type_${typographyStyleSlug(name)}`,
+    name,
+    values: input.values,
+    validation: input.validation,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function projectTypographyStylesKey(projectRoot: string): string {
+  return `__foundry_typography_styles:${projectRoot || 'local'}`;
+}
+
+export function readProjectTypographyStyles(
+  storage: TypographyStyleStorage,
+  projectRoot: string,
+): ProjectTypographyStyle[] {
+  try {
+    const parsed = JSON.parse(storage.getItem(projectTypographyStylesKey(projectRoot)) ?? '[]');
+    return Array.isArray(parsed)
+      ? parsed.filter((style): style is ProjectTypographyStyle =>
+          Boolean(style?.id && style?.name && style?.values && style?.validation),
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function writeProjectTypographyStyles(
+  storage: TypographyStyleStorage,
+  projectRoot: string,
+  styles: ProjectTypographyStyle[],
+): void {
+  storage.setItem(projectTypographyStylesKey(projectRoot), JSON.stringify(styles));
+}
+
 export const typeTreatments: TypeTreatment[] = [
   {
     id: 'tight',
@@ -159,6 +383,143 @@ export const fontInstallStrategies: Array<{
   { id: 'stylesheet', label: 'Stylesheet', detail: 'Add a Google Fonts CSS2 request.' },
   { id: 'self-hosted', label: 'Self-host', detail: 'Download and serve font files locally.' },
 ];
+
+function fontPackageSlug(family: string): string {
+  return family
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+export function buildFontIntegrationPlan(
+  selection: GoogleFontSelection,
+  strategy: FontInstallStrategy,
+  currentStack = 'system-ui, sans-serif',
+): FontIntegrationPlan {
+  const family = selection.font.family;
+  const declaration = fontFamilyDeclaration(family, currentStack);
+  const cssUrl = googleFontsCssUrl(selection.font, {
+    weight: selection.weight,
+    style: selection.style,
+    axes: selection.axes,
+    variableRanges: selection.font.axes.length > 0,
+  });
+  const packageSlug = fontPackageSlug(family);
+  const variable = selection.font.axes.length > 0;
+  const packageName = variable
+    ? `@fontsource-variable/${packageSlug}`
+    : `@fontsource/${packageSlug}`;
+  const faceSuffix = selection.style === 'italic' ? '-italic' : '';
+  const importStatement = variable
+    ? `import '${packageName}';`
+    : `import '${packageName}/${selection.weight}${faceSuffix}.css';`;
+  const axes = googleFontVariationSettings(selection);
+  const commonChecks = [
+    `family resolves to ${family}`,
+    `weight resolves to ${selection.weight}`,
+    `style resolves to ${selection.style}`,
+    ...(axes === 'normal' ? [] : [`variable axes resolve to ${axes}`]),
+    'requested font face reports loaded in the rebuilt document',
+    'text wrapping and clipping match the recorded validation contexts',
+  ];
+  const strategyLabel =
+    fontInstallStrategies.find((item) => item.id === strategy)?.label ?? strategy;
+  const plan: FontIntegrationPlan = {
+    strategy,
+    label: strategyLabel,
+    family,
+    weight: selection.weight,
+    style: selection.style,
+    declaration,
+    cssUrl,
+    sourceActions: [],
+    verificationChecks: commonChecks,
+    requiresAssetSelection: false,
+  };
+  if (strategy === 'framework') {
+    plan.sourceActions = [
+      'Use the detected framework-native font loader in the existing root typography entry point.',
+      `Request ${family} at weight ${selection.weight}, style ${selection.style}${axes === 'normal' ? '' : `, and axes ${axes}`}.`,
+      `Expose the loaded family through the project’s existing class, variable, or token convention and set the selected source target to ${declaration}.`,
+    ];
+  } else if (strategy === 'package') {
+    plan.packageName = packageName;
+    plan.importStatement = importStatement;
+    plan.sourceActions = [
+      `Install ${packageName} with the project package manager and record the resolved version in the lockfile.`,
+      `Add ${importStatement} to the existing root typography entry point.`,
+      `Set the selected source target to ${declaration}.`,
+    ];
+  } else if (strategy === 'stylesheet') {
+    plan.sourceActions = [
+      `Add the exact stylesheet request ${cssUrl} to the project’s existing document or root stylesheet integration point.`,
+      `Set the selected source target to ${declaration}.`,
+    ];
+  } else {
+    plan.requiresAssetSelection = true;
+    plan.sourceActions = [
+      `Use an existing licensed ${family} WOFF2 asset in the project. Do not download or substitute an unreviewed file.`,
+      `Create or extend the project’s existing @font-face declaration for weight ${selection.weight} and style ${selection.style}.`,
+      `Set the selected source target to ${declaration}. If no licensed asset can be mapped exactly, report the change as unresolved.`,
+    ];
+  }
+  return plan;
+}
+
+function comparableTypographyValue(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .replaceAll(/\s+/g, ' ')
+    .toLocaleLowerCase();
+}
+
+export function typographyPropertyMatches(
+  property: string,
+  rendered: unknown,
+  expected: unknown,
+): boolean {
+  if (property === 'fontFamily') {
+    const renderedFamilies = parseFontFamilyStack(String(rendered ?? '')).map((family) =>
+      family.toLocaleLowerCase(),
+    );
+    const expectedFamilies = parseFontFamilyStack(String(expected ?? '')).map((family) =>
+      family.toLocaleLowerCase(),
+    );
+    return Boolean(
+      renderedFamilies[0] && expectedFamilies[0] && renderedFamilies[0] === expectedFamilies[0],
+    );
+  }
+  if (property === 'fontWeight') {
+    return numericWeight(String(rendered)) === numericWeight(String(expected));
+  }
+  if (property === 'fontStyle') {
+    return comparableTypographyValue(rendered) === comparableTypographyValue(expected);
+  }
+  if (property === 'fontVariationSettings') {
+    return (
+      comparableTypographyValue(rendered).replaceAll(' ', '') ===
+      comparableTypographyValue(expected).replaceAll(' ', '')
+    );
+  }
+  const numericProperties = new Set([
+    'fontSize',
+    'lineHeight',
+    'letterSpacing',
+    'wordSpacing',
+    'textIndent',
+  ]);
+  if (numericProperties.has(property)) {
+    const renderedNumber = Number.parseFloat(String(rendered));
+    const expectedNumber = Number.parseFloat(String(expected));
+    return (
+      Number.isFinite(renderedNumber) &&
+      Number.isFinite(expectedNumber) &&
+      Math.abs(renderedNumber - expectedNumber) < 0.02
+    );
+  }
+  return comparableTypographyValue(rendered) === comparableTypographyValue(expected);
+}
 
 const genericFamilies = new Set([
   'serif',

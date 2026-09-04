@@ -121,6 +121,29 @@ test('Typography Studio previews treatments and scale values before review', () 
   assert.match(source, /Typography Studio modular scale:/);
 });
 
+test('Typography Studio saves source-accountable project styles with context validation', () => {
+  const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  assert.match(source, /Save as style/);
+  assert.match(source, /Saved project styles/);
+  assert.match(source, /source intent: create or update a project-native typography token/);
+  assert.match(source, /buildTypographyValidationPlan/);
+  assert.match(source, /typographyValidationEvidence/);
+  assert.match(source, /data-apply-type-style/);
+  assert.match(source, /writeProjectTypographyStyles/);
+});
+
+test('Typography Studio reviews an exact font source plan and verifies rendered type in every context', () => {
+  const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  assert.match(source, /Reviewed source plan/);
+  assert.match(source, /Add font and source plan/);
+  assert.match(source, /buildFontIntegrationPlan/);
+  assert.match(source, /font integration plan:/);
+  assert.match(source, /parseTypographyVerificationContexts/);
+  assert.match(source, /requested font face did not report loaded/);
+  assert.match(source, /text clips in one or more validation contexts/);
+  assert.match(source, /verificationResultValue/);
+});
+
 test('the review flow queues approved changes when the coding agent is offline', () => {
   const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
   assert.match(source, /sessionRequest\('\/agent-presence'\)/);
