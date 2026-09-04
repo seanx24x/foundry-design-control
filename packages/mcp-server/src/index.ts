@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
+import { ClaimLeaseKeeper } from './claim-lease.js';
 import { FoundryRuntimeClient } from './client.js';
 
 function result(value: unknown) {
@@ -25,6 +26,7 @@ serveStdio(() => {
     version: '0.3.0',
   });
   const client = new FoundryRuntimeClient();
+  const claimLeases = new ClaimLeaseKeeper(client);
   const listenerTaskId = `listener_${randomUUID().replaceAll('-', '')}`;
 
   server.registerTool(
@@ -157,7 +159,15 @@ serveStdio(() => {
             claimedRun?.state === 'claimed' &&
             claimedRun.agent?.name === resolvedAgent.name &&
             claimedRun.agent.taskId === resolvedAgent.taskId;
-          if (sameAgent && claimedRun?.claimAttemptId) return result(claimed);
+          if (sameAgent && claimedRun?.claimAttemptId) {
+            claimLeases.start({
+              sessionId: id,
+              token,
+              runId: run.id,
+              claimAttemptId: claimedRun.claimAttemptId,
+            });
+            return result(claimed);
+          }
         }
         if (Date.now() >= deadline) break;
         await new Promise((resolveWait) => setTimeout(resolveWait, 500));
@@ -178,14 +188,16 @@ serveStdio(() => {
         claimAttemptId: z.string().min(1),
       }),
     },
-    async ({ sessionId, token, runId, claimAttemptId }) =>
-      result(
-        await client.request(
-          `/v1/sessions/${client.sessionId(sessionId)}/apply-runs/${runId}/heartbeat`,
-          { method: 'POST', body: JSON.stringify({ claimAttemptId }) },
-          token,
-        ),
-      ),
+    async ({ sessionId, token, runId, claimAttemptId }) => {
+      const id = client.sessionId(sessionId);
+      const payload = await client.request(
+        `/v1/sessions/${id}/apply-runs/${runId}/heartbeat`,
+        { method: 'POST', body: JSON.stringify({ claimAttemptId }) },
+        token,
+      );
+      claimLeases.start({ sessionId: id, token, runId, claimAttemptId });
+      return result(payload);
+    },
   );
 
   server.registerTool(
@@ -233,14 +245,15 @@ serveStdio(() => {
         error: z.string().optional(),
       }),
     },
-    async ({ sessionId, token, runId, ...update }) =>
-      result(
-        await client.request(
-          `/v1/sessions/${client.sessionId(sessionId)}/apply-runs/${runId}`,
-          { method: 'PATCH', body: JSON.stringify(update) },
-          token,
-        ),
-      ),
+    async ({ sessionId, token, runId, ...update }) => {
+      const payload = await client.request(
+        `/v1/sessions/${client.sessionId(sessionId)}/apply-runs/${runId}`,
+        { method: 'PATCH', body: JSON.stringify(update) },
+        token,
+      );
+      claimLeases.stop(runId);
+      return result(payload);
+    },
   );
 
   server.registerTool(

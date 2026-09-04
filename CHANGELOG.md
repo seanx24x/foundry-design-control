@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-beta.11 - 2026-09-04
+
+- Kept claimed Apply with agent handoffs alive automatically while the coding agent inspects source, edits files, rebuilds, and verifies the result.
+- Added bounded heartbeat recovery so temporary runtime interruptions do not silently abandon an active design batch.
+- Clarified the connected state in Review so users can see that Foundry is holding the handoff while source work begins.
+- Replaced immediate apply cancellation with a deliberate two-step Stop apply confirmation.
+- Added regression coverage for claim renewal, transient heartbeat failures, terminal run states, and the updated handoff controls.
+
 ## 0.2.0-beta.10 - 2026-09-04
 
 - Added Motion Studio discovery for CSS animations, CSS transitions, and Web Animations, with playback, looping, speed, and timeline controls.

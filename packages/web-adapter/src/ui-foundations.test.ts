@@ -162,6 +162,10 @@ test('the apply handoff exposes recovery and verifies independently of review vi
   assert.match(source, /claimed: 'Handoff received'/);
   assert.match(source, /Foundry safely returned this batch to the queue/);
   assert.match(source, /applyButton\.dataset\.action = 'reconnect'/);
+  assert.match(source, /Stop apply/);
+  assert.match(source, /Confirm stop/);
+  assert.match(source, /Press Confirm stop within 5 seconds/);
+  assert.match(source, /Foundry is keeping the handoff active while source work begins/);
   assert.match(source, /if \(latestRun\?\.state === 'verifying'\) maybeVerifyRun\(latestRun\)/);
   assert.match(source, /startSessionPolling\(\)/);
 });

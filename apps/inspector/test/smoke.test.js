@@ -51,6 +51,15 @@ test('apply progress reuses the review hierarchy and reports the complete run', 
   assert.doesNotMatch(css, /\.apply-card\s*\{/);
 });
 
+test('active source runs require an explicit second action before cancellation', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(source, /Stop apply/);
+  assert.match(source, /Confirm stop/);
+  assert.match(source, /Press Confirm stop within 5 seconds/);
+  assert.match(source, /Foundry is keeping the handoff active while source work begins/);
+  assert.match(source, /cancelConfirmationUntil = now \+ 5_000/);
+});
+
 test('canvas preserves native viewport dimensions and exposes explicit navigation', async () => {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');

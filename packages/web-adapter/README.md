@@ -6,7 +6,7 @@ Foundry is a local-first precision design workbench for Codex, Cursor, and Claud
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
-> **Current public beta:** `0.2.0-beta.10`. Both npm `latest` and `beta` point to the same tested release. Use the unqualified command below for normal installation.
+> **Current public beta:** `0.2.0-beta.11`. Both npm `latest` and `beta` point to the same tested release. Use the unqualified command below for normal installation.
 
 Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 
@@ -48,7 +48,7 @@ Then restart the coding agent, reopen the same project folder, and ask:
 Start Foundry for this project and keep listening for Apply with agent requests.
 ```
 
-You do not need to run a second terminal command when the agent starts Foundry for you. Apply requests remain queued safely when the agent is offline. Run `npx foundry-design doctor --repair` if the connection or generated integration needs repair.
+You do not need to run a second terminal command when the agent starts Foundry for you. Apply requests remain queued safely when the agent is offline. After an active agent claims a batch, the MCP bridge keeps that handoff alive while the agent inspects source and begins the edit. If the agent process exits, Foundry releases the abandoned claim back to the queue instead of losing it. Run `npx foundry-design doctor --repair` if the connection or generated integration needs repair.
 
 Update an existing installation with:
 
@@ -72,7 +72,7 @@ If an npm mirror or existing `npx` cache reports an old tag, bypass it with a te
 
 ```bash
 FOUNDRY_NPX_CACHE="$(mktemp -d)"
-npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.10 foundry-design
+npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.11 foundry-design
 ```
 
 The beta supports Node.js 20 or newer. Read the [local-first safety model](https://withfoundry.ai/#safety) before using it with sensitive work.
@@ -104,7 +104,7 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 - Persistent, coalescing change ledger with JSON and consolidated prompt export
 - Center-workspace review with editable approved batches, grouped targets, and unresolved-target blocking
 - Persistent Apply with agent runs across Codex, Cursor, and Claude Code through MCP
-- Leased agent handoffs that safely return abandoned or interrupted claims to the queue
+- Automatically renewed agent handoffs that remain claimed during source inspection and safely return abandoned work to the queue
 - Live source, rebuild, validation, retry, and rendered-verification progress
 - Rendered verification that resumes after refresh and does not depend on Review remaining open
 - Local MCP bridge for agent access

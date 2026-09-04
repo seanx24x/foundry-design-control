@@ -91,6 +91,8 @@ let selectId = 0;
 let ignoreSelectScrollUntil = 0;
 let commandRequestId = 0;
 let dismissedApplyRunId = null;
+let cancelConfirmationRunId = null;
+let cancelConfirmationUntil = 0;
 const pendingCommandRequests = new Map();
 const changedControls = new Set();
 const effectCommitTimers = new Map();
@@ -1374,7 +1376,9 @@ function renderApplyRun(runs = []) {
   const active = ['queued', 'claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state);
   const stageIndex = runStageIndex(run);
   const latestMessage =
-    run.messages?.at(-1)?.message ?? run.error ?? 'The reviewed batch is ready.';
+    run.state === 'claimed'
+      ? 'The agent received this batch. Foundry is keeping the handoff active while source work begins.'
+      : (run.messages?.at(-1)?.message ?? run.error ?? 'The reviewed batch is ready.');
   const signature = JSON.stringify([
     run.id,
     run.state,
@@ -1384,6 +1388,7 @@ function renderApplyRun(runs = []) {
     run.changedFiles,
     run.validationResults,
     run.verificationResults,
+    cancelConfirmationRunId === run.id && Date.now() < cancelConfirmationUntil,
   ]);
   if (root.dataset.signature === signature) return;
   root.dataset.signature = signature;
@@ -1409,8 +1414,10 @@ function renderApplyRun(runs = []) {
     ? `<section class="apply-result-group"><header class="change-group-head"><strong>Rendered verification</strong><span>${run.verificationResults.filter((result) => result.passed).length} of ${run.verificationResults.length} matched</span></header>${run.verificationResults.map((result) => `<div class="apply-result-row ${result.passed ? 'is-passed' : 'is-failed'}"><div><strong>${escapeText(result.property)}</strong><span>${escapeText(runValue(result.requested))} → ${escapeText(runValue(result.rendered))}${result.reason ? ` · ${escapeText(result.reason)}` : ''}</span></div><span>${result.passed ? 'Matched' : 'Mismatch'}</span></div>`).join('')}</section>`
     : '';
   const completedStages = passed ? RUN_ORDER.length : stageIndex;
+  const confirmingCancel =
+    active && cancelConfirmationRunId === run.id && Date.now() < cancelConfirmationUntil;
   const secondaryAction = active
-    ? `<button class="secondary-button" data-run-action="cancel" data-run-id="${run.id}">Cancel</button>`
+    ? `<button class="secondary-button" data-run-action="cancel" data-run-id="${run.id}">${confirmingCancel ? 'Confirm stop' : 'Stop apply'}</button>`
     : `<button class="secondary-button" data-run-navigation="back">Back to canvas</button>`;
   const primaryAction = attention
     ? `<button class="primary-button" data-run-action="retry" data-run-id="${run.id}">Retry with agent</button>`
@@ -1427,6 +1434,26 @@ function renderApplyRun(runs = []) {
   );
   $$('[data-run-action]', root).forEach((button) =>
     button.addEventListener('click', async () => {
+      if (button.dataset.runAction === 'cancel') {
+        const now = Date.now();
+        if (cancelConfirmationRunId !== run.id || now >= cancelConfirmationUntil) {
+          cancelConfirmationRunId = run.id;
+          cancelConfirmationUntil = now + 5_000;
+          root.dataset.signature = '';
+          renderApplyRun(activeSession?.applyRuns ?? []);
+          toast('Press Confirm stop within 5 seconds to cancel this source run.');
+          setTimeout(() => {
+            if (cancelConfirmationRunId !== run.id || Date.now() < cancelConfirmationUntil) return;
+            cancelConfirmationRunId = null;
+            cancelConfirmationUntil = 0;
+            root.dataset.signature = '';
+            renderApplyRun(activeSession?.applyRuns ?? []);
+          }, 5_100);
+          return;
+        }
+        cancelConfirmationRunId = null;
+        cancelConfirmationUntil = 0;
+      }
       await api(
         `/v1/sessions/${sessionId}/apply-runs/${button.dataset.runId}/${button.dataset.runAction}`,
         { method: 'POST', body: '{}' },

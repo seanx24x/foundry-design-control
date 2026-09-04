@@ -1757,6 +1757,8 @@ export function installFoundryInspector(
   const reviewCount = shadow.querySelector<HTMLElement>('.review-count')!;
   const applyButton = shadow.querySelector<HTMLButtonElement>('.review-actions .apply')!;
   const reviewCancel = shadow.querySelector<HTMLButtonElement>('.review-cancel')!;
+  let cancelConfirmationRunId: string | undefined;
+  let cancelConfirmationUntil = 0;
 
   function applyInterfaceTheme(preference: InterfaceThemePreference, persist = true): void {
     interfaceThemePreference = preference;
@@ -4274,7 +4276,7 @@ export function installFoundryInspector(
           : 'The reviewed changes are queued and ready for an active coding agent.'
         : run.state === 'claimed'
           ? activeAgentPresence.connected
-            ? 'The agent received this batch. Waiting for source work to begin.'
+            ? 'The agent received this batch. Foundry is keeping the handoff active while source work begins.'
             : 'The agent disconnected before source work began. Foundry will return this batch to the queue shortly.'
           : (run.messages.at(-1)?.message ?? run.error ?? 'Apply run created.');
     latestApplyState = run.state;
@@ -4306,8 +4308,10 @@ export function installFoundryInspector(
           : 'Run complete';
       applyButton.disabled = true;
     }
+    const confirmingCancel =
+      active && cancelConfirmationRunId === run.id && Date.now() < cancelConfirmationUntil;
     reviewCancel.dataset.action = active ? 'cancel' : 'back';
-    reviewCancel.textContent = active ? 'Cancel' : 'Back';
+    reviewCancel.textContent = active ? (confirmingCancel ? 'Confirm stop' : 'Stop apply') : 'Back';
     maybeVerifyRun(run);
   }
 
@@ -4484,6 +4488,22 @@ export function installFoundryInspector(
   async function cancelRun(): Promise<void> {
     const run = activeReviewPayload?.applyRuns?.at(-1);
     if (!run) return;
+    const now = Date.now();
+    if (cancelConfirmationRunId !== run.id || now >= cancelConfirmationUntil) {
+      cancelConfirmationRunId = run.id;
+      cancelConfirmationUntil = now + 5_000;
+      reviewCancel.textContent = 'Confirm stop';
+      showToast('Press Confirm stop within 5 seconds to cancel this source run.');
+      window.setTimeout(() => {
+        if (cancelConfirmationRunId !== run.id || Date.now() < cancelConfirmationUntil) return;
+        cancelConfirmationRunId = undefined;
+        cancelConfirmationUntil = 0;
+        if (activeReviewPayload) renderReviewPayload(activeReviewPayload);
+      }, 5_100);
+      return;
+    }
+    cancelConfirmationRunId = undefined;
+    cancelConfirmationUntil = 0;
     try {
       renderReviewPayload(
         await sessionRequest(`/apply-runs/${encodeURIComponent(run.id)}/cancel`, {
