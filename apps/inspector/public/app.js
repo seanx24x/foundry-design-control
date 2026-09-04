@@ -1,6 +1,7 @@
 import activityIcon from '@iconify-icons/keyline-icons/activity';
 import arrowUpRightIcon from '@iconify-icons/keyline-icons/arrow-up-right';
 import bookmarkIcon from '@iconify-icons/keyline-icons/bookmark';
+import binIcon from '@iconify-icons/keyline-icons/bin';
 import boxIcon from '@iconify-icons/keyline-icons/square';
 import blurIcon from '@iconify-icons/keyline-icons/circle-dashed';
 import chevronDownIcon from '@iconify-icons/keyline-icons/chevron-down';
@@ -29,6 +30,7 @@ import xIcon from '@iconify-icons/keyline-icons/x';
 const ICONS = {
   activity: activityIcon,
   bookmark: bookmarkIcon,
+  bin: binIcon,
   box: boxIcon,
   blur: blurIcon,
   chevronDown: chevronDownIcon,
@@ -87,8 +89,12 @@ let canvasSpaceHeld = false;
 let openCustomSelect = null;
 let selectId = 0;
 let ignoreSelectScrollUntil = 0;
+let commandRequestId = 0;
+const pendingCommandRequests = new Map();
 const changedControls = new Set();
 const effectCommitTimers = new Map();
+const expandedMotionTracks = new Set();
+const selectedMotionKeyframes = new Map();
 
 function scheduleEffectCommit(key, commit) {
   clearTimeout(effectCommitTimers.get(key));
@@ -268,6 +274,15 @@ function escapeText(value) {
   return node.innerHTML;
 }
 
+function escapeAttribute(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
+
 function toast(message) {
   const element = $('#toast');
   element.textContent = message;
@@ -313,6 +328,26 @@ function sendCommand(command, payload = {}) {
     { type: 'foundry:workspace-command', sessionId, command, payload },
     previewOrigin,
   );
+}
+
+function requestCommand(command, payload = {}) {
+  if (!bridgeConnected || !preview.contentWindow) {
+    return Promise.reject(
+      new Error('Reconnect the live preview to delete and restore this change.'),
+    );
+  }
+  const requestId = `workspace_${++commandRequestId}`;
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      pendingCommandRequests.delete(requestId);
+      reject(new Error('The live preview did not respond. Try again after it reconnects.'));
+    }, 5000);
+    pendingCommandRequests.set(requestId, { resolve, reject, timeout });
+    preview.contentWindow.postMessage(
+      { type: 'foundry:workspace-command', sessionId, command, payload, requestId },
+      previewOrigin,
+    );
+  });
 }
 
 function setMode(mode, restoreFocus = true, returnFocus = null) {
@@ -603,7 +638,7 @@ function renderLayers() {
     ? visible
         .map(
           (layer) =>
-            `<button class="layer-row ${layer.selected ? 'is-selected' : ''}" style="--depth:${Math.min(layer.depth, 10)}" data-layer-selector="${escapeText(layer.selector)}" role="treeitem" aria-level="${layer.depth + 1}" aria-selected="${layer.selected}"><span class="chevron">${layer.hasChildren ? '<i data-icon="chevronDown"></i>' : ''}</span><span class="layer-icon"><i data-icon="${layer.kind === 'component' ? 'component' : 'box'}"></i></span><span class="layer-label">${escapeText(layer.label)}</span><span class="layer-meta">${escapeText(layer.instrumented ? 'Mapped' : layer.kind)}</span></button>`,
+            `<button class="layer-row ${layer.selected ? 'is-selected' : ''}" style="--depth:${Math.min(layer.depth, 10)}" data-layer-selector="${escapeAttribute(layer.selector)}" role="treeitem" aria-level="${layer.depth + 1}" aria-selected="${layer.selected}"><span class="chevron">${layer.hasChildren ? '<i data-icon="chevronDown"></i>' : ''}</span><span class="layer-icon"><i data-icon="${layer.kind === 'component' ? 'component' : 'box'}"></i></span><span class="layer-label">${escapeText(layer.label)}</span><span class="layer-meta">${escapeText(layer.instrumented ? 'Mapped' : layer.kind)}</span></button>`,
         )
         .join('')
     : '<div class="empty-inspector">Select inside the live preview to populate the product structure.</div>';
@@ -768,6 +803,80 @@ function effectsEditorMarkup(controls) {
   return `<div class="effects-editor"><div class="effect-stack">${active || '<p class="effect-empty">No effects applied</p>'}</div><details class="effect-add"><summary><i data-icon="plus"></i>Add effect</summary><div class="effect-menu" role="menu"><button type="button" data-add-effect="drop-shadow" data-effect-control="${shadow?.index ?? ''}" role="menuitem"><i data-icon="box"></i><span>Drop shadow</span></button><button type="button" data-add-effect="inner-shadow" data-effect-control="${shadow?.index ?? ''}" role="menuitem"><i data-icon="box"></i><span>Inner shadow</span></button><button type="button" data-add-effect="layer-blur" data-effect-control="${filter?.index ?? ''}" role="menuitem" ${layerBlur != null ? 'disabled' : ''}><i data-icon="blur"></i><span>Layer blur</span></button><button type="button" data-add-effect="background-blur" data-effect-control="${backdrop?.index ?? ''}" role="menuitem" ${backgroundBlur != null ? 'disabled' : ''}><i data-icon="blur"></i><span>Background blur</span></button><button type="button" role="menuitem" disabled title="Available when the project exposes a mapped effect recipe"><i data-icon="sparkles"></i><span>Noise</span><small>Recipe</small></button><button type="button" role="menuitem" disabled title="Available when the project exposes a mapped effect recipe"><i data-icon="layout"></i><span>Texture</span><small>Recipe</small></button></div></details></div>`;
 }
 
+function motionEditorMarkup(motions, selection) {
+  return `<div class="motion-editor">${motions
+    .map((motion) => {
+      const timing = motion.timing ?? {};
+      const duration = Number(timing.duration) || 1000;
+      const currentTime = Math.min(duration, Number(motion.currentTime) || 0);
+      const source =
+        motion.kind === 'css-animation'
+          ? 'CSS animation'
+          : motion.kind === 'css-transition'
+            ? 'CSS transition'
+            : 'Web animation';
+      const properties = motion.properties?.length
+        ? motion.properties.join(', ')
+        : 'Properties appear while the transition is running';
+      const disabled = motion.active ? '' : 'disabled';
+      const changed = (property) =>
+        changedControls.has(`${selection.id}:motion.${motion.id}.${property}`) ? ' is-changed' : '';
+      const keyframes = Array.isArray(motion.keyframes) ? motion.keyframes : [];
+      const keyframeProperties = [
+        ...new Set(keyframes.flatMap((frame) => Object.keys(frame.values ?? {}))),
+      ];
+      const selectedKey = selectedMotionKeyframes.get(motion.id);
+      const selectedProperty = keyframeProperties.includes(selectedKey?.property)
+        ? selectedKey.property
+        : keyframeProperties[0];
+      const selectedFrame =
+        keyframes.find(
+          (frame) => frame.index === selectedKey?.index && frame.values?.[selectedProperty] != null,
+        ) ?? keyframes.find((frame) => frame.values?.[selectedProperty] != null);
+      if (selectedFrame && selectedProperty)
+        selectedMotionKeyframes.set(motion.id, {
+          index: selectedFrame.index,
+          property: selectedProperty,
+        });
+      const tracks = keyframeProperties
+        .map(
+          (property) =>
+            `<div class="motion-track"><code>${escapeText(property)}</code><div class="motion-track-rail">${keyframes
+              .filter((frame) => frame.values?.[property] != null)
+              .map(
+                (frame) =>
+                  `<button type="button" class="motion-keyframe${selectedFrame?.index === frame.index && selectedProperty === property ? ' is-selected' : ''}" data-motion-keyframe-index="${frame.index}" data-motion-keyframe-property="${escapeText(property)}" style="--keyframe-offset:${Math.round(Number(frame.offset) * 10000) / 100}%" aria-label="Edit ${escapeText(property)} keyframe at ${Math.round(Number(frame.offset) * 100)} percent"></button>`,
+              )
+              .join('')}</div></div>`,
+        )
+        .join('');
+      const selectedValue = selectedFrame?.values?.[selectedProperty] ?? '';
+      const selectedPath = selectedFrame
+        ? `motion.${motion.id}.keyframe.${selectedFrame.index}`
+        : '';
+      const keyframeEditor =
+        motion.active && keyframes.length > 1 && selectedFrame && selectedProperty
+          ? `<div class="motion-keyframe-shell"><button type="button" class="motion-keyframe-toggle" data-motion-keyframes-toggle aria-expanded="${expandedMotionTracks.has(motion.id)}"><span>Keyframes</span><code>${keyframes.length} frames · ${keyframeProperties.length} tracks</code><i data-icon="chevronDown"></i></button><div class="motion-keyframe-editor" ${expandedMotionTracks.has(motion.id) ? '' : 'hidden'}><div class="motion-tracks">${tracks}</div><div class="motion-keyframe-detail"><span class="motion-keyframe-heading">Frame ${selectedFrame.index + 1} · ${escapeText(selectedProperty)}</span><div class="motion-keyframe-fields"><label class="${changedControls.has(`${selection.id}:${selectedPath}.offset`) ? 'is-changed' : ''}"><span>Position</span><span class="motion-field-with-unit"><input data-motion-keyframe-action="offset" data-motion-keyframe-index="${selectedFrame.index}" data-motion-keyframe-property="${escapeText(selectedProperty)}" type="number" min="0" max="100" step="1" value="${Math.round(Number(selectedFrame.offset) * 100)}"><i>%</i></span></label><label class="motion-keyframe-value${changedControls.has(`${selection.id}:${selectedPath}.${selectedProperty}`) ? ' is-changed' : ''}"><span>Value</span><input data-motion-keyframe-action="value" data-motion-keyframe-index="${selectedFrame.index}" data-motion-keyframe-property="${escapeText(selectedProperty)}" type="text" value="${escapeText(selectedValue)}"></label><label class="motion-keyframe-easing${changedControls.has(`${selection.id}:${selectedPath}.easing`) ? ' is-changed' : ''}"><span>Segment easing</span><input data-motion-keyframe-action="easing" data-motion-keyframe-index="${selectedFrame.index}" data-motion-keyframe-property="${escapeText(selectedProperty)}" type="text" value="${escapeText(selectedFrame.easing ?? 'linear')}"></label></div></div></div></div>`
+          : motion.active
+            ? '<p class="motion-help">This animation does not expose an editable multi-keyframe track.</p>'
+            : '';
+      const speeds = [
+        [0.1, '10%'],
+        [0.25, '25%'],
+        [0.5, '50%'],
+        [1, '100%'],
+        [2, '200%'],
+      ]
+        .map(
+          ([rate, label]) =>
+            `<option value="${rate}" ${Math.abs(Number(motion.playbackRate ?? 1) - rate) < 0.001 ? 'selected' : ''}>${label}</option>`,
+        )
+        .join('');
+      return `<article class="motion-card" data-motion-id="${escapeText(motion.id)}"><header class="motion-card-head"><span><strong>${escapeText(motion.label)}</strong><code>${escapeText(source)} · ${Math.round(Number(timing.duration) || 0)} ms</code></span><span class="motion-cost" data-tier="${escapeText(motion.performance?.tier ?? 'unknown')}" title="${escapeText(motion.performance?.detail ?? '')}">${escapeText(motion.performance?.label ?? 'Unresolved')}</span></header><p class="motion-properties" title="${escapeText(properties)}">${escapeText(properties)}</p><input class="motion-timeline" data-motion-action="scrub" type="range" min="0" max="${duration}" step="1" value="${currentTime}" aria-label="Scrub ${escapeText(motion.label)}" ${disabled}><div class="motion-transport"><button type="button" data-motion-action="toggle" ${disabled}>${motion.playState === 'paused' ? 'Play' : 'Pause'}</button><button type="button" data-motion-action="replay" ${disabled}>Replay</button><button type="button" data-motion-action="loop" ${disabled}>${motion.looping ? 'Looping' : 'Loop'}</button><select data-motion-action="speed" aria-label="Preview speed" ${disabled}>${speeds}</select></div><div class="motion-fields"><label class="${changed('duration')}"><span>Duration</span><input data-motion-action="duration" type="number" min="0" step="10" value="${Math.round(Number(timing.duration) || 0)}" ${disabled}></label><label class="${changed('delay')}"><span>Delay</span><input data-motion-action="delay" type="number" step="10" value="${Math.round(Number(timing.delay) || 0)}" ${disabled}></label><label class="motion-easing${changed('easing')}"><span>Easing</span><input data-motion-action="easing" type="text" value="${escapeText(timing.easing ?? 'linear')}" ${disabled}></label></div>${keyframeEditor}${motion.active ? '' : '<p class="motion-help">Trigger this transition in Interact mode to scrub and tune its live timing.</p>'}</article>`;
+    })
+    .join('')}</div>`;
+}
+
 function controlField(control) {
   const id = `control-${control.index}`;
   const unit = control.unit ? `<span class="unit">${escapeText(control.unit)}</span>` : '';
@@ -801,6 +910,7 @@ function renderInspector() {
     const group = controlGroup(control);
     groups.set(group, [...(groups.get(group) ?? []), control]);
   }
+  if (bridgeState.motions?.length) groups.set('Motion', bridgeState.motions);
   const order = [
     'Position',
     'Layout',
@@ -821,12 +931,14 @@ function renderInspector() {
       const body =
         name === 'Effects'
           ? effectsEditorMarkup(controls)
-          : controls
-              .map((control) => {
-                const changedKey = `${selection.id}:${control.property}`;
-                return `<label class="property-row${changedControls.has(changedKey) ? ' is-changed' : ''}" for="control-${control.index}"><span class="property-label" title="${escapeText(control.label)}">${escapeText(control.label)}</span><span class="property-field">${controlField(control)}</span></label>`;
-              })
-              .join('');
+          : name === 'Motion'
+            ? motionEditorMarkup(controls, selection)
+            : controls
+                .map((control) => {
+                  const changedKey = `${selection.id}:${control.property}`;
+                  return `<label class="property-row${changedControls.has(changedKey) ? ' is-changed' : ''}" for="control-${control.index}"><span class="property-label" title="${escapeText(control.label)}">${escapeText(control.label)}</span><span class="property-field">${controlField(control)}</span></label>`;
+                })
+                .join('');
       const count =
         name === 'Effects'
           ? parseShadowEffects(
@@ -1003,6 +1115,109 @@ function renderInspector() {
       field.blur();
     });
   });
+  $$('[data-motion-keyframes-toggle]', root).forEach((button) => {
+    button.addEventListener('click', () => {
+      const card = button.closest('.motion-card');
+      const id = card?.dataset.motionId;
+      const editor = card?.querySelector('.motion-keyframe-editor');
+      if (!id || !editor) return;
+      if (expandedMotionTracks.has(id)) expandedMotionTracks.delete(id);
+      else expandedMotionTracks.add(id);
+      editor.hidden = !expandedMotionTracks.has(id);
+      button.setAttribute('aria-expanded', String(expandedMotionTracks.has(id)));
+    });
+  });
+  $$('[data-motion-keyframe-index]', root).forEach((marker) => {
+    if (!marker.classList.contains('motion-keyframe')) return;
+    marker.addEventListener('click', () => {
+      const card = marker.closest('.motion-card');
+      const id = card?.dataset.motionId;
+      if (!id) return;
+      selectedMotionKeyframes.set(id, {
+        index: Number(marker.dataset.motionKeyframeIndex),
+        property: marker.dataset.motionKeyframeProperty,
+      });
+      const scroller = $('.inspector-scroll');
+      const scrollTop = scroller?.scrollTop ?? 0;
+      renderInspector();
+      if (scroller) scroller.scrollTop = scrollTop;
+    });
+  });
+  $$('[data-motion-keyframe-action]', root).forEach((field) => {
+    const card = field.closest('.motion-card');
+    const id = card?.dataset.motionId;
+    const index = Number(field.dataset.motionKeyframeIndex);
+    const frameProperty = field.dataset.motionKeyframeProperty;
+    const action = field.dataset.motionKeyframeAction;
+    if (!id || !frameProperty || !action || !Number.isInteger(index)) return;
+    let lastValue = String(field.value);
+    const commit = () => {
+      if (String(field.value) === lastValue) return;
+      lastValue = String(field.value);
+      const property = action === 'value' ? frameProperty : action;
+      changedControls.add(`${selection.id}:motion.${id}.keyframe.${index}.${property}`);
+      field.closest('label')?.classList.add('is-changed');
+      sendCommand('motion-action', {
+        id,
+        action: `keyframe-${action}`,
+        index,
+        property: frameProperty,
+        value: action === 'offset' ? Number(field.value) : field.value,
+      });
+    };
+    field.addEventListener('change', commit);
+    field.addEventListener('blur', commit);
+    field.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      commit();
+      field.blur();
+    });
+  });
+  $$('.motion-card', root).forEach((card) => {
+    const id = card.dataset.motionId;
+    if (!id) return;
+    $$('[data-motion-action]', card).forEach((control) => {
+      const action = control.dataset.motionAction;
+      if (!action) return;
+      if (action === 'scrub') {
+        control.addEventListener('input', () =>
+          sendCommand('motion-action', { id, action, value: Number(control.value) }),
+        );
+        return;
+      }
+      if (action === 'speed') {
+        control.addEventListener('change', () =>
+          sendCommand('motion-action', { id, action, value: Number(control.value) }),
+        );
+        return;
+      }
+      if (action === 'duration' || action === 'delay' || action === 'easing') {
+        let lastValue = String(control.value);
+        const commit = () => {
+          if (String(control.value) === lastValue) return;
+          lastValue = String(control.value);
+          changedControls.add(`${selection.id}:motion.${id}.${action}`);
+          control.closest('label')?.classList.add('is-changed');
+          sendCommand('motion-action', {
+            id,
+            action,
+            value: action === 'easing' ? control.value : Number(control.value),
+          });
+        };
+        control.addEventListener('change', commit);
+        control.addEventListener('blur', commit);
+        control.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          commit();
+          control.blur();
+        });
+        return;
+      }
+      control.addEventListener('click', () => sendCommand('motion-action', { id, action }));
+    });
+  });
 }
 
 function fillSelect(
@@ -1081,7 +1296,8 @@ function renderReview() {
                 const unresolved =
                   change.confidence === 'unresolved' ||
                   (change.mappingCandidates?.length > 1 && !change.selectedMappingId);
-                return `<div class="change-row"><input type="checkbox" data-change-id="${escapeText(change.id)}" ${validChange(change) ? 'checked' : ''} ${unresolved ? 'disabled' : ''} aria-label="Include ${escapeText(change.property)}"><span class="change-property"><strong>${escapeText(change.property)}</strong><span>${escapeText(change.scope)} · ${escapeText(change.context.breakpoint)} · ${escapeText(change.context.theme)}</span></span><span class="before-value">${escapeText(formatValue(change.before, change.unit))}</span><span class="change-arrow">→</span><input class="after-value" data-after-id="${escapeText(change.id)}" value="${escapeText(formatValue(change.after, change.unit))}" aria-label="New ${escapeText(change.property)} value"><span class="status-chip ${unresolved ? 'unresolved' : ''}">${escapeText(unresolved ? 'Mapping needed' : change.confidence)}</span></div>`;
+                const deletable = change.status !== 'applied';
+                return `<div class="change-row"><input type="checkbox" data-change-id="${escapeText(change.id)}" ${validChange(change) ? 'checked' : ''} ${unresolved ? 'disabled' : ''} aria-label="Include ${escapeText(change.property)}"><span class="change-property"><strong>${escapeText(change.property)}</strong><span>${escapeText(change.scope)} · ${escapeText(change.context.breakpoint)} · ${escapeText(change.context.theme)}</span></span><span class="before-value">${escapeText(formatValue(change.before, change.unit))}</span><span class="change-arrow">→</span><input class="after-value" data-after-id="${escapeText(change.id)}" value="${escapeText(formatValue(change.after, change.unit))}" aria-label="New ${escapeText(change.property)} value"><span class="status-chip ${unresolved ? 'unresolved' : ''}">${escapeText(unresolved ? 'Mapping needed' : change.confidence)}</span><button class="icon-button delete-change" data-delete-change="${escapeText(change.id)}" aria-label="Delete ${escapeText(change.property)} change and restore its original value" data-tooltip="Delete and restore" ${deletable ? '' : 'disabled'}><i data-icon="bin"></i></button></div>`;
               })
               .join('')}</section>`,
         )
@@ -1092,6 +1308,21 @@ function renderReview() {
     input.addEventListener('change', () =>
       setStatus(input.dataset.changeId, input.checked ? 'approved' : 'rejected'),
     ),
+  );
+  $$('[data-delete-change]').forEach((button) =>
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        const payload = await requestCommand('delete-change', {
+          changeId: button.dataset.deleteChange,
+        });
+        renderSession(payload);
+        toast('Change deleted and original value restored');
+      } catch (error) {
+        toast(error.message);
+        button.disabled = false;
+      }
+    }),
   );
 }
 
@@ -1294,6 +1525,18 @@ function setupPreview() {
 window.addEventListener('message', (event) => {
   if (event.source !== preview.contentWindow || event.origin !== previewOrigin) return;
   if (event.data?.sessionId !== sessionId) return;
+  if (event.data?.type === 'foundry:workspace-result') {
+    const pending = pendingCommandRequests.get(event.data.requestId);
+    if (!pending) return;
+    window.clearTimeout(pending.timeout);
+    pendingCommandRequests.delete(event.data.requestId);
+    if (event.data.ok) pending.resolve(event.data.payload);
+    else
+      pending.reject(
+        new Error(event.data.error ?? 'The live preview could not complete this action.'),
+      );
+    return;
+  }
   if (event.data?.type === 'foundry:canvas-input') {
     const {
       action,

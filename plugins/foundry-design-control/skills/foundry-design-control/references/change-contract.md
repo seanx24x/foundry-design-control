@@ -24,6 +24,8 @@ Foundry protocol `1.2.0` uses these durable objects:
 
 `draft` changes remain preview decisions. `approved` changes may be implemented. `rejected` changes remain in history but are excluded from export. `applied` means a source diff exists. Status does not imply verification.
 
+Review deletion is separate from rejection. Deletion permanently removes an unapplied, unqueued change from the local session and requires a connected adapter that can restore the recorded `before` value. A change referenced by an `ApplyRun` remains immutable so the run audit trail cannot be rewritten.
+
 ## Coalescing
 
 Use `target + property + scope + breakpoint + theme + state + state set` as the key. Preserve the original `before` value and the final `after` value. Keep other scopes separate.

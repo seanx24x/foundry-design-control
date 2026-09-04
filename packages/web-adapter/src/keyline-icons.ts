@@ -5,6 +5,7 @@ import arrowDownIcon from '@iconify-icons/keyline-icons/arrow-down';
 import arrowLeftIcon from '@iconify-icons/keyline-icons/arrow-left';
 import arrowUpIcon from '@iconify-icons/keyline-icons/arrow-up';
 import bookmarkIcon from '@iconify-icons/keyline-icons/bookmark';
+import binIcon from '@iconify-icons/keyline-icons/bin';
 import boxIcon from '@iconify-icons/keyline-icons/square';
 import checkIcon from '@iconify-icons/keyline-icons/check';
 import blurIcon from '@iconify-icons/keyline-icons/circle-dashed';
@@ -62,6 +63,7 @@ const RAW_KEYLINE_ICONS: Record<string, KeylineIconData> = {
   'arrow-left': arrowLeftIcon,
   'arrow-up': arrowUpIcon,
   bookmark: bookmarkIcon,
+  bin: binIcon,
   box: boxIcon,
   blur: blurIcon,
   check: checkIcon,

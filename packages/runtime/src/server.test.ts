@@ -132,6 +132,23 @@ test('protects and serves the apply-run lifecycle over loopback HTTP', async () 
       status: 'draft',
     });
     const changeId = changed.changeSet.changes[0]!.id;
+    const deleted = await fetch(`http://127.0.0.1:${port}/v1/sessions/${id}/changes/${changeId}`, {
+      method: 'DELETE',
+      headers: { 'x-foundry-token': session.token },
+    });
+    assert.equal(deleted.status, 200);
+    const deletedPayload = (await deleted.json()) as {
+      changeSet: { changes: unknown[] };
+      removedChange: { id: string };
+    };
+    assert.equal(deletedPayload.removedChange.id, changeId);
+    assert.equal(deletedPayload.changeSet.changes.length, 0);
+
+    const restoredChange = await store.addChange(id, {
+      ...changed.changeSet.changes[0]!,
+      id: undefined,
+    });
+    const restoredChangeId = restoredChange.changeSet.changes[0]!.id;
     const created = await fetch(`http://127.0.0.1:${port}/v1/sessions/${id}/apply-runs`, {
       method: 'POST',
       headers: {
@@ -139,7 +156,7 @@ test('protects and serves the apply-run lifecycle over loopback HTTP', async () 
         'x-foundry-token': session.token,
       },
       body: JSON.stringify({
-        reviews: [{ changeId, approved: true }],
+        reviews: [{ changeId: restoredChangeId, approved: true }],
         revision: 'rev-1',
       }),
     });

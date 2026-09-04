@@ -100,6 +100,15 @@ import {
   type TypographyFontFace,
   type TypographyVerificationContext,
 } from './typography.js';
+import {
+  discoverElementMotion,
+  editableKeyframes,
+  findDiscoveredMotion,
+  motionKeyframeValue,
+  motionKeyframes,
+  updateMotionKeyframe,
+  type DiscoveredMotion,
+} from './motion.js';
 
 export interface FoundryInspectorOptions {
   runtimeUrl?: string;
@@ -329,8 +338,7 @@ const PANEL_CSS = `
   .tool-shelf { position:fixed;z-index:2147483646;left:50%;bottom:20px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;max-width:calc(100vw - 32px);padding:8px;background:var(--fdc-surface);border:1px solid var(--fdc-line);border-radius:12px;box-shadow:0 4px 4px rgb(0 0 0 / 4%),0 8px 16px -4px rgb(0 0 0 / 14%);pointer-events:auto; }.mode-copy { min-width:96px;display:flex;flex-direction:column;gap:4px;padding:0 8px 0 1px; }.mode-copy strong { font-size:12px;font-weight:550;line-height:1.1; }.mode-copy span { color:var(--fdc-muted);font-size:8px;line-height:1.2;white-space:nowrap; }
   .tool-select,.tab { position:relative;flex:none;width:36px;height:36px;display:grid;place-items:center;padding:0;border:0;border-radius:8px;background:transparent;color:#4d4d4d;cursor:pointer; }.tool-select:hover,.tab:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.tool-select.active,.tab.active { color:white;background:var(--fdc-ink); }.tool-select svg,.icon-button svg { width:20px;height:20px;pointer-events:none; }.tab svg { width:16px;height:16px;pointer-events:none; }.tool-select::after,.tab::after { content:attr(data-tooltip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translate(-50%,4px);padding:8px 8px;border-radius:4px;background:var(--fdc-ink);color:white;font:400 12px/1 var(--fdc-font);white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s ease,transform .12s ease; }.tool-select:hover::after,.tool-select:focus-visible::after,.tab:not(:disabled):hover::after,.tab:not(:disabled):focus-visible::after { opacity:1;transform:translate(-50%,0); }.tool-divider { width:1px;height:24px;flex:none;background:var(--fdc-line); }.tabs { display:flex;gap:4px;overflow:visible;scrollbar-width:none; }.tab:disabled { color:#a1a1a1;cursor:default; }.tab:disabled:hover { background:transparent; }
   .controls { min-height:212px;overflow:auto;background:var(--fdc-surface); }.inspector-heading { position:sticky;top:0;z-index:1;height:44px;display:flex;align-items:center;gap:8px;padding:0 12px;background:rgb(255 255 255 / 96%);border-bottom:1px solid var(--fdc-line);backdrop-filter:blur(8px); }.inspector-heading svg { width:16px;height:16px;color:#4d4d4d; }.inspector-heading strong { font-size:12px;font-weight:550; }.property-count { margin-left:auto;color:var(--fdc-muted);font:400 12px/1 var(--fdc-font);letter-spacing:.01em; }.property-section { padding:0;border-bottom:1px solid var(--fdc-line); }.section-head { width:100%;min-height:40px;display:flex;align-items:center;padding:0 8px 0 4px;background:white;color:#3f3f3f; }.section-head:hover { background:#fcfcfc; }.section-toggle { min-width:0;min-height:40px;flex:1;display:flex;align-items:center;gap:8px;padding:0 8px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer; }.section-toggle>svg { width:12px;height:12px;color:#858585;transition:transform .12s ease; }.property-section.collapsed .section-toggle>svg { transform:rotate(-90deg); }.section-head strong { font-size:12px;font-weight:500; }.section-grid { display:grid;gap:8px;padding:0 12px 12px; }.property-section.collapsed .section-grid { display:none; }.section-grid.two { grid-template-columns:1fr 1fr; }.section-grid.stacked .property-control { grid-template-columns:1fr;gap:8px; }.property-control { display:grid;grid-template-columns:minmax(0,1fr) 132px 24px;align-items:center;gap:8px;min-height:36px; }.property-label { overflow:hidden;text-overflow:ellipsis;color:#4d4d4d;font-size:12px;font-weight:400;white-space:nowrap; }.control-field { position:relative;display:flex;align-items:center;min-width:0;height:32px;border:1px solid var(--fdc-line);border-radius:4px;background:var(--fdc-paper);overflow:hidden;transition:border-color .12s ease,box-shadow .12s ease,background .12s ease; }.control-field:hover { background:var(--fdc-surface); }.control-field:focus-within { border-color:var(--fdc-signal);background:var(--fdc-surface);box-shadow:0 0 0 4px rgb(0 112 243 / 10%); }.control-reset { width:24px;height:24px;display:grid;place-items:center;padding:0;border:0;border-radius:4px;background:transparent;color:#8a8a8a;cursor:pointer;opacity:0; }.property-control:hover .control-reset,.compact-control:hover .control-reset,.control-reset:focus-visible { opacity:1; }.control-reset:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.control-reset svg { width:12px;height:12px; }.compact-control { min-width:0;display:grid;grid-template-columns:minmax(0,1fr) 24px;gap:4px;align-items:center; }.compact-control .control-field { width:100%; }.field-prefix { min-width:28px;padding-left:8px;color:#7a7a7a;font:400 12px/1 var(--fdc-font); }.compact-control .field-prefix.wide { min-width:40px; }.property-control input,.property-control select,.compact-control input,.compact-control select { width:100%;min-width:0;height:32px;padding:0 8px;border:0;background:transparent;color:var(--fdc-ink);font:400 12px/1 var(--fdc-font);outline:none; }.property-control input[type="number"],.compact-control input[type="number"] { appearance:textfield; }.property-control input[type="number"]::-webkit-inner-spin-button,.property-control input[type="number"]::-webkit-outer-spin-button,.compact-control input[type="number"]::-webkit-inner-spin-button,.compact-control input[type="number"]::-webkit-outer-spin-button { margin:0;appearance:none; }.property-control select { font-family:var(--fdc-font); }.control-field .unit-select { width:40px;flex:none;padding:0 4px;color:#707070;font-size:8px;cursor:pointer; }[data-scrub-for] { cursor:ew-resize;user-select:none;touch-action:none; }.property-label[data-scrub-for]:hover,.field-prefix[data-scrub-for]:hover,[data-scrub-for].scrubbing { color:var(--fdc-signal); }.color-swatch { width:16px;height:16px;flex:none;margin-left:8px;border:1px solid rgb(0 0 0 / 10%);border-radius:4px;background:var(--swatch-color); }.color-swatch.transparent { background-color:white;background-image:linear-gradient(45deg,#d9d9d9 25%,transparent 25%),linear-gradient(-45deg,#d9d9d9 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d9d9d9 75%),linear-gradient(-45deg,transparent 75%,#d9d9d9 75%);background-size:8px 8px;background-position:0 0,0 4px,4px -4px,-4px 0; }.color-value { overflow:hidden;text-overflow:ellipsis;margin-left:8px;color:#4d4d4d;font:400 12px/1 var(--fdc-font);white-space:nowrap; }.color-picker { position:absolute;inset:0;width:100%!important;height:100%!important;opacity:0;cursor:pointer; }.unit { padding-right:8px;color:#7a7a7a;font:400 12px/1 var(--fdc-font); }.sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
-  .effect-section { display:block;padding:0 12px 12px; }.effects-editor,.effect-stack { display:grid;gap:8px; }.effect-empty { margin:0;padding:16px 12px;border:1px dashed var(--fdc-line);border-radius:8px;color:var(--fdc-muted);font-size:12px;text-align:center; }.effect-card { overflow:hidden;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.effect-card-head { min-height:36px;display:flex;align-items:center;gap:8px;padding:0 4px 0 8px;border-bottom:1px solid var(--fdc-line); }.effect-card-head strong,.effect-card-head select { min-width:0;flex:1;height:32px;border:0;background:transparent;color:var(--fdc-ink);font:500 12px/1 var(--fdc-font);outline:none; }.effect-symbol { width:20px;height:20px;display:grid;place-items:center;color:var(--fdc-muted); }.effect-symbol svg,.effect-remove svg,.effect-add summary svg,.effect-menu svg { width:16px;height:16px; }.effect-remove { width:28px;height:28px;display:grid;place-items:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.effect-remove:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.effect-fields { display:grid;gap:8px;padding:8px; }.effect-shadow-fields { grid-template-columns:1fr 1fr; }.effect-value { min-width:0;height:32px;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;overflow:hidden;border:1px solid var(--fdc-line);border-radius:4px;background:var(--fdc-surface); }.effect-value>span { min-width:28px;padding:0 8px;color:var(--fdc-muted);font:500 12px/1 var(--fdc-font); }.effect-value input { width:100%;height:100%;min-width:0;padding:0 8px;border:0;background:transparent;color:var(--fdc-ink);font:400 12px/1 var(--fdc-font-mono);outline:none; }.effect-color,.effect-blur { display:grid;grid-template-columns:52px minmax(0,1fr);align-items:center;gap:8px;color:var(--fdc-muted);font-size:12px; }.effect-color { grid-column:1/-1; }.effect-color-control { height:32px;display:grid;grid-template-columns:40px minmax(0,1fr) 24px;align-items:center;overflow:hidden;border:1px solid var(--fdc-line);border-radius:4px;background:var(--fdc-surface); }.effect-color-control input[type="color"] { width:40px;height:100%;padding:4px;border:0;background:transparent; }.effect-color-control input[type="color"]::-webkit-color-swatch-wrapper { padding:0; }.effect-color-control input[type="color"]::-webkit-color-swatch { border:0;border-radius:4px; }.effect-color-control input[type="number"] { width:100%;height:100%;min-width:0;padding:0 8px;border:0;border-left:1px solid var(--fdc-line);background:transparent;color:var(--fdc-ink);font:400 12px/1 var(--fdc-font-mono);outline:none; }.effect-color-control>span { color:var(--fdc-muted);font:400 12px/1 var(--fdc-font); }.effect-add { position:relative; }.effect-add summary { min-height:32px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper);color:var(--fdc-ink);font-size:12px;cursor:pointer;list-style:none; }.effect-add summary::-webkit-details-marker { display:none; }.effect-add summary:hover { background:var(--fdc-subtle); }.effect-menu { position:absolute;z-index:8;right:0;bottom:calc(100% + 4px);width:220px;padding:4px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-elevated);box-shadow:0 12px 28px rgb(0 0 0 / 24%); }.effect-menu button { width:100%;height:32px;display:grid;grid-template-columns:20px minmax(0,1fr) auto;align-items:center;gap:8px;padding:0 8px;border:0;border-radius:4px;background:transparent;color:var(--fdc-ink);font-size:12px;text-align:left;cursor:pointer; }.effect-menu button:hover:not(:disabled) { background:var(--fdc-subtle); }.effect-menu button:disabled { color:var(--fdc-muted);cursor:not-allowed; }.effect-menu small { font:500 8px/1 var(--fdc-font-mono); }.motion-list { padding:0 12px 12px; }.motion-row { padding:12px 0;border-bottom:1px solid var(--fdc-line); }.motion-title { display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:12px;font-weight:550; }.motion-title code { color:var(--fdc-muted);font:400 12px/1.3 var(--fdc-font); }.motion-actions { display:grid;grid-template-columns:repeat(4,1fr);gap:4px; }.motion-actions button { min-height:32px;padding:0 4px;border:1px solid var(--fdc-line);background:var(--fdc-paper);border-radius:4px;color:var(--fdc-ink);font-size:12px;font-weight:400;cursor:pointer; }.motion-actions button:hover { border-color:#c7c7c7;background:var(--fdc-surface); }
-  .motion-timeline { width:100%;margin:4px 0 12px;accent-color:var(--fdc-signal); }.motion-fields { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px; }.motion-fields label { display:grid;grid-template-columns:auto 1fr;align-items:center;gap:4px;color:var(--fdc-muted);font-size:8px; }.motion-fields input { width:100%;height:28px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:var(--fdc-paper);color:var(--fdc-ink);font-size:12px; }
+  .effect-section { display:block;padding:0 12px 12px; }.effects-editor,.effect-stack { display:grid;gap:8px; }.effect-empty { margin:0;padding:16px 12px;border:1px dashed var(--fdc-line);border-radius:8px;color:var(--fdc-muted);font-size:12px;text-align:center; }.effect-card { overflow:hidden;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.effect-card-head { min-height:36px;display:flex;align-items:center;gap:8px;padding:0 4px 0 8px;border-bottom:1px solid var(--fdc-line); }.effect-card-head strong,.effect-card-head select { min-width:0;flex:1;height:32px;border:0;background:transparent;color:var(--fdc-ink);font:500 12px/1 var(--fdc-font);outline:none; }.effect-symbol { width:20px;height:20px;display:grid;place-items:center;color:var(--fdc-muted); }.effect-symbol svg,.effect-remove svg,.effect-add summary svg,.effect-menu svg { width:16px;height:16px; }.effect-remove { width:28px;height:28px;display:grid;place-items:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.effect-remove:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.effect-fields { display:grid;gap:8px;padding:8px; }.effect-shadow-fields { grid-template-columns:1fr 1fr; }.effect-value { min-width:0;height:32px;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;overflow:hidden;border:1px solid var(--fdc-line);border-radius:4px;background:var(--fdc-surface); }.effect-value>span { min-width:28px;padding:0 8px;color:var(--fdc-muted);font:500 12px/1 var(--fdc-font); }.effect-value input { width:100%;height:100%;min-width:0;padding:0 8px;border:0;background:transparent;color:var(--fdc-ink);font:400 12px/1 var(--fdc-font-mono);outline:none; }.effect-color,.effect-blur { display:grid;grid-template-columns:52px minmax(0,1fr);align-items:center;gap:8px;color:var(--fdc-muted);font-size:12px; }.effect-color { grid-column:1/-1; }.effect-color-control { height:32px;display:grid;grid-template-columns:40px minmax(0,1fr) 24px;align-items:center;overflow:hidden;border:1px solid var(--fdc-line);border-radius:4px;background:var(--fdc-surface); }.effect-color-control input[type="color"] { width:40px;height:100%;padding:4px;border:0;background:transparent; }.effect-color-control input[type="color"]::-webkit-color-swatch-wrapper { padding:0; }.effect-color-control input[type="color"]::-webkit-color-swatch { border:0;border-radius:4px; }.effect-color-control input[type="number"] { width:100%;height:100%;min-width:0;padding:0 8px;border:0;border-left:1px solid var(--fdc-line);background:transparent;color:var(--fdc-ink);font:400 12px/1 var(--fdc-font-mono);outline:none; }.effect-color-control>span { color:var(--fdc-muted);font:400 12px/1 var(--fdc-font); }.effect-add { position:relative; }.effect-add summary { min-height:32px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper);color:var(--fdc-ink);font-size:12px;cursor:pointer;list-style:none; }.effect-add summary::-webkit-details-marker { display:none; }.effect-add summary:hover { background:var(--fdc-subtle); }.effect-menu { position:absolute;z-index:8;right:0;bottom:calc(100% + 4px);width:220px;padding:4px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-elevated);box-shadow:0 12px 28px rgb(0 0 0 / 24%); }.effect-menu button { width:100%;height:32px;display:grid;grid-template-columns:20px minmax(0,1fr) auto;align-items:center;gap:8px;padding:0 8px;border:0;border-radius:4px;background:transparent;color:var(--fdc-ink);font-size:12px;text-align:left;cursor:pointer; }.effect-menu button:hover:not(:disabled) { background:var(--fdc-subtle); }.effect-menu button:disabled { color:var(--fdc-muted);cursor:not-allowed; }.effect-menu small { font:500 8px/1 var(--fdc-font-mono); }.motion-list { display:grid;gap:8px;padding:0 12px 12px; }.motion-row { display:grid;gap:12px;padding:12px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.motion-title { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:8px; }.motion-title strong { display:block;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:550;white-space:nowrap; }.motion-title code { display:block;margin-top:4px;color:var(--fdc-muted);font:400 8px/1.4 var(--fdc-font-mono);text-transform:uppercase;letter-spacing:.04em; }.motion-badge { min-height:20px;display:inline-flex;align-items:center;padding:0 8px;border-radius:1000px;color:var(--fdc-muted);background:var(--fdc-subtle);font:500 8px/1 var(--fdc-font);white-space:nowrap; }.motion-badge[data-tier="compositor"] { color:#236c59;background:#e8f7f1; }.motion-badge[data-tier="layout"] { color:#8b4d3d;background:#faece7; }.motion-timeline { width:100%;accent-color:var(--fdc-signal); }.motion-timeline:disabled { opacity:.32; }.motion-transport { display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) minmax(88px,1.2fr);gap:4px; }.motion-transport button,.motion-transport select { min-width:0;height:32px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-ink);background:var(--fdc-surface);font:400 12px/1 var(--fdc-font);cursor:pointer; }.motion-transport button:hover:not(:disabled) { border-color:var(--fdc-line-strong);background:var(--fdc-subtle); }.motion-transport button:disabled,.motion-transport select:disabled { opacity:.35;cursor:not-allowed; }.motion-transport .fdc-select { min-height:32px; }.motion-transport .fdc-select-trigger { height:32px;border-radius:4px;font-family:var(--fdc-font-mono); }.motion-fields { display:grid;grid-template-columns:1fr 1fr;gap:8px; }.motion-fields label { display:grid;gap:8px;color:var(--fdc-muted);font:500 8px/1 var(--fdc-font); }.motion-fields label:last-child { grid-column:1/-1; }.motion-fields input { width:100%;height:32px;min-width:0;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-ink);background:var(--fdc-surface);font:400 12px/1 var(--fdc-font-mono);outline:0; }.motion-fields input:focus-visible { border-color:var(--fdc-signal);box-shadow:0 0 0 4px color-mix(in srgb,var(--fdc-signal) 18%,transparent); }.motion-fields input:disabled { opacity:.35;cursor:not-allowed; }.motion-properties { overflow:hidden;text-overflow:ellipsis;color:var(--fdc-muted);font:400 8px/1.4 var(--fdc-font-mono);white-space:nowrap; }
   .empty { padding:48px 28px;text-align:center;color:var(--fdc-muted);font-size:12px;line-height:1.6; }.empty::before { content:"⌖";display:grid;place-items:center;width:40px;height:40px;margin:0 auto 12px;color:var(--fdc-signal);background:var(--fdc-signal-soft);border-radius:12px;font:20px/1 var(--fdc-font); }
   .change-dock { min-height:48px;display:grid;grid-template-columns:minmax(0,1fr) 32px 68px;align-items:center;gap:8px;padding:8px 8px;border-top:1px solid var(--fdc-line);background:white; }.change-dock[hidden] { display:none; }.change-dock-copy { min-width:0;padding-left:4px; }.change-dock-copy strong,.change-dock-copy span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.change-dock-copy strong { font-size:12px;font-weight:550; }.change-dock-copy span { margin-top:4px;color:var(--fdc-muted);font-size:8px; }.change-dock button { height:32px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:var(--fdc-ink);font-size:8px;cursor:pointer; }.change-dock .dock-review { color:white;border-color:var(--fdc-ink);background:var(--fdc-ink); }.change-dock svg { width:12px;height:12px; }.footer { display:grid;grid-template-columns:84px 1fr;gap:8px;padding:8px;background:var(--fdc-surface);border-top:1px solid var(--fdc-line); }.footer:has(.review[hidden]) { grid-template-columns:1fr; }.footer button[hidden] { display:none; }.footer button { min-height:36px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-surface);color:var(--fdc-ink);font-size:12px;font-weight:450;cursor:pointer; }.footer button:hover { border-color:#d0d0d0;background:var(--fdc-paper); }.footer .review { align-items:center;justify-content:center;gap:8px;color:white;background:var(--fdc-ink);border-color:var(--fdc-ink); }.footer .review:not([hidden]) { display:flex; }.footer .review:hover { background:#2f2f2f; }.change-count { min-width:20px;height:20px;display:inline-grid;place-items:center;padding:0 4px;color:var(--fdc-ink);background:white;border-radius:1000px;font:500 8px/1 var(--fdc-font); }.change-count[hidden] { display:none; }
   .review-view { min-height:0;flex:1;display:none;flex-direction:column;background:var(--fdc-surface); }.panel.reviewing .selection,.panel.reviewing .scope,.panel.reviewing .controls,.panel.reviewing>.footer,.panel.reviewing>.change-dock { display:none; }.panel.reviewing .review-view { display:flex; }.review-head { min-height:48px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--fdc-line); }.review-head button { width:32px;height:32px;display:grid;place-items:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.review-head button:hover { background:var(--fdc-subtle);color:var(--fdc-ink); }.review-head svg { width:16px;height:16px; }.review-head strong { font-size:12px;font-weight:550; }.review-head span { margin-left:auto;color:var(--fdc-muted);font-size:12px; }.review-body { min-height:160px;overflow-x:hidden;overflow-y:auto; }.review-toolbar { position:sticky;top:0;z-index:1;display:flex;gap:4px;padding:8px 8px;border-bottom:1px solid var(--fdc-line);background:rgb(255 255 255 / 96%);backdrop-filter:blur(8px); }.review-toolbar button { height:28px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#555;font-size:8px;cursor:pointer; }.review-toolbar button:last-child { margin-left:auto; }.review-empty { padding:44px 24px;color:var(--fdc-muted);font-size:12px;line-height:1.55;text-align:center; }.review-group { border-bottom:1px solid var(--fdc-line); }.review-group-title { width:100%;min-height:36px;display:flex;align-items:center;gap:8px;padding:0 12px;border:0;background:white;color:var(--fdc-muted);font-size:12px;font-weight:500;text-align:left;cursor:pointer; }.review-group-title span { margin-left:auto;font-size:8px; }.review-group-title svg { width:12px;height:12px;transition:transform .12s ease; }.review-group.collapsed .review-group-title svg { transform:rotate(-90deg); }.review-group.collapsed .review-card { display:none; }.review-card { display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;padding:8px 12px 12px; }.review-card.rejected { opacity:.62; }.review-card+.review-card { border-top:1px solid var(--fdc-line); }.review-card input[type="checkbox"] { width:16px;height:16px;margin:4px 0 0;accent-color:var(--fdc-ink); }.review-card-main { min-width:0; }.review-card-line { display:flex;align-items:center;gap:8px; }.review-card-line strong { min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:500;white-space:nowrap; }.review-card-tools { display:flex;gap:4px;margin-left:auto; }.review-card-tools button { height:24px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#666;font-size:8px;cursor:pointer; }.confidence-pill { flex:none;padding:4px 4px;border-radius:4px;background:#edf6ff;color:#0761d1;font-size:8px;text-transform:capitalize; }.confidence-pill.unresolved { color:#984a2b;background:#fff0e8; }.review-values { display:grid;grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr);align-items:center;gap:4px;margin-top:8px; }.review-before { overflow:hidden;text-overflow:ellipsis;padding:8px;color:var(--fdc-muted);background:var(--fdc-subtle);border-radius:4px;font-size:12px;white-space:nowrap; }.review-values>span { color:var(--fdc-muted);font-size:12px;text-align:center; }.review-after { width:100%;height:28px;min-width:0;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;font-size:12px;outline:none; }.review-after:focus { border-color:var(--fdc-signal);box-shadow:0 0 0 4px rgb(0 112 243 / 10%); }.review-source { margin-top:8px;overflow-wrap:anywhere;color:var(--fdc-muted);font-size:8px;line-height:1.45; }.review-actions { display:grid;grid-template-columns:84px 1fr;gap:8px;padding:8px;border-top:1px solid var(--fdc-line); }.review-actions button { min-height:36px;border:1px solid var(--fdc-line);border-radius:8px;background:white;font-size:12px;cursor:pointer; }.review-actions .apply { color:white;background:var(--fdc-ink);border-color:var(--fdc-ink); }.review-actions button:disabled { opacity:.45;cursor:not-allowed; }.run-summary { padding:16px 12px;border-bottom:1px solid var(--fdc-line); }.run-state { display:flex;align-items:center;gap:8px; }.run-state i { width:8px;height:8px;border-radius:50%;background:#a3a3a3; }.run-state i.active { background:var(--fdc-signal);box-shadow:0 0 0 4px rgb(0 112 243 / 10%); }.run-state i.passed { background:#2ca67f; }.run-state i.attention { background:#d16d51; }.run-state strong { font-size:12px;font-weight:550;text-transform:capitalize; }.run-summary p { margin:8px 0 0;color:var(--fdc-muted);font-size:12px;line-height:1.5; }.run-steps { padding:4px 12px 12px; }.run-step { display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;padding:8px 0;border-bottom:1px solid var(--fdc-line); }.run-step:last-child { border-bottom:0; }.run-step span:first-child { color:var(--fdc-muted);font-size:12px; }.run-step strong { display:block;font-size:12px;font-weight:500;text-transform:capitalize; }.run-step p { margin:4px 0 0;color:var(--fdc-muted);font-size:8px;line-height:1.45; }.result-list { padding:0 12px 12px; }.result-row { display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--fdc-line);font-size:12px; }.result-row span:last-child { color:var(--fdc-muted);text-align:right; }.result-row.pass span:first-child { color:#23715c; }.result-row.fail span:first-child { color:#a24d30; }.run-files { padding:0 12px 12px;color:var(--fdc-muted);font-size:8px;line-height:1.5; }.run-files code { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
@@ -510,6 +518,9 @@ const PANEL_CSS = `
   .review-more>summary:hover,.review-more[open]>summary { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }
   .review-more .review-card-tools { position:absolute;z-index:5;right:0;top:32px;width:260px;display:flex;flex-direction:column;gap:4px;padding:4px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-elevated);box-shadow:0 12px 24px rgb(0 0 0 / 34%); }
   .review-more .review-card-tools button { width:100%;height:28px;padding:0 8px;border:0;text-align:left;background:transparent; }
+  .review-more .review-card-tools button { display:flex;align-items:center;gap:8px; }
+  .review-more .review-card-tools button svg { width:16px;height:16px;flex:none; }
+  .review-more .review-card-tools button[data-review-delete]:not(:disabled) { color:#d16d51; }
   .review-more .review-card-tools button:hover { background:var(--fdc-subtle); }
   .review-details { margin-top:4px;padding-top:4px;border-top:1px solid var(--fdc-line); }
   .review-details summary { min-height:28px;display:flex;align-items:center;padding:0 8px;color:var(--fdc-muted);font-size:8px;cursor:pointer; }
@@ -525,9 +536,8 @@ const PANEL_CSS = `
   /* Shared dock geometry and focused review takeover. */
   .panel,.layers-panel,.change-tray { width:var(--fdc-dock-width,384px); }
   .layers-panel { max-width:min(520px,calc(100vw - 24px)); }
-  .change-tray { z-index:2147483647;right:12px;bottom:12px;left:auto;height:48px;min-height:48px; }
+  .change-tray { z-index:2147483647;top:68px;right:auto;bottom:auto;left:var(--fdc-canvas-center,50vw);height:48px;min-height:48px;transform:translateX(-50%); }
   .change-tray-summary { min-height:48px;grid-template-columns:minmax(0,1fr) 32px 72px; }
-  .panel.change-summary-visible .inspector-scroll { padding-bottom:60px;scroll-padding-bottom:60px; }
   .tool-shelf { bottom:20px; }
   .compare-bar { bottom:80px; }
   .review-takeover { position:fixed;z-index:2147483647;inset:0;display:grid;place-items:center;padding:24px;background:rgb(8 8 10 / 72%);backdrop-filter:blur(8px);pointer-events:auto; }
@@ -602,7 +612,7 @@ const PANEL_CSS = `
   .control-field .unit-select { width:44px;padding-right:24px!important;background-position:right 8px center!important; }
   .section-grid { gap:8px;padding:0 16px 16px; }
   .inspector-category[data-category="position"]>.category-body>.property-section>.section-grid { padding-top:12px; }
-  @media (max-width:680px){.panel,.layers-panel{width:auto}.panel-resizer{display:none}.change-tray{right:8px;bottom:8px;left:auto;width:calc(100vw - 16px)}.review-takeover{padding:8px}.review-modal{width:calc(100vw - 16px);height:calc(100vh - 16px);border-radius:12px}.review-modal .review-actions{grid-template-columns:84px 1fr}.panel.change-summary-visible .inspector-scroll{padding-bottom:60px}}
+  @media (max-width:680px){.panel,.layers-panel{width:auto}.panel-resizer{display:none}.change-tray{top:68px;right:8px;bottom:auto;left:8px;width:calc(100vw - 16px);transform:none}.review-takeover{padding:8px}.review-modal{width:calc(100vw - 16px);height:calc(100vh - 16px);border-radius:12px}.review-modal .review-actions{grid-template-columns:84px 1fr}}
   :host([data-embedded="true"]) .workspace-bar,
   :host([data-embedded="true"]) .interface-theme-menu,
   :host([data-embedded="true"]) .status-popover,
@@ -2037,6 +2047,7 @@ export function installFoundryInspector(
         step: control.step,
         options: control.options,
       })),
+      motions: selected ? workspaceMotionSnapshot(selected) : [],
       history: { canUndo: historyCursor > 0, canRedo: historyCursor < previewHistory.length },
       project: {
         tokens: designGraph?.tokens ?? [],
@@ -2083,9 +2094,38 @@ export function installFoundryInspector(
       sessionId?: string;
       command?: string;
       payload?: Record<string, unknown>;
+      requestId?: string;
     };
     if (message.type !== 'foundry:workspace-command' || message.sessionId !== sessionId) return;
     const payload = message.payload ?? {};
+    if (message.command === 'delete-change') {
+      void deleteReviewChange(String(payload.changeId ?? ''))
+        .then((result) => {
+          window.parent.postMessage(
+            {
+              type: 'foundry:workspace-result',
+              sessionId,
+              requestId: message.requestId,
+              ok: true,
+              payload: result,
+            },
+            runtimeOrigin,
+          );
+        })
+        .catch((error) => {
+          window.parent.postMessage(
+            {
+              type: 'foundry:workspace-result',
+              sessionId,
+              requestId: message.requestId,
+              ok: false,
+              error: error instanceof Error ? error.message : 'Could not delete this change',
+            },
+            runtimeOrigin,
+          );
+        });
+      return;
+    }
     if (message.command === 'request-state') publishWorkspaceState();
     if (message.command === 'set-mode') {
       workspaceCanvasTool =
@@ -2113,6 +2153,61 @@ export function installFoundryInspector(
           renderControls();
           publishWorkspaceState();
         });
+      }
+    }
+    if (message.command === 'motion-action' && selected) {
+      const motion = findDiscoveredMotion(selected, String(payload.id ?? ''));
+      const animation = motion?.animation;
+      const action = String(payload.action ?? '');
+      if (motion && animation) {
+        if (action === 'scrub') {
+          animation.pause();
+          animation.currentTime = Number(payload.value ?? 0);
+          publishWorkspaceState();
+        }
+        if (action === 'speed') {
+          animation.playbackRate = Number(payload.value ?? 1);
+          publishWorkspaceState();
+        }
+        if (action === 'toggle') {
+          if (animation.playState === 'paused') animation.play();
+          else animation.pause();
+          publishWorkspaceState();
+        }
+        if (action === 'replay') {
+          animation.currentTime = 0;
+          animation.play();
+          publishWorkspaceState();
+        }
+        if (action === 'loop') {
+          toggleMotionLoop(animation);
+          publishWorkspaceState();
+        }
+        if (action === 'duration' || action === 'delay' || action === 'easing') {
+          const after = action === 'easing' ? String(payload.value ?? '') : Number(payload.value);
+          void applyMotionTiming(motion, action, after).then(() => {
+            renderControls();
+            publishWorkspaceState();
+          });
+        }
+        if (
+          action === 'keyframe-value' ||
+          action === 'keyframe-offset' ||
+          action === 'keyframe-easing'
+        ) {
+          const property =
+            action === 'keyframe-value'
+              ? String(payload.property ?? '')
+              : action === 'keyframe-offset'
+                ? 'offset'
+                : 'easing';
+          const after =
+            action === 'keyframe-offset' ? Number(payload.value) : String(payload.value);
+          void applyMotionKeyframe(motion, Number(payload.index), property, after).then(() => {
+            renderControls();
+            publishWorkspaceState();
+          });
+        }
       }
     }
     if (message.command === 'set-context') {
@@ -2390,6 +2485,7 @@ export function installFoundryInspector(
       '--fdc-canvas-right',
       `${Math.max(12, window.innerWidth - bounds.right)}px`,
     );
+    host.style.setProperty('--fdc-canvas-center', `${(bounds.left + bounds.right) / 2}px`);
     host.style.setProperty('--fdc-tray-lift', '0px');
     if (workspaceState.utility) applyUtilityRect(workspaceState.utility);
   }
@@ -3965,7 +4061,8 @@ export function installFoundryInspector(
                     componentInstances: component?.instances,
                     unresolved,
                   });
-                  return `<div class="review-card ${change.status === 'rejected' ? 'rejected' : ''}" data-review-card="${escapeHtml(change.id)}"><input aria-label="Include ${escapeHtml(change.property)} change" type="checkbox" data-review-change="${escapeHtml(change.id)}" ${checked ? 'checked' : ''} ${selectable ? '' : 'disabled'}/><div class="review-card-main"><div class="review-card-line"><strong title="${escapeHtml(change.property)}">${escapeHtml(humanizeProperty(change.property))}</strong><span class="confidence-pill ${unresolved ? 'unresolved' : ''}">${escapeHtml(change.status === 'rejected' ? 'removed' : change.confidence)}</span><span class="review-values"><span class="review-before" title="Before: ${escapeHtml(reviewValue(change.before, change.unit))}">${escapeHtml(reviewValue(change.before, change.unit))}</span><span aria-hidden="true">→</span><input aria-label="New ${escapeHtml(change.property)} value" class="review-after" data-review-after="${escapeHtml(change.id)}" data-value-kind="${inputType}" type="${inputType}" value="${escapeHtml(afterValue)}" ${selectable ? '' : 'disabled'}/></span><details class="review-more"><summary aria-label="More actions for ${escapeHtml(humanizeProperty(change.property))}">•••</summary><div class="review-card-tools"><button data-review-locate="${escapeHtml(change.id)}">Locate</button><button data-review-preview="${escapeHtml(change.id)}" title="Hold to preview before">Preview before</button><button data-review-status="${escapeHtml(change.id)}" data-next-status="${change.status === 'rejected' ? 'draft' : 'rejected'}">${change.status === 'rejected' ? 'Restore' : 'Remove'}</button><details class="review-details"><summary>Source and scope</summary><span class="review-source">${escapeHtml(change.property)} · ${escapeHtml(reviewSource(change))} · ${escapeHtml(change.scope)} · ${escapeHtml(change.context.breakpoint)} · ${escapeHtml(change.context.theme)}${change.token ? ` · ${escapeHtml(change.token)}` : ''}</span><span class="impact-list">${impact.map((message) => `<span class="impact-item ${unresolved || (!change.token && message.includes('literal')) ? 'warning' : ''}">${escapeHtml(message)}</span>`).join('')}</span></details></div></details></div>${mappingChooser}</div></div>`;
+                  const deletable = change.status !== 'applied';
+                  return `<div class="review-card ${change.status === 'rejected' ? 'rejected' : ''}" data-review-card="${escapeHtml(change.id)}"><input aria-label="Include ${escapeHtml(change.property)} change" type="checkbox" data-review-change="${escapeHtml(change.id)}" ${checked ? 'checked' : ''} ${selectable ? '' : 'disabled'}/><div class="review-card-main"><div class="review-card-line"><strong title="${escapeHtml(change.property)}">${escapeHtml(humanizeProperty(change.property))}</strong><span class="confidence-pill ${unresolved ? 'unresolved' : ''}">${escapeHtml(change.status === 'rejected' ? 'removed' : change.confidence)}</span><span class="review-values"><span class="review-before" title="Before: ${escapeHtml(reviewValue(change.before, change.unit))}">${escapeHtml(reviewValue(change.before, change.unit))}</span><span aria-hidden="true">→</span><input aria-label="New ${escapeHtml(change.property)} value" class="review-after" data-review-after="${escapeHtml(change.id)}" data-value-kind="${inputType}" type="${inputType}" value="${escapeHtml(afterValue)}" ${selectable ? '' : 'disabled'}/></span><details class="review-more"><summary aria-label="More actions for ${escapeHtml(humanizeProperty(change.property))}">•••</summary><div class="review-card-tools"><button data-review-locate="${escapeHtml(change.id)}">Locate</button><button data-review-preview="${escapeHtml(change.id)}" title="Hold to preview before">Preview before</button><button data-review-delete="${escapeHtml(change.id)}" ${deletable ? '' : 'disabled'}><i data-foundry-icon="bin"></i>Delete and restore</button><details class="review-details"><summary>Source and scope</summary><span class="review-source">${escapeHtml(change.property)} · ${escapeHtml(reviewSource(change))} · ${escapeHtml(change.scope)} · ${escapeHtml(change.context.breakpoint)} · ${escapeHtml(change.context.theme)}${change.token ? ` · ${escapeHtml(change.token)}` : ''}</span><span class="impact-list">${impact.map((message) => `<span class="impact-item ${unresolved || (!change.token && message.includes('literal')) ? 'warning' : ''}">${escapeHtml(message)}</span>`).join('')}</span></details></div></details></div>${mappingChooser}</div></div>`;
                 })
                 .join('')}</section>`;
             })
@@ -4031,18 +4128,14 @@ export function installFoundryInspector(
         suspendReview();
         showComparison('after');
       });
-    reviewBody.querySelectorAll<HTMLButtonElement>('[data-review-status]').forEach((button) =>
+    reviewBody.querySelectorAll<HTMLButtonElement>('[data-review-delete]').forEach((button) =>
       button.addEventListener('click', async () => {
         button.disabled = true;
         try {
-          renderReviewPayload(
-            await sessionRequest(`/changes/${encodeURIComponent(button.dataset.reviewStatus!)}`, {
-              method: 'PATCH',
-              body: JSON.stringify({ status: button.dataset.nextStatus }),
-            }),
-          );
+          renderReviewPayload(await deleteReviewChange(button.dataset.reviewDelete!));
+          showToast('Change deleted and original value restored');
         } catch (error) {
-          showToast(error instanceof Error ? error.message : 'Could not update change');
+          showToast(error instanceof Error ? error.message : 'Could not delete change');
           button.disabled = false;
         }
       }),
@@ -6183,6 +6276,98 @@ export function installFoundryInspector(
     }
   }
 
+  function previewChangeTarget(change: any): HTMLElement | null {
+    return resolveFoundrySelector(document, String(change.target?.locator?.selector ?? ''));
+  }
+
+  function canRestorePreviewChange(change: any, element: HTMLElement): boolean {
+    const motionKeyframe = /^motion\.(motion_[a-z0-9]+)\.keyframe\.(\d+)\.(.+)$/.exec(
+      String(change.property),
+    );
+    if (motionKeyframe) {
+      return Boolean(findDiscoveredMotion(element, motionKeyframe[1]!)?.animation?.effect);
+    }
+    const motion = /^motion\.(motion_[a-z0-9]+)\.(duration|delay|easing)$/.exec(
+      String(change.property),
+    );
+    if (motion) {
+      return Boolean(findDiscoveredMotion(element, motion[1]!)?.animation?.effect);
+    }
+    return true;
+  }
+
+  function restorePreviewChange(change: any, element: HTMLElement): void {
+    const property = String(change.property);
+    const motionKeyframe = /^motion\.(motion_[a-z0-9]+)\.keyframe\.(\d+)\.(.+)$/.exec(property);
+    if (motionKeyframe) {
+      const discovered = findDiscoveredMotion(element, motionKeyframe[1]!);
+      const effect = discovered?.animation?.effect as KeyframeEffect | null;
+      if (!effect) throw new Error('The edited motion is not currently rendered.');
+      effect.setKeyframes(
+        editableKeyframes(
+          updateMotionKeyframe(
+            motionKeyframes(effect),
+            Number(motionKeyframe[2]),
+            motionKeyframe[3]!,
+            change.before,
+          ),
+        ),
+      );
+    } else {
+      const motion = /^motion\.(motion_[a-z0-9]+)\.(duration|delay|easing)$/.exec(property);
+      if (motion) {
+        const discovered = findDiscoveredMotion(element, motion[1]!);
+        const effect = discovered?.animation?.effect as KeyframeEffect | null;
+        if (!effect) throw new Error('The edited motion is not currently rendered.');
+        effect.updateTiming({ [motion[2]!]: change.before });
+      } else {
+        if (
+          ['aria-label', 'role', 'tabindex', 'alt', 'src'].includes(property) &&
+          change.before === ''
+        ) {
+          element.removeAttribute(property);
+        } else {
+          rawElementValue(element, property, change.before, change.unit);
+        }
+      }
+    }
+
+    previewHistory.splice(
+      0,
+      previewHistory.length,
+      ...previewHistory.filter(
+        (entry) => entry.element !== element || entry.property !== String(change.property),
+      ),
+    );
+    historyCursor = previewHistory.length;
+    updateHistoryActions();
+    updateOutline();
+    if (selected === element) {
+      selectedControls = controlsFor(element);
+      renderControls();
+    }
+    if (!healthPanel.hidden) scanDesignHealth();
+    publishWorkspaceState();
+  }
+
+  async function deleteReviewChange(changeId: string): Promise<any> {
+    if (!changeId) throw new Error('Foundry could not identify this change.');
+    const payload = activeReviewPayload ?? (await sessionRequest());
+    const change = payload.changeSet?.changes?.find((item: any) => item.id === changeId);
+    if (!change) throw new Error('This change is no longer available.');
+    const element = previewChangeTarget(change);
+    if (!element) throw new Error('The edited element is not currently rendered.');
+    if (!canRestorePreviewChange(change, element)) {
+      throw new Error('The original value cannot be restored until this element is rendered.');
+    }
+    const updated = await sessionRequest(`/changes/${encodeURIComponent(changeId)}`, {
+      method: 'DELETE',
+    });
+    restorePreviewChange(updated.removedChange ?? change, element);
+    activeReviewPayload = updated;
+    return updated;
+  }
+
   function rawHistoryValue(entry: HistoryEntry, value: string | number): void {
     rawElementValue(entry.element, entry.property, value, entry.unit);
   }
@@ -6724,83 +6909,189 @@ export function installFoundryInspector(
     if (workspaceState.utility === 'health') setUtility(null);
   }
 
-  function renderMotionControls(animations: Animation[]): string {
-    if (!animations.length) return '';
-    return `<section class="inspector-category property-section ${collapsedSections.has('category:motion') ? 'collapsed' : ''}" data-category="motion" data-section-key="category:motion"><div class="inspector-heading section-head"><button class="section-toggle" aria-expanded="${String(!collapsedSections.has('category:motion'))}"><i data-foundry-icon="play"></i><strong>Motion</strong></button><span class="property-count">${animations.length} active</span></div><div class="category-body motion-list">${animations
-      .map((animation, index) => {
-        const timing = animation.effect?.getComputedTiming();
-        const authored = animation.effect?.getTiming();
-        const duration = Number(timing?.duration ?? 0) || 1000;
-        return `<div class="motion-row" data-animation="${index}"><div class="motion-title"><span>Animation ${index + 1}</span><code>${Math.round(duration)} ms</code></div><input class="motion-timeline" data-motion-timeline type="range" min="0" max="${duration}" step="1" value="${Math.min(duration, Number(animation.currentTime ?? 0))}" aria-label="Animation timeline"/><div class="motion-fields"><label>Duration<input data-motion-duration type="number" min="0" step="10" value="${Math.round(duration)}"/></label><label>Delay<input data-motion-delay type="number" step="10" value="${Math.round(Number(authored?.delay ?? 0))}"/></label><label style="grid-column:1/-1">Easing<input data-motion-easing type="text" value="${escapeHtml(String(authored?.easing ?? 'linear'))}"/></label></div><div class="motion-actions"><button data-action="toggle">${animation.playState === 'paused' ? 'Play' : 'Pause'}</button><button data-action="slower">½ speed</button><button data-action="faster">2× speed</button><button data-action="restart">Restart</button></div></div>`;
+  const previewLoopIterations = new WeakMap<Animation, number>();
+
+  function workspaceMotionSnapshot(element: HTMLElement): Array<Record<string, unknown>> {
+    return discoverElementMotion(element).map(({ descriptor, animation }) => ({
+      id: descriptor.id,
+      label: descriptor.label,
+      kind: descriptor.kind,
+      properties: descriptor.properties,
+      timing: descriptor.timing,
+      keyframes: descriptor.keyframes,
+      performance: descriptor.performance,
+      active: Boolean(animation?.effect),
+      playState: animation?.playState ?? 'idle',
+      currentTime: Math.max(0, Number(animation?.currentTime ?? 0)),
+      playbackRate: animation?.playbackRate ?? 1,
+      looping: Boolean(animation && previewLoopIterations.has(animation)),
+    }));
+  }
+
+  async function applyMotionTiming(
+    motion: DiscoveredMotion,
+    property: 'duration' | 'delay' | 'easing',
+    after: string | number,
+  ): Promise<void> {
+    const effect = motion.animation?.effect as KeyframeEffect | null;
+    if (!effect) return;
+    const before = effect.getTiming()[property] as string | number;
+    effect.updateTiming({ [property]: after });
+    await record(
+      {
+        category: 'motion',
+        property: `motion.${motion.descriptor.id}.${property}`,
+        label: property === 'duration' ? 'Duration' : property === 'delay' ? 'Delay' : 'Easing',
+        kind: property === 'easing' ? 'text' : 'number',
+        value: before,
+        unit: property === 'easing' ? undefined : 'ms',
+        read: () => effect.getTiming()[property] as string | number,
+        apply: (value) => effect.updateTiming({ [property]: value }),
+      },
+      before,
+      after,
+    );
+  }
+
+  async function applyMotionKeyframe(
+    motion: DiscoveredMotion,
+    index: number,
+    property: string,
+    after: string | number,
+  ): Promise<void> {
+    const effect = motion.animation?.effect as KeyframeEffect | null;
+    if (!effect) return;
+    const frames = motionKeyframes(effect);
+    const before = motionKeyframeValue(frames, index, property);
+    if (before == null || String(before) === String(after)) return;
+    const applyValue = (value: string | number): void => {
+      const current = motionKeyframes(effect);
+      effect.setKeyframes(editableKeyframes(updateMotionKeyframe(current, index, property, value)));
+    };
+    applyValue(after);
+    const propertyLabel =
+      property === 'offset' ? 'Position' : property === 'easing' ? 'Easing' : property;
+    await record(
+      {
+        category: 'motion',
+        property: `motion.${motion.descriptor.id}.keyframe.${index}.${property}`,
+        label: `Keyframe ${index + 1} ${propertyLabel}`,
+        kind: property === 'offset' ? 'number' : 'text',
+        value: before,
+        unit: property === 'offset' ? '%' : undefined,
+        read: () => motionKeyframeValue(motionKeyframes(effect), index, property) ?? '',
+        apply: applyValue,
+      },
+      before,
+      after,
+      selected,
+      `Edit ${motion.descriptor.label} keyframe ${index + 1}`,
+      ['rendered keyframe track', `keyframe ${index + 1}`, property],
+    );
+  }
+
+  function toggleMotionLoop(animation: Animation): void {
+    const effect = animation.effect as KeyframeEffect | null;
+    if (!effect) return;
+    const original = previewLoopIterations.get(animation);
+    if (original === undefined) {
+      previewLoopIterations.set(animation, Number(effect.getTiming().iterations));
+      effect.updateTiming({ iterations: Number.POSITIVE_INFINITY });
+    } else {
+      effect.updateTiming({ iterations: original });
+      previewLoopIterations.delete(animation);
+    }
+  }
+
+  function renderMotionControls(motions: DiscoveredMotion[]): string {
+    if (!motions.length) return '';
+    return `<section class="inspector-category property-section ${collapsedSections.has('category:motion') ? 'collapsed' : ''}" data-category="motion" data-section-key="category:motion"><div class="inspector-heading section-head"><button class="section-toggle" aria-expanded="${String(!collapsedSections.has('category:motion'))}"><i data-foundry-icon="play"></i><strong>Motion</strong></button><span class="property-count">${motions.length} detected</span></div><div class="category-body motion-list">${motions
+      .map(({ descriptor, animation }, index) => {
+        const duration = descriptor.timing.duration || 1000;
+        const currentTime = Math.min(duration, Number(animation?.currentTime ?? 0));
+        const sourceLabel =
+          descriptor.kind === 'css-animation'
+            ? 'CSS animation'
+            : descriptor.kind === 'css-transition'
+              ? 'CSS transition'
+              : 'Web animation';
+        const disabled = animation?.effect ? '' : 'disabled';
+        const properties = descriptor.properties.length
+          ? descriptor.properties.join(', ')
+          : 'Keyframe properties available while running';
+        const playbackRate = animation?.playbackRate ?? 1;
+        const speedOptions = [
+          [0.1, '10%'],
+          [0.25, '25%'],
+          [0.5, '50%'],
+          [1, '100%'],
+          [2, '200%'],
+        ]
+          .map(
+            ([rate, label]) =>
+              `<option value="${rate}" ${Math.abs(playbackRate - Number(rate)) < 0.001 ? 'selected' : ''}>${label}</option>`,
+          )
+          .join('');
+        return `<div class="motion-row" data-motion-index="${index}" data-motion-id="${descriptor.id}"><div class="motion-title"><span><strong>${escapeHtml(descriptor.label)}</strong><code>${escapeHtml(sourceLabel)} · ${Math.round(descriptor.timing.duration)} ms</code></span><span class="motion-badge" data-tier="${descriptor.performance.tier}" title="${escapeHtml(descriptor.performance.detail)}">${escapeHtml(descriptor.performance.label)}</span></div><div class="motion-properties" title="${escapeHtml(properties)}">${escapeHtml(properties)}</div><input class="motion-timeline" data-motion-timeline type="range" min="0" max="${duration}" step="1" value="${currentTime}" aria-label="Scrub ${escapeHtml(descriptor.label)}" ${disabled}/><div class="motion-transport"><button data-motion-action="toggle" ${disabled}>${animation?.playState === 'paused' ? 'Play' : 'Pause'}</button><button data-motion-action="replay" ${disabled}>Replay</button><button data-motion-action="loop" ${disabled}>${animation && previewLoopIterations.has(animation) ? 'Looping' : 'Loop'}</button><select data-motion-speed aria-label="Preview speed" ${disabled}>${speedOptions}</select></div><div class="motion-fields"><label>Duration<input data-motion-duration type="number" min="0" step="10" value="${Math.round(descriptor.timing.duration)}" ${disabled}/></label><label>Delay<input data-motion-delay type="number" step="10" value="${Math.round(descriptor.timing.delay)}" ${disabled}/></label><label>Easing<input data-motion-easing type="text" value="${escapeHtml(descriptor.timing.easing)}" ${disabled}/></label></div></div>`;
       })
       .join('')}</div></section>`;
   }
 
-  function installMotionControls(animations: Animation[]): void {
-    controlsRoot.querySelectorAll<HTMLElement>('[data-animation]').forEach((row) => {
-      const animation = animations[Number(row.dataset.animation)];
-      if (!animation) return;
+  function installMotionControls(motions: DiscoveredMotion[]): void {
+    controlsRoot.querySelectorAll<HTMLElement>('[data-motion-index]').forEach((row) => {
+      const motion = motions[Number(row.dataset.motionIndex)];
+      const animation = motion?.animation;
+      if (!motion || !animation) return;
       row
-        .querySelector<HTMLInputElement>('[data-motion-timeline]')!
-        .addEventListener('input', (event) => {
+        .querySelector<HTMLInputElement>('[data-motion-timeline]')
+        ?.addEventListener('input', (event) => {
           animation.pause();
           animation.currentTime = Number((event.currentTarget as HTMLInputElement).value);
+          const toggle = row.querySelector<HTMLButtonElement>('[data-motion-action="toggle"]');
+          if (toggle) toggle.textContent = 'Play';
         });
       const installTimingField = (
         selector: string,
         property: 'duration' | 'delay' | 'easing',
-        label: string,
       ): void => {
-        const field = row.querySelector<HTMLInputElement>(selector)!;
+        const field = row.querySelector<HTMLInputElement>(selector);
+        if (!field) return;
         field.addEventListener('change', () => {
-          const effect = animation.effect as KeyframeEffect | null;
-          if (!effect) return;
-          const before = effect.getTiming()[property] as string | number;
           const after = property === 'easing' ? field.value : Number(field.value);
-          effect.updateTiming({ [property]: after });
-          void record(
-            {
-              category: 'motion',
-              property: `animation.${row.dataset.animation}.${property}`,
-              label,
-              kind: property === 'easing' ? 'text' : 'number',
-              value: before,
-              unit: property === 'easing' ? undefined : 'ms',
-              read: () => effect.getTiming()[property] as string | number,
-              apply: (value) => effect.updateTiming({ [property]: value }),
-            },
-            before,
-            after,
-          );
+          void applyMotionTiming(motion, property, after);
         });
       };
-      installTimingField('[data-motion-duration]', 'duration', 'Duration');
-      installTimingField('[data-motion-delay]', 'delay', 'Delay');
-      installTimingField('[data-motion-easing]', 'easing', 'Easing');
-      row.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((button) =>
+      installTimingField('[data-motion-duration]', 'duration');
+      installTimingField('[data-motion-delay]', 'delay');
+      installTimingField('[data-motion-easing]', 'easing');
+      row
+        .querySelector<HTMLSelectElement>('[data-motion-speed]')
+        ?.addEventListener('change', (event) => {
+          animation.playbackRate = Number((event.currentTarget as HTMLSelectElement).value);
+        });
+      row.querySelectorAll<HTMLButtonElement>('[data-motion-action]').forEach((button) => {
         button.addEventListener('click', () => {
-          const before = animation.playbackRate;
-          if (button.dataset.action === 'toggle')
-            animation.playState === 'paused' ? animation.play() : animation.pause();
-          if (button.dataset.action === 'slower') animation.playbackRate *= 0.5;
-          if (button.dataset.action === 'faster') animation.playbackRate *= 2;
-          if (button.dataset.action === 'restart') animation.currentTime = 0;
-          void record(
-            {
-              category: 'motion',
-              property: `animation.${row.dataset.animation}.playbackRate`,
-              label: 'Playback rate',
-              kind: 'number',
-              value: before,
-              read: () => animation.playbackRate,
-              apply: () => {},
-            },
-            before,
-            animation.playbackRate,
-          );
-          renderControls();
-        }),
-      );
+          if (button.dataset.motionAction === 'toggle') {
+            if (animation.playState === 'paused') {
+              animation.play();
+              button.textContent = 'Pause';
+            } else {
+              animation.pause();
+              button.textContent = 'Play';
+            }
+          }
+          if (button.dataset.motionAction === 'replay') {
+            animation.currentTime = 0;
+            animation.play();
+            const toggle = row.querySelector<HTMLButtonElement>('[data-motion-action="toggle"]');
+            if (toggle) toggle.textContent = 'Pause';
+          }
+          if (button.dataset.motionAction === 'loop') {
+            toggleMotionLoop(animation);
+            button.textContent = previewLoopIterations.has(animation) ? 'Looping' : 'Loop';
+          }
+        });
+      });
     });
   }
 
@@ -7152,8 +7443,8 @@ export function installFoundryInspector(
       theme.value,
       state.value,
     );
-    const animations = selected.getAnimations();
-    controlsRoot.innerHTML = `${currentBaseline ? `<div class="inspector-baseline"><span class="baseline-badge">Verified baseline · ${escapeHtml(new Date(currentBaseline.verifiedAt).toLocaleDateString())}</span></div>` : ''}${categoryMarkup}${renderMotionControls(animations)}`;
+    const motions = discoverElementMotion(selected);
+    controlsRoot.innerHTML = `${currentBaseline ? `<div class="inspector-baseline"><span class="baseline-badge">Verified baseline · ${escapeHtml(new Date(currentBaseline.verifiedAt).toLocaleDateString())}</span></div>` : ''}${categoryMarkup}${renderMotionControls(motions)}`;
     renderIcons(controlsRoot);
     controlsRoot
       .querySelector<HTMLButtonElement>('[data-open-typography-studio]')
@@ -7424,7 +7715,7 @@ export function installFoundryInspector(
     installEffectEditor();
     installContextActions(selectedControls);
     installNumberScrubbing();
-    installMotionControls(animations);
+    installMotionControls(motions);
   }
 
   function select(element: HTMLElement, additive = false): void {
@@ -7879,13 +8170,24 @@ export function installFoundryInspector(
     if (change.property === 'textContent') return element.textContent?.trim() ?? '';
     if (['aria-label', 'role', 'tabindex', 'alt', 'src'].includes(change.property))
       return element.getAttribute(change.property) ?? (element as any)[change.property] ?? '';
-    const motion = /^animation\.(\d+)\.(.+)$/.exec(change.property);
+    const motionKeyframe = /^motion\.(motion_[a-z0-9]+)\.keyframe\.(\d+)\.(.+)$/.exec(
+      change.property,
+    );
+    if (motionKeyframe) {
+      const discovered = findDiscoveredMotion(element, motionKeyframe[1]!);
+      if (!discovered) return null;
+      return motionKeyframeValue(
+        discovered.descriptor.keyframes,
+        Number(motionKeyframe[2]),
+        motionKeyframe[3]!,
+      );
+    }
+    const motion = /^motion\.(motion_[a-z0-9]+)\.(.+)$/.exec(change.property);
     if (motion) {
-      const animation = element.getAnimations()[Number(motion[1])];
-      if (!animation) return null;
-      if (motion[2] === 'playbackRate') return animation.playbackRate;
-      return (animation.effect as KeyframeEffect | null)?.getTiming()[
-        motion[2] as 'duration' | 'delay' | 'easing'
+      const discovered = findDiscoveredMotion(element, motion[1]!);
+      if (!discovered) return null;
+      return discovered.descriptor.timing[
+        motion[2] as 'duration' | 'delay' | 'easing' | 'iterations' | 'direction' | 'fill'
       ];
     }
     if (change.property === 'widthMode' || change.property === 'heightMode') {

@@ -81,7 +81,7 @@ function applyCors(request: IncomingMessage, response: ServerResponse): boolean 
   }
   if (origin) response.setHeader('access-control-allow-origin', origin);
   response.setHeader('access-control-allow-headers', 'content-type,x-foundry-token');
-  response.setHeader('access-control-allow-methods', 'GET,POST,PATCH,OPTIONS');
+  response.setHeader('access-control-allow-methods', 'GET,POST,PATCH,DELETE,OPTIONS');
   response.setHeader('vary', 'Origin');
   return true;
 }
@@ -284,6 +284,11 @@ export class FoundryRuntime {
           };
           const updated = await this.store.setChangeStatus(id, parts[4], input.status);
           sendJson(response, 200, publicSession(updated));
+          return;
+        }
+        if (request.method === 'DELETE' && parts[3] === 'changes' && parts[4]) {
+          const { stored: updated, removedChange } = await this.store.deleteChange(id, parts[4]);
+          sendJson(response, 200, { ...publicSession(updated), removedChange });
           return;
         }
         if (request.method === 'POST' && parts[3] === 'verify') {

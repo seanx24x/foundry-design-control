@@ -308,6 +308,53 @@ export class SessionStore {
     return stored;
   }
 
+  async deleteChange(
+    id: string,
+    targetChangeId: string,
+  ): Promise<{ stored: StoredSession; removedChange: DesignChange }> {
+    return this.serializeChangeMutation(id, async () => {
+      const stored = await this.read(id);
+      const targetIndex = stored.changeSet.changes.findIndex(
+        (change) => change.id === targetChangeId,
+      );
+      if (targetIndex < 0) throw new Error(`Unknown change: ${targetChangeId}`);
+      const target = stored.changeSet.changes[targetIndex]!;
+      if (target.status === 'applied') {
+        throw new Error('Applied changes cannot be deleted from review.');
+      }
+      if (stored.applyRuns.some((run) => run.changeIds.includes(targetChangeId))) {
+        throw new Error('Changes attached to an apply run cannot be deleted.');
+      }
+
+      stored.changeSet.changes.splice(targetIndex, 1);
+      if (target.operationId) {
+        const operationStillUsed = stored.changeSet.changes.some(
+          (change) => change.operationId === target.operationId,
+        );
+        if (!operationStillUsed) {
+          stored.changeSet.operations = stored.changeSet.operations.filter(
+            (operation) => operation.id !== target.operationId,
+          );
+        } else {
+          stored.changeSet.operations = stored.changeSet.operations.map((operation) =>
+            operation.id === target.operationId
+              ? {
+                  ...operation,
+                  changeIds: operation.changeIds.filter((changeId) => changeId !== targetChangeId),
+                }
+              : operation,
+          );
+        }
+      }
+      stored.verifications = stored.verifications.filter(
+        (verification) => verification.changeId !== targetChangeId,
+      );
+      stored.changeSet.updatedAt = this.nowIso();
+      await this.write(stored);
+      return { stored, removedChange: target };
+    });
+  }
+
   async createApplyRun(
     id: string,
     input: {

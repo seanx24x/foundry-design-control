@@ -95,6 +95,48 @@ test('preserves concurrent changes and always leaves valid session JSON', async 
   assert.equal(restored.changeSet.changes.length, 24);
 });
 
+test('deletes an unapplied change and removes its orphaned operation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'foundry-delete-change-'));
+  const store = new SessionStore(root);
+  const session = await store.create({
+    projectRoot: '/project',
+    platform: 'web',
+    theme: 'system',
+    breakpoint: 'current',
+    state: 'current',
+  });
+  const id = session.changeSet.sessionId;
+  const changed = await store.addChange(id, {
+    target: {
+      id: 'button',
+      platform: 'web',
+      semanticRole: 'button',
+      label: 'Button',
+      componentPath: [],
+      geometry: { x: 0, y: 0, width: 100, height: 40, scale: 1 },
+      locator: { selector: 'button' },
+      confidence: 'measured',
+      evidence: ['live geometry'],
+    },
+    category: 'layout',
+    property: 'width',
+    before: 100,
+    after: 120,
+    unit: 'px',
+    scope: 'instance',
+    context: { breakpoint: 'current', theme: 'current', state: 'current' },
+    confidence: 'measured',
+    evidence: ['computed style'],
+    status: 'draft',
+  });
+  const changeId = changed.changeSet.changes[0]!.id;
+
+  const deleted = await store.deleteChange(id, changeId);
+
+  assert.equal(deleted.removedChange.id, changeId);
+  assert.equal(deleted.stored.changeSet.changes.length, 0);
+});
+
 test('persists the design graph and resolves an ambiguous semantic operation', async () => {
   const root = await mkdtemp(join(tmpdir(), 'foundry-graph-'));
   const store = new SessionStore(root);

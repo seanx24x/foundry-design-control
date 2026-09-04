@@ -744,8 +744,11 @@ kbd {
 .change-summary {
   position: absolute;
   z-index: 9;
-  right: 12px;
-  bottom: 12px;
+  top: 60px;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translateX(-50%);
   width: min(var(--dock), calc(100% - 24px));
   height: 48px;
   display: grid;
@@ -1196,6 +1199,313 @@ kbd {
 .effect-menu small {
   font: 500 8px/1 var(--mono);
 }
+.motion-editor {
+  display: grid;
+  gap: 8px;
+}
+.motion-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.motion-card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+.motion-card-head strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.motion-card-head code,
+.motion-properties,
+.motion-help {
+  color: var(--muted);
+  font: 500 8px/1.5 var(--mono);
+}
+.motion-card-head code {
+  display: block;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.motion-cost {
+  min-height: 20px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 12px;
+  color: var(--muted);
+  background: var(--surface-3);
+  font: 600 8px/1 var(--sans);
+  white-space: nowrap;
+}
+.motion-cost[data-tier='compositor'] {
+  color: var(--green);
+  background: var(--green-soft);
+}
+.motion-cost[data-tier='layout'] {
+  color: var(--red);
+  background: var(--red-soft);
+}
+.motion-properties,
+.motion-help {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.motion-timeline {
+  width: 100%;
+  accent-color: var(--selection);
+}
+.motion-timeline:disabled {
+  opacity: 0.32;
+}
+.motion-transport {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(80px, 1.2fr);
+  gap: 4px;
+}
+.motion-transport button,
+.motion-transport select {
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.motion-transport button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--surface-3);
+}
+.motion-transport button:disabled,
+.motion-transport select:disabled,
+.motion-fields input:disabled {
+  opacity: 0.36;
+  cursor: not-allowed;
+}
+.motion-transport .foundry-select {
+  min-height: 32px;
+}
+.motion-transport .foundry-select-trigger {
+  height: 32px;
+  border-radius: 4px;
+}
+.motion-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.motion-fields label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font: 600 8px/1 var(--sans);
+}
+.motion-fields label.is-changed > span {
+  color: var(--selection);
+}
+.motion-fields .motion-easing {
+  grid-column: 1 / -1;
+}
+.motion-fields input {
+  width: 100%;
+  height: 32px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  font: 500 12px/1 var(--mono);
+  outline: none;
+}
+.motion-fields input:focus-visible {
+  border-color: var(--selection);
+  box-shadow: 0 0 0 2px var(--selection-bg);
+}
+.motion-fields label.is-changed input {
+  border-color: color-mix(in srgb, var(--selection) 72%, var(--line));
+}
+.motion-keyframe-shell {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.motion-keyframe-toggle {
+  width: 100%;
+  height: 36px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+.motion-keyframe-toggle:hover {
+  background: var(--surface-3);
+}
+.motion-keyframe-toggle span {
+  font: 600 12px/1 var(--sans);
+}
+.motion-keyframe-toggle code {
+  overflow: hidden;
+  color: var(--muted);
+  font: 500 8px/1 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.motion-keyframe-toggle svg {
+  width: 12px;
+  height: 12px;
+  color: var(--muted);
+  transform: rotate(-90deg);
+  transition: transform 160ms ease;
+}
+.motion-keyframe-toggle[aria-expanded='true'] svg {
+  transform: none;
+}
+.motion-keyframe-editor {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+}
+.motion-keyframe-editor[hidden] {
+  display: none;
+}
+.motion-tracks {
+  display: grid;
+  gap: 8px;
+}
+.motion-track {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.motion-track > code {
+  overflow: hidden;
+  color: var(--muted);
+  font: 500 8px/1 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.motion-track-rail {
+  position: relative;
+  height: 20px;
+}
+.motion-track-rail::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  right: 4px;
+  left: 4px;
+  height: 1px;
+  background: var(--line-strong);
+}
+.motion-keyframe {
+  position: absolute;
+  z-index: 1;
+  top: 5px;
+  left: clamp(9px, var(--keyframe-offset), calc(100% - 9px));
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 1px solid var(--muted);
+  border-radius: 2px;
+  background: var(--surface);
+  transform: translateX(-50%) rotate(45deg);
+}
+.motion-keyframe:hover,
+.motion-keyframe:focus-visible {
+  border-color: var(--selection);
+  background: var(--selection-bg);
+  outline: none;
+}
+.motion-keyframe.is-selected {
+  border-color: var(--selection);
+  background: var(--selection);
+  box-shadow: 0 0 0 2px var(--selection-bg);
+}
+.motion-keyframe-detail {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.motion-keyframe-heading {
+  color: var(--muted);
+  font: 600 8px/1 var(--mono);
+}
+.motion-keyframe-fields {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+}
+.motion-keyframe-fields label {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font: 600 8px/1 var(--sans);
+}
+.motion-keyframe-fields .motion-keyframe-easing {
+  grid-column: 1 / -1;
+}
+.motion-keyframe-fields input {
+  width: 100%;
+  height: 32px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: 500 12px/1 var(--mono);
+  outline: none;
+}
+.motion-keyframe-fields input:focus-visible {
+  border-color: var(--selection);
+  box-shadow: 0 0 0 2px var(--selection-bg);
+}
+.motion-keyframe-fields label.is-changed > span,
+.motion-keyframe-fields label.is-changed > span > i {
+  color: var(--selection);
+}
+.motion-keyframe-fields label.is-changed input {
+  border-color: color-mix(in srgb, var(--selection) 72%, var(--line));
+}
+.motion-field-with-unit {
+  position: relative;
+  display: block;
+}
+.motion-field-with-unit input {
+  padding-right: 24px;
+}
+.motion-field-with-unit i {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  height: 32px;
+  display: grid;
+  align-items: center;
+  color: var(--muted);
+  font: 500 8px/1 var(--mono);
+  pointer-events: none;
+}
 .empty-inspector {
   padding: 32px 20px;
   color: var(--muted);
@@ -1328,7 +1638,9 @@ kbd {
 .change-row {
   min-height: 64px;
   display: grid;
-  grid-template-columns: 20px minmax(120px, 1fr) minmax(88px, 160px) 16px minmax(88px, 160px) auto;
+  grid-template-columns:
+    20px minmax(120px, 1fr) minmax(88px, 160px) 16px minmax(88px, 160px)
+    auto 32px;
   align-items: center;
   gap: 8px;
   padding: 8px 0;
@@ -1391,6 +1703,16 @@ kbd {
 .status-chip.unresolved {
   color: var(--amber);
   background: var(--amber-soft);
+}
+.delete-change {
+  width: 32px;
+  height: 32px;
+  color: var(--muted);
+}
+.delete-change:hover:not(:disabled),
+.delete-change:focus-visible {
+  color: var(--red, #c74343);
+  background: var(--surface-2);
 }
 .review-footer {
   position: fixed;
@@ -1645,8 +1967,11 @@ kbd {
     display: none;
   }
   .change-summary {
+    top: 80px;
+    left: 8px;
     right: 8px;
-    bottom: 8px;
+    bottom: auto;
+    transform: none;
     width: calc(100% - 16px);
   }
   .mode-head {
@@ -1668,6 +1993,10 @@ kbd {
   .change-arrow,
   .status-chip {
     grid-column: 2;
+  }
+  .delete-change {
+    grid-column: 2;
+    justify-self: end;
   }
   .review-footer {
     right: 0;

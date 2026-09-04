@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0-beta.10 - 2026-09-04
+
+- Added Motion Studio discovery for CSS animations, CSS transitions, and Web Animations, with playback, looping, speed, and timeline controls.
+- Added rendered keyframe track editing with source-aware change records and verification.
+- Moved the change summary to the top center of the canvas so it no longer competes with the canvas toolbar.
+- Added permanent deletion for unapplied review changes. Deleting restores the recorded original value on the canvas and removes the change from the local batch.
+- Updated the matching Light and Dark Figma component masters for the revised change summary and review deletion action.
+
 ## 0.2.0-beta.9 - 2026-09-03
 
 - Pinned generated coding-agent connections to the exact Foundry MCP release so a stale moving tag cannot load a mismatched bridge.

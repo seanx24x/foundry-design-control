@@ -63,11 +63,11 @@ function candidate(
 
 export function semanticCandidates(context: LayoutContext): BrowserMappingCandidate[] {
   const property = context.property;
-  if (property.startsWith('animation.')) {
+  if (property.startsWith('animation.') || property.startsWith('motion.')) {
     return [
       candidate(context, property, `Set ${property.split('.').at(-1)}`, 'motion', [
-        'live Web Animation',
-        'computed animation timing',
+        'rendered motion definition',
+        'computed motion timing',
       ]),
     ];
   }

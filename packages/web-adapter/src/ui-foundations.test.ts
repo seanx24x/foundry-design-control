@@ -59,6 +59,11 @@ test('embedded mode keeps canvas measurement visible and moves chrome to the wor
   assert.match(source, /'spread'/);
   assert.match(source, /backdropFilter/);
   assert.match(source, /Available when the project exposes a mapped effect recipe/);
+  assert.match(source, /data-review-delete=/);
+  assert.match(source, /deleteReviewChange/);
+  assert.match(source, /restorePreviewChange/);
+  assert.match(source, /foundry:workspace-result/);
+  assert.match(source, /--fdc-canvas-center/);
 });
 
 test('overlay selects use one accessible theme-aware menu system', () => {

@@ -63,6 +63,8 @@ Every roadmap milestone that adds or changes visible interface behavior must upd
 
 **Goal:** Discover and edit existing product motion without requiring developers to wire every value into a separate control panel.
 
+**Status:** In progress. Stable CSS animation, CSS transition, and Web Animations discovery, preview-only playback transport, rendered keyframe tracks, source-aware keyframe editing, and rebuilt keyframe verification are implemented. Spring, path, state-pairing, and library-native editors remain.
+
 - Discover CSS animations, CSS transitions, Web Animations, and supported motion libraries.
 - Show every animation affecting the selected element.
 - Add play, pause, replay, loop, and timeline scrubbing.
@@ -270,4 +272,10 @@ Use this section to record the active roadmap item and completed milestones with
   - Summarizes multi-context typography verification in the ApplyRun result instead of exposing raw diagnostic JSON.
   - Updates the matching Light and Dark Figma variants for source planning, verification, success, and mismatch states.
 - Completed item: Typography Studio
-- Next milestone: Discover and scrub existing CSS, Web Animations, and supported library motion in Motion Studio.
+  - Discovers CSS animations, inactive CSS transitions, and Web Animations with stable rendered identities.
+  - Adds play, pause, replay, loop, speed controls, and frame-accurate timeline scrubbing without creating source changes.
+  - Classifies compositor, paint, layout, and unresolved animation costs from the rendered property track.
+  - Exposes rendered keyframe tracks with selectable diamond markers and editable position, value, and segment easing.
+  - Records each keyframe edit against one stable motion, frame, and property path while preserving the original rendered value.
+  - Rebuilds and verifies the requested keyframe value against the rediscovered animation after source application.
+- Next milestone: Add spring and cubic Bezier editors with synchronized before-and-after playback.

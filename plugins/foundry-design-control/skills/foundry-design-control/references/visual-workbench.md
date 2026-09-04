@@ -53,6 +53,8 @@ applied in source.
 
 ## Review boundary
 
-Preview accuracy does not authorize source edits. A compact change summary stays anchored to the bottom-right of the workspace after the first edit. Review becomes a focused center-workspace mode that preserves approvals and edited values across visits.
+Preview accuracy does not authorize source edits. A compact change summary stays centered near the top of the canvas after the first edit so it remains visible without competing with the canvas toolbar. Review becomes a focused center-workspace mode that preserves approvals and edited values across visits.
 
 Review the recorded target, semantic mapping, scope, context, project token, and impact message before submitting Apply with agent. Literal values remain visible as warnings when a project-native value is not used. Locate, Preview, and Compare temporarily return to Canvas. Application, rebuild, verification, mismatches, and authorized retries remain in the Review workspace mode.
+
+Deleting a reviewed change is destructive to the preview ledger but does not edit source. Foundry must first confirm that the target is currently rendered, remove the stored change, and restore that property to its recorded before value. Applied changes and changes already attached to an apply run cannot be deleted from Review.

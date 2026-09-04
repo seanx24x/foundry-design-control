@@ -9,6 +9,7 @@ const expectedSemantics = [
   'arrow-down',
   'arrow-left',
   'arrow-up',
+  'bin',
   'bookmark',
   'box',
   'blur',

@@ -12,6 +12,17 @@ test('workspace exposes one predictable design-tool hierarchy', async () => {
   assert.match(html, /id="change-summary"/);
 });
 
+test('change summary is top-centered and review deletion restores through the live bridge', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /\.change-summary\s*\{[\s\S]*top:\s*60px/);
+  assert.match(css, /\.change-summary\s*\{[\s\S]*left:\s*50%/);
+  assert.match(css, /\.change-summary\s*\{[\s\S]*translateX\(-50%\)/);
+  assert.match(source, /data-delete-change=/);
+  assert.match(source, /requestCommand\('delete-change'/);
+  assert.match(source, /foundry:workspace-result/);
+});
+
 test('review and project utilities are center workspace modes', async () => {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   for (const mode of ['review', 'states', 'health', 'memory']) {
@@ -75,6 +86,7 @@ test('visual foundations use bundled typefaces and a strict dock contract', asyn
 
 test('workspace uses real Keyline vectors and validates the embedded bridge', async () => {
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
   assert.match(source, /@iconify-icons\/keyline-icons/);
   assert.match(source, /event\.source !== preview\.contentWindow/);
   assert.match(source, /event\.origin !== previewOrigin/);
@@ -89,4 +101,16 @@ test('workspace uses real Keyline vectors and validates the embedded bridge', as
   assert.match(source, /scheduleEffectCommit/);
   assert.match(source, /Background blur/);
   assert.match(source, /Available when the project exposes a mapped effect recipe/);
+  assert.match(source, /function motionEditorMarkup/);
+  assert.match(source, /sendCommand\('motion-action'/);
+  assert.match(source, /data-motion-action="scrub"/);
+  assert.match(source, /data-motion-keyframe-index/);
+  assert.match(source, /keyframe-\$\{action\}/);
+  assert.match(source, /data-layer-selector="\$\{escapeAttribute\(layer\.selector\)\}"/);
+  assert.match(source, /Keyframes/);
+  assert.match(source, /Trigger this transition in Interact mode/);
+  assert.match(css, /\.motion-card/);
+  assert.match(css, /\.motion-timeline/);
+  assert.match(css, /\.motion-track-rail/);
+  assert.match(css, /\.motion-keyframe\.is-selected/);
 });
