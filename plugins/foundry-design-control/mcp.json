@@ -2,7 +2,7 @@
   "mcpServers": {
     "foundry-design-control": {
       "command": "npx",
-      "args": ["-y", "--prefer-online", "foundry-design-mcp-server@0.2.0-beta.15"]
+      "args": ["-y", "--prefer-online", "foundry-design-mcp-server@0.2.0-beta.16"]
     }
   }
 }

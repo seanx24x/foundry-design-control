@@ -6,7 +6,7 @@ Foundry is a local-first precision design workbench for Codex, Cursor, and Claud
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
-> **Release candidate:** `0.2.0-beta.15`. The commands below are prepared for this release and must not be promoted to npm `latest` until the full installation matrix passes.
+> **Release candidate:** `0.2.0-beta.16`. The commands below are prepared for this release and must not be promoted to npm `latest` until the full installation matrix passes.
 
 Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 
@@ -137,7 +137,7 @@ If an npm mirror or existing `npx` cache reports an old tag, bypass it with a te
 
 ```bash
 FOUNDRY_NPX_CACHE="$(mktemp -d)"
-npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.15 foundry-design
+npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.16 foundry-design
 ```
 
 The beta supports Node.js 20 or newer. Read the [local-first safety model](https://withfoundry.ai/#safety) before using it with sensitive work.

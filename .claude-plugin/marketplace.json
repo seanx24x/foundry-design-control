@@ -9,7 +9,7 @@
       "name": "foundry-design-control",
       "source": "./plugins/foundry-design-control",
       "description": "Design directly in a running product and apply one verified source batch.",
-      "version": "0.2.0-beta.15"
+      "version": "0.2.0-beta.16"
     }
   ]
 }

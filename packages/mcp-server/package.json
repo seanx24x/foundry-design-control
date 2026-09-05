@@ -1,6 +1,6 @@
 {
   "name": "foundry-design-mcp-server",
-  "version": "0.2.0-beta.15",
+  "version": "0.2.0-beta.16",
   "description": "MCP bridge for local Foundry design sessions",
   "type": "module",
   "main": "dist/index.js",

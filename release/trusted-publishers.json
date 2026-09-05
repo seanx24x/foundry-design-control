@@ -1,0 +1,16 @@
+{
+  "type": "github",
+  "repository": "seanx24x/foundry-design-control",
+  "file": "release.yml",
+  "environment": "npm",
+  "permissions": ["createPackage", "createStagedPackage"],
+  "packages": [
+    "foundry-design-inspector",
+    "foundry-design-protocol",
+    "foundry-design-web-adapter",
+    "foundry-design-runtime",
+    "foundry-design",
+    "foundry-design-mcp-server",
+    "foundry-design-react-native-adapter"
+  ]
+}
