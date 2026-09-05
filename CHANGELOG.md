@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0-beta.17 - 2026-09-05
+
+- Added Component Workshop for inspecting live instances, variants, interaction states, and source-safe edit scopes.
+- Added Responsive Design Lab with native viewport comparisons, temporary stress tests, breakpoint evidence, and explicit responsive promotion.
+- Added Design System intelligence for tracing project tokens, usage, drift, and downstream impact before review.
+- Expanded Motion Studio with live transport, editable timing, rendered keyframes, motion health, and source-aware review.
+- Added Typography Studio with project, Google, and local font discovery, live treatments, scale tools, diagnostics, and integration planning.
+- Added isolated Design Branches with native-size comparison, selective composition, reversible switching, notes, rejection, archiving, and explicit promotion into Review and apply.
+- Added matching Light and Dark Figma component families and automated browser coverage for the advanced workspace workflow.
+- Added the skills-first OpenAI directory submission packet while preserving Foundry's local-only MCP boundary.
+
 ## 0.2.0-beta.16 - 2026-09-04
 
 - Added a registry-backed preflight that verifies the trusted GitHub publisher for all seven public packages before release dispatch.

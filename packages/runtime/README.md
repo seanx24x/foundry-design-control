@@ -10,7 +10,7 @@ Design Branches keeps parallel visual directions isolated inside one local sessi
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
-> **Current public beta:** `0.2.0-beta.16`. Both npm `latest` and `beta` resolve to this release.
+> **Current public beta:** `0.2.0-beta.17`. Both npm `latest` and `beta` resolve to this release.
 
 Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 
@@ -141,7 +141,7 @@ If an npm mirror or existing `npx` cache reports an old tag, bypass it with a te
 
 ```bash
 FOUNDRY_NPX_CACHE="$(mktemp -d)"
-npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.16 foundry-design
+npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.17 foundry-design
 ```
 
 The beta supports Node.js 20 or newer. Read the [local-first safety model](https://withfoundry.ai/#safety) before using it with sensitive work.
@@ -175,6 +175,8 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 - Before/after toggles, continuous comparison scrubbing, side-by-side source comparison, isolation, per-element reset, keyboard shortcuts, and a searchable command palette
 - Design Health scans for contrast, overflow and clipping, touch targets, accessible names, reduced-motion coverage, and project spacing consistency, with evidence, intentional-issue ignores, and safe corrections routed into review
 - An in-app state workbench with real viewport frames, theme switching, forced interaction states, motion controls, and contextual verification
+- A dedicated Motion Studio for live CSS and Web Animation discovery, preview-only transport, timeline scrubbing, keyframe editing, complete timing controls, performance classification, and reduced-motion review
+- Isolated Design Branches with fixed-viewport comparison, selective composition, rejection notes, and explicit promotion into the source-ready review ledger
 - Persistent, coalescing change ledger with JSON and consolidated prompt export
 - Center-workspace review with editable approved batches, grouped targets, and unresolved-target blocking
 - Persistent Apply with agent runs across Codex, Cursor, and Claude Code through MCP
