@@ -8,9 +8,9 @@ import {
 } from './release.js';
 
 test('pins the CLI and MCP bridge to the same release', () => {
-  assert.equal(FOUNDRY_VERSION, '0.2.0-beta.13');
-  assert.equal(FOUNDRY_PACKAGE_SPEC, 'foundry-design@0.2.0-beta.13');
-  assert.equal(FOUNDRY_MCP_PACKAGE_SPEC, 'foundry-design-mcp-server@0.2.0-beta.13');
+  assert.equal(FOUNDRY_VERSION, '0.2.0-beta.14');
+  assert.equal(FOUNDRY_PACKAGE_SPEC, 'foundry-design@0.2.0-beta.14');
+  assert.equal(FOUNDRY_MCP_PACKAGE_SPEC, 'foundry-design-mcp-server@0.2.0-beta.14');
   assert.doesNotMatch(FOUNDRY_MCP_PACKAGE_SPEC, /@(beta|latest)$/);
 });
 

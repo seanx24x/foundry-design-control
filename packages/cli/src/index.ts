@@ -16,6 +16,7 @@ import {
   setupProject,
   updateProject,
   uninstallProject,
+  uninstallHostAgentIntegration,
   type Agent,
   type FoundryProjectConfig,
 } from './installer.js';
@@ -58,10 +59,11 @@ function printHelp(): void {
 
 Usage:
   foundry-design [--project PATH] [--url URL] [--yes] [--no-start]
-  foundry-design setup [--project PATH] [--agent codex,cursor,claude] [--global] [--url URL] [--yes]
+  foundry-design setup [--project PATH] [--agent codex,cursor,claude] [--project-agent] [--url URL] [--yes]
   foundry-design update [--project PATH] [--agent codex,cursor,claude] [--yes]
   foundry-design install [--agent codex,cursor,claude] [--yes]
   foundry-design connect [--project PATH] [--url URL] [--yes]
+  foundry-design disconnect [--project PATH] [--yes]
   foundry-design reset [--project PATH] [--agent codex,cursor,claude] [--url URL] [--yes]
   foundry-design companion [--json]
   foundry-design init <web|swiftui|react-native> [--project PATH]
@@ -69,9 +71,9 @@ Usage:
   foundry-design doctor [--project PATH] [--repair] [--json]
   foundry-design status [--project PATH] [--json]
   foundry-design index [--project PATH] [--output FILE]
-  foundry-design uninstall [--project PATH] [--yes]
+  foundry-design uninstall [--project PATH] [--global] [--agent codex,cursor,claude] [--yes]
   foundry-design export <SESSION_ID> [--format json|prompt|full] [--output FILE]
-  foundry-design install-agent <cursor|claude|codex> [--global | --project PATH]
+  foundry-design install-agent <cursor|claude|codex> [--project-agent --project PATH]
 
 Foundry is local-only and never edits product source from inspector controls.`);
 }
@@ -150,16 +152,20 @@ function requestedAgents(): Agent[] | undefined {
   return [...new Set(agents)];
 }
 
+async function sharedAgents(root: string, additional: Agent[] = []): Promise<Agent[]> {
+  const installed = await new CompanionStore(homedir()).read();
+  const detected = (await createSetupPlan(root)).agents;
+  return [...new Set([...installed.agents, ...additional, ...detected])];
+}
+
 async function setup(): Promise<void> {
   console.log(`${releasePreflight('set up this project')}\n`);
   const root = await projectRoot();
   const requested = requestedAgents();
-  const sharedAgentSetup = has('--global');
-  const detectedPlan = sharedAgentSetup
-    ? await createSetupPlan(root, { agents: requested })
-    : undefined;
+  const projectAgentSetup = has('--project-agent');
+  const hostAgents = requested ?? (await sharedAgents(root));
   const options = {
-    agents: sharedAgentSetup ? [] : requested,
+    agents: projectAgentSetup ? hostAgents : [],
     targetUrl: normalizeTargetUrl(flag('--url')),
     packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
   };
@@ -168,11 +174,9 @@ async function setup(): Promise<void> {
   if (plan.framework) console.log(`Framework: ${plan.framework}`);
   console.log(
     `Agent integration: ${
-      sharedAgentSetup
-        ? `${detectedPlan?.agents.join(', ')} (shared across projects)`
-        : plan.agents.length
-          ? plan.agents.join(', ')
-          : 'plugin-provided'
+      projectAgentSetup
+        ? `${plan.agents.join(', ')} (project-scoped compatibility mode)`
+        : `${hostAgents.join(', ')} (shared across projects)`
     }`,
   );
   console.log('\nFiles Foundry will manage:');
@@ -187,12 +191,14 @@ async function setup(): Promise<void> {
     return;
   }
   const result = await setupProject(root, options);
-  if (sharedAgentSetup) {
-    for (const agent of detectedPlan?.agents ?? []) {
+  if (!projectAgentSetup) {
+    for (const agent of hostAgents) {
       await installHostAgentIntegration(homedir(), agent, {
         packageRoot: options.packageRoot,
       });
     }
+    await new CompanionStore(homedir()).recordInstallation(hostAgents);
+    await new CompanionStore(homedir()).registerProject(root, result.targetUrl);
   }
   console.log(`\n✓ Foundry configured ${result.changed.length} files.`);
   for (const check of result.validation) {
@@ -202,8 +208,8 @@ async function setup(): Promise<void> {
   if (result.skillDirectories.length) {
     console.log(`✓ Installed the Foundry skill for ${result.agents.join(', ')}.`);
   }
-  if (sharedAgentSetup && detectedPlan?.agents.length) {
-    console.log(`✓ Installed the shared Foundry connection for ${detectedPlan.agents.join(', ')}.`);
+  if (!projectAgentSetup && hostAgents.length) {
+    console.log(`✓ Installed the shared Foundry connection for ${hostAgents.join(', ')}.`);
   }
   if (result.targetUrl) console.log(`✓ Preview URL: ${result.targetUrl}`);
   if (result.devCommand)
@@ -213,8 +219,8 @@ async function setup(): Promise<void> {
   console.log('\nSetup complete. One coding-agent restart is required so it can load Foundry.');
   console.log(
     `1. Restart ${
-      sharedAgentSetup && detectedPlan?.agents.length
-        ? detectedPlan.agents.join(', ')
+      !projectAgentSetup && hostAgents.length
+        ? hostAgents.join(', ')
         : result.agents.length
           ? result.agents.join(', ')
           : 'your coding agent'
@@ -230,13 +236,22 @@ async function setup(): Promise<void> {
 async function update(): Promise<void> {
   console.log(`${releasePreflight('update this project')}\n`);
   const root = await projectRoot();
+  const requested = requestedAgents();
+  const projectAgentSetup = has('--project-agent');
+  const hostAgents = requested ?? (await sharedAgents(root));
   const options = {
-    agents: requestedAgents(),
+    agents: projectAgentSetup ? hostAgents : [],
     packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
   };
   const plan = await createUpdatePlan(root, options);
   console.log(`Foundry update\n\nProject: ${root}`);
-  console.log(`Agent integration: ${plan.agents.join(', ')}`);
+  console.log(
+    `Agent integration: ${
+      projectAgentSetup
+        ? `${plan.agents.join(', ')} (project-scoped compatibility mode)`
+        : `${hostAgents.join(', ')} (shared across projects)`
+    }`,
+  );
   console.log('\nFoundry will refresh these managed paths:');
   for (const path of plan.files) console.log(`  ${path}`);
   console.log('\nFiles changed since Foundry installed them will be preserved.');
@@ -245,6 +260,14 @@ async function update(): Promise<void> {
     return;
   }
   const result = await updateProject(root, options);
+  if (!projectAgentSetup) {
+    for (const agent of hostAgents)
+      await installHostAgentIntegration(homedir(), agent, {
+        packageRoot: options.packageRoot,
+      });
+    await new CompanionStore(homedir()).recordInstallation(hostAgents);
+    await new CompanionStore(homedir()).registerProject(root, result.targetUrl);
+  }
   console.log(`\n✓ Foundry refreshed ${result.changed.length} managed paths.`);
   if (result.preserved.length) {
     console.log('Preserved files containing user changes:');
@@ -254,9 +277,7 @@ async function update(): Promise<void> {
     const marker = check.status === 'passed' ? '✓' : check.status === 'skipped' ? '–' : '!';
     console.log(`${marker} ${check.name}: ${check.status.replaceAll('-', ' ')}`);
   }
-  console.log(
-    '\nRestart your coding agent so it loads the refreshed Foundry connection and skill.',
-  );
+  console.log('\nThe project now uses the shared Foundry agent connection.');
 }
 
 async function initProject(): Promise<void> {
@@ -479,6 +500,30 @@ async function indexDesign(): Promise<void> {
 }
 
 async function uninstall(): Promise<void> {
+  if (has('--global')) {
+    const installed = await new CompanionStore(homedir()).read();
+    const agents = requestedAgents() ?? installed.agents;
+    if (!agents.length) {
+      console.log('No shared Foundry agent connection is registered.');
+      return;
+    }
+    if (!(await confirm(`Remove the shared Foundry connection for ${agents.join(', ')}?`))) {
+      console.log('Uninstall cancelled.');
+      return;
+    }
+    const preserved: string[] = [];
+    for (const agent of agents) {
+      const result = await uninstallHostAgentIntegration(homedir(), agent);
+      preserved.push(...result.preserved);
+    }
+    await new CompanionStore(homedir()).removeInstallation(agents);
+    console.log(`Removed the shared Foundry connection for ${agents.join(', ')}.`);
+    if (preserved.length) {
+      console.log('Preserved customized skill files:');
+      for (const path of preserved) console.log(`  ${path}`);
+    }
+    return;
+  }
   console.log(`${releasePreflight('remove managed project integration')}\n`);
   const root = await projectRoot();
   if (!(await confirm(`Remove Foundry-managed project integration from ${root}?`))) {
@@ -491,6 +536,18 @@ async function uninstall(): Promise<void> {
     console.log('Preserved files with user changes:');
     for (const path of result.preserved) console.log(`  ${path}`);
   }
+}
+
+async function disconnect(): Promise<void> {
+  const root = await projectRoot();
+  if (!(await confirm(`Disconnect ${root} from Foundry's recent projects?`))) {
+    console.log('Disconnect cancelled.');
+    return;
+  }
+  await new CompanionStore(homedir()).unregisterProject(root);
+  console.log(
+    `Disconnected ${root}. The project adapter remains installed and can reconnect later.`,
+  );
 }
 
 async function doctor(): Promise<void> {
@@ -510,16 +567,13 @@ async function doctor(): Promise<void> {
   }
   if (has('--repair')) {
     console.log(`\n${releasePreflight('repair this project and agent connection')}\n`);
-    const detectedAgents = (await createSetupPlan(root)).agents;
     const installed =
       report.checks.find((check) => check.id === 'integration')?.status !== 'failed';
     const configuredAgents = installed ? (await createUpdatePlan(root)).agents : [];
-    const hostAgents = [
-      ...new Set([...configuredAgents, ...detectedAgents, 'codex', 'cursor', 'claude'] as Agent[]),
-    ];
+    const hostAgents = await sharedAgents(root, configuredAgents);
     const result = installed
       ? await updateProject(root, {
-          agents: configuredAgents,
+          agents: [],
           targetUrl: normalizeTargetUrl(flag('--url')),
         })
       : await setupProject(root, {
@@ -530,12 +584,15 @@ async function doctor(): Promise<void> {
       await installHostAgentIntegration(homedir(), agent, {
         packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
       });
+    await new CompanionStore(homedir()).recordInstallation(hostAgents);
+    await new CompanionStore(homedir()).registerProject(root, result.targetUrl);
     console.log(
       `✓ Repaired ${result.changed.length} managed paths and the shared ${hostAgents.join(', ')} connection.`,
     );
     const repaired = await collectDoctorReport(root);
     const requiredAfterRepair = new Set([
       'config',
+      'project-connection',
       'integration',
       'agent-configured',
       'agent-config-valid',
@@ -561,12 +618,8 @@ async function launch(): Promise<void> {
   const root = await projectRoot();
   const manifest = join(root, '.foundry', 'install-manifest.json');
   const installed = await pathExists(manifest);
-  const detectedAgents = (await createSetupPlan(root)).agents;
   const configuredAgents = installed ? (await createUpdatePlan(root)).agents : [];
-  const resolvedAgents = [...new Set([...configuredAgents, ...detectedAgents])];
-  const hostAgents = resolvedAgents.length
-    ? resolvedAgents
-    : (['codex', 'cursor', 'claude'] as Agent[]);
+  const hostAgents = await sharedAgents(root, configuredAgents);
   console.log(`Foundry\n\nProject: ${root}`);
   console.log(
     `${installed ? 'Refreshing' : 'Preparing'} the project and shared ${hostAgents.join(', ')} connection.`,
@@ -577,7 +630,7 @@ async function launch(): Promise<void> {
   }
   const result = installed
     ? await updateProject(root, {
-        agents: configuredAgents,
+        agents: [],
         targetUrl: normalizeTargetUrl(flag('--url')),
       })
     : await setupProject(root, {
@@ -635,7 +688,7 @@ async function installAgent(): Promise<void> {
   const agent = args[1];
   if (!agent || !['cursor', 'claude', 'codex'].includes(agent))
     throw new Error('install-agent requires cursor, claude, or codex');
-  if (has('--global')) {
+  if (!has('--project-agent')) {
     const result = await installHostAgentIntegration(homedir(), agent as Agent, {
       packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
     });
@@ -648,7 +701,7 @@ async function installAgent(): Promise<void> {
     }
     await new CompanionStore(homedir()).recordInstallation([agent as Agent]);
     console.log(
-      `Restart ${agent === 'codex' ? 'Codex' : agent === 'cursor' ? 'Cursor' : 'Claude Code'} once. Future projects can use "npx foundry-design setup --agent none --yes" without another MCP install.`,
+      `Restart ${agent === 'codex' ? 'Codex' : agent === 'cursor' ? 'Cursor' : 'Claude Code'} once. Future projects connect with "npx foundry-design" without another MCP install.`,
     );
     return;
   }
@@ -688,17 +741,13 @@ async function reset(): Promise<void> {
   const installed = await pathExists(join(root, '.foundry', 'install-manifest.json'));
   const configuredAgents = installed ? (await createUpdatePlan(root)).agents : [];
   const requested = requestedAgents();
-  const projectAgents = requested ?? configuredAgents;
-  const detectedAgents = (await createSetupPlan(root)).agents;
-  const hostAgents = [
-    ...new Set([...configuredAgents, ...detectedAgents, 'codex', 'cursor', 'claude'] as Agent[]),
-  ];
+  const hostAgents = requested ?? (await sharedAgents(root, configuredAgents));
   if (!(await confirm(`Reset Foundry-managed integration for ${root}?`))) {
     console.log('Reset cancelled.');
     return;
   }
   const options = {
-    agents: projectAgents,
+    agents: [],
     targetUrl: normalizeTargetUrl(flag('--url')),
     packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
   };
@@ -740,6 +789,7 @@ try {
   else if (command === 'update') await update();
   else if (command === 'install') await installHost();
   else if (command === 'connect') await launch();
+  else if (command === 'disconnect') await disconnect();
   else if (command === 'reset') await reset();
   else if (command === 'companion') await companion();
   else if (command === 'init') await initProject();

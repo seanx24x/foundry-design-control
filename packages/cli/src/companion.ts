@@ -10,7 +10,7 @@ export interface CompanionProject {
 }
 
 export interface CompanionState {
-  version: 1;
+  version: 1 | 2;
   foundryVersion: string;
   agents: Agent[];
   projects: CompanionProject[];
@@ -26,9 +26,30 @@ export class CompanionStore {
 
   async read(): Promise<CompanionState> {
     return readFile(this.path, 'utf8')
-      .then((content) => JSON.parse(content) as CompanionState)
-      .catch(() => ({
-        version: 1,
+      .then((content) => {
+        const value = JSON.parse(content) as Partial<CompanionState>;
+        const agents = Array.isArray(value.agents)
+          ? value.agents.filter((agent): agent is Agent =>
+              ['codex', 'cursor', 'claude'].includes(agent),
+            )
+          : [];
+        const projects = Array.isArray(value.projects)
+          ? value.projects.filter(
+              (project): project is CompanionProject =>
+                Boolean(project?.root) && typeof project.lastOpenedAt === 'string',
+            )
+          : [];
+        const normalized: CompanionState = {
+          version: 2,
+          foundryVersion: value.foundryVersion ?? FOUNDRY_VERSION,
+          agents,
+          projects,
+          updatedAt: value.updatedAt ?? new Date(0).toISOString(),
+        };
+        return normalized;
+      })
+      .catch((): CompanionState => ({
+        version: 2,
         foundryVersion: FOUNDRY_VERSION,
         agents: [],
         projects: [],
@@ -40,6 +61,7 @@ export class CompanionStore {
     const state = await this.read();
     return this.write({
       ...state,
+      version: 2,
       foundryVersion: FOUNDRY_VERSION,
       agents: [...new Set([...state.agents, ...agents])],
       updatedAt: new Date().toISOString(),
@@ -55,8 +77,31 @@ export class CompanionStore {
     };
     return this.write({
       ...state,
+      version: 2,
       foundryVersion: FOUNDRY_VERSION,
       projects: [project, ...state.projects.filter((candidate) => candidate.root !== project.root)],
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async unregisterProject(root: string): Promise<CompanionState> {
+    const state = await this.read();
+    const resolvedRoot = resolve(root);
+    return this.write({
+      ...state,
+      version: 2,
+      projects: state.projects.filter((candidate) => candidate.root !== resolvedRoot),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async removeInstallation(agents: Agent[]): Promise<CompanionState> {
+    const state = await this.read();
+    const removed = new Set(agents);
+    return this.write({
+      ...state,
+      version: 2,
+      agents: state.agents.filter((agent) => !removed.has(agent)),
       updatedAt: new Date().toISOString(),
     });
   }

@@ -21,6 +21,7 @@ export interface FoundryProjectConfig {
   devCommand?: { command: string; args: string[] };
   instrumented: boolean;
   mode?: 'precision' | 'basic';
+  connection?: { mode: 'global' | 'project' };
   design?: {
     tokenFiles?: string[];
     componentRoots?: string[];
@@ -57,7 +58,8 @@ export interface SetupValidationResult {
 }
 
 interface InstallManifest {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
+  connectionMode?: 'global' | 'project';
   agents: Agent[];
   generatedFiles: ManagedFile[];
   managedBlocks: string[];
@@ -829,6 +831,12 @@ export interface HostAgentIntegration {
   preserved: string[];
 }
 
+export interface HostAgentUninstallResult {
+  configFile: string;
+  removed: string[];
+  preserved: string[];
+}
+
 /** Install one reusable user-level connection without placing MCP config in every project. */
 export async function installHostAgentIntegration(
   homeInput: string,
@@ -891,6 +899,66 @@ export async function installHostAgentIntegration(
   return { configFile, skillDirectory, preserved };
 }
 
+/** Remove only Foundry-owned user-level configuration and skill files. */
+export async function uninstallHostAgentIntegration(
+  homeInput: string,
+  agent: Agent,
+): Promise<HostAgentUninstallResult> {
+  const home = resolve(homeInput);
+  const agentRoot =
+    agent === 'codex'
+      ? join(home, '.codex')
+      : agent === 'cursor'
+        ? join(home, '.cursor')
+        : join(home, '.claude');
+  const configFile =
+    agent === 'codex'
+      ? join(agentRoot, 'config.toml')
+      : agent === 'cursor'
+        ? join(agentRoot, 'mcp.json')
+        : join(home, '.claude.json');
+  const skillDirectory = join(agentRoot, 'skills', 'foundry-design-control');
+  const manifestFile = join(skillDirectory, '.foundry-install.json');
+  const manifest = await readFile(manifestFile, 'utf8')
+    .then((content) => JSON.parse(content) as { generatedFiles?: ManagedFile[] })
+    .catch(() => undefined);
+  const removed: string[] = [];
+  const preserved: string[] = [];
+
+  if (agent === 'codex') {
+    const original = await readText(configFile);
+    if (original.includes(START)) {
+      await writeFile(configFile, stripManagedBlock(original));
+      removed.push(configFile);
+    }
+  } else {
+    const original = await readText(configFile);
+    if (original.includes('foundry-design-control')) {
+      await removeJsonServer(configFile);
+      removed.push(configFile);
+    }
+  }
+  for (const file of manifest?.generatedFiles ?? []) {
+    const content = await readText(file.path);
+    if (!content) continue;
+    if (digest(content) !== file.sha256) {
+      preserved.push(file.path);
+      continue;
+    }
+    await rm(file.path);
+    removed.push(file.path);
+  }
+  await rm(manifestFile, { force: true });
+  removed.push(manifestFile);
+  const directories = [
+    join(skillDirectory, 'references'),
+    join(skillDirectory, 'scripts'),
+    skillDirectory,
+  ];
+  for (const directory of directories) await rmdir(directory).catch(() => undefined);
+  return { configFile, removed: [...new Set(removed)], preserved };
+}
+
 export async function createUpdatePlan(
   rootInput: string,
   options: SetupOptions = {},
@@ -905,7 +973,9 @@ export async function createUpdatePlan(
     .catch(() => undefined);
   return createSetupPlan(root, {
     ...options,
-    agents: options.agents ?? manifest.agents,
+    // Beta.14 makes the reusable host bridge the default. Passing agents
+    // explicitly remains the opt-in escape hatch for project-scoped installs.
+    agents: options.agents ?? [],
     targetUrl: options.targetUrl ?? config?.targetUrl,
     update: true,
   });
@@ -950,6 +1020,15 @@ export async function setupProject(
   )
     .then((content) => JSON.parse(content) as InstallManifest)
     .catch(() => undefined);
+  const hasLegacyProjectAgentIntegration = Boolean(
+    previousManifest &&
+    ((previousManifest.agents ?? []).length ||
+      (previousManifest.jsonConfigs ?? []).length ||
+      previousManifest.skillDirectories?.length ||
+      (previousManifest.managedBlocks ?? []).some((path) =>
+        path.endsWith(join('.codex', 'config.toml')),
+      )),
+  );
   if (options.update && !previousManifest) {
     throw new Error(`Foundry is not installed in ${plan.root}. Run setup first.`);
   }
@@ -967,6 +1046,21 @@ export async function setupProject(
     ...plan.skillDirectories.flatMap((directory) =>
       skillFiles.map((file) => join(directory, file.path)),
     ),
+    ...(plan.agents.length === 0 && hasLegacyProjectAgentIntegration
+      ? [
+          ...(previousManifest?.managedBlocks ?? []).filter((path) =>
+            path.endsWith(join('.codex', 'config.toml')),
+          ),
+          ...(previousManifest?.jsonConfigs ?? []),
+          ...(previousManifest?.generatedFiles ?? [])
+            .filter((file) =>
+              (previousManifest?.skillDirectories ?? []).some(
+                (directory) => file.path === directory || file.path.startsWith(`${directory}/`),
+              ),
+            )
+            .map((file) => file.path),
+        ]
+      : []),
   ];
   const snapshots = await snapshotFiles(transactionFiles);
   const checks = await validationCommands(plan.root);
@@ -985,6 +1079,7 @@ export async function setupProject(
       ...(plan.devCommand ? { devCommand: plan.devCommand } : {}),
       instrumented: plan.platform !== 'web' || Boolean(plan.integrationFile),
       mode: plan.platform === 'web' && !plan.integrationFile ? 'basic' : 'precision',
+      connection: { mode: plan.agents.length ? 'project' : 'global' },
       design: {
         componentRoots: ['src', 'app', 'components'],
         exclude: ['node_modules', 'dist', 'build', '.next', 'coverage'],
@@ -1077,9 +1172,44 @@ export async function setupProject(
       skillDirectories.push(...copied.directories);
       changed.push(directory);
     }
+    if (plan.agents.length === 0 && previousManifest && hasLegacyProjectAgentIntegration) {
+      const legacySkillDirectories = previousManifest.skillDirectories ?? [];
+      for (const path of (previousManifest.managedBlocks ?? []).filter((candidate) =>
+        candidate.endsWith(join('.codex', 'config.toml')),
+      )) {
+        const original = await readText(path);
+        if (!original) continue;
+        await writeFile(path, stripManagedBlock(original));
+        changed.push(path);
+      }
+      for (const path of previousManifest.jsonConfigs ?? []) {
+        await removeJsonServer(path);
+        changed.push(path);
+      }
+      for (const file of previousManifest.generatedFiles.filter((candidate) =>
+        legacySkillDirectories.some(
+          (directory) => candidate.path === directory || candidate.path.startsWith(`${directory}/`),
+        ),
+      )) {
+        const content = await readText(file.path);
+        if (!content) continue;
+        if (digest(content) !== file.sha256) {
+          preserved.push(file.path);
+          continue;
+        }
+        await rm(file.path);
+        changed.push(file.path);
+      }
+      for (const directory of [...legacySkillDirectories].sort(
+        (left, right) => right.length - left.length,
+      )) {
+        await rmdir(directory).catch(() => undefined);
+      }
+    }
     const validation = await validateInstalledProject(plan.root, checks, baseline, changed);
     const manifest: InstallManifest = {
-      version: 2,
+      version: 3,
+      connectionMode: plan.agents.length ? 'project' : 'global',
       agents: plan.agents,
       generatedFiles: generated,
       managedBlocks,
@@ -1115,7 +1245,9 @@ async function removeJsonServer(path: string): Promise<void> {
     };
     if (!current.mcpServers?.['foundry-design-control']) return;
     delete current.mcpServers['foundry-design-control'];
-    if (Object.keys(current.mcpServers).length === 0) delete current.mcpServers;
+    // Keep the required object even when Foundry was its only entry. Claude and
+    // some other hosts reject a bare object and may skip every user MCP server.
+    if (Object.keys(current.mcpServers).length === 0) current.mcpServers = {};
     await writeFile(path, `${JSON.stringify(current, null, 2)}\n`);
   } catch {
     /* Preserve unreadable user configuration. */

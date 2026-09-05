@@ -12,11 +12,13 @@ export interface DoctorCheck {
     | 'project'
     | 'platform'
     | 'config'
+    | 'project-connection'
     | 'integration'
     | 'instrumentation'
     | 'agent-configured'
     | 'agent-config-valid'
     | 'agent-version'
+    | 'legacy-project-agent'
     | 'preview'
     | 'runtime'
     | 'agent-listening';
@@ -69,6 +71,7 @@ export async function collectDoctorReport(
         framework?: string;
         targetUrl?: string;
         instrumented?: boolean;
+        connection?: { mode?: 'global' | 'project' };
       };
     } catch {
       return undefined;
@@ -76,22 +79,27 @@ export async function collectDoctorReport(
   });
   const manifest = await text(join(root, '.foundry', 'install-manifest.json')).then((content) => {
     try {
-      return JSON.parse(content) as { generatorVersion?: string };
+      return JSON.parse(content) as {
+        generatorVersion?: string;
+        connectionMode?: 'global' | 'project';
+        agents?: string[];
+      };
     } catch {
       return undefined;
     }
   });
-  const candidateAgentFiles = [
+  const hostAgentFiles = [
     ...new Set([
-      join(root, '.codex', 'config.toml'),
-      join(root, '.cursor', 'mcp.json'),
-      join(root, '.mcp.json'),
       join(home, '.codex', 'config.toml'),
       join(home, '.cursor', 'mcp.json'),
       join(home, '.claude.json'),
-      join(home, '.mcp.json'),
     ]),
   ];
+  const projectAgentFiles = [
+    join(root, '.codex', 'config.toml'),
+    join(root, '.cursor', 'mcp.json'),
+    join(root, '.mcp.json'),
+  ].filter((path) => !hostAgentFiles.includes(path));
   const schemaCheckedAgentFiles = [
     ...new Set([
       join(root, '.cursor', 'mcp.json'),
@@ -115,9 +123,10 @@ export async function collectDoctorReport(
     )
   ).filter((path): path is string => Boolean(path));
   const agentFiles = (
-    await Promise.all(
-      candidateAgentFiles.map(async (path) => ({ path, content: await text(path) })),
-    )
+    await Promise.all(hostAgentFiles.map(async (path) => ({ path, content: await text(path) })))
+  ).filter(({ content }) => content.includes('foundry-design-control'));
+  const legacyAgentFiles = (
+    await Promise.all(projectAgentFiles.map(async (path) => ({ path, content: await text(path) })))
   ).filter(({ content }) => content.includes('foundry-design-control'));
   const exactAgentFiles = agentFiles.filter(({ content }) =>
     content.includes(FOUNDRY_MCP_PACKAGE_SPEC),
@@ -159,6 +168,22 @@ export async function collectDoctorReport(
       label: 'Foundry configuration',
       status: config ? 'passed' : 'failed',
       detail: config ? configPath : 'Not configured.',
+    },
+    {
+      id: 'project-connection',
+      label: 'Project connection',
+      status:
+        config && (config.connection?.mode === 'global' || manifest?.connectionMode === 'global')
+          ? 'passed'
+          : config
+            ? 'warning'
+            : 'failed',
+      detail:
+        config?.connection?.mode === 'global' || manifest?.connectionMode === 'global'
+          ? 'Lightweight project connection using the shared agent bridge.'
+          : config
+            ? 'Legacy project connection. Run doctor --repair to migrate it.'
+            : 'Not connected.',
     },
     {
       id: 'integration',
@@ -207,6 +232,14 @@ export async function collectDoctorReport(
         : exactAgentFiles.length
           ? FOUNDRY_MCP_PACKAGE_SPEC
           : `Expected ${FOUNDRY_MCP_PACKAGE_SPEC}.`,
+    },
+    {
+      id: 'legacy-project-agent',
+      label: 'Project-scoped agent configuration',
+      status: legacyAgentFiles.length ? 'warning' : 'passed',
+      detail: legacyAgentFiles.length
+        ? `Foundry can migrate these legacy paths: ${legacyAgentFiles.map(({ path }) => path).join(', ')}`
+        : 'None. Agent integration is owned at machine level.',
     },
     {
       id: 'preview',

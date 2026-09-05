@@ -16,11 +16,16 @@ test('distinguishes configured MCP from a live agent listener', async () => {
   await writeFile(join(root, 'package.json'), '{"scripts":{"dev":"vite"}}\n');
   await writeFile(
     join(root, '.foundry', 'foundry.config.json'),
-    JSON.stringify({ platform: 'web', targetUrl: 'http://127.0.0.1:4390', instrumented: true }),
+    JSON.stringify({
+      platform: 'web',
+      targetUrl: 'http://127.0.0.1:4390',
+      instrumented: true,
+      connection: { mode: 'global' },
+    }),
   );
   await writeFile(
     join(root, '.foundry', 'install-manifest.json'),
-    JSON.stringify({ generatorVersion: FOUNDRY_VERSION }),
+    JSON.stringify({ generatorVersion: FOUNDRY_VERSION, connectionMode: 'global' }),
   );
   await writeFile(
     join(home, '.codex', 'config.toml'),
@@ -47,8 +52,30 @@ test('distinguishes configured MCP from a live agent listener', async () => {
       ),
   });
   assert.equal(report.checks.find((check) => check.id === 'agent-configured')?.status, 'passed');
+  assert.equal(report.checks.find((check) => check.id === 'project-connection')?.status, 'passed');
   assert.equal(report.checks.find((check) => check.id === 'agent-listening')?.status, 'warning');
   assert.equal(report.ready, false);
+});
+
+test('reports legacy project agent configuration without treating it as the machine bridge', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'foundry-doctor-legacy-project-'));
+  const home = await mkdtemp(join(tmpdir(), 'foundry-doctor-legacy-home-'));
+  await mkdir(join(root, '.codex'), { recursive: true });
+  await writeFile(join(root, 'package.json'), '{}\n');
+  await writeFile(
+    join(root, '.codex', 'config.toml'),
+    `[mcp_servers.foundry-design-control]\ncommand = "npx"\nargs = ["-y", "${FOUNDRY_MCP_PACKAGE_SPEC}"]\n`,
+  );
+  const report = await collectDoctorReport(root, {
+    home,
+    store: new SessionStore(join(root, 'sessions')),
+    fetcher: async () => new Response('{}', { status: 503 }),
+  });
+  assert.equal(report.checks.find((check) => check.id === 'agent-configured')?.status, 'failed');
+  assert.equal(
+    report.checks.find((check) => check.id === 'legacy-project-agent')?.status,
+    'warning',
+  );
 });
 
 test('warns when an installed agent points at a different package version', async () => {

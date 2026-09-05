@@ -18,4 +18,11 @@ test('records one host installation and recent projects without duplicates', asy
   assert.deepEqual(state.agents, ['codex', 'claude', 'cursor']);
   assert.equal(state.projects.length, 1);
   assert.equal(state.projects[0]?.targetUrl, 'http://localhost:3001');
+  assert.equal(state.version, 2);
+
+  await store.unregisterProject(join(home, 'project'));
+  await store.removeInstallation(['claude']);
+  const disconnected = await store.read();
+  assert.deepEqual(disconnected.projects, []);
+  assert.deepEqual(disconnected.agents, ['codex', 'cursor']);
 });

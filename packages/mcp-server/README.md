@@ -6,7 +6,7 @@ Foundry is a local-first precision design workbench for Codex, Cursor, and Claud
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
-> **Release candidate:** `0.2.0-beta.13`. The commands below are prepared for this release and must not be promoted to npm `latest` until the full installation matrix passes.
+> **Release candidate:** `0.2.0-beta.14`. The commands below are prepared for this release and must not be promoted to npm `latest` until the full installation matrix passes.
 
 Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 
@@ -26,7 +26,7 @@ Open a terminal in the project, or ask Codex, Cursor, or Claude Code to run:
 npx foundry-design
 ```
 
-That command finds the nearest real project, detects its framework and active coding agent, installs or safely updates the development integration, validates it, starts the project when needed, and opens the visual session. It refuses to treat a home folder as a project. Before changing local configuration, Foundry prints the exact CLI and MCP bridge versions it will use.
+That command finds the nearest real project, detects its framework, installs or safely updates only the development adapter and lightweight project connection, validates it, starts the project when needed, and opens the visual session. The agent bridge and skill remain installed once at machine level. Foundry refuses to treat a home folder as a project and prints the exact CLI and MCP bridge versions before changing configuration.
 
 After the restart, reopen the same project folder and ask:
 
@@ -38,16 +38,16 @@ That is the normal workflow. Foundry resumes the most recent session for the cur
 
 ### Manual installation
 
-From the first project you want to inspect, run:
+Install the shared connection for selected agents:
 
 ```bash
-npx foundry-design setup --global
+npx foundry-design install --agent codex,cursor,claude
 ```
 
-For later projects, keep the shared agent connection and install only the development adapter:
+Connect any project with only its development adapter and local project metadata:
 
 ```bash
-npx foundry-design setup --agent none
+npx foundry-design connect
 ```
 
 Then restart the coding agent, reopen the same project folder, and ask:
@@ -66,13 +66,13 @@ npx foundry-design status
 
 Foundry reports project integration, the exact MCP package version, runtime health, and the live agent listener separately. Run `npx foundry-design doctor --repair` if configuration or generated integration needs repair.
 
-If an older project has stale or conflicting agent configuration, run:
+If an older project has stale or conflicting project-scoped agent configuration, run:
 
 ```bash
 npx foundry-design reset
 ```
 
-Reset refreshes both project-scoped and shared agent connections to the same release, preserves customized files, and reports anything it could not replace safely.
+Reset migrates Foundry-owned project MCP files and skills to the shared connection, preserves customized files, and reports anything it could not replace safely.
 
 Update an existing installation with:
 
@@ -80,12 +80,30 @@ Update an existing installation with:
 npx foundry-design update
 ```
 
-The updater refreshes checksum-matched Foundry files, agent connections, and skill bundles. It preserves and reports files changed since setup, validates the project, and rolls back the update if Foundry introduces a TypeScript or lint failure. Restart the coding agent after updating.
+The updater refreshes checksum-matched project files and the shared machine connection. It removes only Foundry-owned legacy project agent files, preserves customized files, validates the project, and rolls back if Foundry introduces a TypeScript or lint failure. Restart the coding agent only when its shared bridge version changes.
+
+Remove a project from Foundry's recent-project list without removing its adapter:
+
+```bash
+npx foundry-design disconnect
+```
 
 Remove only Foundry-managed integration with:
 
 ```bash
 npx foundry-design uninstall
+```
+
+Remove the shared machine connection separately:
+
+```bash
+npx foundry-design uninstall --global
+```
+
+Project-scoped MCP configuration remains available only as an explicit compatibility mode:
+
+```bash
+npx foundry-design setup --project-agent --agent codex
 ```
 
 Supported automatic web integration currently includes Next.js App Router, Vite, and plain HTML. Generic web, SwiftUI, and React Native projects receive explicit setup guidance when a safe automatic edit is not available.
@@ -100,7 +118,7 @@ If an npm mirror or existing `npx` cache reports an old tag, bypass it with a te
 
 ```bash
 FOUNDRY_NPX_CACHE="$(mktemp -d)"
-npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.13 foundry-design
+npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.14 foundry-design
 ```
 
 The beta supports Node.js 20 or newer. Read the [local-first safety model](https://withfoundry.ai/#safety) before using it with sensitive work.
@@ -117,7 +135,7 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 
 ### Cursor one-click connection
 
-[Add the Foundry MCP bridge to Cursor](https://cursor.com/link/mcp/install?name=foundry-design-control&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9ubGluZSIsImZvdW5kcnktZGVzaWduLW1jcC1zZXJ2ZXJAMC4yLjAtYmV0YS4xMyJdfQ%3D%3D), then run `npx foundry-design` inside the project. The repository's Cursor plugin additionally bundles the Foundry skill and session-start hook for marketplace distribution.
+[Add the Foundry MCP bridge to Cursor](https://cursor.com/link/mcp/install?name=foundry-design-control&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9ubGluZSIsImZvdW5kcnktZGVzaWduLW1jcC1zZXJ2ZXJAMC4yLjAtYmV0YS4xNCJdfQ%3D%3D), then run `npx foundry-design` inside the project. The repository's Cursor plugin additionally bundles the Foundry skill and session-start hook for marketplace distribution.
 
 ## Current capabilities
 

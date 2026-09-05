@@ -118,7 +118,14 @@ try {
     run(
       fixture,
       'node',
-      ['node_modules/foundry-design/dist/index.js', 'setup', '--agent', agent, '--yes'],
+      [
+        'node_modules/foundry-design/dist/index.js',
+        'setup',
+        '--agent',
+        agent,
+        '--project-agent',
+        '--yes',
+      ],
       isolatedEnvironment,
     );
     assertAgentInstall(fixture, agent);
@@ -143,12 +150,31 @@ try {
     if (!readFileSync(customizedSkill, 'utf8').includes('project note')) {
       throw new Error(`${agent} update overwrote a customized skill file.`);
     }
+    const legacyConfig = join(fixture, expectedPaths(agent).config);
+    if (readFileSync(legacyConfig, 'utf8').includes('foundry-design-control')) {
+      throw new Error(`${agent} update did not migrate project-scoped MCP configuration.`);
+    }
+    const hostConfig =
+      agent === 'codex'
+        ? join(isolatedHome, '.codex', 'config.toml')
+        : agent === 'cursor'
+          ? join(isolatedHome, '.cursor', 'mcp.json')
+          : join(isolatedHome, '.claude.json');
+    if (!readFileSync(hostConfig, 'utf8').includes(publicMcpSpec)) {
+      throw new Error(`${agent} update did not install the shared MCP bridge.`);
+    }
     run(
       fixture,
       'node',
       ['node_modules/foundry-design/dist/index.js', 'uninstall', '--yes'],
       isolatedEnvironment,
     );
+    if (existsSync(join(fixture, '.foundry', 'install-manifest.json'))) {
+      throw new Error(`${agent} project uninstall left its install manifest behind.`);
+    }
+    if (!readFileSync(hostConfig, 'utf8').includes(publicMcpSpec)) {
+      throw new Error(`${agent} project uninstall removed the shared MCP bridge.`);
+    }
     if (!existsSync(customizedSkill)) {
       throw new Error(`${agent} uninstall removed a customized skill file.`);
     }
@@ -163,16 +189,45 @@ try {
   writeFileSync(join(pluginFixture, 'index.html'), '<main>Plugin product</main>\n');
   run(pluginFixture, 'npm', ['install', '--ignore-scripts', ...tarballs]);
   const hostFixture = join(matrixRoot, 'host');
-  run(pluginFixture, 'node', ['node_modules/foundry-design/dist/index.js', 'install', '--yes'], {
-    HOME: hostFixture,
-  });
+  run(
+    pluginFixture,
+    'node',
+    ['node_modules/foundry-design/dist/index.js', 'install-agent', 'codex'],
+    { HOME: hostFixture },
+  );
+  run(
+    pluginFixture,
+    'node',
+    ['node_modules/foundry-design/dist/index.js', 'install', '--agent', 'cursor,claude', '--yes'],
+    { HOME: hostFixture },
+  );
   run(pluginFixture, 'node', ['node_modules/foundry-design/dist/index.js', '--yes', '--no-start'], {
     HOME: hostFixture,
   });
-  for (const path of ['.codex/config.toml', '.cursor/mcp.json', '.mcp.json']) {
-    if (existsSync(join(pluginFixture, path))) {
-      throw new Error(`Plugin-provided setup unexpectedly created ${path}`);
+  const secondProject = join(matrixRoot, 'second-project');
+  mkdirSync(secondProject, { recursive: true });
+  writeFileSync(
+    join(secondProject, 'package.json'),
+    '{"name":"foundry-second-project","private":true,"type":"module","scripts":{"dev":"node server.mjs"}}\n',
+  );
+  writeFileSync(join(secondProject, 'index.html'), '<main>Second product</main>\n');
+  run(secondProject, 'npm', ['install', '--ignore-scripts', ...tarballs], { HOME: hostFixture });
+  run(secondProject, 'node', ['node_modules/foundry-design/dist/index.js', '--yes', '--no-start'], {
+    HOME: hostFixture,
+  });
+  for (const fixture of [pluginFixture, secondProject]) {
+    for (const path of ['.codex/config.toml', '.cursor/mcp.json', '.mcp.json']) {
+      if (existsSync(join(fixture, path))) {
+        throw new Error(`Shared setup unexpectedly created ${path} in ${fixture}`);
+      }
     }
+  }
+
+  const companion = JSON.parse(
+    readFileSync(join(hostFixture, '.foundry', 'companion.json'), 'utf8'),
+  );
+  if (companion.version !== 2 || companion.projects.length !== 2) {
+    throw new Error('Shared companion did not retain both lightweight project connections.');
   }
 
   for (const path of [
@@ -229,6 +284,34 @@ try {
   }
   if (runner.includes('command -v foundry-design')) {
     throw new Error('The bundled skill launcher can still select a stale global Foundry binary.');
+  }
+  run(
+    pluginFixture,
+    'node',
+    [
+      'node_modules/foundry-design/dist/index.js',
+      'uninstall',
+      '--global',
+      '--agent',
+      'codex,cursor,claude',
+      '--yes',
+    ],
+    { HOME: hostFixture },
+  );
+  for (const path of ['.codex/config.toml', '.cursor/mcp.json', '.claude.json']) {
+    const absolutePath = join(hostFixture, path);
+    if (
+      existsSync(absolutePath) &&
+      readFileSync(absolutePath, 'utf8').includes('foundry-design-control')
+    ) {
+      throw new Error(`Machine uninstall left Foundry configuration in ${path}`);
+    }
+  }
+  const retainedCompanion = JSON.parse(
+    readFileSync(join(hostFixture, '.foundry', 'companion.json'), 'utf8'),
+  );
+  if (retainedCompanion.projects.length !== 2) {
+    throw new Error('Machine uninstall removed lightweight project connections.');
   }
   run(pluginFixture, 'node', [
     '--input-type=module',

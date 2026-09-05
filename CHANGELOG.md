@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0-beta.14 - 2026-09-04
+
+- Made one machine-level agent bridge the default for Codex, Cursor, and Claude Code while keeping project-scoped installation as an explicit compatibility option.
+- Reduced each project connection to its Foundry adapter, project configuration, and install manifest without duplicating MCP servers or skills.
+- Added checksum-safe migration from Foundry-owned project MCP configuration and skill files to the shared connection model, preserving customized files.
+- Split Doctor reporting into project connection, machine bridge, legacy project configuration, runtime, and active-listener checks.
+- Added lightweight project disconnect and machine-level uninstall commands without removing unrelated agent configuration.
+- Added multi-project companion state and packed upgrade coverage for legacy project-local installations.
+
 ## 0.2.0-beta.13 - 2026-09-04
 
 - Prevented accidental setup in a user home folder and added nearest-project discovery for commands launched from nested directories.

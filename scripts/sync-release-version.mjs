@@ -32,6 +32,13 @@ writeFileSync(
   `export const FOUNDRY_VERSION = '${release.version}';\nexport const FOUNDRY_PACKAGE_SPEC = \`foundry-design@\${FOUNDRY_VERSION}\`;\nexport const FOUNDRY_MCP_PACKAGE_SPEC = \`foundry-design-mcp-server@\${FOUNDRY_VERSION}\`;\n\nexport function releasePreflight(action: string): string {\n  return [\n    \`Foundry \${FOUNDRY_VERSION}\`,\n    \`Release preflight: CLI \${FOUNDRY_PACKAGE_SPEC}\`,\n    \`Agent bridge: \${FOUNDRY_MCP_PACKAGE_SPEC}\`,\n    \`Action: \${action}\`,\n  ].join('\\n');\n}\n`,
 );
 
+const releaseTestPath = join(root, 'packages/cli/src/release.test.ts');
+const releaseTest = readFileSync(releaseTestPath, 'utf8').replaceAll(
+  /0\.2\.0-beta\.\d+/g,
+  release.version,
+);
+writeFileSync(releaseTestPath, releaseTest);
+
 for (const relativePath of [
   '.mcp.json',
   'plugins/foundry-design-control/.mcp.json',

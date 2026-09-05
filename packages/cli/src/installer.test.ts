@@ -10,6 +10,7 @@ import {
   installAgentIntegration,
   setupProject,
   uninstallProject,
+  uninstallHostAgentIntegration,
   updateProject,
 } from './installer.js';
 import { FOUNDRY_MCP_PACKAGE_SPEC, FOUNDRY_VERSION } from './release.js';
@@ -152,6 +153,18 @@ test('installs reusable host integrations without touching a project', async () 
   assert.match(await readFile(customized, 'utf8'), /Project note/);
 });
 
+test('removes only owned host integration and preserves customized skill files', async () => {
+  const home = await fixture('host-uninstall');
+  const skillRoot = await skillFixture();
+  const result = await installHostAgentIntegration(home, 'codex', { skillRoot });
+  const customized = join(result.skillDirectory, 'SKILL.md');
+  await writeFile(customized, '# Customized Foundry workflow\n');
+  const removed = await uninstallHostAgentIntegration(home, 'codex');
+  assert.deepEqual(removed.preserved, [customized]);
+  assert.doesNotMatch(await readFile(result.configFile, 'utf8'), /foundry-design-control/);
+  assert.match(await readFile(customized, 'utf8'), /Customized/);
+});
+
 test('prioritizes the active coding agent over stale project configuration', async () => {
   const root = await fixture('active-agent');
   await writeFile(join(root, 'package.json'), JSON.stringify({}));
@@ -209,6 +222,31 @@ test('updates an existing plugin-only install without creating project MCP prece
     skillRoot,
   });
   assert.deepEqual(second.preserved, []);
+});
+
+test('migrates an owned project-scoped agent install to the shared connection model', async () => {
+  const root = await fixture('global-migration');
+  const skillRoot = await skillFixture();
+  await writeFile(join(root, 'package.json'), JSON.stringify({}));
+  await setupProject(root, { agents: ['codex', 'cursor', 'claude'], skillRoot });
+
+  const result = await updateProject(root, { skillRoot });
+  assert.deepEqual(result.agents, []);
+  assert.doesNotMatch(await readFile(join(root, '.codex', 'config.toml'), 'utf8'), /Foundry/);
+  const cursor = JSON.parse(await readFile(join(root, '.cursor', 'mcp.json'), 'utf8'));
+  const claude = JSON.parse(await readFile(join(root, '.mcp.json'), 'utf8'));
+  assert.equal(cursor.mcpServers?.['foundry-design-control'], undefined);
+  assert.equal(claude.mcpServers?.['foundry-design-control'], undefined);
+  await assert.rejects(
+    readFile(join(root, '.agents', 'skills', 'foundry-design-control', 'SKILL.md'), 'utf8'),
+  );
+  const manifest = JSON.parse(
+    await readFile(join(root, '.foundry', 'install-manifest.json'), 'utf8'),
+  );
+  assert.equal(manifest.version, 3);
+  assert.equal(manifest.connectionMode, 'global');
+  const config = JSON.parse(await readFile(join(root, '.foundry', 'foundry.config.json'), 'utf8'));
+  assert.equal(config.connection.mode, 'global');
 });
 
 test('requires setup before update', async () => {
@@ -330,7 +368,8 @@ test('integrates and removes a Next.js App Router loader', async () => {
   const manifest = JSON.parse(
     await readFile(join(root, '.foundry', 'install-manifest.json'), 'utf8'),
   );
-  assert.equal(manifest.version, 2);
+  assert.equal(manifest.version, 3);
+  assert.equal(manifest.connectionMode, 'global');
   assert.equal(manifest.generatorVersion, FOUNDRY_VERSION);
   assert.equal(manifest.validation.length, 2);
   await uninstallProject(root);
