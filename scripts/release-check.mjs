@@ -37,6 +37,21 @@ const rootReadmeDigest = createHash('sha256')
   .digest('hex');
 const rootReadme = readFileSync(join(root, 'README.md'), 'utf8');
 
+const builtReleasePath = join(root, 'packages/cli/dist/release.js');
+if (!existsSync(builtReleasePath)) {
+  failures.push('CLI build output is missing; run pnpm build before publishing');
+} else {
+  const builtRelease = readFileSync(builtReleasePath, 'utf8');
+  if (!builtRelease.includes(`FOUNDRY_VERSION = '${version}'`)) {
+    failures.push(
+      `CLI build output does not contain release version ${version}; rebuild before publishing`,
+    );
+  }
+  if (builtRelease.match(/0\.2\.0-beta\.\d+(?:\.\d+)?/)?.[0] !== version) {
+    failures.push('CLI build output contains stale release metadata');
+  }
+}
+
 if (release.packageCount !== packagePaths.length) {
   failures.push(
     `release.json expects ${release.packageCount} packages but ${packagePaths.length} are configured`,

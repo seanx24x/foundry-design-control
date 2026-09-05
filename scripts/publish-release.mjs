@@ -39,6 +39,20 @@ const packages = packageDirectories.map((directory) => ({
   name: JSON.parse(readFileSync(join(root, directory, 'package.json'), 'utf8')).name,
 }));
 
+// Never publish source metadata with stale compiled artifacts. Package manifests
+// are cheap to update, so the release command itself must rebuild and validate
+// the exact files that npm will receive before it mutates the registry.
+for (const [command, args, label] of [
+  ['pnpm', ['build'], 'release build'],
+  ['pnpm', ['release:check'], 'release metadata check'],
+]) {
+  const result = run(command, args);
+  if (result.status !== 0) {
+    console.error(`Cannot publish: ${label} failed.`);
+    process.exit(result.status ?? 1);
+  }
+}
+
 for (const entry of packages) {
   if (published(entry.name)) {
     console.log(`✓ ${entry.name}@${version} already exists; skipping immutable publication.`);

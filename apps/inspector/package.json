@@ -1,6 +1,6 @@
 {
   "name": "foundry-design-inspector",
-  "version": "0.2.0-beta.14",
+  "version": "0.2.0-beta.14.1",
   "description": "Local review dashboard for Foundry design sessions",
   "type": "module",
   "files": [
