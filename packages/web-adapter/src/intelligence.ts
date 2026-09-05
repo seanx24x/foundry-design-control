@@ -1,7 +1,7 @@
 export type SizingMode = 'fixed' | 'hug' | 'fill' | 'min-max';
 
 export interface ImpactInput {
-  scope: 'instance' | 'component';
+  scope: 'instance' | 'variant' | 'component';
   breakpoint: string;
   theme: string;
   state?: string;
@@ -80,6 +80,8 @@ export function impactMessages(input: ImpactInput): string[] {
         ? `Updates ${input.componentInstances} component instances`
         : 'Updates the shared component',
     );
+  } else if (input.scope === 'variant') {
+    messages.push('Updates instances using the selected variant');
   } else messages.push('Changes this instance only');
   messages.push(input.token ? `Uses ${input.token}` : 'Creates or preserves a literal value');
   if (input.breakpoint !== 'current') messages.push(`Limited to ${input.breakpoint}`);

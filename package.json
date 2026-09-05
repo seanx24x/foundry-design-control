@@ -21,6 +21,7 @@
     "foundry": "node packages/cli/dist/index.js",
     "release:check": "node scripts/sync-package-readmes.mjs && node scripts/release-check.mjs && pnpm release:trust-contract",
     "distribution:check": "node scripts/distribution-check.mjs",
+    "openai:submission": "node scripts/build-openai-submission.mjs",
     "release:pack": "node scripts/pack-release.mjs",
     "release:publish": "node scripts/publish-release.mjs",
     "release:test-install": "node scripts/test-packed-install.mjs",

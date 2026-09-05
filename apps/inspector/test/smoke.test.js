@@ -25,7 +25,18 @@ test('change summary is top-centered and review deletion restores through the li
 
 test('review and project utilities are center workspace modes', async () => {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
-  for (const mode of ['review', 'states', 'health', 'memory']) {
+  for (const mode of [
+    'review',
+    'states',
+    'components',
+    'responsive',
+    'system',
+    'motion',
+    'typography',
+    'branches',
+    'health',
+    'memory',
+  ]) {
     assert.match(html, new RegExp(`data-mode-surface="${mode}"`));
   }
   assert.match(html, /Apply with agent/);
@@ -34,6 +45,121 @@ test('review and project utilities are center workspace modes', async () => {
   assert.match(html, /data-close-mode="memory"/);
   assert.match(html, /aria-label="Close Design health"/);
   assert.match(html, /aria-label="Close Design memory"/);
+});
+
+test('design branches isolate alternatives, compare rendered directions, and promote explicitly', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(html, /data-mode-surface="branches"/);
+  assert.match(html, /id="design-branch-list"/);
+  assert.match(html, /id="design-branch-previews"/);
+  assert.match(html, /id="design-branch-decision-list"/);
+  assert.match(html, /Only a chosen direction enters Review and apply/);
+  assert.match(source, /function renderDesignBranches/);
+  assert.match(source, /switch-design-branch/);
+  assert.match(source, /preview-design-branch/);
+  assert.match(source, /design-branches\/activate/);
+  assert.match(source, /design-branches\/\$\{encodeURIComponent\(chosen\.id\)\}\/promote/);
+  assert.match(source, /\['branches', 'Design branches', 'b', 'branch'\]/);
+  assert.match(css, /\.design-branches-shell/);
+  assert.match(css, /\.design-branch-preview-viewport iframe/);
+  assert.match(css, /\.design-branch-decision-row/);
+});
+
+test('typography studio connects font discovery, live previews, diagnostics, and review', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(html, /data-mode-surface="typography"/);
+  assert.match(html, /id="typography-font-list"/);
+  assert.match(html, /id="typography-studio-stage"/);
+  assert.match(html, /id="typography-studio-properties"/);
+  assert.match(source, /function renderTypographyStudio/);
+  assert.match(source, /queryLocalFonts/);
+  assert.match(source, /google-fonts\?query=/);
+  assert.match(source, /preview-treatment/);
+  assert.match(source, /preview-scale/);
+  assert.match(source, /review-google/);
+  assert.match(source, /save-style/);
+  assert.match(source, /Rendered type is stable/);
+  assert.match(source, /\['typography', 'Typography studio', '0', 'typography'\]/);
+  assert.match(css, /\.typography-studio-shell/);
+  assert.match(css, /\.typography-specimen/);
+  assert.match(css, /\.typography-audit/);
+});
+
+test('motion studio exposes live transport, editable timing, keyframes, and motion health', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(html, /data-mode-surface="motion"/);
+  assert.match(html, /id="motion-studio-list"/);
+  assert.match(html, /id="motion-studio-stage"/);
+  assert.match(html, /id="motion-studio-properties"/);
+  assert.match(source, /function renderMotionStudio/);
+  assert.match(source, /data-studio-action="scrub"/);
+  assert.match(source, /data-studio-property="iterations"/);
+  assert.match(source, /data-studio-property="direction"/);
+  assert.match(source, /data-studio-property="fill"/);
+  assert.match(source, /Reduced motion needs review/);
+  assert.match(html, /Playback controls are previews/);
+  assert.match(source, /\['motion', 'Motion studio', '9', 'play'\]/);
+  assert.match(css, /\.motion-studio-shell/);
+  assert.match(css, /\.motion-studio-rail/);
+  assert.match(css, /\.motion-studio-properties/);
+});
+
+test('design system traces native tokens, usages, drift, and impact without applying changes', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(html, /data-mode-surface="system"/);
+  assert.match(html, /id="design-system-token-list"/);
+  assert.match(html, /id="design-system-detail"/);
+  assert.match(source, /function renderDesignSystem/);
+  assert.match(source, /project\.tokenUsages/);
+  assert.match(source, /project\.designSystemFindings/);
+  assert.match(source, /Changing this token can affect/);
+  assert.match(source, /No automatic changes/);
+  assert.match(source, /\['system', 'Design system', '8', 'sparkles'\]/);
+  assert.match(css, /\.design-system-shell/);
+  assert.match(css, /\.design-finding-list/);
+});
+
+test('responsive lab keeps native iframe viewports and temporary stress state separate', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(html, /id="responsive-width"/);
+  assert.match(html, /data-responsive-stress="browser-zoom"/);
+  assert.match(html, /data-responsive-scope="all"/);
+  assert.match(source, /frame\.width = responsiveCustomWidth/);
+  assert.match(source, /--preview-width/);
+  assert.match(source, /preview-responsive-stress/);
+  assert.match(source, /documentScrollWidth > snapshot\.viewportWidth/);
+  assert.match(source, /\['responsive', 'Responsive design lab', '7', 'layout'\]/);
+  assert.match(css, /\.responsive-frame-viewport iframe/);
+  assert.match(css, /transform-origin:\s*top center/);
+});
+
+test('component workshop exposes live instances, safe scopes, variants, and visual states', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(html, /id="component-workshop-list"/);
+  assert.match(html, /id="component-workshop-detail"/);
+  assert.match(source, /function normalizedWorkshopComponents/);
+  assert.match(source, /select-component-instance/);
+  assert.match(source, /preview-component-variant/);
+  assert.match(source, /preview-component-state/);
+  assert.match(
+    source,
+    /Broader scopes remain unavailable until Foundry has an exact source target/,
+  );
+  assert.match(source, /\['components', 'Component workshop', '6', 'component'\]/);
+  assert.match(css, /\.component-workshop-shell/);
+  assert.match(css, /\.workshop-state-grid/);
 });
 
 test('apply progress reuses the review hierarchy and reports the complete run', async () => {
@@ -107,7 +233,8 @@ test('visual foundations use bundled typefaces and a strict dock contract', asyn
   assert.match(css, /--blue:\s*#2f6fed/);
   assert.match(css, /\.layer-meta[\s\S]*font:\s*600 8px\/1 var\(--mono\)/);
   assert.match(css, /::-webkit-color-swatch[\s\S]*border-radius:\s*4px/);
-  assert.doesNotMatch(css, /font-size:\s*(?:10|11|13|14)px/);
+  assert.match(css, /html,[\s\S]*body\s*\{[\s\S]*font-size:\s*12px/);
+  assert.match(css, /\.mode-head h1\s*\{[\s\S]*font-size:\s*24px/);
 });
 
 test('workspace uses real Keyline vectors and validates the embedded bridge', async () => {

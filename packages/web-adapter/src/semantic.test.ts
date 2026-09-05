@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { matchingTokens, semanticCandidates } from './semantic.js';
+import { matchingTokens, rankedProjectTokens, semanticCandidates } from './semantic.js';
 
 test('requires a semantic choice when resizing on the flex axis', () => {
   const candidates = semanticCandidates({
@@ -19,6 +19,26 @@ test('requires a semantic choice when resizing on the flex axis', () => {
     ['flexBasis', 'width'],
   );
   assert.equal(candidates[0]?.blastRadius, 4);
+});
+
+test('ranks exact and nearest native tokens before the remaining project system', () => {
+  const ranked = rankedProjectTokens(
+    [
+      { id: 'wide', name: '--space-6', value: '24px', category: 'spacing' },
+      { id: 'near', name: '--space-4', value: '16px', category: 'spacing' },
+      { id: 'exact', name: '--space-3', value: '12px', category: 'spacing' },
+    ],
+    'gap',
+    '12px',
+  );
+  assert.deepEqual(
+    ranked.map(({ token, relation }) => [token.name, relation]),
+    [
+      ['--space-3', 'exact'],
+      ['--space-4', 'nearest'],
+      ['--space-6', 'nearest'],
+    ],
+  );
 });
 
 test('uses one exact spacing mapping for a gap gesture', () => {

@@ -21,11 +21,15 @@
     "capabilities": ["Interactive", "Write"],
     "websiteURL": "https://withfoundry.ai",
     "privacyPolicyURL": "https://withfoundry.ai/#safety",
+    "termsOfServiceURL": "https://github.com/seanx24x/foundry-design-control/blob/main/TERMS.md",
     "defaultPrompt": [
       "Start Foundry for this project.",
       "Apply my reviewed Foundry changes.",
       "Verify the latest Foundry design session."
     ],
-    "brandColor": "#A75031"
+    "brandColor": "#A75031",
+    "composerIcon": "./assets/logo.svg",
+    "logo": "./assets/logo.svg",
+    "logoDark": "./assets/logo.svg"
   }
 }

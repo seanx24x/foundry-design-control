@@ -21,7 +21,7 @@ export interface BrowserMappingCandidate {
   targetId?: string;
   value: string | number;
   source?: BrowserSourceRef;
-  scope: 'instance' | 'component';
+  scope: 'instance' | 'variant' | 'component';
   confidence: 'measured' | 'instrumented' | 'inferred' | 'unresolved';
   evidence: string[];
   blastRadius: number;
@@ -31,7 +31,7 @@ export interface LayoutContext {
   targetId: string;
   property: string;
   value: string | number;
-  scope: 'instance' | 'component';
+  scope: 'instance' | 'variant' | 'component';
   source?: BrowserSourceRef;
   parentDisplay: string;
   parentFlexDirection: string;
@@ -57,7 +57,12 @@ function candidate(
     scope: context.scope,
     confidence: context.source ? 'instrumented' : 'inferred',
     evidence,
-    blastRadius: context.scope === 'component' ? Math.max(1, context.componentInstances) : 1,
+    blastRadius:
+      context.scope === 'component'
+        ? Math.max(1, context.componentInstances)
+        : context.scope === 'variant'
+          ? Math.max(1, context.componentInstances)
+          : 1,
   };
 }
 
@@ -124,7 +129,7 @@ export function candidatesForElement(
   property: string,
   value: string | number,
   targetId: string,
-  scope: 'instance' | 'component',
+  scope: 'instance' | 'variant' | 'component',
   source?: BrowserSourceRef,
 ): BrowserMappingCandidate[] {
   const parent = element.parentElement;
@@ -177,4 +182,45 @@ export function matchingTokens(
     .filter((token) => !expectedCategory || token.category === expectedCategory)
     .filter((token) => comparable(token.value) === comparable(value))
     .slice(0, 6);
+}
+
+export interface RankedDesignToken {
+  token: BrowserDesignToken;
+  relation: 'exact' | 'nearest' | 'project';
+  distance?: number;
+}
+
+function numericTokenValue(value: string | number): { amount: number; unit: string } | null {
+  const match = /^(-?[\d.]+)(px|rem|em|ms|s|%)$/i.exec(comparable(value));
+  return match ? { amount: Number(match[1]), unit: match[2]!.toLowerCase() } : null;
+}
+
+export function rankedProjectTokens(
+  tokens: BrowserDesignToken[],
+  property: string,
+  value: string | number,
+): RankedDesignToken[] {
+  const exactIds = new Set(matchingTokens(tokens, property, value).map((token) => token.id));
+  const current = numericTokenValue(value);
+  return tokens
+    .map((token) => {
+      if (exactIds.has(token.id)) return { token, relation: 'exact' as const, distance: 0 };
+      const parsed = numericTokenValue(token.value);
+      if (current && parsed?.unit === current.unit) {
+        return {
+          token,
+          relation: 'nearest' as const,
+          distance: Math.abs(parsed.amount - current.amount),
+        };
+      }
+      return { token, relation: 'project' as const };
+    })
+    .sort((a, b) => {
+      const rank = { exact: 0, nearest: 1, project: 2 };
+      return (
+        rank[a.relation] - rank[b.relation] ||
+        (a.distance ?? Number.POSITIVE_INFINITY) - (b.distance ?? Number.POSITIVE_INFINITY) ||
+        a.token.name.localeCompare(b.token.name)
+      );
+    });
 }

@@ -1,0 +1,20 @@
+{
+  "submissionType": "skills-only",
+  "name": "Foundry Design Control",
+  "shortDescription": "Design precisely in the live product",
+  "longDescription": "Foundry turns a running product into a local design workbench for coding agents. Select and manipulate rendered elements, inspect project-native tokens and components, review a source-mapped change set, apply only approved changes, and verify the rebuilt result. The workflow keeps project data, preview state, and apply history local.",
+  "category": "Productivity",
+  "developerName": "Sean Lynch",
+  "websiteURL": "https://withfoundry.ai",
+  "supportURL": "https://github.com/seanx24x/foundry-design-control/issues",
+  "privacyPolicyURL": "https://withfoundry.ai/#safety",
+  "termsOfServiceURL": "https://github.com/seanx24x/foundry-design-control/blob/main/TERMS.md",
+  "sourceURL": "https://github.com/seanx24x/foundry-design-control",
+  "logo": "../../plugins/foundry-design-control/assets/logo.svg",
+  "starterPrompts": [
+    "Start Foundry for this project.",
+    "Apply my reviewed Foundry changes.",
+    "Verify the latest Foundry design session."
+  ],
+  "releaseNotes": "Initial public-directory submission of Foundry's local-first visual design workflow for Codex and ChatGPT."
+}

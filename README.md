@@ -2,11 +2,15 @@
 
 Foundry is a local-first precision design workbench for Codex, Cursor, and Claude Code. It lets design engineers manipulate rendered interface elements, resolve each gesture to the right project-native source intent, review one structured change batch, and verify the rebuilt result across recorded states.
 
+Responsive Design Lab links one live selection across native mobile, tablet, desktop, current, and custom viewport contexts. It exposes real breakpoint transitions, overflow, clipping, awkward wrapping, and temporary browser zoom, text-scale, and long-content stress tests without changing saved product state.
+
+Design Branches keeps parallel visual directions isolated inside one local session. Teams can switch and compare rendered alternatives, combine selected decisions, preserve rejection rationale, and explicitly promote one direction into Review and apply without changing source early.
+
 ## Beta installation
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
-> **Release candidate:** `0.2.0-beta.16`. The commands below are prepared for this release and must not be promoted to npm `latest` until the full installation matrix passes.
+> **Current public beta:** `0.2.0-beta.16`. Both npm `latest` and `beta` resolve to this release.
 
 Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 
@@ -154,7 +158,7 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 
 ### Cursor one-click connection
 
-[Add the Foundry MCP bridge to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=foundry-design-control&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9ubGluZSIsImZvdW5kcnktZGVzaWduLW1jcC1zZXJ2ZXJAMC4yLjAtYmV0YS4xNSJdLCJlbnYiOnsiRk9VTkRSWV9ERVNJR05fUlVOVElNRV9VUkwiOiJodHRwOi8vMTI3LjAuMC4xOjQzODcifX0%3D), then run `npx foundry-design` inside the project. The repository's Cursor plugin additionally bundles the Foundry skill and session-start hook for marketplace distribution.
+[Add the Foundry MCP bridge to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=foundry-design-control&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9ubGluZSIsImZvdW5kcnktZGVzaWduLW1jcC1zZXJ2ZXJAMC4yLjAtYmV0YS4xNiJdLCJlbnYiOnsiRk9VTkRSWV9ERVNJR05fUlVOVElNRV9VUkwiOiJodHRwOi8vMTI3LjAuMC4xOjQzODcifX0%3D), then run `npx foundry-design` inside the project. The repository's Cursor plugin additionally bundles the Foundry skill and session-start hook for marketplace distribution.
 
 ## Current capabilities
 
@@ -163,13 +167,16 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 - A searchable, collapsible, virtualized live layer hierarchy with mapped-source context, Shadow DOM traversal, drag reordering, and selection persistence across HMR
 - Multi-selection, measured spacing annotations, sibling-aware resize snapping, keyboard nudging, alignment, distribution, and preview undo/redo
 - A revisioned local design graph for CSS tokens, components, Storybook variants, breakpoints, themes, states, and motion presets
+- A Design System workspace that traces native tokens from definition to indexed usages, previews source blast radius, detects near-duplicates and literal/component drift, and explains every recommendation without changing source automatically
 - Semantic source-mapping choices that block ambiguous changes until the user selects the intended implementation
 - Fixed, hug, fill, and min/max sizing; flex and grid flow; linked spacing; aspect ratio; overflow; and positional controls
-- Project-native spacing, radius, typography, and color choices with token-only filtering, exact token suggestions, component variants, type presets, gradients, opacity, and live contrast guidance
+- Project-native spacing, radius, typography, and color choices with token-only filtering, exact and nearest-token ranking, component variants, type presets, gradients, opacity, and live contrast guidance
 - Layout, typography, color, content, asset, accessibility, responsive, and motion controls
 - Before/after toggles, continuous comparison scrubbing, side-by-side source comparison, isolation, per-element reset, keyboard shortcuts, and a searchable command palette
 - Design Health scans for contrast, overflow and clipping, touch targets, accessible names, reduced-motion coverage, and project spacing consistency, with evidence, intentional-issue ignores, and safe corrections routed into review
 - An in-app state workbench with real viewport frames, theme switching, forced interaction states, motion controls, and contextual verification
+- A dedicated Motion Studio for live CSS and Web Animation discovery, preview-only transport, timeline scrubbing, keyframe editing, complete timing controls, performance classification, and reduced-motion review
+- Isolated Design Branches with fixed-viewport comparison, selective composition, rejection notes, and explicit promotion into the source-ready review ledger
 - Persistent, coalescing change ledger with JSON and consolidated prompt export
 - Center-workspace review with editable approved batches, grouped targets, and unresolved-target blocking
 - Persistent Apply with agent runs across Codex, Cursor, and Claude Code through MCP

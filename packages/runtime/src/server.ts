@@ -92,6 +92,8 @@ function publicSession(stored: StoredSession): Omit<StoredSession, 'token'> {
     verifications: stored.verifications,
     applyRuns: stored.applyRuns,
     designGraph: stored.designGraph,
+    designBranches: stored.designBranches,
+    activeDesignBranchId: stored.activeDesignBranchId,
   };
 }
 
@@ -245,6 +247,47 @@ export class FoundryRuntime {
           const updated = await this.store.addChange(id, (await body(request)) as never);
           sendJson(response, 201, publicSession(updated));
           return;
+        }
+        if (parts[3] === 'design-branches') {
+          if (request.method === 'POST' && parts.length === 4) {
+            const input = (await body(request)) as {
+              name: string;
+              sourceBranchId?: string;
+              selections?: Array<{ branchId: string; changeIds: string[] }>;
+            };
+            const updated = input.selections
+              ? await this.store.composeDesignBranch(id, {
+                  name: input.name,
+                  selections: input.selections,
+                })
+              : await this.store.createDesignBranch(id, {
+                  name: input.name,
+                  sourceBranchId: input.sourceBranchId,
+                });
+            sendJson(response, 201, publicSession(updated));
+            return;
+          }
+          if (request.method === 'POST' && parts[4] === 'activate') {
+            const input = (await body(request)) as { branchId?: string };
+            const updated = await this.store.activateDesignBranch(id, input.branchId);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+          if (request.method === 'POST' && parts[4] && parts[5] === 'promote') {
+            const updated = await this.store.promoteDesignBranch(id, parts[4]);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+          if (request.method === 'PATCH' && parts[4]) {
+            const input = (await body(request)) as {
+              name?: string;
+              status?: 'exploring' | 'chosen' | 'rejected' | 'archived';
+              rejectionReason?: string;
+            };
+            const updated = await this.store.updateDesignBranch(id, parts[4], input);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
         }
         if (parts[3] === 'design-graph') {
           if (request.method === 'GET') {

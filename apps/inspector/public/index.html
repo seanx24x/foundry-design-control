@@ -60,6 +60,24 @@
           <button data-workspace-mode="memory">
             <i data-icon="bookmark"></i><span>Design memory</span><kbd>5</kbd>
           </button>
+          <button data-workspace-mode="components">
+            <i data-icon="component"></i><span>Component workshop</span><kbd>6</kbd>
+          </button>
+          <button data-workspace-mode="responsive">
+            <i data-icon="layout"></i><span>Responsive design lab</span><kbd>7</kbd>
+          </button>
+          <button data-workspace-mode="system">
+            <i data-icon="sparkles"></i><span>Design system</span><kbd>8</kbd>
+          </button>
+          <button data-workspace-mode="motion">
+            <i data-icon="play"></i><span>Motion studio</span><kbd>9</kbd>
+          </button>
+          <button data-workspace-mode="typography">
+            <i data-icon="typography"></i><span>Typography studio</span><kbd>0</kbd>
+          </button>
+          <button data-workspace-mode="branches">
+            <i data-icon="branch"></i><span>Design branches</span><kbd>B</kbd>
+          </button>
           <span class="menu-rule"></span>
           <button data-theme-choice="system">
             <i data-icon="contrast"></i><span>Theme: System</span>
@@ -213,6 +231,362 @@
             <div class="workbench-grid" id="state-grid"></div>
           </section>
 
+          <section
+            class="mode-surface centered-mode component-workshop-mode"
+            data-mode-surface="components"
+            hidden
+          >
+            <header class="mode-head">
+              <div>
+                <span class="eyebrow">Components</span>
+                <h1>Component workshop</h1>
+                <p>
+                  Explore every live instance, mapped variant, and visual state before changing
+                  source.
+                </p>
+              </div>
+              <div class="mode-actions">
+                <button class="secondary-button" id="component-open-canvas">Open on canvas</button>
+                <button
+                  class="icon-button mode-close"
+                  data-close-mode="components"
+                  aria-label="Close Component workshop"
+                  data-tooltip="Close Component workshop"
+                >
+                  <i data-icon="close"></i>
+                </button>
+              </div>
+            </header>
+            <div class="component-workshop-shell">
+              <aside class="component-workshop-browser">
+                <label class="search-field"
+                  ><i data-icon="search"></i
+                  ><input
+                    id="component-workshop-search"
+                    type="search"
+                    placeholder="Search components"
+                    aria-label="Search workshop components"
+                /></label>
+                <div id="component-workshop-list" class="component-workshop-list"></div>
+              </aside>
+              <div class="component-workshop-detail" id="component-workshop-detail"></div>
+            </div>
+            <footer class="component-workshop-footer">
+              <span id="component-workshop-readiness">Choose a live component to begin.</span>
+              <button class="primary-button" id="component-workshop-review">Review changes</button>
+            </footer>
+          </section>
+
+          <section
+            class="mode-surface centered-mode responsive-lab-mode"
+            data-mode-surface="responsive"
+            hidden
+          >
+            <header class="mode-head">
+              <div>
+                <span class="eyebrow">Responsive</span>
+                <h1>Responsive design lab</h1>
+                <p>
+                  Select once, inspect the same live element across native viewports, and fix the
+                  failing context without hiding overflow.
+                </p>
+              </div>
+              <div class="mode-actions">
+                <button class="secondary-button" id="responsive-open-canvas">Open on canvas</button>
+                <button
+                  class="icon-button mode-close"
+                  data-close-mode="responsive"
+                  aria-label="Close Responsive design lab"
+                  data-tooltip="Close Responsive design lab"
+                >
+                  <i data-icon="close"></i>
+                </button>
+              </div>
+            </header>
+            <div class="responsive-lab-controls">
+              <div class="responsive-control-group">
+                <span>Custom width</span>
+                <input
+                  id="responsive-width"
+                  type="range"
+                  min="320"
+                  max="3840"
+                  step="1"
+                  value="1280"
+                  aria-label="Custom viewport width"
+                />
+                <output id="responsive-width-output">1280px</output>
+              </div>
+              <div
+                class="responsive-control-group responsive-stress-group"
+                aria-label="Temporary stress tests"
+              >
+                <span>Stress test</span>
+                <button class="chip-button is-active" data-responsive-stress="none">None</button>
+                <button class="chip-button" data-responsive-stress="browser-zoom">Zoom 200%</button>
+                <button class="chip-button" data-responsive-stress="dynamic-type">Text 150%</button>
+                <button class="chip-button" data-responsive-stress="long-content">
+                  Long content
+                </button>
+              </div>
+              <div
+                class="responsive-control-group responsive-scope-group"
+                aria-label="Responsive edit scope"
+              >
+                <span>Edit scope</span>
+                <button class="chip-button is-active" data-responsive-scope="breakpoint">
+                  This breakpoint
+                </button>
+                <button class="chip-button" data-responsive-scope="all">All breakpoints</button>
+              </div>
+            </div>
+            <div
+              class="responsive-boundaries"
+              id="responsive-boundaries"
+              aria-label="Breakpoint boundaries"
+            ></div>
+            <div class="responsive-viewport-grid" id="responsive-viewport-grid"></div>
+            <footer class="responsive-lab-footer">
+              <span id="responsive-lab-status">Waiting for the live product.</span>
+              <button class="primary-button" id="responsive-review">
+                Review responsive changes
+              </button>
+            </footer>
+          </section>
+
+          <section
+            class="mode-surface centered-mode design-system-mode"
+            data-mode-surface="system"
+            hidden
+          >
+            <header class="mode-head">
+              <div>
+                <span class="eyebrow">Project language</span>
+                <h1>Design system</h1>
+                <p>
+                  Trace native tokens to source and usage, then resolve drift without weakening the
+                  product's existing conventions.
+                </p>
+              </div>
+              <div class="mode-actions">
+                <span class="mode-count" id="design-system-status">Indexing project</span>
+                <button
+                  class="icon-button mode-close"
+                  data-close-mode="system"
+                  aria-label="Close Design system"
+                  data-tooltip="Close Design system"
+                >
+                  <i data-icon="close"></i>
+                </button>
+              </div>
+            </header>
+            <div class="design-system-summary" id="design-system-summary"></div>
+            <div class="design-system-shell">
+              <aside class="design-system-browser">
+                <label class="search-field"
+                  ><i data-icon="search"></i
+                  ><input
+                    id="design-system-search"
+                    type="search"
+                    placeholder="Search tokens"
+                    aria-label="Search project tokens"
+                /></label>
+                <div class="design-system-categories" id="design-system-categories"></div>
+                <div class="design-system-token-list" id="design-system-token-list"></div>
+              </aside>
+              <div class="design-system-detail" id="design-system-detail"></div>
+            </div>
+          </section>
+
+          <section
+            class="mode-surface centered-mode motion-studio-mode"
+            data-mode-surface="motion"
+            hidden
+          >
+            <header class="mode-head">
+              <div>
+                <span class="eyebrow">Live motion</span>
+                <h1>Motion studio</h1>
+                <p>
+                  Scrub the rendered animation, refine exact timing and keyframes, and review every
+                  source change before apply.
+                </p>
+              </div>
+              <div class="mode-actions">
+                <span class="mode-count" id="motion-studio-status">Select a moving layer</span>
+                <button
+                  class="icon-button mode-close"
+                  data-close-mode="motion"
+                  aria-label="Close Motion studio"
+                  data-tooltip="Close Motion studio"
+                >
+                  <i data-icon="close"></i>
+                </button>
+              </div>
+            </header>
+            <div class="motion-studio-shell">
+              <aside class="motion-studio-browser">
+                <div class="motion-selection-summary" id="motion-selection-summary"></div>
+                <div class="motion-studio-list" id="motion-studio-list"></div>
+              </aside>
+              <div class="motion-studio-stage" id="motion-studio-stage"></div>
+              <aside class="motion-studio-properties" id="motion-studio-properties"></aside>
+            </div>
+            <footer class="motion-studio-footer">
+              <span
+                >Playback controls are previews. Timing and keyframe edits are reviewable
+                changes.</span
+              >
+              <button class="primary-button" id="motion-studio-review">
+                Review motion changes
+              </button>
+            </footer>
+          </section>
+
+          <section
+            class="mode-surface centered-mode typography-studio-mode"
+            data-mode-surface="typography"
+            hidden
+          >
+            <header class="mode-head">
+              <div>
+                <span class="eyebrow">Live typography</span>
+                <h1>Typography studio</h1>
+                <p>
+                  Audit rendered type, preview project and device fonts, and build source-safe type
+                  decisions before review.
+                </p>
+              </div>
+              <div class="mode-actions">
+                <span class="mode-count" id="typography-studio-status">Select a text layer</span>
+                <button
+                  class="icon-button mode-close"
+                  data-close-mode="typography"
+                  aria-label="Close Typography studio"
+                  data-tooltip="Close Typography studio"
+                >
+                  <i data-icon="close"></i>
+                </button>
+              </div>
+            </header>
+            <div class="typography-studio-shell">
+              <aside class="typography-studio-browser">
+                <div class="typography-selection-summary" id="typography-selection-summary"></div>
+                <div class="typography-source-tabs" role="tablist" aria-label="Font sources">
+                  <button class="is-active" data-typography-source="project" role="tab">
+                    Project
+                  </button>
+                  <button data-typography-source="google" role="tab">Google</button>
+                  <button data-typography-source="local" role="tab">Local</button>
+                </div>
+                <label class="search-field"
+                  ><i data-icon="search"></i
+                  ><input
+                    id="typography-search"
+                    type="search"
+                    placeholder="Search fonts"
+                    aria-label="Search typography fonts"
+                /></label>
+                <div class="typography-font-list" id="typography-font-list"></div>
+              </aside>
+              <div class="typography-studio-stage" id="typography-studio-stage"></div>
+              <aside class="typography-studio-properties" id="typography-studio-properties"></aside>
+            </div>
+            <footer class="typography-studio-footer">
+              <span>Local previews stay temporary. Project and Google decisions enter review.</span>
+              <button class="primary-button" id="typography-studio-review">
+                Review typography changes
+              </button>
+            </footer>
+          </section>
+
+          <section
+            class="mode-surface centered-mode design-branches-mode"
+            data-mode-surface="branches"
+            hidden
+          >
+            <header class="mode-head">
+              <div>
+                <span class="eyebrow">Exploration</span>
+                <h1>Design branches</h1>
+                <p>
+                  Explore parallel directions without mixing decisions into the source-ready change
+                  set.
+                </p>
+              </div>
+              <div class="mode-actions">
+                <span class="mode-count" id="design-branch-status">Main direction</span>
+                <button
+                  class="icon-button mode-close"
+                  data-close-mode="branches"
+                  aria-label="Close Design branches"
+                  data-tooltip="Close Design branches"
+                >
+                  <i data-icon="close"></i>
+                </button>
+              </div>
+            </header>
+            <div class="design-branches-shell">
+              <aside class="design-branch-browser">
+                <div class="design-branch-create">
+                  <label for="design-branch-name">New direction</label>
+                  <div>
+                    <input
+                      id="design-branch-name"
+                      type="text"
+                      maxlength="80"
+                      placeholder="Direction name"
+                    />
+                    <button
+                      class="icon-button"
+                      id="design-branch-create"
+                      aria-label="Create direction"
+                    >
+                      <i data-icon="plus"></i>
+                    </button>
+                  </div>
+                </div>
+                <div class="design-branch-list" id="design-branch-list"></div>
+              </aside>
+              <main class="design-branch-stage">
+                <div class="design-branch-compare-head">
+                  <div>
+                    <span class="eyebrow">Compare directions</span>
+                    <strong>Rendered side by side</strong>
+                  </div>
+                  <div class="design-branch-compare-selects">
+                    <select id="design-branch-left" aria-label="Left design direction"></select>
+                    <i data-icon="compare"></i>
+                    <select id="design-branch-right" aria-label="Right design direction"></select>
+                  </div>
+                </div>
+                <div class="design-branch-previews" id="design-branch-previews"></div>
+                <section class="design-branch-decisions">
+                  <header>
+                    <div>
+                      <span class="eyebrow">Decisions</span>
+                      <strong>Compose the strongest direction</strong>
+                    </div>
+                    <span id="design-branch-selection-count">0 selected</span>
+                  </header>
+                  <div id="design-branch-decision-list"></div>
+                </section>
+              </main>
+              <aside class="design-branch-detail" id="design-branch-detail"></aside>
+            </div>
+            <footer class="design-branch-footer">
+              <span>Only a chosen direction enters Review and apply.</span>
+              <div>
+                <button class="secondary-button" id="design-branch-compose" disabled>
+                  Combine selected
+                </button>
+                <button class="primary-button" id="design-branch-promote" disabled>
+                  Choose direction
+                </button>
+              </div>
+            </footer>
+          </section>
+
           <section class="mode-surface centered-mode" data-mode-surface="health" hidden>
             <header class="mode-head">
               <div>
@@ -292,6 +666,7 @@
                 ><span>Scope</span
                 ><select data-context="scope">
                   <option value="instance">Instance</option>
+                  <option value="variant">Variant</option>
                   <option value="component">Component</option>
                 </select></label
               >

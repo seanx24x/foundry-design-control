@@ -12,9 +12,11 @@ test('indexes project-native tokens, breakpoints, components, stories, and motio
     join(root, 'src', 'theme.css'),
     `:root {
   --space-3: 12px;
+  --space-near: 13px;
   --accent: #0070f3;
   --motion-fast: 160ms;
 }
+.card { gap: 12px; padding: 14px; color: var(--accent); }
 @media (min-width: 720px) { .layout { display: grid; } }
 [data-theme="dark"] { --accent: #5aa7ff; }
 `,
@@ -41,8 +43,21 @@ export const Quiet = {};
     button?.variants.map((variant) => variant.label),
     ['Primary', 'Quiet'],
   );
+  assert.deepEqual(button?.variants[1]?.props, { story: 'Quiet' });
   assert.ok(graph.motionPresets.some((preset) => preset.duration === 160));
   assert.ok(graph.themes.some((theme) => theme.id === 'dark'));
+  assert.ok(
+    graph.tokenUsages.some((usage) => usage.tokenName === '--accent' && usage.kind === 'reference'),
+  );
+  assert.ok(
+    graph.tokenUsages.some((usage) => usage.tokenName === '--space-3' && usage.kind === 'literal'),
+  );
+  assert.ok(graph.designSystemFindings.some((finding) => finding.kind === 'near-duplicate'));
+  assert.ok(
+    graph.designSystemFindings.some(
+      (finding) => finding.kind === 'literal-drift' && finding.suggestedTokenId,
+    ),
+  );
 });
 
 test('prefers configured viewport and state definitions', async () => {

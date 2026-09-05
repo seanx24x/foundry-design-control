@@ -95,6 +95,72 @@ test('preserves concurrent changes and always leaves valid session JSON', async 
   assert.equal(restored.changeSet.changes.length, 24);
 });
 
+test('isolates, composes, and promotes design branches into review', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'foundry-branches-'));
+  const store = new SessionStore(root);
+  const session = await store.create({
+    projectRoot: '/project',
+    platform: 'web',
+    theme: 'system',
+    breakpoint: 'current',
+    state: 'current',
+  });
+  const id = session.changeSet.sessionId;
+  const target = {
+    id: 'hero',
+    platform: 'web' as const,
+    semanticRole: 'heading',
+    label: 'Hero',
+    componentPath: [],
+    geometry: { x: 0, y: 0, width: 600, height: 120, scale: 1 },
+    locator: { selector: 'h1' },
+    confidence: 'measured' as const,
+    evidence: ['live geometry'],
+  };
+  const change = (property: string, before: number, after: number) => ({
+    target,
+    category: 'layout' as const,
+    property,
+    before,
+    after,
+    unit: 'px',
+    scope: 'instance' as const,
+    context: { breakpoint: 'current', theme: 'current', state: 'current' },
+    confidence: 'measured' as const,
+    evidence: ['computed style'],
+    status: 'draft' as const,
+  });
+
+  let stored = await store.createDesignBranch(id, { name: 'Option A' });
+  const optionA = stored.activeDesignBranchId!;
+  stored = await store.addChange(id, change('width', 600, 640));
+  assert.equal(stored.changeSet.changes.length, 0);
+  assert.equal(stored.designBranches[0]?.changes.length, 1);
+
+  await store.activateDesignBranch(id);
+  stored = await store.createDesignBranch(id, { name: 'Option B' });
+  const optionB = stored.activeDesignBranchId!;
+  stored = await store.addChange(id, change('height', 120, 144));
+  assert.equal(stored.designBranches[0]?.changes[0]?.property, 'width');
+  assert.equal(stored.designBranches[1]?.changes[0]?.property, 'height');
+
+  stored = await store.composeDesignBranch(id, {
+    name: 'Final direction',
+    selections: [
+      { branchId: optionA, changeIds: [stored.designBranches[0]!.changes[0]!.id] },
+      { branchId: optionB, changeIds: [stored.designBranches[1]!.changes[0]!.id] },
+    ],
+  });
+  const finalBranch = stored.activeDesignBranchId!;
+  assert.equal(stored.designBranches.at(-1)?.changes.length, 2);
+
+  stored = await store.promoteDesignBranch(id, finalBranch);
+  assert.equal(stored.activeDesignBranchId, undefined);
+  assert.equal(stored.changeSet.changes.length, 2);
+  assert.ok(stored.changeSet.changes.every((item) => item.status === 'draft'));
+  assert.equal(stored.designBranches.at(-1)?.status, 'chosen');
+});
+
 test('deletes an unapplied change and removes its orphaned operation', async () => {
   const root = await mkdtemp(join(tmpdir(), 'foundry-delete-change-'));
   const store = new SessionStore(root);
@@ -159,6 +225,8 @@ test('persists the design graph and resolves an ambiguous semantic operation', a
     themes: [],
     states: [],
     motionPresets: [],
+    tokenUsages: [],
+    designSystemFindings: [],
     indexedAt: '2026-08-29T00:00:00.000Z',
   });
   let stored = await store.addOperation(id, {
@@ -326,6 +394,8 @@ test('blocks a claim made against a stale project design graph', async () => {
     themes: [],
     states: [],
     motionPresets: [],
+    tokenUsages: [],
+    designSystemFindings: [],
     indexedAt: '2026-08-29T00:00:00.000Z',
   });
   let stored = await store.createApplyRun(session.changeSet.sessionId, {

@@ -696,6 +696,26 @@ form {
   box-shadow: 0 8px 24px rgb(36 92 78 / 18%);
 }
 
+.submit-button[data-story='Quiet'] {
+  color: var(--green-700);
+  background: transparent;
+  border-color: var(--green-700);
+}
+
+.submit-button[data-story='Danger'] {
+  background: #9e2f2f;
+  border-color: #9e2f2f;
+}
+
+.submit-button[data-foundry-state='loading'] {
+  cursor: progress;
+  opacity: 0.72;
+}
+
+.submit-button[data-foundry-state='error'] {
+  box-shadow: 0 0 0 4px #9e2f2f;
+}
+
 .submit-button:active {
   transform: scale(0.99);
 }

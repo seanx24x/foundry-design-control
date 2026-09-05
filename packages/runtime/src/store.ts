@@ -7,6 +7,7 @@ import {
   applyRunSchema,
   changeSetSchema,
   coalesceChanges,
+  designBranchSchema,
   designChangeSchema,
   designOperationSchema,
   projectDesignGraphSchema,
@@ -17,6 +18,7 @@ import {
   type ChangeSet,
   type DesignChange,
   type DesignChangeInput,
+  type DesignBranch,
   type DesignOperation,
   type DesignOperationInput,
   type ProjectDesignGraph,
@@ -30,6 +32,8 @@ export interface StoredSession {
   verifications: VerificationResult[];
   applyRuns: ApplyRun[];
   designGraph: ProjectDesignGraph | null;
+  designBranches: DesignBranch[];
+  activeDesignBranchId?: string;
 }
 
 export interface SessionStoreOptions {
@@ -62,6 +66,10 @@ function applyRunId(): string {
 
 function operationId(): string {
   return `op_${randomUUID().replaceAll('-', '')}`;
+}
+
+function branchId(): string {
+  return `branch_${randomUUID().replaceAll('-', '')}`;
 }
 
 const activeRunStates = new Set<ApplyRunState>([
@@ -179,6 +187,7 @@ export class SessionStore {
       verifications: [],
       applyRuns: [],
       designGraph: null,
+      designBranches: [],
     };
     await this.write(stored);
     return stored;
@@ -196,6 +205,8 @@ export class SessionStore {
           verifications: stored.verifications,
           applyRuns: stored.applyRuns,
           designGraph: stored.designGraph,
+          designBranches: stored.designBranches,
+          activeDesignBranchId: stored.activeDesignBranchId,
         });
       } catch {
         // Ignore incomplete files from interrupted development sessions.
@@ -219,6 +230,8 @@ export class SessionStore {
       ),
       applyRuns: (raw.applyRuns ?? []).map((run) => applyRunSchema.parse(run)),
       designGraph: raw.designGraph ? projectDesignGraphSchema.parse(raw.designGraph) : null,
+      designBranches: (raw.designBranches ?? []).map((branch) => designBranchSchema.parse(branch)),
+      activeDesignBranchId: raw.activeDesignBranchId,
     };
     if (this.recoverExpiredClaims(stored)) await this.write(stored);
     return stored;
@@ -251,9 +264,12 @@ export class SessionStore {
       createdAt: input.createdAt ?? now,
       updatedAt: now,
     });
-    const existing = stored.changeSet.operations.findIndex((item) => item.id === operation.id);
-    if (existing >= 0) stored.changeSet.operations[existing] = operation;
-    else stored.changeSet.operations.push(operation);
+    const branch = stored.designBranches.find((item) => item.id === stored.activeDesignBranchId);
+    const operations = branch?.operations ?? stored.changeSet.operations;
+    const existing = operations.findIndex((item) => item.id === operation.id);
+    if (existing >= 0) operations[existing] = operation;
+    else operations.push(operation);
+    if (branch) branch.updatedAt = now;
     stored.changeSet.updatedAt = now;
     await this.write(stored);
     return stored;
@@ -265,7 +281,10 @@ export class SessionStore {
     selectedMappingId: string,
   ): Promise<StoredSession> {
     const stored = await this.read(id);
-    const operation = stored.changeSet.operations.find((item) => item.id === targetOperationId);
+    const branch = stored.designBranches.find((item) => item.id === stored.activeDesignBranchId);
+    const operations = branch?.operations ?? stored.changeSet.operations;
+    const changes = branch?.changes ?? stored.changeSet.changes;
+    const operation = operations.find((item) => item.id === targetOperationId);
     if (!operation) throw new Error(`Unknown operation: ${targetOperationId}`);
     const mapping = operation.mappingCandidates.find((item) => item.id === selectedMappingId);
     if (!mapping) throw new Error(`Unknown source mapping: ${selectedMappingId}`);
@@ -273,13 +292,14 @@ export class SessionStore {
     operation.selectedMappingId = selectedMappingId;
     operation.status = 'resolved';
     operation.updatedAt = now;
-    for (const change of stored.changeSet.changes) {
+    for (const change of changes) {
       if (change.operationId !== operation.id) continue;
       change.selectedMappingId = selectedMappingId;
       change.confidence = mapping.confidence;
       change.status = change.status === 'unresolved' ? 'draft' : change.status;
       change.updatedAt = now;
     }
+    if (branch) branch.updatedAt = now;
     stored.changeSet.updatedAt = now;
     await this.write(stored);
     return stored;
@@ -299,7 +319,191 @@ export class SessionStore {
         createdAt: input.createdAt ?? now,
         updatedAt: now,
       });
-      stored.changeSet.changes = coalesceChanges([...stored.changeSet.changes, parsed]);
+      const branch = stored.designBranches.find((item) => item.id === stored.activeDesignBranchId);
+      if (branch) {
+        branch.changes = coalesceChanges([...branch.changes, parsed]);
+        branch.updatedAt = now;
+      } else {
+        stored.changeSet.changes = coalesceChanges([...stored.changeSet.changes, parsed]);
+      }
+      stored.changeSet.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async createDesignBranch(
+    id: string,
+    input: { name: string; sourceBranchId?: string },
+  ): Promise<StoredSession> {
+    return this.serializeChangeMutation(id, async () => {
+      const stored = await this.read(id);
+      if (stored.designBranches.filter((branch) => branch.status !== 'archived').length >= 8) {
+        throw new Error('Archive a direction before creating another one.');
+      }
+      const source = input.sourceBranchId
+        ? stored.designBranches.find((branch) => branch.id === input.sourceBranchId)
+        : undefined;
+      if (input.sourceBranchId && !source) {
+        throw new Error(`Unknown design branch: ${input.sourceBranchId}`);
+      }
+      const now = this.nowIso();
+      const operationIds = new Map<string, string>();
+      const operations: DesignOperation[] = (source?.operations ?? stored.changeSet.operations).map(
+        (operation) => {
+          const nextId = operationId();
+          operationIds.set(operation.id, nextId);
+          return { ...operation, id: nextId, changeIds: [], createdAt: now, updatedAt: now };
+        },
+      );
+      const changes = (source?.changes ?? stored.changeSet.changes).map((change) => ({
+        ...change,
+        id: changeId(),
+        operationId: change.operationId ? operationIds.get(change.operationId) : undefined,
+        status: change.status === 'unresolved' ? ('unresolved' as const) : ('draft' as const),
+        createdAt: now,
+        updatedAt: now,
+      }));
+      for (const operation of operations) {
+        operation.changeIds = changes
+          .filter((change) => change.operationId === operation.id)
+          .map((change) => change.id);
+      }
+      const branch = designBranchSchema.parse({
+        id: branchId(),
+        name: input.name.trim(),
+        status: 'exploring',
+        originBranchId: source?.id,
+        changes,
+        operations,
+        createdAt: now,
+        updatedAt: now,
+      });
+      stored.designBranches.push(branch);
+      stored.activeDesignBranchId = branch.id;
+      stored.changeSet.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async activateDesignBranch(id: string, targetBranchId?: string): Promise<StoredSession> {
+    return this.serializeChangeMutation(id, async () => {
+      const stored = await this.read(id);
+      if (
+        targetBranchId &&
+        !stored.designBranches.some(
+          (branch) => branch.id === targetBranchId && branch.status !== 'archived',
+        )
+      ) {
+        throw new Error(`Unknown design branch: ${targetBranchId}`);
+      }
+      stored.activeDesignBranchId = targetBranchId;
+      stored.changeSet.updatedAt = this.nowIso();
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async composeDesignBranch(
+    id: string,
+    input: { name: string; selections: Array<{ branchId: string; changeIds: string[] }> },
+  ): Promise<StoredSession> {
+    return this.serializeChangeMutation(id, async () => {
+      const stored = await this.read(id);
+      const now = this.nowIso();
+      const selected: DesignChange[] = [];
+      for (const selection of input.selections) {
+        const branch = stored.designBranches.find((item) => item.id === selection.branchId);
+        if (!branch) throw new Error(`Unknown design branch: ${selection.branchId}`);
+        for (const selectedId of selection.changeIds) {
+          const change = branch.changes.find((item) => item.id === selectedId);
+          if (!change) throw new Error(`Unknown branch change: ${selectedId}`);
+          selected.push({
+            ...change,
+            id: changeId(),
+            operationId: undefined,
+            status: change.status === 'unresolved' ? 'unresolved' : 'draft',
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+      }
+      if (!selected.length) throw new Error('Select at least one decision to combine.');
+      const branch = designBranchSchema.parse({
+        id: branchId(),
+        name: input.name.trim(),
+        status: 'exploring',
+        changes: coalesceChanges(selected),
+        operations: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      stored.designBranches.push(branch);
+      stored.activeDesignBranchId = branch.id;
+      stored.changeSet.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async updateDesignBranch(
+    id: string,
+    targetBranchId: string,
+    input: { name?: string; status?: DesignBranch['status']; rejectionReason?: string },
+  ): Promise<StoredSession> {
+    return this.serializeChangeMutation(id, async () => {
+      const stored = await this.read(id);
+      const branch = stored.designBranches.find((item) => item.id === targetBranchId);
+      if (!branch) throw new Error(`Unknown design branch: ${targetBranchId}`);
+      if (input.name !== undefined) branch.name = input.name.trim();
+      if (input.status !== undefined) branch.status = input.status;
+      if (input.rejectionReason !== undefined) {
+        branch.rejectionReason = input.rejectionReason.trim() || undefined;
+      }
+      branch.updatedAt = this.nowIso();
+      if (branch.status === 'archived' && stored.activeDesignBranchId === branch.id) {
+        stored.activeDesignBranchId = undefined;
+      }
+      stored.changeSet.updatedAt = branch.updatedAt;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async promoteDesignBranch(id: string, targetBranchId: string): Promise<StoredSession> {
+    return this.serializeChangeMutation(id, async () => {
+      const stored = await this.read(id);
+      if (stored.applyRuns.some((run) => activeRunStates.has(run.state))) {
+        throw new Error('Finish or stop the active Apply run before choosing another direction.');
+      }
+      const branch = stored.designBranches.find((item) => item.id === targetBranchId);
+      if (!branch) throw new Error(`Unknown design branch: ${targetBranchId}`);
+      const now = this.nowIso();
+      const operationIds = new Map<string, string>();
+      stored.changeSet.operations = branch.operations.map((operation) => {
+        const nextId = operationId();
+        operationIds.set(operation.id, nextId);
+        return { ...operation, id: nextId, changeIds: [], updatedAt: now };
+      });
+      stored.changeSet.changes = branch.changes.map((change) => ({
+        ...change,
+        id: changeId(),
+        operationId: change.operationId ? operationIds.get(change.operationId) : undefined,
+        status: change.status === 'unresolved' ? 'unresolved' : 'draft',
+        updatedAt: now,
+      }));
+      for (const operation of stored.changeSet.operations) {
+        operation.changeIds = stored.changeSet.changes
+          .filter((change) => change.operationId === operation.id)
+          .map((change) => change.id);
+      }
+      for (const item of stored.designBranches) {
+        if (item.id === branch.id) item.status = 'chosen';
+        else if (item.status === 'chosen') item.status = 'exploring';
+      }
+      branch.updatedAt = now;
+      stored.activeDesignBranchId = undefined;
       stored.changeSet.updatedAt = now;
       await this.write(stored);
       return stored;
@@ -312,10 +516,14 @@ export class SessionStore {
     status: DesignChange['status'],
   ): Promise<StoredSession> {
     const stored = await this.read(id);
-    const target = stored.changeSet.changes.find((change) => change.id === targetChangeId);
+    const branch = stored.designBranches.find((item) => item.id === stored.activeDesignBranchId);
+    const target = (branch?.changes ?? stored.changeSet.changes).find(
+      (change) => change.id === targetChangeId,
+    );
     if (!target) throw new Error(`Unknown change: ${targetChangeId}`);
     target.status = status;
     target.updatedAt = new Date().toISOString();
+    if (branch) branch.updatedAt = target.updatedAt;
     stored.changeSet.updatedAt = target.updatedAt;
     await this.write(stored);
     return stored;
@@ -327,11 +535,12 @@ export class SessionStore {
   ): Promise<{ stored: StoredSession; removedChange: DesignChange }> {
     return this.serializeChangeMutation(id, async () => {
       const stored = await this.read(id);
-      const targetIndex = stored.changeSet.changes.findIndex(
-        (change) => change.id === targetChangeId,
-      );
+      const branch = stored.designBranches.find((item) => item.id === stored.activeDesignBranchId);
+      const changes = branch?.changes ?? stored.changeSet.changes;
+      let operations = branch?.operations ?? stored.changeSet.operations;
+      const targetIndex = changes.findIndex((change) => change.id === targetChangeId);
       if (targetIndex < 0) throw new Error(`Unknown change: ${targetChangeId}`);
-      const target = stored.changeSet.changes[targetIndex]!;
+      const target = changes[targetIndex]!;
       if (target.status === 'applied') {
         throw new Error('Applied changes cannot be deleted from review.');
       }
@@ -339,17 +548,15 @@ export class SessionStore {
         throw new Error('Changes attached to an apply run cannot be deleted.');
       }
 
-      stored.changeSet.changes.splice(targetIndex, 1);
+      changes.splice(targetIndex, 1);
       if (target.operationId) {
-        const operationStillUsed = stored.changeSet.changes.some(
+        const operationStillUsed = changes.some(
           (change) => change.operationId === target.operationId,
         );
         if (!operationStillUsed) {
-          stored.changeSet.operations = stored.changeSet.operations.filter(
-            (operation) => operation.id !== target.operationId,
-          );
+          operations = operations.filter((operation) => operation.id !== target.operationId);
         } else {
-          stored.changeSet.operations = stored.changeSet.operations.map((operation) =>
+          operations = operations.map((operation) =>
             operation.id === target.operationId
               ? {
                   ...operation,
@@ -358,11 +565,14 @@ export class SessionStore {
               : operation,
           );
         }
+        if (branch) branch.operations = operations;
+        else stored.changeSet.operations = operations;
       }
       stored.verifications = stored.verifications.filter(
         (verification) => verification.changeId !== targetChangeId,
       );
       stored.changeSet.updatedAt = this.nowIso();
+      if (branch) branch.updatedAt = stored.changeSet.updatedAt;
       await this.write(stored);
       return { stored, removedChange: target };
     });
@@ -687,6 +897,8 @@ export class SessionStore {
       verifications: stored.verifications.map((result) => verificationResultSchema.parse(result)),
       applyRuns: stored.applyRuns.map((run) => applyRunSchema.parse(run)),
       designGraph: stored.designGraph ? projectDesignGraphSchema.parse(stored.designGraph) : null,
+      designBranches: stored.designBranches.map((branch) => designBranchSchema.parse(branch)),
+      activeDesignBranchId: stored.activeDesignBranchId,
     };
     const target = join(this.root, `${stored.changeSet.sessionId}.json`);
     const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;

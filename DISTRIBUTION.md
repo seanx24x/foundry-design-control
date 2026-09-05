@@ -30,11 +30,19 @@ npx foundry-design install-agent codex
 
 The repository includes an Agent Plugin manifest, Codex interface metadata, the Foundry skill, and its MCP connection for marketplace validation. A newly installed or updated plugin becomes available in a new Codex task.
 
+Foundry's public OpenAI directory submission is skills-first because the production MCP bridge is intentionally local and loopback-only. Build the upload and review packet with:
+
+```bash
+pnpm openai:submission
+```
+
+See [the OpenAI submission README](submission/openai/README.md) for the listing copy, test cases, portal requirements, and the boundary for a future MCP-backed listing.
+
 ## Cursor
 
 Use the current one-click MCP connection:
 
-[Add Foundry to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=foundry-design-control&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9ubGluZSIsImZvdW5kcnktZGVzaWduLW1jcC1zZXJ2ZXJAMC4yLjAtYmV0YS4xNSJdLCJlbnYiOnsiRk9VTkRSWV9ERVNJR05fUlVOVElNRV9VUkwiOiJodHRwOi8vMTI3LjAuMC4xOjQzODcifX0%3D)
+[Add Foundry to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=foundry-design-control&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9ubGluZSIsImZvdW5kcnktZGVzaWduLW1jcC1zZXJ2ZXJAMC4yLjAtYmV0YS4xNiJdLCJlbnYiOnsiRk9VTkRSWV9ERVNJR05fUlVOVElNRV9VUkwiOiJodHRwOi8vMTI3LjAuMC4xOjQzODcifX0%3D)
 
 For the complete plugin during local review, copy or link `plugins/foundry-design-control` into `~/.cursor/plugins/local/foundry-design-control`, reload Cursor, and confirm the Foundry skill, command, hook, and MCP server in Customize.
 
@@ -70,6 +78,6 @@ The release workflow can publish the seven beta packages with npm trusted publis
 
 - Cursor marketplace submission: `https://cursor.com/marketplace/publish`
 - Anthropic plugin submission: `https://claude.ai/settings/plugins/submit`
-- Codex public marketplace submission follows the current OpenAI plugin submission process.
+- OpenAI Plugin Directory submission: `https://platform.openai.com/apps-manage`
 
 Do not describe a plugin as marketplace-installed until its listing has passed that host's review. The npm installer is the supported public route until then.

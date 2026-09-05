@@ -32,6 +32,7 @@ import {
 import {
   candidatesForElement,
   matchingTokens,
+  rankedProjectTokens,
   type BrowserDesignToken,
   type BrowserMappingCandidate,
 } from './semantic.js';
@@ -60,6 +61,16 @@ import {
   type FoundryWorkspaceState,
   type InterfaceThemePreference,
 } from './workspace.js';
+import {
+  availableWorkshopScopes,
+  componentWorkshopStates,
+  normalizeWorkshopComponents,
+  sourceLabel as workshopSourceLabel,
+  type ComponentWorkshopDefinition,
+  type ComponentWorkshopScope,
+  type ComponentWorkshopState,
+  type ComponentWorkshopVariant,
+} from './component-workshop.js';
 import {
   blurAmount,
   composeShadowEffects,
@@ -319,7 +330,7 @@ const PANEL_CSS = `
   ${FOUNDRY_UI_FOUNDATION_CSS}
   @font-face { font-family:"Foundry Inter";src:url("http://127.0.0.1:4387/fonts/inter.woff2") format("woff2");font-style:normal;font-weight:100 900;font-display:swap; }
   @font-face { font-family:"Foundry JetBrains Mono";src:url("http://127.0.0.1:4387/fonts/jetbrains-mono.woff2") format("woff2");font-style:normal;font-weight:100 800;font-display:swap; }
-  :host { all:initial; color-scheme:dark; --fdc-ink:#f0f1f3; --fdc-paper:#141416; --fdc-surface:#1c1c1f; --fdc-subtle:#242428; --fdc-elevated:#29292e; --fdc-line:#303035; --fdc-signal:var(--fdc-canvas-accent); --fdc-signal-soft:#172d50; --fdc-component:#9b87f5; --fdc-component-soft:#28233d; --fdc-muted:#9a9aa2; --fdc-font:var(--fdc-font-sans); font-family:var(--fdc-font); color:var(--fdc-ink); }
+  :host { all:initial; color-scheme:dark; --fdc-ink:#f0f1f3; --fdc-paper:#141416; --fdc-surface:#1c1c1f; --fdc-subtle:#242428; --fdc-elevated:#29292e; --fdc-line:#303035; --fdc-signal:var(--fdc-canvas-accent); --fdc-signal-soft:#172d50; --fdc-component:var(--fdc-ink); --fdc-component-soft:var(--fdc-subtle); --fdc-muted:#9a9aa2; --fdc-font:var(--fdc-font-sans); font-family:var(--fdc-font); color:var(--fdc-ink); }
   *,*::before,*::after { box-sizing:border-box;font-family:inherit; }
   button,select,input { font:inherit; }
   button:focus-visible,select:focus-visible,input:focus-visible { outline:4px solid var(--fdc-signal);outline-offset:4px; }
@@ -332,7 +343,7 @@ const PANEL_CSS = `
   .brand { flex:1;display:flex;align-items:center;min-width:0; }
   .brand-copy { display:flex;align-items:baseline;gap:4px; }.brand-copy b { font-size:12px;line-height:1;font-weight:550;letter-spacing:-.02em; }.brand-copy span { color:var(--fdc-muted);font:400 12px/1 var(--fdc-font); }
   .session-status { flex:none;margin-left:8px;display:flex;align-items:center;gap:4px;padding:4px 8px;border:0;color:#236c59;background:#eef8f4;border-radius:1000px;font:500 12px/1 var(--fdc-font);cursor:pointer; }.session-status i { width:4px;height:4px;background:#2ca67f;border-radius:50%; }.session-status.saving { color:#6b570f;background:#fff8d8; }.session-status.saving i { background:#d5a91d;animation:fdc-pulse 1s ease-in-out infinite; }.session-status.error,.session-status.offline { color:#8b4d3d;background:#faece7; }.session-status.error i,.session-status.offline i { background:#d16d51; }.session-status.saved { color:#236c59;background:#eef8f4; }.status-popover { position:absolute;z-index:2;top:40px;right:40px;width:240px;padding:12px;border:1px solid var(--fdc-line);border-radius:8px;background:white;box-shadow:0 12px 28px rgb(0 0 0 / 14%); }.status-popover[hidden] { display:none; }.status-popover strong { display:block;font-size:12px;font-weight:550; }.status-popover span,.status-popover code { display:block;margin-top:4px;overflow:hidden;text-overflow:ellipsis;color:var(--fdc-muted);font:400 8px/1.45 var(--fdc-font);white-space:nowrap; }.status-popover button { width:100%;height:28px;margin-top:8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:var(--fdc-ink);font-size:8px;cursor:pointer; }
-  .top-identity>.close { flex:none;margin-left:4px; }.top-actions { min-height:40px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));align-items:center;padding:4px 8px;border-top:1px solid var(--fdc-line);background:var(--fdc-surface); }.top-actions .icon-button { justify-self:center; }.icon-button { width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.icon-button:hover { background:var(--fdc-subtle);color:var(--fdc-ink); }.icon-button.active { color:#0761d1;background:#edf6ff; }.icon-button:disabled { opacity:.35;cursor:not-allowed; }.icon-button:disabled:hover { color:var(--fdc-muted);background:transparent; }
+  .top-identity>.close { flex:none;margin-left:4px; }.top-actions { min-height:40px;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));align-items:center;padding:4px 8px;border-top:1px solid var(--fdc-line);background:var(--fdc-surface); }.top-actions .icon-button { justify-self:center; }.icon-button { width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.icon-button:hover { background:var(--fdc-subtle);color:var(--fdc-ink); }.icon-button.active { color:#0761d1;background:#edf6ff; }.icon-button:disabled { opacity:.35;cursor:not-allowed; }.icon-button:disabled:hover { color:var(--fdc-muted);background:transparent; }
   .selection { position:relative;padding:16px;background:var(--fdc-surface);border-bottom:1px solid var(--fdc-line); }.selection::before { content:"";position:absolute;top:12px;left:0;width:4px;height:0;background:var(--fdc-signal);border-radius:0 4px 4px 0;transition:height .18s ease; }.panel.has-selection .selection::before { height:24px; }.selection-heading { display:flex;align-items:center;justify-content:space-between;margin-bottom:8px; }.selection-kind { max-width:220px;overflow:hidden;text-overflow:ellipsis;padding:4px 8px;color:#4d4d4d;background:var(--fdc-subtle);border-radius:4px;font:500 12px/1 var(--fdc-font);text-transform:uppercase;letter-spacing:.025em;white-space:nowrap; }.selection-state { color:var(--fdc-muted);font:450 12px/1 var(--fdc-font); }.panel.has-selection .selection-state { color:#0761d1; }.selection strong { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;line-height:1.3;font-weight:550;letter-spacing:-.025em; }.selection code { display:block;margin-top:4px;overflow:hidden;text-overflow:ellipsis;color:var(--fdc-muted);font:400 12px/1.45 var(--fdc-font);white-space:nowrap; }.selection-hint { display:block;margin-top:8px;color:#858585;font:400 12px/1.45 var(--fdc-font); }.selection-stats { display:flex;gap:4px;margin-top:12px; }.selection-stats[hidden] { display:none; }.selection-stats span { padding:4px 8px;color:#4d4d4d;background:var(--fdc-subtle);border-radius:4px;font:400 12px/1 var(--fdc-font); }.selection-stats span:first-child { color:#0761d1;background:#edf6ff; }.selection.selected-flash strong { animation:fdc-selection-title .2s ease-out; }
   .scope { display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 16px;background:var(--fdc-surface);border-bottom:1px solid var(--fdc-line); }.scope label { display:flex;flex-direction:column;gap:8px;color:var(--fdc-muted);font:500 12px/1.2 var(--fdc-font); }.scope select { width:100%;height:36px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-surface);color:var(--fdc-ink);font:400 12px/1 var(--fdc-font);text-transform:none;letter-spacing:0;outline:none;cursor:pointer; }
   .fdc-select { position:relative;min-width:0;min-height:32px;display:flex;flex:1;align-self:stretch; }.fdc-select[hidden] { display:none; }.fdc-select>select { position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;opacity:0!important;pointer-events:none!important; }.fdc-select-trigger { width:100%;min-width:0;height:36px;display:grid;grid-template-columns:minmax(0,1fr) 12px;align-items:center;gap:8px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-paper);font:400 12px/1 var(--fdc-font-mono);text-align:left;cursor:pointer; }.fdc-select-trigger:hover { border-color:var(--fdc-line-strong);background:var(--fdc-subtle); }.fdc-select-trigger[aria-expanded="true"],.fdc-select-trigger:focus-visible { border-color:var(--fdc-signal);box-shadow:0 0 0 4px color-mix(in srgb,var(--fdc-signal) 18%,transparent);outline:0; }.fdc-select-trigger:disabled { opacity:.4;cursor:not-allowed; }.fdc-select-value { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.fdc-select-trigger svg { width:12px;height:12px;color:var(--fdc-muted); }.fdc-select-menu { position:fixed;z-index:2147483647;overflow-x:hidden;overflow-y:auto;padding:4px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:rgb(28 28 31 / 98%);box-shadow:0 16px 36px rgb(0 0 0 / 34%);backdrop-filter:blur(16px);pointer-events:auto; }.fdc-select-menu button { width:100%;min-height:36px;display:grid;grid-template-columns:minmax(0,1fr) 12px;align-items:center;gap:8px;padding:0 8px;border:0;border-radius:4px;color:var(--fdc-muted);background:transparent;font:400 12px/1 var(--fdc-font-mono);text-align:left;cursor:pointer; }.fdc-select-menu button:hover,.fdc-select-menu button:focus-visible { color:var(--fdc-ink);background:var(--fdc-subtle);outline:0; }.fdc-select-menu button[aria-selected="true"] { color:#9ec5ff;background:var(--fdc-signal-soft); }.fdc-select-menu button svg { width:12px;height:12px; }.control-field .fdc-select { min-height:32px; }.control-field .fdc-select-trigger { height:32px;border:0;border-radius:4px;background:transparent;box-shadow:none; }.effect-card-head .fdc-select { min-height:32px; }.effect-card-head .fdc-select-trigger { height:32px;padding-left:0;border:0;background:transparent;box-shadow:none;font-family:var(--fdc-font); }.workbench-controls .fdc-select { width:112px;flex:none;align-self:center; }.workbench-controls .fdc-select-trigger { height:32px; }.fdc-canvas-variant { position:fixed;z-index:2147483645;width:180px;min-height:32px;pointer-events:auto; }.fdc-canvas-variant .fdc-select-trigger { height:32px;color:#9ec5ff;background:var(--fdc-signal-soft);border-color:var(--fdc-signal); }
@@ -360,7 +371,7 @@ const PANEL_CSS = `
   .selection-path { display:flex;align-items:center;gap:4px;margin-top:8px;min-width:0; }.selection-path button { min-width:0;height:24px;display:flex;align-items:center;gap:4px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:var(--fdc-paper);color:#555;font-size:8px;cursor:pointer; }.selection-path button:hover { color:var(--fdc-ink);border-color:#d2d2d2;background:white; }.selection-path button:disabled { opacity:.4;cursor:default; }.selection-path svg { width:12px;height:12px; }.selection-path .path-name { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
   .selection-path[hidden] { display:none; }
   .layers-panel { position:fixed;z-index:2147483646;top:12px;left:12px;width:252px;max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--fdc-line);border-radius:12px;background:var(--fdc-surface);box-shadow:0 1px 4px rgb(0 0 0 / 5%),0 12px 28px rgb(0 0 0 / 10%);pointer-events:auto; }.layers-panel[hidden] { display:none; }.layers-head { min-height:44px;display:flex;flex:none;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line); }.layers-head svg { width:16px;height:16px; }.layers-head strong { font-size:12px;font-weight:550; }.layers-head span { color:var(--fdc-muted);font-size:8px; }.layers-head .icon-button { margin-left:auto; }.layers-search { flex:none;padding:8px;border-bottom:1px solid var(--fdc-line);background:var(--fdc-paper); }.layers-search input { width:100%;height:32px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:var(--fdc-ink);font-size:12px;outline:none; }.layers-search input:focus { border-color:var(--fdc-signal);box-shadow:0 0 0 4px rgb(0 112 243 / 10%); }.layer-tree { min-height:120px;overflow:auto;padding:4px; }.layer-row { width:100%;height:32px;display:grid;grid-template-columns:16px 16px minmax(0,1fr) auto;align-items:center;gap:4px;padding:0 8px 0 calc(8px + var(--layer-depth) * 12px);border:0;border-radius:4px;background:transparent;color:#474747;text-align:left;cursor:pointer; }.layer-row:hover { background:var(--fdc-subtle); }.layer-row.selected { color:#075fc5;background:#eaf3ff; }.layer-row .chevron,.layer-row .layer-icon { width:12px;height:12px;color:#8a8a8a; }.layer-row .layer-label { overflow:hidden;text-overflow:ellipsis;font-size:12px;white-space:nowrap; }.layer-row .layer-meta { padding:4px 4px;border-radius:4px;background:#f0f0f0;color:#747474;font-size:8px;text-transform:uppercase; }.layer-row.selected .layer-meta { color:#075fc5;background:#d8e9ff; }.layers-empty { padding:36px 20px;color:var(--fdc-muted);font-size:12px;line-height:1.5;text-align:center; }
-  .layers-switch { display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-bottom:1px solid var(--fdc-line);background:var(--fdc-paper); }.layers-switch button { min-width:0;height:28px;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 8px;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);font-size:12px;cursor:pointer; }.layers-switch button:hover { color:var(--fdc-ink);background:white; }.layers-switch button.active { color:var(--fdc-ink);background:white;box-shadow:0 0 0 1px var(--fdc-line),0 1px 4px rgb(0 0 0 / 5%); }.layers-switch button span { min-width:16px;height:16px;display:grid;place-items:center;padding:0 4px;border-radius:1000px;background:var(--fdc-subtle);color:#747474;font-size:8px; }.layers-switch button[data-layer-view="components"].active { color:#5f46bf; }.layers-switch button[data-layer-view="components"].active span { color:#5f46bf;background:var(--fdc-component-soft); }.component-list { display:grid;gap:4px;padding:4px; }.component-card { overflow:hidden;border:1px solid var(--fdc-line);border-radius:8px;background:white; }.component-card:hover { border-color:#d7d0f3;box-shadow:0 4px 8px rgb(52 38 110 / 6%); }.component-card.selected { border-color:#c8bdf1;background:#fbfaff;box-shadow:0 0 0 4px rgb(114 87 217 / 8%); }.component-main { width:100%;min-height:52px;display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px 8px;border:0;background:transparent;color:var(--fdc-ink);text-align:left;cursor:pointer; }.component-main:disabled { cursor:default; }.component-mark { width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:var(--fdc-component);background:var(--fdc-component-soft); }.component-mark svg { width:16px;height:16px; }.component-copy { min-width:0; }.component-copy strong,.component-copy span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-copy strong { font-size:12px;font-weight:550; }.component-copy span { margin-top:4px;color:var(--fdc-muted);font-size:8px; }.component-status { display:flex;flex-direction:column;align-items:flex-end;gap:4px; }.component-status span { padding:4px 4px;border-radius:1000px;color:#5f46bf;background:var(--fdc-component-soft);font-size:8px;white-space:nowrap; }.component-status small { color:#8b8b8b;font-size:8px;white-space:nowrap; }.component-variants { display:flex;gap:4px;overflow:hidden;padding:0 8px 8px 44px; }.component-variants span { max-width:88px;overflow:hidden;text-overflow:ellipsis;padding:4px 4px;border:1px solid #e6e1f7;border-radius:4px;color:#66598c;background:#faf9ff;font-size:8px;white-space:nowrap; }
+  .layers-switch { display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-bottom:1px solid var(--fdc-line);background:var(--fdc-paper); }.layers-switch button { min-width:0;height:28px;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 8px;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);font-size:12px;cursor:pointer; }.layers-switch button:hover { color:var(--fdc-ink);background:white; }.layers-switch button.active { color:var(--fdc-ink);background:white;box-shadow:0 0 0 1px var(--fdc-line),0 1px 4px rgb(0 0 0 / 5%); }.layers-switch button span { min-width:16px;height:16px;display:grid;place-items:center;padding:0 4px;border-radius:1000px;background:var(--fdc-subtle);color:#747474;font-size:8px; }.layers-switch button[data-layer-view="components"].active { color:var(--fdc-ink); }.layers-switch button[data-layer-view="components"].active span { color:var(--fdc-ink);background:var(--fdc-component-soft); }.component-list { display:grid;gap:4px;padding:4px; }.component-card { overflow:hidden;border:1px solid var(--fdc-line);border-radius:8px;background:white; }.component-card:hover { border-color:var(--fdc-line-strong);box-shadow:0 4px 8px rgb(0 0 0 / 6%); }.component-card.selected { border-color:var(--fdc-ink);background:var(--fdc-subtle);box-shadow:0 0 0 4px rgb(0 0 0 / 8%); }.component-main { width:100%;min-height:52px;display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px 8px;border:0;background:transparent;color:var(--fdc-ink);text-align:left;cursor:pointer; }.component-main:disabled { cursor:default; }.component-mark { width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:var(--fdc-component);background:var(--fdc-component-soft); }.component-mark svg { width:16px;height:16px; }.component-copy { min-width:0; }.component-copy strong,.component-copy span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-copy strong { font-size:12px;font-weight:550; }.component-copy span { margin-top:4px;color:var(--fdc-muted);font-size:8px; }.component-status { display:flex;flex-direction:column;align-items:flex-end;gap:4px; }.component-status span { padding:4px 4px;border-radius:1000px;color:var(--fdc-ink);background:var(--fdc-component-soft);font-size:8px;white-space:nowrap; }.component-status small { color:#8b8b8b;font-size:8px;white-space:nowrap; }.component-variants { display:flex;gap:4px;overflow:hidden;padding:0 8px 8px 44px; }.component-variants span { max-width:88px;overflow:hidden;text-overflow:ellipsis;padding:4px 4px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-muted);background:var(--fdc-paper);font-size:8px;white-space:nowrap; }
   .layer-tree { position:relative;scrollbar-gutter:stable; }.layer-selection-glide { position:absolute;z-index:0;top:0;right:4px;left:4px;height:32px;border:1px solid rgb(72 132 220 / 22%);border-radius:8px;background:var(--fdc-signal-soft);transform:translateY(var(--layer-glide-y));transition:transform .24s cubic-bezier(.16,1,.3,1),height .18s cubic-bezier(.16,1,.3,1);pointer-events:none; }.layer-row { position:relative;z-index:1;grid-template-columns:16px minmax(0,1fr);gap:1px;padding-right:4px;cursor:default; }.layer-row.entering { animation:layer-row-enter .22s cubic-bezier(.16,1,.3,1) both;animation-delay:min(calc(var(--layer-position) * 18ms),90ms); }.layer-row.selected { background:transparent; }.layer-row.dragging { opacity:.45; }.layer-row.drop-target { box-shadow:inset 0 4px 0 var(--fdc-signal); }.layer-branch { position:absolute;z-index:-1;top:-1px;bottom:-1px;left:var(--layer-branch-left);width:1px;background:var(--fdc-line);transform-origin:top;animation:layer-branch-draw .28s cubic-bezier(.16,1,.3,1) both;pointer-events:none; }.layer-spacer { width:1px;pointer-events:none; }.layer-toggle { width:16px;height:28px;display:grid;place-items:center;padding:0;border:0;background:transparent;color:#858585;cursor:pointer;transition:color .16s ease; }.layer-toggle:hover { color:var(--fdc-ink); }.layer-toggle:disabled { visibility:hidden; }.layer-toggle svg { width:12px;height:12px;transition:transform .24s cubic-bezier(.16,1,.3,1); }.layer-select { min-width:0;height:28px;display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:4px;padding:0 4px;border:0;border-radius:4px;background:transparent;color:inherit;text-align:left;cursor:pointer;outline:none; }.layer-select:focus-visible { box-shadow:inset 0 0 0 1px var(--fdc-signal); }.layer-select:active .layer-icon { transform:scale(.88); }.layer-icon { transition:color .16s ease,transform .16s cubic-bezier(.16,1,.3,1); }@keyframes layer-row-enter { from { opacity:0;transform:translateY(-4px); } to { opacity:1;transform:translateY(0); } }@keyframes layer-branch-draw { from { opacity:0;transform:scaleY(0); } to { opacity:1;transform:scaleY(1); } }
   .health-panel { position:fixed;z-index:2147483646;top:12px;left:12px;width:304px;max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--fdc-line);border-radius:12px;background:var(--fdc-surface);box-shadow:0 1px 4px rgb(0 0 0 / 5%),0 12px 28px rgb(0 0 0 / 10%);pointer-events:auto; }.health-panel[hidden] { display:none; }.health-head { min-height:48px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line); }.health-head>svg { width:16px;height:16px; }.health-head strong { font-size:12px;font-weight:550; }.health-head .icon-button { margin-left:auto; }.health-summary { display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;padding:12px;border-bottom:1px solid var(--fdc-line); }.health-score { width:56px;height:56px;display:grid;place-items:center;border-radius:50%;background:conic-gradient(var(--score-color) calc(var(--score) * 1%),#ececec 0); }.health-score::before { content:"";grid-area:1/1;width:44px;height:44px;border-radius:50%;background:white; }.health-score strong { z-index:1;grid-area:1/1;font-size:16px;font-weight:600; }.health-summary-copy { min-width:0;align-self:center; }.health-summary-copy strong { display:block;font-size:12px;font-weight:550; }.health-summary-copy span { display:block;margin-top:4px;color:var(--fdc-muted);font-size:8px;line-height:1.4; }.health-filters { display:flex;gap:4px;padding:8px 8px;border-bottom:1px solid var(--fdc-line);background:var(--fdc-paper); }.health-filters button { min-height:28px;padding:0 8px;border:1px solid transparent;border-radius:4px;background:transparent;color:#666;font-size:8px;cursor:pointer; }.health-filters button:hover,.health-filters button.active { border-color:var(--fdc-line);background:white;color:var(--fdc-ink); }.health-list { min-height:120px;overflow:auto;padding:8px; }.health-card { padding:12px;border:1px solid var(--fdc-line);border-radius:8px;background:white; }.health-card+.health-card { margin-top:8px; }.health-card-top { display:flex;align-items:center;gap:8px; }.health-severity { width:8px;height:8px;flex:none;border-radius:50%;background:#a3a3a3; }.health-severity.high { background:#d15d43; }.health-severity.medium { background:#d69b3c; }.health-severity.low { background:#4b84cb; }.health-card-top strong { min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:550;white-space:nowrap; }.health-card-top span:last-child { margin-left:auto;color:var(--fdc-muted);font-size:8px;text-transform:capitalize; }.health-card p { margin:8px 0 0;color:#5d5d5d;font-size:8px;line-height:1.45; }.health-evidence { margin-top:8px;padding:8px;border-radius:4px;background:var(--fdc-paper);color:#777;font-size:8px;line-height:1.4; }.health-actions { display:flex;gap:4px;margin-top:8px; }.health-actions button { min-height:28px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#555;font-size:8px;cursor:pointer; }.health-actions button:hover { border-color:#c8c8c8;color:var(--fdc-ink); }.health-actions .health-fix { margin-left:auto;color:white;border-color:var(--fdc-ink);background:var(--fdc-ink); }.health-actions .health-fix.previewed { color:#23715c;border-color:#bcded2;background:#edf8f4;cursor:default; }.health-actions .health-fix:disabled { opacity:1; }.health-actions .health-ignore { padding:0 8px;color:#888;border-color:transparent; }.health-footer { display:flex;align-items:center;gap:4px;padding:8px;border-top:1px solid var(--fdc-line); }.health-footer button { min-height:32px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#555;font-size:8px;cursor:pointer; }.health-footer .health-rescan { flex:1;color:white;border-color:var(--fdc-ink);background:var(--fdc-ink); }.health-empty { padding:36px 20px;text-align:center;color:var(--fdc-muted);font-size:12px;line-height:1.5; }.health-empty svg { display:block;width:24px;height:24px;margin:0 auto 12px;color:#2b9a76; }
   .tool-select:disabled { color:#b6b6b6;cursor:default; }.tool-select:disabled:hover { background:transparent; }
@@ -378,7 +389,8 @@ const PANEL_CSS = `
   .library-panel { position:fixed;z-index:2147483647;top:12px;right:352px;width:300px;max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--fdc-line);border-radius:12px;background:white;box-shadow:0 12px 32px rgb(0 0 0 / 14%);pointer-events:auto; }.library-panel[hidden] { display:none; }.library-head { min-height:48px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line); }.library-head svg { width:16px;height:16px; }.library-head strong { font-size:12px;font-weight:550; }.library-head span { color:var(--fdc-muted);font-size:8px; }.library-head .icon-button { margin-left:auto; }.library-actions { display:flex;gap:4px;padding:8px;border-bottom:1px solid var(--fdc-line); }.library-actions button { min-height:32px;display:flex;align-items:center;justify-content:center;gap:8px;flex:1;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#4d4d4d;font-size:8px;cursor:pointer; }.library-actions button:disabled { opacity:.45;cursor:not-allowed; }.library-actions svg { width:12px;height:12px; }.library-body { min-height:120px;overflow:auto;padding:8px; }.library-section+.library-section { margin-top:12px; }.library-section-head { display:flex;align-items:center;margin:0 4px 8px;color:#666;font-size:8px;text-transform:uppercase;letter-spacing:.04em; }.library-section-head span { margin-left:auto;text-transform:none;letter-spacing:0; }.memory-card { padding:8px;border:1px solid var(--fdc-line);border-radius:8px;background:white; }.memory-card+.memory-card { margin-top:4px; }.memory-card-top { display:flex;align-items:center;gap:8px; }.memory-card-top strong { min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:550;white-space:nowrap; }.memory-status { width:8px;height:8px;flex:none;border-radius:50%;background:#2ca67f; }.memory-card p { margin:4px 0 0;color:var(--fdc-muted);font-size:8px;line-height:1.45; }.memory-card-actions { display:flex;gap:4px;margin-top:8px; }.memory-card-actions button { height:28px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#555;font-size:8px;cursor:pointer; }.memory-card-actions button:first-child { flex:1;color:white;border-color:var(--fdc-ink);background:var(--fdc-ink); }.library-empty { padding:20px 12px;color:var(--fdc-muted);font-size:8px;line-height:1.5;text-align:center; }
   .review-visual { display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px; }.review-sample { position:relative;min-height:36px;display:grid;place-items:center;overflow:hidden;border:1px solid var(--fdc-line);border-radius:4px;background:#fafafa;color:#777;font-size:8px; }.review-sample::after { content:attr(data-label);position:absolute;left:4px;bottom:4px;padding:4px 4px;border-radius:4px;background:rgb(255 255 255 / 84%);color:#777;font-size:8px; }.review-sample>i { width:32px;height:16px;display:block;border:1px solid #bbb;background:var(--sample-color,#e8e8e8);border-radius:var(--sample-radius,4px);transform:scale(var(--sample-scale,1)); }.review-card.locating { background:#f5f9ff; }.review-group-title .included-count { margin-left:auto;color:#23715c; }.review-group-title .group-total { margin-left:4px; }.baseline-badge { display:inline-flex;align-items:center;gap:4px;margin-top:8px;padding:4px 8px;border-radius:4px;color:#23715c;background:#edf8f4;font-size:8px; }.baseline-badge::before { content:"";width:4px;height:4px;border-radius:50%;background:#2ca67f; }
   .workbench-matrix { display:grid;grid-template-columns:92px repeat(var(--matrix-columns),minmax(112px,1fr));gap:1px;width:min(900px,100%);margin:0 auto 24px;padding:1px;background:#303030;border-radius:8px;overflow:hidden; }.matrix-cell { min-height:52px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;padding:8px;border:0;background:#1d1d1d;color:#ddd;font-size:8px;text-align:left;cursor:pointer; }.matrix-cell:hover { background:#252525; }.matrix-cell.header { min-height:32px;color:#888;background:#181818;cursor:default; }.matrix-cell strong { font-size:8px;font-weight:500; }.matrix-cell span { color:#777;font-size:8px; }.matrix-cell.verified span { color:#68caa8; }.workbench-stage.matrix-mode { display:block; }.workbench-stage.matrix-mode .frame-shell { margin:0 auto; }
-  .component-actions { display:flex;gap:4px;padding:0 8px 8px 44px; }.component-actions button,.component-variants button { height:24px;padding:0 8px;border:1px solid #e6e1f7;border-radius:4px;color:#66598c;background:#faf9ff;font-size:8px;cursor:pointer; }.component-actions button:hover,.component-variants button:hover { border-color:#c8bdf1;background:#f4f0ff; }
+  .component-actions { display:flex;gap:4px;padding:0 8px 8px 44px; }.component-actions button,.component-variants button { height:24px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-ink);background:var(--fdc-paper);font-size:8px;cursor:pointer; }.component-actions button:hover,.component-variants button:hover { border-color:var(--fdc-line-strong);background:var(--fdc-subtle); }
+  .component-workshop-panel { width:384px;display:flex;flex-direction:column;overflow:hidden;color:var(--fdc-ink);background:var(--fdc-surface);border:1px solid var(--fdc-line);border-radius:12px;pointer-events:auto; }.component-workshop-head { min-height:48px;display:grid;grid-template-columns:24px minmax(0,1fr) 32px;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line); }.component-workshop-head>svg { width:20px;height:20px;color:var(--fdc-muted); }.component-workshop-head strong,.component-workshop-head span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-workshop-head strong { font-size:12px;font-weight:550; }.component-workshop-head span { margin-top:4px;color:var(--fdc-muted);font-size:8px; }.component-workshop-body { min-height:0;flex:1;overflow:auto; }.component-workshop-empty { padding:40px 20px;color:var(--fdc-muted);font-size:12px;line-height:1.5;text-align:center; }.component-workshop-section { padding:12px;border-bottom:1px solid var(--fdc-line); }.component-workshop-section>header { display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:12px; }.component-workshop-section>header strong { font-size:12px;font-weight:550; }.component-workshop-section>header span { color:var(--fdc-muted);font:400 8px/1.4 var(--fdc-font-mono);text-align:right; }.component-workshop-picker { display:grid;gap:8px;padding:12px;border-bottom:1px solid var(--fdc-line); }.component-workshop-picker label { color:var(--fdc-muted);font-size:12px; }.component-workshop-picker .fdc-select { margin-top:8px; }.component-workshop-meta { display:grid;grid-template-columns:1fr 1fr;gap:8px; }.component-workshop-stat { min-width:0;padding:8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.component-workshop-stat strong,.component-workshop-stat span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-workshop-stat strong { font:550 12px/1.2 var(--fdc-font); }.component-workshop-stat span { margin-top:4px;color:var(--fdc-muted);font:400 8px/1.4 var(--fdc-font-mono); }.component-workshop-scope,.component-workshop-states { display:grid;grid-template-columns:repeat(3,1fr);gap:4px; }.component-workshop-scope button,.component-workshop-states button,.component-workshop-variant,.component-workshop-instance { min-width:0;min-height:36px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-muted);background:var(--fdc-paper);font-size:12px;cursor:pointer; }.component-workshop-scope button:hover:not(:disabled),.component-workshop-states button:hover:not(:disabled),.component-workshop-variant:hover:not(:disabled),.component-workshop-instance:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.component-workshop-scope button.active,.component-workshop-states button.active,.component-workshop-variant.active,.component-workshop-instance.active { color:var(--fdc-ink);border-color:var(--fdc-ink);background:var(--fdc-subtle); }.component-workshop-scope button:disabled,.component-workshop-variant:disabled { opacity:.4;cursor:not-allowed; }.component-workshop-scope-note,.component-workshop-state-note { display:block;margin-top:8px;color:var(--fdc-muted);font-size:8px;line-height:1.45; }.component-workshop-variants,.component-workshop-instances { display:grid;gap:4px; }.component-workshop-variant,.component-workshop-instance { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;text-align:left; }.component-workshop-variant span,.component-workshop-instance span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-workshop-variant code,.component-workshop-instance code { margin-left:8px;color:var(--fdc-muted);font:400 8px/1 var(--fdc-font-mono); }.component-workshop-states { grid-template-columns:repeat(2,1fr); }.component-workshop-state-signal { width:8px;height:8px;margin-right:8px;display:inline-block;border-radius:50%;background:var(--fdc-muted); }.component-workshop-states button[data-confidence="instrumented"] .component-workshop-state-signal { background:#2ca67f; }.component-workshop-actions { display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px; }.component-workshop-actions button { min-height:36px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-paper);font-size:12px;cursor:pointer; }.component-workshop-actions button.primary { color:var(--fdc-paper);background:var(--fdc-ink);border-color:var(--fdc-ink); }
   .token-provenance { grid-column:2;display:flex;align-items:center;gap:4px;margin-top:4px;color:#23715c;font-size:8px; }.token-provenance.literal { color:#985033; }.token-provenance::before { content:"";width:4px;height:4px;border-radius:50%;background:currentColor; }
   .workbench-matrix[hidden] { display:none; }
   /* Foundry dark instrument theme */
@@ -399,10 +411,10 @@ const PANEL_CSS = `
   .property-label,.section-head,.color-value,.layer-row,.command-item,.library-section-head { color:#d1d1d6; }.field-prefix,.unit,.control-field .unit-select,.section-toggle>svg,.layer-row .chevron,.layer-row .layer-icon,.command-item svg,.command-item small { color:var(--fdc-muted); }
   .layer-row.selected { color:#a9cbff;background:transparent; }.layer-row.selected .layer-icon { color:#86b7ff; }
   .layer-row .layer-meta { color:#b5b5bc;background:var(--fdc-elevated); }.layer-row.selected .layer-meta { color:#a9cbff;background:#23416d; }
-  .layers-search { background:var(--fdc-paper); }.layers-switch { background:var(--fdc-paper);border-color:var(--fdc-line); }.layers-switch button { color:var(--fdc-muted);background:transparent; }.layers-switch button:hover,.layers-switch button.active { color:var(--fdc-ink);background:var(--fdc-elevated); }.layers-switch button[data-layer-view="components"].active,.layers-switch button[data-layer-view="components"].active span { color:#c1b5f5;background:var(--fdc-component-soft); }
+  .layers-search { background:var(--fdc-paper); }.layers-switch { background:var(--fdc-paper);border-color:var(--fdc-line); }.layers-switch button { color:var(--fdc-muted);background:transparent; }.layers-switch button:hover,.layers-switch button.active { color:var(--fdc-ink);background:var(--fdc-elevated); }.layers-switch button[data-layer-view="components"].active,.layers-switch button[data-layer-view="components"].active span { color:var(--fdc-ink);background:var(--fdc-component-soft); }
   .token-chip { color:#d1d1d6;background:var(--fdc-paper);border-color:var(--fdc-line); }.token-chip:hover { color:#9ec5ff;background:var(--fdc-signal-soft);border-color:#315482; }
   .section-actions { flex:none;display:flex;align-items:center;gap:4px; }.section-action,.section-actions button,.category-action,.token-menu-trigger { height:28px;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:0 8px;border:1px solid transparent;border-radius:4px;color:var(--fdc-muted);background:transparent;font:500 8px/1 var(--fdc-font);cursor:pointer; }.section-action:hover,.section-actions button:hover,.category-action:hover,.token-menu-trigger:hover { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }.section-action svg,.category-action svg,.token-menu-trigger svg { width:12px;height:12px; }.type-presets button { width:28px;padding:0; }.category-action { margin-left:auto; }.inspector-heading .property-count { margin-left:4px; }
-  .token-menu-wrap { position:relative;display:flex;align-items:center;margin-top:4px; }.token-menu-trigger { width:28px;padding:0; }.token-menu { position:absolute;z-index:8;top:32px;right:0;width:232px;max-height:220px;overflow:auto;padding:4px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-elevated);box-shadow:0 16px 36px rgb(0 0 0 / 38%); }.token-menu[hidden] { display:none; }.token-option { width:100%;height:32px;display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:8px;padding:0 8px;border:0;border-radius:4px;color:var(--fdc-ink);background:transparent;text-align:left;cursor:pointer; }.token-option:hover { background:var(--fdc-subtle); }.token-option .swatch { width:12px;height:12px;border:1px solid rgb(255 255 255 / 14%);border-radius:4px;background:var(--token-color); }.token-option span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:8px; }.token-option code { color:var(--fdc-muted);font:400 8px/1 var(--fdc-font); }
+  .token-menu-wrap { position:relative;display:flex;align-items:center;margin-top:4px; }.token-menu-trigger { width:28px;padding:0; }.token-menu { position:absolute;z-index:8;top:32px;right:0;width:232px;max-height:220px;overflow:auto;padding:4px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-elevated);box-shadow:0 16px 36px rgb(0 0 0 / 38%); }.token-menu[hidden] { display:none; }.token-option { width:100%;height:32px;display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:8px;padding:0 8px;border:0;border-radius:4px;color:var(--fdc-ink);background:transparent;text-align:left;cursor:pointer; }.token-option:hover { background:var(--fdc-subtle); }.token-option .swatch { width:12px;height:12px;border:1px solid rgb(255 255 255 / 14%);border-radius:4px;background:var(--token-color); }.token-option span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:8px; }.token-option span small { margin-left:8px;color:var(--fdc-muted);font:500 8px/1 var(--fdc-font);text-transform:uppercase; }.token-option code { color:var(--fdc-muted);font:400 8px/1 var(--fdc-font); }
   .color-picker-trigger { width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 32px 0 8px;border:0;background:transparent;color:var(--fdc-ink);font:400 12px/1 var(--fdc-font);text-align:left;cursor:pointer; }.color-picker-trigger .color-swatch { margin-left:0; }.color-popover { position:fixed;z-index:2147483647;width:280px;padding:12px;border:1px solid var(--fdc-line);border-radius:12px;color:var(--fdc-ink);background:var(--fdc-elevated);box-shadow:0 20px 60px rgb(0 0 0 / 48%);pointer-events:auto; }.color-popover[hidden] { display:none; }.color-popover-head { height:28px;display:flex;align-items:center;margin-bottom:8px; }.color-popover-head strong { font-size:12px;font-weight:550; }.color-popover-head button { margin-left:auto; }.color-plane { position:relative;width:100%;height:152px;overflow:hidden;border-radius:8px;background:linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent),hsl(var(--picker-hue) 100% 50%);cursor:crosshair;touch-action:none; }.color-plane-handle { position:absolute;width:12px;height:12px;transform:translate(-50%,-50%);border:4px solid white;border-radius:50%;box-shadow:0 1px 4px #000;pointer-events:none; }.color-sliders { display:grid;gap:8px;margin-top:8px; }.color-sliders label { display:grid;grid-template-columns:36px minmax(0,1fr);align-items:center;gap:8px;color:var(--fdc-muted);font-size:8px; }.color-sliders input[type="range"] { width:100%;accent-color:var(--fdc-signal); }.color-fields { display:grid;grid-template-columns:minmax(0,1fr) 36px;gap:8px;margin-top:8px; }.color-fields input { min-width:0;height:32px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-ink);background:var(--fdc-paper);font:400 12px/1 var(--fdc-font);outline:none; }.color-fields button { height:32px;display:grid;place-items:center;padding:0;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-muted);background:var(--fdc-paper);cursor:pointer; }.color-fields button:hover { color:var(--fdc-ink); }.color-fields svg { width:12px;height:12px; }.color-popover-section { margin-top:12px;padding-top:8px;border-top:1px solid var(--fdc-line); }.color-popover-section strong { display:block;margin-bottom:8px;color:var(--fdc-muted);font-size:8px;font-weight:500;text-transform:uppercase;letter-spacing:.04em; }.color-swatches { display:flex;flex-wrap:wrap;gap:8px; }.color-swatches button { width:24px;height:24px;padding:0;border:1px solid rgb(255 255 255 / 16%);border-radius:4px;background:var(--picker-swatch);cursor:pointer; }.color-swatches button:hover { box-shadow:0 0 0 4px var(--fdc-signal); }
   .typography-popover { position:fixed;z-index:2147483647;width:360px;max-width:calc(100vw - 16px);max-height:min(560px,calc(100vh - 16px));overflow:hidden;display:flex;flex-direction:column;border:1px solid var(--fdc-line);border-radius:12px;color:var(--fdc-ink);background:var(--fdc-elevated);box-shadow:0 20px 60px rgb(0 0 0 / 48%);pointer-events:auto; }.typography-popover[hidden] { display:none; }.typography-popover-head { min-height:44px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line); }.typography-popover-head>span { width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:#9ec5ff;background:var(--fdc-signal-soft); }.typography-popover-head>span svg { width:16px;height:16px; }.typography-popover-head strong { font-size:12px;font-weight:550; }.typography-popover-head small { margin-left:4px;color:var(--fdc-muted);font-size:8px; }.typography-popover-head button { margin-left:auto; }.typography-search { padding:8px 12px;border-bottom:1px solid var(--fdc-line); }.typography-search input { width:100%;height:36px;padding:0 12px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-paper);font:400 12px/1 var(--fdc-font);outline:none; }.typography-search input:focus { border-color:var(--fdc-signal);box-shadow:0 0 0 4px color-mix(in srgb,var(--fdc-signal) 18%,transparent); }.typography-fonts { min-height:0;overflow:auto;padding:8px; }.typography-group+.typography-group { margin-top:12px;padding-top:12px;border-top:1px solid var(--fdc-line); }.typography-group-head { display:flex;align-items:center;min-height:24px;padding:0 4px 4px; }.typography-group-head strong { color:var(--fdc-muted);font-size:8px;font-weight:550; }.typography-group-head span { margin-left:auto;color:var(--fdc-muted);font:400 8px/1 var(--fdc-font-mono); }.typography-font-row { width:100%;min-height:52px;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px;border:0;border-radius:8px;color:var(--fdc-ink);background:transparent;text-align:left;cursor:pointer; }.typography-font-row:hover,.typography-font-row:focus-visible { background:var(--fdc-subtle);outline:0; }.typography-font-row.active { background:var(--fdc-signal-soft); }.typography-font-copy { min-width:0;display:grid;gap:4px; }.typography-font-copy strong { overflow:hidden;text-overflow:ellipsis;font-size:16px;line-height:20px;font-weight:450;white-space:nowrap; }.typography-font-copy span { overflow:hidden;text-overflow:ellipsis;color:var(--fdc-muted);font-size:8px;line-height:12px;white-space:nowrap; }.typography-font-meta { padding:4px 8px;border-radius:4px;color:var(--fdc-muted);background:var(--fdc-paper);font:400 8px/1 var(--fdc-font-mono); }.typography-local-empty { display:grid;gap:8px;padding:12px;border:1px dashed var(--fdc-line);border-radius:8px; }.typography-local-empty p { margin:0;color:var(--fdc-muted);font-size:12px;line-height:16px; }.typography-local-empty button { justify-self:start;height:32px;padding:0 12px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-paper);font-size:12px;cursor:pointer; }.typography-local-empty button:hover { background:var(--fdc-subtle); }.typography-preview-note { display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-top:1px solid var(--fdc-line);color:var(--fdc-muted);font-size:8px;line-height:12px; }.typography-preview-note svg { width:12px;height:12px;flex:none; }.typography-preview-note strong { color:var(--fdc-ink);font-weight:550; }
   .typography-google-plan { display:grid;gap:8px;margin-top:8px;padding:12px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.typography-google-plan>div:first-child { display:grid;gap:4px; }.typography-google-plan>div:first-child strong { font-size:12px;font-weight:550; }.typography-google-plan>div:first-child span { color:var(--fdc-muted);font-size:12px;line-height:16px; }.typography-strategies { display:grid;grid-template-columns:1fr 1fr;gap:4px; }.typography-strategies button { min-width:0;min-height:48px;display:grid;grid-template-columns:minmax(0,1fr) 12px;align-items:center;gap:4px;padding:8px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-ink);background:var(--fdc-surface);text-align:left;cursor:pointer; }.typography-strategies button:hover,.typography-strategies button[aria-checked="true"] { border-color:var(--fdc-signal);background:var(--fdc-signal-soft); }.typography-strategies button>span { min-width:0;display:grid;gap:4px; }.typography-strategies strong { font-size:12px;font-weight:550; }.typography-strategies small { overflow:hidden;color:var(--fdc-muted);font-size:8px;line-height:12px;text-overflow:ellipsis;white-space:nowrap; }.typography-strategies svg { width:12px;height:12px;color:var(--fdc-signal); }.typography-strategies button[aria-checked="false"] svg { visibility:hidden; }.typography-review-font { height:32px;border:1px solid var(--fdc-ink);border-radius:8px;color:var(--fdc-paper);background:var(--fdc-ink);font-size:12px;font-weight:550;cursor:pointer; }.typography-review-font:hover { opacity:.88; }
@@ -429,7 +441,7 @@ const PANEL_CSS = `
   .status-popover { width:256px; }.status-popover-actions { display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px; }.status-popover .status-popover-actions button { height:32px;margin:0; }.status-popover .status-popover-actions [data-status-retry],.status-popover .status-popover-actions [data-status-repair] { grid-column:1/-1; }
   .onboarding-card { width:360px; }.onboarding-card-head>strong { flex:1; }.onboarding-card-head .onboarding-close { width:28px;height:28px;display:grid;place-items:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.onboarding-card-head .onboarding-close:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.onboarding-card-head .onboarding-close svg { width:12px;height:12px; }.onboarding-steps { gap:4px;border:0;overflow:visible;background:transparent; }.onboarding-step { min-height:40px;grid-template-columns:24px minmax(0,1fr);align-items:center;gap:8px;padding:8px;border:1px solid var(--fdc-line);border-radius:8px; }.onboarding-step b { width:20px;height:20px;display:grid;place-items:center;border:1px solid var(--fdc-line);border-radius:50%;color:var(--fdc-muted);font:500 8px/1 var(--fdc-font);letter-spacing:0; }.onboarding-step b svg { width:12px;height:12px; }.onboarding-step.complete>b { color:#141416;background:#8ae0c2;border-color:#8ae0c2; }.onboarding-step.current { border-color:var(--fdc-signal);box-shadow:0 0 0 4px rgb(59 130 246 / 10%); }
   .review-summary { color:var(--fdc-ink);background:var(--fdc-paper); }.empty-state-icon { color:#9ec5ff;background:var(--fdc-signal-soft); }
-  .component-card,.health-card { color:var(--fdc-ink);background:var(--fdc-surface);border-color:var(--fdc-line); }.component-card.selected { color:var(--fdc-ink);background:var(--fdc-component-soft);border-color:#5c4b9e;box-shadow:0 0 0 4px rgb(155 135 245 / 10%); }.component-variants span,.component-actions button,.component-variants button { color:#c1b5f5;background:var(--fdc-component-soft);border-color:#4a406f; }.health-score::before { background:var(--fdc-surface); }.health-filters button { color:var(--fdc-muted); }.health-filters button:hover,.health-filters button.active { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }.health-card p,.health-evidence { color:var(--fdc-muted); }.mapping-chooser { color:#f0c9a8;background:#35291d;border-color:#665039; }.mapping-chooser>strong,.mapping-option,.mapping-option small { color:#e7c29f; }.review-card.locating { background:var(--fdc-signal-soft); }.baseline-badge { color:#83d8bb;background:#18352c; }
+  .component-card,.health-card { color:var(--fdc-ink);background:var(--fdc-surface);border-color:var(--fdc-line); }.component-card.selected { color:var(--fdc-ink);background:var(--fdc-component-soft);border-color:var(--fdc-ink);box-shadow:0 0 0 4px rgb(255 255 255 / 8%); }.component-variants span,.component-actions button,.component-variants button { color:var(--fdc-ink);background:var(--fdc-component-soft);border-color:var(--fdc-line); }.health-score::before { background:var(--fdc-surface); }.health-filters button { color:var(--fdc-muted); }.health-filters button:hover,.health-filters button.active { color:var(--fdc-ink);background:var(--fdc-elevated);border-color:var(--fdc-line); }.health-card p,.health-evidence { color:var(--fdc-muted); }.mapping-chooser { color:#f0c9a8;background:#35291d;border-color:#665039; }.mapping-chooser>strong,.mapping-option,.mapping-option small { color:#e7c29f; }.review-card.locating { background:var(--fdc-signal-soft); }.baseline-badge { color:#83d8bb;background:#18352c; }
   /* Workspace ownership */
   .workspace-bar { position:fixed;z-index:2147483647;top:12px;left:50%;min-height:48px;display:flex;align-items:center;gap:4px;padding:8px;transform:translateX(-50%);color:var(--fdc-ink);background:rgb(28 28 31 / 96%);border:1px solid var(--fdc-line);border-radius:12px;box-shadow:0 4px 4px rgb(0 0 0 / 20%),0 16px 36px rgb(0 0 0 / 34%);backdrop-filter:blur(16px);pointer-events:auto; }.workspace-bar .brand { flex:none;padding:0 8px; }.workspace-bar .brand-copy b { font-size:12px; }.workspace-bar .session-status { margin:0; }.workspace-actions { display:flex;align-items:center;gap:4px; }.workspace-divider { width:1px;height:24px;background:var(--fdc-line); }.workspace-bar .icon-button { width:36px;height:36px; }.workspace-bar .icon-button.active { color:#9ec5ff;background:var(--fdc-signal-soft); }.workspace-bar .status-popover { top:44px;right:auto;left:60px; }
   .panel { top:72px;bottom:12px;max-height:none;overflow:clip; }.panel[hidden] { display:none; }.inspector-head { min-height:44px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line);background:var(--fdc-surface); }.inspector-head strong { font-size:12px;font-weight:550; }.inspector-head span { color:var(--fdc-muted);font-size:8px; }.inspector-head .icon-button { margin-left:auto; }.controls { min-height:0;flex:1; }.inspector-baseline { padding:0 12px 8px;border-bottom:1px solid var(--fdc-line); }.inspector-category { border-bottom:1px solid var(--fdc-line); }.inspector-category>.inspector-heading { position:sticky;top:0;z-index:2;height:44px;padding:0 8px 0 4px;background:rgb(28 28 31 / 97%); }.inspector-category>.inspector-heading .section-toggle { min-height:44px; }.inspector-category>.inspector-heading .section-toggle>svg { width:16px;height:16px;color:var(--fdc-muted);transform:none; }.inspector-category.collapsed>.category-body { display:none; }.inspector-category.collapsed>.inspector-heading .section-toggle>svg { transform:rotate(-90deg); }.inspector-category .property-section { margin-left:12px;border-left:1px solid var(--fdc-line); }.inspector-category .property-section .section-head { padding-left:8px; }.inspector-category[data-category="position"]>.category-body>.property-section>.section-head { display:none; }.category-body>.context-tools,.category-body>.native-panel,.category-body>.design-health { margin-left:12px; }
@@ -585,7 +597,8 @@ const PANEL_CSS = `
   .interface-theme-menu button[aria-checked="true"] { color:var(--fdc-ink);background:var(--fdc-subtle); }
   .interface-theme-menu button svg { width:12px;height:12px;color:var(--fdc-signal); }
   .interface-theme-menu button:not([aria-checked="true"]) svg { visibility:hidden; }
-  :host([data-interface-theme="light"]) { color-scheme:light;--fdc-ink:#141416;--fdc-paper:#f0f1f3;--fdc-surface:#ffffff;--fdc-subtle:#f0f1f3;--fdc-elevated:#f7f7f8;--fdc-line:#dedfe2;--fdc-signal:#2563eb;--fdc-signal-soft:#e8f0ff;--fdc-component:#7259d6;--fdc-component-soft:#f0edff;--fdc-muted:#666870; }
+  :host([data-interface-theme="light"]) { color-scheme:light;--fdc-ink:#141416;--fdc-paper:#f0f1f3;--fdc-surface:#ffffff;--fdc-subtle:#f0f1f3;--fdc-elevated:#f7f7f8;--fdc-line:#dedfe2;--fdc-signal:#2563eb;--fdc-signal-soft:#e8f0ff;--fdc-component:var(--fdc-ink);--fdc-component-soft:var(--fdc-subtle);--fdc-muted:#666870; }
+  :host([data-interface-theme="light"]) .component-workshop-panel { color:var(--fdc-ink);background:rgb(255 255 255 / 97%);border-color:var(--fdc-line);box-shadow:0 1px 4px rgb(0 0 0 / 8%),0 16px 36px rgb(0 0 0 / 14%); }
   :host([data-interface-theme="light"]) .panel,:host([data-interface-theme="light"]) .layers-panel,:host([data-interface-theme="light"]) .health-panel,:host([data-interface-theme="light"]) .library-panel,:host([data-interface-theme="light"]) .tool-shelf,:host([data-interface-theme="light"]) .onboarding-card,:host([data-interface-theme="light"]) .compare-bar,:host([data-interface-theme="light"]) .command-palette,:host([data-interface-theme="light"]) .status-popover,:host([data-interface-theme="light"]) .canvas-variant,:host([data-interface-theme="light"]) .workspace-bar,:host([data-interface-theme="light"]) .change-tray,:host([data-interface-theme="light"]) .review-modal { color:var(--fdc-ink);background:rgb(255 255 255 / 97%);border-color:var(--fdc-line);box-shadow:0 1px 4px rgb(0 0 0 / 8%),0 16px 36px rgb(0 0 0 / 14%); }
   :host([data-interface-theme="light"]) .fdc-select-menu { color:var(--fdc-ink);background:rgb(255 255 255 / 98%);border-color:var(--fdc-line);box-shadow:0 1px 4px rgb(0 0 0 / 8%),0 16px 36px rgb(0 0 0 / 14%); }
   :host([data-interface-theme="light"]) .top,:host([data-interface-theme="light"]) .top-actions,:host([data-interface-theme="light"]) .selection,:host([data-interface-theme="light"]) .scope,:host([data-interface-theme="light"]) .controls,:host([data-interface-theme="light"]) .property-section,:host([data-interface-theme="light"]) .change-dock,:host([data-interface-theme="light"]) .footer,:host([data-interface-theme="light"]) .review-view,:host([data-interface-theme="light"]) .review-head,:host([data-interface-theme="light"]) .review-group,:host([data-interface-theme="light"]) .review-group-title,:host([data-interface-theme="light"]) .review-actions,:host([data-interface-theme="light"]) .layers-head,:host([data-interface-theme="light"]) .layer-tree,:host([data-interface-theme="light"]) .health-head,:host([data-interface-theme="light"]) .health-list,:host([data-interface-theme="light"]) .health-footer,:host([data-interface-theme="light"]) .library-head,:host([data-interface-theme="light"]) .library-actions,:host([data-interface-theme="light"]) .library-body,:host([data-interface-theme="light"]) .memory-card,:host([data-interface-theme="light"]) .context-tools,:host([data-interface-theme="light"]) .native-panel,:host([data-interface-theme="light"]) .section-head,:host([data-interface-theme="light"]) .onboarding-step { color:var(--fdc-ink);background:var(--fdc-surface);border-color:var(--fdc-line); }
@@ -1280,6 +1293,7 @@ export function installFoundryInspector(
       <span class="workspace-divider"></span>
       <nav class="workspace-actions" aria-label="Workspace destinations">
         <button class="icon-button toggle-layers" title="Toggle layers" aria-label="Toggle layers" aria-pressed="true"><i data-foundry-icon="layers-3"></i></button>
+        <button class="icon-button open-component-workshop" title="Component workshop" aria-label="Open component workshop" aria-pressed="false"><i data-foundry-icon="component"></i></button>
         <button class="icon-button toggle-inspector" title="Toggle inspector" aria-label="Toggle inspector" aria-pressed="true"><i data-foundry-icon="panels-top-left"></i></button>
         <button class="icon-button open-health" title="Design health" aria-label="Open design health" aria-pressed="false"><i data-foundry-icon="activity"></i></button>
         <button class="icon-button open-workbench" title="State workbench" aria-label="Open state workbench" aria-pressed="false"><i data-foundry-icon="play"></i></button>
@@ -1303,7 +1317,7 @@ export function installFoundryInspector(
       <div class="inspector-head"><strong>Inspector</strong><span>Selection properties</span><button class="icon-button toggle-inspector inspector-collapse" aria-label="Close inspector"><i data-foundry-icon="x"></i></button></div>
       <div class="inspector-scroll">
         <div class="selection"><div class="selection-heading"><small class="selection-kind">No layer</small><span class="selection-state">Ready</span></div><strong>Nothing selected</strong><code>Click any element to inspect it</code><div class="selection-stats" hidden><span data-selection-size></span><span data-selection-confidence></span></div><div class="selection-path" hidden><button data-select-parent aria-label="Select parent layer"><i data-foundry-icon="chevron-right"></i><span>Parent</span></button><span class="path-name"></span><button data-select-child aria-label="Select first child layer"><span>Child</span><i data-foundry-icon="chevron-down"></i></button></div></div>
-        <div class="scope"><label>Scope<select data-scope><option value="instance">Instance</option><option value="component">Component</option></select></label><label>Breakpoint<select data-breakpoint><option>current</option><option>mobile</option><option>tablet</option><option>desktop</option></select></label><label>Theme<select data-theme><option>current</option><option>light</option><option>dark</option></select></label></div>
+        <div class="scope"><label>Scope<select data-scope><option value="instance">Instance</option><option value="variant">Variant</option><option value="component">Component</option></select></label><label>Breakpoint<select data-breakpoint><option>current</option><option>mobile</option><option>tablet</option><option>desktop</option></select></label><label>Theme<select data-theme><option>current</option><option>light</option><option>dark</option></select></label></div>
         <div class="controls"><div class="empty">Select an element to inspect its measured design controls.</div></div>
       </div>
     </aside>
@@ -1376,6 +1390,13 @@ export function installFoundryInspector(
   libraryPanel.setAttribute('aria-label', 'Foundry design memory');
   libraryPanel.innerHTML = `<div class="library-head utility-handle"><i data-foundry-icon="bookmark"></i><strong>Design memory</strong><span>Local to this project</span><button class="icon-button close-library" aria-label="Close design memory"><i data-foundry-icon="x"></i></button></div><div class="library-actions"><button data-save-recipe disabled><i data-foundry-icon="save"></i>Save treatment</button><button data-capture-baseline disabled><i data-foundry-icon="check"></i>Save baseline</button></div><div class="library-body"></div><button class="utility-resizer" aria-label="Resize design memory"></button>`;
   shadow.append(libraryPanel);
+  const componentWorkshopPanel = document.createElement('aside');
+  componentWorkshopPanel.className = 'component-workshop-panel utility-panel';
+  componentWorkshopPanel.dataset.utility = 'component';
+  componentWorkshopPanel.hidden = true;
+  componentWorkshopPanel.setAttribute('aria-label', 'Foundry component workshop');
+  componentWorkshopPanel.innerHTML = `<div class="component-workshop-head utility-handle"><i data-foundry-icon="component"></i><span><strong>Component workshop</strong><span>Instances, variants, and states</span></span><button class="icon-button close-component-workshop" aria-label="Close component workshop"><i data-foundry-icon="x"></i></button></div><div class="component-workshop-body"></div><div class="component-workshop-actions"><button data-workshop-matrix>Open state matrix</button><button class="primary" data-workshop-review>Review changes</button></div><button class="utility-resizer" aria-label="Resize component workshop"></button>`;
+  shadow.append(componentWorkshopPanel);
 
   shadow
     .querySelector<HTMLElement>('.outline')!
@@ -1863,16 +1884,7 @@ export function installFoundryInspector(
   host.style.setProperty('--fdc-dock-width', `${Math.round(dockWidth)}px`);
   let designGraph: {
     tokens: BrowserDesignToken[];
-    components: Array<{
-      id: string;
-      name: string;
-      instances: number;
-      variants: Array<{
-        id: string;
-        name: string;
-        props: Record<string, string | number | boolean>;
-      }>;
-    }>;
+    components: ComponentWorkshopDefinition[];
     breakpoints: Array<{ id: string; label: string; width: number; height: number }>;
     themes: Array<{
       id: string;
@@ -1884,6 +1896,10 @@ export function installFoundryInspector(
     states: Array<any>;
     motionPresets: Array<any>;
   } | null = null;
+  let workshopComponentId = '';
+  let workshopVariantId = '';
+  let workshopStateId = 'current';
+  let workshopStateCleanup: (() => void) | undefined;
   interface HistoryEntry {
     element: HTMLElement;
     property: string;
@@ -1998,12 +2014,17 @@ export function installFoundryInspector(
   let embeddedSpaceHeld = false;
   let embeddedPanActive = false;
   let embeddedPanPointer: Element | null = null;
+  let responsiveStressMode = 'none';
+  let responsiveStressTextTarget: HTMLElement | null = null;
+  let responsiveStressOriginalText = '';
   const utilityRects = new Map<Exclude<FoundryUtility, null>, FoundryRect>();
   let workspacePublishFrame = 0;
 
   function workspaceSnapshot(): Record<string, unknown> {
     if (!layerEntries.length) discoverLayers();
     const rect = selected?.getBoundingClientRect();
+    const selectionStyle = selected ? getComputedStyle(selected) : null;
+    const lineHeight = selectionStyle ? Number.parseFloat(selectionStyle.lineHeight) : 0;
     return {
       version: 1,
       mode: inspecting ? 'select' : 'interact',
@@ -2021,22 +2042,30 @@ export function installFoundryInspector(
             label: targetFor(selected).label,
             kind: selected.tagName.toLowerCase(),
             source: selected.dataset.foundrySource ?? foundrySelector(selected),
+            component: selected.dataset.foundryComponent ?? null,
             confidence: targetFor(selected).confidence,
             width: rect ? Math.round(rect.width * 100) / 100 : 0,
             height: rect ? Math.round(rect.height * 100) / 100 : 0,
             count: selectedElements.length,
           }
         : null,
-      layers: layerEntries.slice(0, 500).map((entry) => ({
-        id: foundryTargetId(entry.element),
-        selector: foundrySelector(entry.element),
-        label: entry.label,
-        kind: entry.kind,
-        depth: entry.depth,
-        instrumented: entry.instrumented,
-        hasChildren: entry.hasChildren,
-        selected: selectedElements.includes(entry.element),
-      })),
+      layers: layerEntries.slice(0, 500).map((entry) => {
+        const layerRect = entry.element.getBoundingClientRect();
+        return {
+          id: foundryTargetId(entry.element),
+          selector: foundrySelector(entry.element),
+          label: entry.label,
+          kind: entry.kind,
+          component: entry.element.dataset.foundryComponent ?? null,
+          source: entry.element.dataset.foundrySource ?? null,
+          width: Math.round(layerRect.width * 100) / 100,
+          height: Math.round(layerRect.height * 100) / 100,
+          depth: entry.depth,
+          instrumented: entry.instrumented,
+          hasChildren: entry.hasChildren,
+          selected: selectedElements.includes(entry.element),
+        };
+      }),
       controls: selectedControls.map((control, index) => ({
         index,
         category: control.category,
@@ -2050,6 +2079,7 @@ export function installFoundryInspector(
         step: control.step,
         options: control.options,
       })),
+      typography: selected ? workspaceTypographySnapshot(selected) : null,
       motions: selected ? workspaceMotionSnapshot(selected) : [],
       history: { canUndo: historyCursor > 0, canRedo: historyCursor < previewHistory.length },
       project: {
@@ -2067,7 +2097,149 @@ export function installFoundryInspector(
         severity: issue.severity,
       })),
       memory: designMemory,
+      responsive: {
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        documentScrollWidth: document.documentElement.scrollWidth,
+        documentScrollHeight: document.documentElement.scrollHeight,
+        stressMode: responsiveStressMode,
+        selection: selected
+          ? {
+              width: rect?.width ?? 0,
+              height: rect?.height ?? 0,
+              top: rect?.top ?? 0,
+              left: rect?.left ?? 0,
+              scrollWidth: selected.scrollWidth,
+              scrollHeight: selected.scrollHeight,
+              clientWidth: selected.clientWidth,
+              clientHeight: selected.clientHeight,
+              lineCount:
+                lineHeight > 0 && rect ? Math.max(1, Math.round(rect.height / lineHeight)) : 1,
+            }
+          : null,
+      },
     };
+  }
+
+  function workspaceTypographySnapshot(element: HTMLElement): Record<string, unknown> {
+    const computed = getComputedStyle(element);
+    const analysis = currentTypographyAnalysis(element);
+    const projectFonts = collectProjectFonts(document, element);
+    const usages = new Map<
+      string,
+      {
+        family: string;
+        count: number;
+        weights: Set<string>;
+        sizes: Set<string>;
+        examples: string[];
+      }
+    >();
+    for (const candidate of [...document.body.querySelectorAll<HTMLElement>('*')].slice(0, 1200)) {
+      const text = candidate.textContent?.replace(/\s+/g, ' ').trim();
+      if (!text || candidate.children.length > 0) continue;
+      const style = getComputedStyle(candidate);
+      const family = parseFontFamilyStack(style.fontFamily)[0] ?? style.fontFamily;
+      const key = family.toLocaleLowerCase();
+      const usage = usages.get(key) ?? {
+        family,
+        count: 0,
+        weights: new Set<string>(),
+        sizes: new Set<string>(),
+        examples: [],
+      };
+      usage.count += 1;
+      usage.weights.add(style.fontWeight);
+      usage.sizes.add(style.fontSize);
+      if (usage.examples.length < 2) usage.examples.push(text.slice(0, 72));
+      usages.set(key, usage);
+    }
+    return {
+      selection: {
+        family: computed.fontFamily,
+        primaryFamily: parseFontFamilyStack(computed.fontFamily)[0] ?? computed.fontFamily,
+        weight: computed.fontWeight,
+        style: computed.fontStyle,
+        size: computed.fontSize,
+        lineHeight: computed.lineHeight,
+        letterSpacing: computed.letterSpacing,
+        variationSettings: computed.fontVariationSettings,
+        text:
+          element.textContent?.replace(/\s+/g, ' ').trim().slice(0, 280) ||
+          targetFor(element).label,
+      },
+      projectFonts,
+      savedStyles: projectTypographyStyles,
+      diagnostics: analysis.diagnostics,
+      metrics: {
+        lineCount: analysis.lineCount,
+        charactersPerLine: analysis.charactersPerLine,
+        faceStatus: analysis.faceStatus,
+      },
+      usages: [...usages.values()]
+        .map((usage) => ({
+          family: usage.family,
+          count: usage.count,
+          weights: [...usage.weights],
+          sizes: [...usage.sizes],
+          examples: usage.examples,
+        }))
+        .sort((left, right) => right.count - left.count),
+      preview: typographyPreview
+        ? { family: typographyPreview.family, origin: typographyPreview.origin }
+        : typographyTreatmentPreview
+          ? {
+              treatmentId: typographyTreatmentPreview.treatmentId,
+              scaleValue: typographyTreatmentPreview.scaleValue,
+            }
+          : null,
+      treatments: typeTreatments,
+      scale: {
+        base: typographyScaleBase,
+        ratio: typographyScaleRatio,
+        step: typographyScaleStep,
+        fluid: typographyScaleFluid,
+        value: currentScaleValue(),
+      },
+      strategies: fontInstallStrategies,
+      googleSelection: googleTypographySelection,
+      validation: currentTypographyValidationPlan(),
+      capabilities: {
+        localFontAccess:
+          typeof (window as Window & { queryLocalFonts?: () => Promise<LocalFontRecord[]> })
+            .queryLocalFonts === 'function',
+      },
+    };
+  }
+
+  function clearResponsiveStress(): void {
+    document.documentElement.style.removeProperty('zoom');
+    document.documentElement.style.removeProperty('font-size');
+    document.documentElement.removeAttribute('data-foundry-responsive-stress');
+    if (responsiveStressTextTarget?.isConnected) {
+      responsiveStressTextTarget.textContent = responsiveStressOriginalText;
+    }
+    responsiveStressTextTarget = null;
+    responsiveStressOriginalText = '';
+    responsiveStressMode = 'none';
+  }
+
+  function applyResponsiveStress(mode: string): void {
+    clearResponsiveStress();
+    if (mode === 'browser-zoom') document.documentElement.style.zoom = '2';
+    if (mode === 'dynamic-type') document.documentElement.style.fontSize = '150%';
+    if (mode === 'long-content' && selected) {
+      const textTarget =
+        [...selected.querySelectorAll<HTMLElement>('h1,h2,h3,p,span,button,a')].find((element) =>
+          Boolean(element.textContent?.trim()),
+        ) ?? selected;
+      responsiveStressTextTarget = textTarget;
+      responsiveStressOriginalText = textTarget.textContent ?? '';
+      textTarget.textContent = `${responsiveStressOriginalText} — longer localized content for responsive verification`;
+    }
+    responsiveStressMode = mode;
+    document.documentElement.dataset.foundryResponsiveStress = mode;
+    window.setTimeout(publishWorkspaceState, 0);
   }
 
   function publishWorkspaceState(): void {
@@ -2101,6 +2273,46 @@ export function installFoundryInspector(
     };
     if (message.type !== 'foundry:workspace-command' || message.sessionId !== sessionId) return;
     const payload = message.payload ?? {};
+    if (message.command === 'switch-design-branch' || message.command === 'preview-design-branch') {
+      try {
+        applyDesignBranch(
+          Array.isArray(payload.previousChanges) ? payload.previousChanges : [],
+          Array.isArray(payload.changes)
+            ? payload.changes
+            : Array.isArray(payload.nextChanges)
+              ? payload.nextChanges
+              : [],
+          message.command === 'switch-design-branch',
+        );
+        if (message.requestId) {
+          window.parent.postMessage(
+            {
+              type: 'foundry:workspace-result',
+              sessionId,
+              requestId: message.requestId,
+              ok: true,
+              payload: { switched: true },
+            },
+            runtimeOrigin,
+          );
+        }
+      } catch (error) {
+        if (message.requestId) {
+          window.parent.postMessage(
+            {
+              type: 'foundry:workspace-result',
+              sessionId,
+              requestId: message.requestId,
+              ok: false,
+              error:
+                error instanceof Error ? error.message : 'Could not render this design direction',
+            },
+            runtimeOrigin,
+          );
+        }
+      }
+      return;
+    }
     if (message.command === 'delete-change') {
       void deleteReviewChange(String(payload.changeId ?? ''))
         .then((result) => {
@@ -2141,6 +2353,38 @@ export function installFoundryInspector(
     if (message.command === 'select') {
       const element = resolveFoundrySelector(document, String(payload.selector ?? ''));
       if (element) select(element, Boolean(payload.additive));
+    }
+    if (message.command === 'select-component-instance') {
+      const componentId = String(payload.componentId ?? '');
+      const entry = workshopCatalog().find(
+        (item) =>
+          item.id === componentId ||
+          item.definition?.id === componentId ||
+          item.name === componentId,
+      );
+      const element = entry?.elements[Number(payload.index ?? 0)];
+      if (element) select(element);
+    }
+    if (message.command === 'preview-component-state') {
+      const nextState = componentWorkshopStates(designGraph?.states).find(
+        (item) => item.id === String(payload.stateId ?? 'current'),
+      );
+      if (selected && nextState) {
+        workshopStateId = nextState.id;
+        applyWorkshopStatePreview(selected, nextState);
+        publishWorkspaceState();
+      }
+    }
+    if (message.command === 'preview-component-variant') {
+      workshopComponentId = String(payload.componentId ?? workshopComponentId);
+      const entry = currentWorkshopEntry();
+      const variant = entry?.definition?.variants.find(
+        (item) => item.id === String(payload.variantId ?? ''),
+      );
+      if (entry && variant) void previewWorkshopVariant(entry, variant).then(publishWorkspaceState);
+    }
+    if (message.command === 'preview-responsive-stress') {
+      applyResponsiveStress(String(payload.mode ?? 'none'));
     }
     if (message.command === 'set-control') {
       const control =
@@ -2186,8 +2430,17 @@ export function installFoundryInspector(
           toggleMotionLoop(animation);
           publishWorkspaceState();
         }
-        if (action === 'duration' || action === 'delay' || action === 'easing') {
-          const after = action === 'easing' ? String(payload.value ?? '') : Number(payload.value);
+        if (
+          action === 'duration' ||
+          action === 'delay' ||
+          action === 'easing' ||
+          action === 'iterations' ||
+          action === 'direction' ||
+          action === 'fill'
+        ) {
+          const after = ['easing', 'direction', 'fill'].includes(action)
+            ? String(payload.value ?? '')
+            : Number(payload.value);
           void applyMotionTiming(motion, action, after).then(() => {
             renderControls();
             publishWorkspaceState();
@@ -2211,6 +2464,88 @@ export function installFoundryInspector(
             publishWorkspaceState();
           });
         }
+      }
+    }
+    if (message.command === 'typography-action' && selected) {
+      const action = String(payload.action ?? '');
+      if (action === 'preview-family') {
+        const family = String(payload.family ?? '');
+        const origin = payload.origin === 'local' ? 'local' : 'project';
+        const control = selectedControls.find((item) => item.property === 'fontFamily');
+        if (family && control) {
+          if (origin === 'local') {
+            restoreTypographyPreview();
+            typographyPreview = {
+              element: selected,
+              inlineFamily: selected.style.fontFamily,
+              inlineWeight: selected.style.fontWeight,
+              inlineStyle: selected.style.fontStyle,
+              inlineVariationSettings: selected.style.fontVariationSettings,
+              family,
+              origin: 'local',
+            };
+            selected.style.fontFamily = fontFamilyDeclaration(family, String(control.read()));
+            selectedControls = controlsFor(selected);
+            updateOutline();
+            publishWorkspaceState();
+          } else {
+            restoreTypographyPreview();
+            void applyControlValue(
+              control,
+              fontFamilyDeclaration(family, String(control.read())),
+              `Use ${family}`,
+            ).then(() => {
+              if (selected) selectedControls = controlsFor(selected);
+              renderControls();
+              publishWorkspaceState();
+            });
+          }
+        }
+      }
+      if (action === 'preview-google') {
+        void previewGoogleFont(payload.font as unknown as GoogleFontFamily).then(
+          publishWorkspaceState,
+        );
+      }
+      if (action === 'review-google') {
+        if (payload.strategy) googleTypographyStrategy = payload.strategy as FontInstallStrategy;
+        if (googleTypographySelection) {
+          if (payload.weight) {
+            googleTypographySelection.weight = Number(payload.weight);
+            googleTypographySelection.axes.wght = Number(payload.weight);
+          }
+          if (payload.style === 'normal' || payload.style === 'italic')
+            googleTypographySelection.style = payload.style;
+        }
+        void reviewGoogleFont().then(publishWorkspaceState);
+      }
+      if (action === 'preview-treatment') {
+        previewTypeTreatment(String(payload.treatmentId ?? 'balanced'));
+        publishWorkspaceState();
+      }
+      if (action === 'preview-scale') {
+        typographyScaleBase = Number(payload.base ?? typographyScaleBase);
+        typographyScaleRatio = Number(payload.ratio ?? typographyScaleRatio);
+        typographyScaleStep = Number(payload.step ?? typographyScaleStep);
+        typographyScaleFluid = Boolean(payload.fluid);
+        previewTypeScale();
+        publishWorkspaceState();
+      }
+      if (action === 'review-treatment') void reviewTypeTreatment().then(publishWorkspaceState);
+      if (action === 'review-scale') void reviewTypeScale().then(publishWorkspaceState);
+      if (action === 'reset-preview') {
+        restoreTypographyPreview();
+        publishWorkspaceState();
+      }
+      if (action === 'save-style') {
+        typographyStyleName = String(payload.name ?? '');
+        void saveCurrentProjectTypographyStyle().then(publishWorkspaceState);
+      }
+      if (action === 'apply-style')
+        void applyProjectTypographyStyle(String(payload.styleId ?? '')).then(publishWorkspaceState);
+      if (action === 'remove-style') {
+        removeProjectTypographyStyle(String(payload.styleId ?? ''));
+        publishWorkspaceState();
       }
     }
     if (message.command === 'set-context') {
@@ -2452,8 +2787,14 @@ export function installFoundryInspector(
     return undefined;
   }
 
+  function utilityPanelFor(utility: Exclude<FoundryUtility, null>): HTMLElement {
+    if (utility === 'health') return healthPanel;
+    if (utility === 'memory') return libraryPanel;
+    return componentWorkshopPanel;
+  }
+
   function applyUtilityRect(utility: Exclude<FoundryUtility, null>): void {
-    const utilityPanel = utility === 'health' ? healthPanel : libraryPanel;
+    const utilityPanel = utilityPanelFor(utility);
     if (window.matchMedia('(max-width: 680px)').matches) {
       utilityPanel.style.removeProperty('left');
       utilityPanel.style.removeProperty('top');
@@ -2512,6 +2853,7 @@ export function installFoundryInspector(
       : updateWorkspace(workspaceState, { type: 'close-utility' });
     healthPanel.hidden = workspaceState.utility !== 'health';
     libraryPanel.hidden = workspaceState.utility !== 'memory';
+    componentWorkshopPanel.hidden = workspaceState.utility !== 'component';
     shadow
       .querySelector<HTMLButtonElement>('.open-health')!
       .classList.toggle('active', workspaceState.utility === 'health');
@@ -2524,8 +2866,15 @@ export function installFoundryInspector(
     shadow
       .querySelector<HTMLButtonElement>('.open-library')!
       .setAttribute('aria-pressed', String(workspaceState.utility === 'memory'));
+    shadow
+      .querySelector<HTMLButtonElement>('.open-component-workshop')!
+      .classList.toggle('active', workspaceState.utility === 'component');
+    shadow
+      .querySelector<HTMLButtonElement>('.open-component-workshop')!
+      .setAttribute('aria-pressed', String(workspaceState.utility === 'component'));
     if (workspaceState.utility === 'health') scanDesignHealth();
     if (workspaceState.utility === 'memory') renderDesignMemory();
+    if (workspaceState.utility === 'component') renderComponentWorkshop();
     positionWorkspaceSurfaces();
     if (closing) lastUtilityTrigger?.focus();
   }
@@ -2747,9 +3096,12 @@ export function installFoundryInspector(
         positionWorkspaceSurfaces();
       }
       projectRevision = changeSet.context.revision ?? '';
-      designGraph = graph;
+      designGraph = graph
+        ? { ...graph, components: normalizeWorkshopComponents(graph.components) }
+        : null;
       populateDesignContext();
       if (!layersPanel.hidden) renderLayers();
+      if (!componentWorkshopPanel.hidden) renderComponentWorkshop();
       if (!healthPanel.hidden) scanDesignHealth();
       const activeChanges = changeSet.changes.filter(
         (change: any) =>
@@ -3229,6 +3581,267 @@ export function installFoundryInspector(
     );
   }
 
+  function workshopCatalog(): Array<{
+    id: string;
+    name: string;
+    namespace: string;
+    elements: HTMLElement[];
+    definition?: ComponentWorkshopDefinition;
+  }> {
+    return componentCatalog().map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      namespace: entry.namespace,
+      elements: entry.elements,
+      definition: designGraph?.components.find(
+        (component) =>
+          component.id === entry.id ||
+          component.name === entry.path ||
+          component.name === entry.name,
+      ),
+    }));
+  }
+
+  function currentWorkshopEntry() {
+    const catalog = workshopCatalog();
+    const selectedPath = selected?.dataset.foundryComponent;
+    const selectedName = selectedPath?.split('/').at(-1);
+    const requested = catalog.find(
+      (entry) =>
+        entry.id === workshopComponentId ||
+        entry.definition?.id === workshopComponentId ||
+        entry.name === workshopComponentId,
+    );
+    const selectedEntry = catalog.find(
+      (entry) =>
+        entry.id === selectedPath ||
+        entry.name === selectedPath ||
+        entry.name === selectedName ||
+        entry.elements.includes(selected!),
+    );
+    return (
+      requested ?? selectedEntry ?? catalog.find((entry) => entry.elements.length) ?? catalog[0]
+    );
+  }
+
+  function clearWorkshopStatePreview(): void {
+    workshopStateCleanup?.();
+    workshopStateCleanup = undefined;
+  }
+
+  function applyWorkshopStatePreview(
+    target: HTMLElement,
+    workshopState: ComponentWorkshopState,
+  ): void {
+    clearWorkshopStatePreview();
+    if (workshopState.kind === 'default') {
+      state.value = 'current';
+      syncFdcSelect(state);
+      return;
+    }
+    const previous = {
+      disabled: target.hasAttribute('disabled'),
+      ariaDisabled: target.getAttribute('aria-disabled'),
+      ariaBusy: target.getAttribute('aria-busy'),
+      ariaInvalid: target.getAttribute('aria-invalid'),
+      foundryState: target.getAttribute('data-foundry-state'),
+    };
+    const pseudo = workshopState.pseudoState;
+    let style: HTMLStyleElement | undefined;
+    if (pseudo) {
+      target.setAttribute(`data-foundry-force-${pseudo}`, 'true');
+      style = document.createElement('style');
+      style.dataset.foundryWorkshopState = pseudo;
+      style.textContent = forcedPseudoCss(document, pseudo);
+      document.head.append(style);
+      if (pseudo === 'focus') target.focus({ preventScroll: true });
+      if (pseudo === 'disabled') {
+        target.setAttribute('disabled', '');
+        target.setAttribute('aria-disabled', 'true');
+      }
+    } else {
+      target.setAttribute('data-foundry-state', workshopState.id);
+      if (workshopState.id === 'loading') target.setAttribute('aria-busy', 'true');
+      if (workshopState.id === 'error') target.setAttribute('aria-invalid', 'true');
+    }
+    state.value = workshopState.id;
+    syncFdcSelect(state);
+    workshopStateCleanup = () => {
+      if (pseudo) target.removeAttribute(`data-foundry-force-${pseudo}`);
+      style?.remove();
+      if (previous.disabled) target.setAttribute('disabled', '');
+      else target.removeAttribute('disabled');
+      const restore = (name: string, value: string | null): void => {
+        if (value == null) target.removeAttribute(name);
+        else target.setAttribute(name, value);
+      };
+      restore('aria-disabled', previous.ariaDisabled);
+      restore('aria-busy', previous.ariaBusy);
+      restore('aria-invalid', previous.ariaInvalid);
+      restore('data-foundry-state', previous.foundryState);
+    };
+  }
+
+  async function previewWorkshopVariant(
+    entry: NonNullable<ReturnType<typeof currentWorkshopEntry>>,
+    variant: ComponentWorkshopVariant,
+  ): Promise<void> {
+    const target = selected && entry.elements.includes(selected) ? selected : entry.elements[0];
+    if (!target) return;
+    select(target);
+    workshopVariantId = variant.id;
+    for (const [key, value] of Object.entries(variant.props)) {
+      const attribute = `data-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+      const before = target.getAttribute(attribute) ?? '';
+      target.setAttribute(attribute, String(value));
+      const control: Control = {
+        category: 'content',
+        property: `variant.${key}`,
+        label: `${entry.name} ${key}`,
+        kind: 'text',
+        value: before,
+        read: () => target.getAttribute(attribute) ?? '',
+        apply: (next) => target.setAttribute(attribute, String(next)),
+      };
+      await record(control, before, String(value), target, `Set ${variant.name} variant`, [
+        `Component Workshop variant: ${variant.name}`,
+        `Variant source: ${workshopSourceLabel(variant.source)}`,
+      ]);
+    }
+    renderComponentWorkshop();
+    showToast(`${variant.name} previewed on ${entry.name}`);
+  }
+
+  function renderComponentWorkshop(): void {
+    const body = componentWorkshopPanel.querySelector<HTMLElement>('.component-workshop-body')!;
+    const catalog = workshopCatalog();
+    const entry = currentWorkshopEntry();
+    if (!catalog.length || !entry) {
+      body.innerHTML =
+        '<div class="component-workshop-empty">No project components are indexed yet. Add component instrumentation or refresh the design graph.</div>';
+      return;
+    }
+    workshopComponentId = entry.id;
+    const definition = entry.definition;
+    const variants = definition?.variants ?? [];
+    if (workshopVariantId && !variants.some((variant) => variant.id === workshopVariantId)) {
+      workshopVariantId = '';
+    }
+    const chosenVariant = variants.find((variant) => variant.id === workshopVariantId);
+    const scopes = availableWorkshopScopes({
+      hasLiveInstance: entry.elements.length > 0,
+      hasComponentSource: Boolean(definition?.source),
+      selectedVariant: chosenVariant,
+    });
+    if (!scopes.some((item) => item.id === scope.value && item.enabled)) scope.value = 'instance';
+    const activeScope = scopes.find((item) => item.id === scope.value) ?? scopes[0]!;
+    const states = componentWorkshopStates(designGraph?.states);
+    if (!states.some((item) => item.id === workshopStateId)) workshopStateId = 'current';
+    body.innerHTML = `<div class="component-workshop-picker"><label>Component<select data-workshop-component aria-label="Component">${catalog
+      .map(
+        (item) =>
+          `<option value="${escapeHtml(item.id)}" ${item.id === entry.id ? 'selected' : ''}>${escapeHtml(item.name)} · ${item.elements.length ? `${item.elements.length} live` : 'indexed'}</option>`,
+      )
+      .join(
+        '',
+      )}</select></label><div class="component-workshop-meta"><div class="component-workshop-stat"><strong>${entry.elements.length}</strong><span>Live instances</span></div><div class="component-workshop-stat"><strong>${variants.length}</strong><span>Mapped variants</span></div></div></div><section class="component-workshop-section"><header><strong>Change scope</strong><span>${escapeHtml(activeScope.reason)}</span></header><div class="component-workshop-scope">${scopes
+      .map(
+        (item) =>
+          `<button data-workshop-scope="${item.id}" class="${scope.value === item.id ? 'active' : ''}" title="${escapeHtml(item.reason)}" ${item.enabled ? '' : 'disabled'}>${item.id[0]!.toUpperCase()}${item.id.slice(1)}</button>`,
+      )
+      .join(
+        '',
+      )}</div><span class="component-workshop-scope-note">${escapeHtml(workshopSourceLabel(chosenVariant?.source ?? definition?.source))}</span></section><section class="component-workshop-section"><header><strong>Instances</strong><span>${entry.elements.length ? 'Select one or edit together' : 'Not rendered on this canvas'}</span></header><div class="component-workshop-instances">${
+      entry.elements.length
+        ? entry.elements
+            .map(
+              (element, index) =>
+                `<button class="component-workshop-instance ${selected === element ? 'active' : ''}" data-workshop-instance="${index}"><span>${escapeHtml(layerLabel(element))}</span><code>${Math.round(element.getBoundingClientRect().width)} × ${Math.round(element.getBoundingClientRect().height)}</code></button>`,
+            )
+            .join('')
+        : '<span class="component-workshop-scope-note">This definition remains read-only until a live instance is available.</span>'
+    }</div></section><section class="component-workshop-section"><header><strong>Variants</strong><span>${chosenVariant ? escapeHtml(chosenVariant.name) : 'Choose a variant to preview'}</span></header><div class="component-workshop-variants">${
+      variants.length
+        ? variants
+            .map(
+              (variant) =>
+                `<button class="component-workshop-variant ${workshopVariantId === variant.id ? 'active' : ''}" data-workshop-variant="${escapeHtml(variant.id)}" ${entry.elements.length && Object.keys(variant.props).length ? '' : 'disabled'}><span>${escapeHtml(variant.name)}</span><code>${escapeHtml(
+                  Object.entries(variant.props)
+                    .map(([key, value]) => `${key}=${value}`)
+                    .join(' · ') || 'No preview mapping',
+                )}</code></button>`,
+            )
+            .join('')
+        : '<span class="component-workshop-scope-note">No variants were discovered for this component.</span>'
+    }</div></section><section class="component-workshop-section"><header><strong>Visual states</strong><span>Preview only · never saved as a design change</span></header><div class="component-workshop-states">${states
+      .map(
+        (item) =>
+          `<button class="${workshopStateId === item.id ? 'active' : ''}" data-workshop-state="${escapeHtml(item.id)}" data-confidence="${item.confidence}" ${entry.elements.length ? '' : 'disabled'}><i class="component-workshop-state-signal"></i>${escapeHtml(item.label)}</button>`,
+      )
+      .join(
+        '',
+      )}</div><span class="component-workshop-state-note">Green states use native browser behavior. Inferred product states expose semantic attributes and remain read-only when the project has no matching style.</span></section>`;
+    renderIcons(body);
+    upgradeFdcSelects(body);
+    body
+      .querySelector<HTMLSelectElement>('[data-workshop-component]')!
+      .addEventListener('change', (event) => {
+        clearWorkshopStatePreview();
+        workshopComponentId = (event.currentTarget as HTMLSelectElement).value;
+        workshopVariantId = '';
+        workshopStateId = 'current';
+        const next = currentWorkshopEntry()?.elements[0];
+        if (next) select(next);
+        renderComponentWorkshop();
+      });
+    body.querySelectorAll<HTMLButtonElement>('[data-workshop-scope]').forEach((button) =>
+      button.addEventListener('click', () => {
+        scope.value = button.dataset.workshopScope as ComponentWorkshopScope;
+        syncFdcSelect(scope);
+        renderComponentWorkshop();
+      }),
+    );
+    body.querySelectorAll<HTMLButtonElement>('[data-workshop-instance]').forEach((button) =>
+      button.addEventListener('click', () => {
+        const element = entry.elements[Number(button.dataset.workshopInstance)];
+        if (!element) return;
+        clearWorkshopStatePreview();
+        workshopStateId = 'current';
+        select(element);
+        element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        renderComponentWorkshop();
+      }),
+    );
+    body.querySelectorAll<HTMLButtonElement>('[data-workshop-variant]').forEach((button) =>
+      button.addEventListener('click', () => {
+        const variant = variants.find((item) => item.id === button.dataset.workshopVariant);
+        if (variant) void previewWorkshopVariant(entry, variant);
+      }),
+    );
+    body.querySelectorAll<HTMLButtonElement>('[data-workshop-state]').forEach((button) =>
+      button.addEventListener('click', () => {
+        const nextState = states.find((item) => item.id === button.dataset.workshopState);
+        const target = selected && entry.elements.includes(selected) ? selected : entry.elements[0];
+        if (!nextState || !target) return;
+        workshopStateId = nextState.id;
+        applyWorkshopStatePreview(target, nextState);
+        renderComponentWorkshop();
+      }),
+    );
+  }
+
+  function openComponentWorkshop(componentId?: string): void {
+    if (componentId) workshopComponentId = componentId;
+    if (workspaceState.utility !== 'component') setUtility('component');
+    else renderComponentWorkshop();
+  }
+
+  function closeComponentWorkshop(): void {
+    clearWorkshopStatePreview();
+    workshopStateId = 'current';
+    if (workspaceState.utility === 'component') setUtility(null);
+  }
+
   function renderComponents(
     components: ReturnType<typeof componentCatalog>,
     queryValue: string,
@@ -3252,7 +3865,7 @@ export function installFoundryInspector(
               )
               .join('');
             const remainingVariants = Math.max(0, entry.variants.length - 3);
-            return `<article class="component-card ${selectedComponent ? 'selected' : ''}" data-component-row="${index}"><button class="component-main" data-component-index="${index}" aria-label="${liveCount ? `Select ${escapeHtml(entry.name)} component` : `${escapeHtml(entry.name)} component is not on the canvas`}" ${liveCount ? '' : 'disabled'}><span class="component-mark"><i data-foundry-icon="component"></i></span><span class="component-copy"><strong>${escapeHtml(entry.name)}</strong><span>${escapeHtml(entry.namespace)}</span></span><span class="component-status"><span>${liveCount ? `${liveCount} live` : 'Indexed'}</span><small>${entry.variants.length ? `${entry.variants.length} variant${entry.variants.length === 1 ? '' : 's'}` : `${entry.indexedInstances} instance${entry.indexedInstances === 1 ? '' : 's'}`}</small></span></button>${variants ? `<div class="component-variants">${variants}${remainingVariants ? `<button data-component-index="${index}">+${remainingVariants}</button>` : ''}</div>` : ''}${liveCount > 1 ? `<div class="component-actions"><button data-select-all-instances="${index}">Select all ${liveCount} instances</button></div>` : ''}</article>`;
+            return `<article class="component-card ${selectedComponent ? 'selected' : ''}" data-component-row="${index}"><button class="component-main" data-component-index="${index}" aria-label="${liveCount ? `Select ${escapeHtml(entry.name)} component` : `${escapeHtml(entry.name)} component is not on the canvas`}" ${liveCount ? '' : 'disabled'}><span class="component-mark"><i data-foundry-icon="component"></i></span><span class="component-copy"><strong>${escapeHtml(entry.name)}</strong><span>${escapeHtml(entry.namespace)}</span></span><span class="component-status"><span>${liveCount ? `${liveCount} live` : 'Indexed'}</span><small>${entry.variants.length ? `${entry.variants.length} variant${entry.variants.length === 1 ? '' : 's'}` : `${entry.indexedInstances} instance${entry.indexedInstances === 1 ? '' : 's'}`}</small></span></button>${variants ? `<div class="component-variants">${variants}${remainingVariants ? `<button data-component-index="${index}">+${remainingVariants}</button>` : ''}</div>` : ''}<div class="component-actions"><button data-open-component-workshop="${index}">Open workshop</button>${liveCount > 1 ? `<button data-select-all-instances="${index}">Select all ${liveCount}</button>` : ''}</div></article>`;
           })
           .join('')}</div>`
       : '<div class="layers-empty">No components match this search.</div>';
@@ -3288,6 +3901,13 @@ export function installFoundryInspector(
           renderLayers(false);
           showToast(`${entry.elements.length} ${entry.name} instances selected`);
         });
+      });
+    layerTree
+      .querySelectorAll<HTMLButtonElement>('[data-open-component-workshop]')
+      .forEach((button) => {
+        const entry = components[Number(button.dataset.openComponentWorkshop)];
+        if (!entry) return;
+        button.addEventListener('click', () => openComponentWorkshop(entry.id));
       });
     layerTree.querySelectorAll<HTMLButtonElement>('[data-component-variant]').forEach((button) => {
       const entry = components[Number(button.dataset.componentOwner)];
@@ -4696,7 +5316,7 @@ export function installFoundryInspector(
       control.property,
       after,
       target.id,
-      scope.value as 'instance' | 'component',
+      scope.value as ComponentWorkshopScope,
       target.source,
     );
     const ambiguous = candidates.length > 1;
@@ -5400,9 +6020,8 @@ export function installFoundryInspector(
     return tops.size || undefined;
   }
 
-  function typographyDiagnosticsMarkup(): string {
-    if (!selected) return '';
-    const computed = getComputedStyle(selected);
+  function currentTypographyAnalysis(element: HTMLElement) {
+    const computed = getComputedStyle(element);
     const family = parseFontFamilyStack(computed.fontFamily)[0] ?? computed.fontFamily;
     const fontSize = Number.parseFloat(computed.fontSize) || 16;
     const parsedLineHeight = Number.parseFloat(computed.lineHeight);
@@ -5421,21 +6040,27 @@ export function installFoundryInspector(
       fontSynthesis: computed.fontSynthesis,
       fontCheck: document.fonts.check(
         `${computed.fontStyle} ${computed.fontWeight} ${fontSize}px "${escapedFamily}"`,
-        selected.textContent?.trim().slice(0, 32) || 'BESbswy',
+        element.textContent?.trim().slice(0, 32) || 'BESbswy',
       ),
       faces,
-      text: selected.textContent ?? '',
+      text: element.textContent ?? '',
       fontSize,
       lineHeight,
-      clientWidth: selected.clientWidth,
-      clientHeight: selected.clientHeight,
-      scrollWidth: selected.scrollWidth,
-      scrollHeight: selected.scrollHeight,
+      clientWidth: element.clientWidth,
+      clientHeight: element.clientHeight,
+      scrollWidth: element.scrollWidth,
+      scrollHeight: element.scrollHeight,
       whiteSpace: computed.whiteSpace,
       overflowX: computed.overflowX,
       overflowY: computed.overflowY,
-      measuredLineCount: measuredTextLineCount(selected),
+      measuredLineCount: measuredTextLineCount(element),
     });
+    return analysis;
+  }
+
+  function typographyDiagnosticsMarkup(): string {
+    if (!selected) return '';
+    const analysis = currentTypographyAnalysis(selected);
     const statusLabel =
       analysis.faceStatus === 'system'
         ? 'System face'
@@ -6302,16 +6927,17 @@ export function installFoundryInspector(
     if (motionKeyframe) {
       return Boolean(findDiscoveredMotion(element, motionKeyframe[1]!)?.animation?.effect);
     }
-    const motion = /^motion\.(motion_[a-z0-9]+)\.(duration|delay|easing)$/.exec(
-      String(change.property),
-    );
+    const motion =
+      /^motion\.(motion_[a-z0-9]+)\.(duration|delay|easing|iterations|direction|fill)$/.exec(
+        String(change.property),
+      );
     if (motion) {
       return Boolean(findDiscoveredMotion(element, motion[1]!)?.animation?.effect);
     }
     return true;
   }
 
-  function restorePreviewChange(change: any, element: HTMLElement): void {
+  function setPreviewChangeValue(change: any, element: HTMLElement, value: string | number): void {
     const property = String(change.property);
     const motionKeyframe = /^motion\.(motion_[a-z0-9]+)\.keyframe\.(\d+)\.(.+)$/.exec(property);
     if (motionKeyframe) {
@@ -6324,29 +6950,32 @@ export function installFoundryInspector(
             motionKeyframes(effect),
             Number(motionKeyframe[2]),
             motionKeyframe[3]!,
-            change.before,
+            value,
           ),
         ),
       );
     } else {
-      const motion = /^motion\.(motion_[a-z0-9]+)\.(duration|delay|easing)$/.exec(property);
+      const motion =
+        /^motion\.(motion_[a-z0-9]+)\.(duration|delay|easing|iterations|direction|fill)$/.exec(
+          property,
+        );
       if (motion) {
         const discovered = findDiscoveredMotion(element, motion[1]!);
         const effect = discovered?.animation?.effect as KeyframeEffect | null;
         if (!effect) throw new Error('The edited motion is not currently rendered.');
-        effect.updateTiming({ [motion[2]!]: change.before });
+        effect.updateTiming({ [motion[2]!]: value });
       } else {
-        if (
-          ['aria-label', 'role', 'tabindex', 'alt', 'src'].includes(property) &&
-          change.before === ''
-        ) {
+        if (['aria-label', 'role', 'tabindex', 'alt', 'src'].includes(property) && value === '') {
           element.removeAttribute(property);
         } else {
-          rawElementValue(element, property, change.before, change.unit);
+          rawElementValue(element, property, value, change.unit);
         }
       }
     }
+  }
 
+  function restorePreviewChange(change: any, element: HTMLElement): void {
+    setPreviewChangeValue(change, element, change.before);
     previewHistory.splice(
       0,
       previewHistory.length,
@@ -6359,6 +6988,62 @@ export function installFoundryInspector(
     updateOutline();
     if (selected === element) {
       selectedControls = controlsFor(element);
+      renderControls();
+    }
+    if (!healthPanel.hidden) scanDesignHealth();
+    publishWorkspaceState();
+  }
+
+  function previewHistoryCategory(change: any): Category {
+    if (change.category === 'effect') return 'effects';
+    if (
+      change.category === 'layout' ||
+      change.category === 'typography' ||
+      change.category === 'color' ||
+      change.category === 'content' ||
+      change.category === 'accessibility' ||
+      change.category === 'motion'
+    ) {
+      return change.category;
+    }
+    return 'content';
+  }
+
+  function applyDesignBranch(
+    previousChanges: any[],
+    nextChanges: any[],
+    trackHistory: boolean,
+  ): void {
+    for (let index = previousChanges.length - 1; index >= 0; index -= 1) {
+      const change = previousChanges[index];
+      const element = previewChangeTarget(change);
+      if (element && canRestorePreviewChange(change, element)) {
+        setPreviewChangeValue(change, element, change.before);
+      }
+    }
+    const nextHistory: HistoryEntry[] = [];
+    for (const change of nextChanges) {
+      const element = previewChangeTarget(change);
+      if (!element || !canRestorePreviewChange(change, element)) continue;
+      setPreviewChangeValue(change, element, change.after);
+      if (trackHistory) {
+        nextHistory.push({
+          element,
+          property: String(change.property),
+          before: change.before,
+          after: change.after,
+          unit: change.unit,
+          category: previewHistoryCategory(change),
+          label: `Adjust ${String(change.property)}`,
+        });
+      }
+    }
+    previewHistory.splice(0, previewHistory.length, ...nextHistory);
+    historyCursor = previewHistory.length;
+    updateHistoryActions();
+    updateOutline();
+    if (selected) {
+      selectedControls = controlsFor(selected);
       renderControls();
     }
     if (!healthPanel.hidden) scanDesignHealth();
@@ -6561,6 +7246,7 @@ export function installFoundryInspector(
   const commands = [
     { id: 'health', label: 'Scan design health', shortcut: '⇧H', icon: 'activity' },
     { id: 'layers', label: 'Open layers', shortcut: '⇧L', icon: 'layers-3' },
+    { id: 'components', label: 'Open component workshop', shortcut: '⇧K', icon: 'component' },
     { id: 'compare', label: 'Compare before and after', shortcut: '⇧C', icon: 'contrast' },
     { id: 'workbench', label: 'Open state workbench', shortcut: '', icon: 'panels-top-left' },
     { id: 'memory', label: 'Open design memory', shortcut: '', icon: 'bookmark' },
@@ -6585,6 +7271,7 @@ export function installFoundryInspector(
     closeCommands(false);
     if (id === 'health') openHealth();
     if (id === 'layers') toggleLayers(true);
+    if (id === 'components') openComponentWorkshop();
     if (id === 'compare') showComparison('after');
     if (id === 'workbench') openWorkbench();
     if (id === 'memory') openDesignMemory();
@@ -6940,12 +7627,13 @@ export function installFoundryInspector(
       currentTime: Math.max(0, Number(animation?.currentTime ?? 0)),
       playbackRate: animation?.playbackRate ?? 1,
       looping: Boolean(animation && previewLoopIterations.has(animation)),
+      reducedMotionProtected: descriptor.timing.duration <= 300 || hasReducedMotionRule(element),
     }));
   }
 
   async function applyMotionTiming(
     motion: DiscoveredMotion,
-    property: 'duration' | 'delay' | 'easing',
+    property: 'duration' | 'delay' | 'easing' | 'iterations' | 'direction' | 'fill',
     after: string | number,
   ): Promise<void> {
     const effect = motion.animation?.effect as KeyframeEffect | null;
@@ -6957,9 +7645,9 @@ export function installFoundryInspector(
         category: 'motion',
         property: `motion.${motion.descriptor.id}.${property}`,
         label: property === 'duration' ? 'Duration' : property === 'delay' ? 'Delay' : 'Easing',
-        kind: property === 'easing' ? 'text' : 'number',
+        kind: ['easing', 'direction', 'fill'].includes(property) ? 'text' : 'number',
         value: before,
-        unit: property === 'easing' ? undefined : 'ms',
+        unit: ['duration', 'delay'].includes(property) ? 'ms' : undefined,
         read: () => effect.getTiming()[property] as string | number,
         apply: (value) => effect.updateTiming({ [property]: value }),
       },
@@ -7507,7 +8195,11 @@ export function installFoundryInspector(
           /font|lineHeight|letterSpacing/i.test(control.property)) ||
         (control.category === 'color' && /color|background|fill|stroke/i.test(control.property)) ||
         (control.category === 'effects' && /radius|shadow|blur/i.test(control.property));
-      const availableTokens = tokensForCategory(control.category);
+      const availableTokens = rankedProjectTokens(
+        tokensForCategory(control.category),
+        control.property,
+        `${control.value}${control.unit ?? ''}`,
+      );
       if (!tokenEligible || !availableTokens.length) return;
       const field = controlsRoot.querySelector<HTMLElement>(`[data-control="${index}"]`);
       const label = field?.closest<HTMLElement>('label');
@@ -7516,14 +8208,14 @@ export function installFoundryInspector(
         'beforeend',
         matches.length
           ? `<span class="token-provenance">Uses ${escapeHtml(matches[0]!.name)}</span>`
-          : '<span class="token-provenance literal">Literal value · consider a project token</span>',
+          : `<span class="token-provenance literal">Literal value · ${availableTokens[0]?.relation === 'nearest' ? `nearest is ${escapeHtml(availableTokens[0].token.name)}` : 'consider a project token'}</span>`,
       );
       label.insertAdjacentHTML(
         'beforeend',
         `<span class="token-menu-wrap"><button type="button" class="token-menu-trigger" data-token-menu-trigger="${index}" aria-expanded="false" aria-label="Choose a project token"><i data-foundry-icon="bookmark"></i></button><span class="token-menu" data-token-menu="${index}" hidden>${availableTokens
           .map(
-            (token) =>
-              `<button type="button" class="token-option" data-token-control="${index}" data-token-value="${escapeHtml(token.value)}" title="${escapeHtml(token.value)}">${control.category === 'color' ? `<span class="swatch" style="--token-color:${escapeHtml(token.value)}"></span>` : ''}<span>${escapeHtml(token.name)}</span><code>${escapeHtml(token.value)}</code></button>`,
+            ({ token, relation }) =>
+              `<button type="button" class="token-option" data-token-control="${index}" data-token-value="${escapeHtml(token.value)}" title="${escapeHtml(token.value)}">${control.category === 'color' ? `<span class="swatch" style="--token-color:${escapeHtml(token.value)}"></span>` : ''}<span>${escapeHtml(token.name)}${relation === 'exact' ? '<small>Current</small>' : relation === 'nearest' ? '<small>Nearest</small>' : ''}</span><code>${escapeHtml(token.value)}</code></button>`,
           )
           .join('')}</span></span>`,
       );
@@ -7735,6 +8427,10 @@ export function installFoundryInspector(
 
   function select(element: HTMLElement, additive = false): void {
     if (element === host || host.contains(element)) return;
+    if (selected && selected !== element && workshopStateId !== 'current') {
+      clearWorkshopStatePreview();
+      workshopStateId = 'current';
+    }
     closeTypographyStudio(false);
     colorPopover.hidden = true;
     activeColor = undefined;
@@ -7822,6 +8518,7 @@ export function installFoundryInspector(
     sessionStorage.setItem('__foundry_selected_selector', foundrySelector(element));
     if (!workbench.hidden) applyWorkbenchState();
     if (!libraryPanel.hidden) renderDesignMemory();
+    if (!componentWorkshopPanel.hidden) renderComponentWorkshop();
     if (matrixMode) renderWorkbenchMatrix();
     publishWorkspaceState();
   }
@@ -7843,6 +8540,8 @@ export function installFoundryInspector(
   }
 
   function clearSelection(): void {
+    clearWorkshopStatePreview();
+    workshopStateId = 'current';
     closeTypographyStudio(false);
     colorPopover.hidden = true;
     activeColor = undefined;
@@ -7867,6 +8566,7 @@ export function installFoundryInspector(
     updateCanvasActions();
     renderLayers();
     if (!libraryPanel.hidden) renderDesignMemory();
+    if (!componentWorkshopPanel.hidden) renderComponentWorkshop();
     if (matrixMode) renderWorkbenchMatrix();
     publishWorkspaceState();
   }
@@ -8714,12 +9414,29 @@ export function installFoundryInspector(
       libraryPanel.hidden ? openDesignMemory() : closeDesignMemory(),
     );
   libraryPanel.querySelector('.close-library')?.addEventListener('click', closeDesignMemory);
+  shadow
+    .querySelector('.open-component-workshop')
+    ?.addEventListener('click', () =>
+      componentWorkshopPanel.hidden ? openComponentWorkshop() : closeComponentWorkshop(),
+    );
+  componentWorkshopPanel
+    .querySelector('.close-component-workshop')
+    ?.addEventListener('click', closeComponentWorkshop);
+  componentWorkshopPanel.querySelector('[data-workshop-matrix]')?.addEventListener('click', () => {
+    closeComponentWorkshop();
+    openWorkbench();
+    if (!matrixMode) toggleWorkbenchMatrix();
+  });
+  componentWorkshopPanel
+    .querySelector('[data-workshop-review]')
+    ?.addEventListener('click', () => void openReview());
   libraryPanel.querySelector('[data-save-recipe]')?.addEventListener('click', saveSelectedRecipe);
   libraryPanel
     .querySelector('[data-capture-baseline]')
     ?.addEventListener('click', saveManualBaseline);
   installUtilityGeometry(healthPanel, 'health');
   installUtilityGeometry(libraryPanel, 'memory');
+  installUtilityGeometry(componentWorkshopPanel, 'component');
   layerSearch.addEventListener('input', () => renderLayers());
   layerTree.addEventListener('scroll', () => {
     cancelAnimationFrame(layerScrollFrame);
@@ -8855,6 +9572,11 @@ export function installFoundryInspector(
       toggleLayers();
       return;
     }
+    if (event.shiftKey && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      componentWorkshopPanel.hidden ? openComponentWorkshop() : closeComponentWorkshop();
+      return;
+    }
     if (event.shiftKey && event.key.toLowerCase() === 'h') {
       event.preventDefault();
       healthPanel.hidden ? openHealth() : closeHealth();
@@ -8889,6 +9611,7 @@ export function installFoundryInspector(
     } else if (!typographyPopover.hidden) closeTypographyStudio(true);
     else if (!comparisonStage.hidden) closeSplitComparison();
     else if (!commandPalette.hidden) closeCommands();
+    else if (!componentWorkshopPanel.hidden) closeComponentWorkshop();
     else if (!libraryPanel.hidden) closeDesignMemory();
     else if (!healthPanel.hidden) closeHealth();
     else if (comparisonActive) closeComparison();
@@ -8909,6 +9632,7 @@ export function installFoundryInspector(
       }
       if (!layersPanel.hidden) renderLayers();
       if (!healthPanel.hidden) scanDesignHealth();
+      if (!componentWorkshopPanel.hidden) renderComponentWorkshop();
     });
   });
   layerMutationObserver.observe(document.body, { childList: true, subtree: true });

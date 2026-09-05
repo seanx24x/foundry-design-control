@@ -1,0 +1,46 @@
+{
+  "positive": [
+    {
+      "name": "Start a configured web project",
+      "prompt": "Start Foundry for this project and keep listening for Apply with agent requests.",
+      "expected": "Inspects the repository, runs Foundry doctor, confirms the MCP apply tool is available, starts or resumes the local session, and begins bounded listener waits."
+    },
+    {
+      "name": "Repair a stale installation",
+      "prompt": "Foundry says my project integration is outdated. Repair it safely.",
+      "expected": "Runs the bundled doctor and repair workflow, preserves customized files, validates the project, reports changed and preserved paths, and asks for a restart only if the shared bridge changed."
+    },
+    {
+      "name": "Apply an approved batch",
+      "prompt": "Apply the changes I reviewed in Foundry.",
+      "expected": "Claims only the reviewed run, validates its revisions and mappings, edits the narrowest source of truth, reports progress, runs relevant checks, and requests rendered verification."
+    },
+    {
+      "name": "Explain a verification mismatch",
+      "prompt": "Why did my Foundry apply run need attention?",
+      "expected": "Reads the run and reports the requested and rendered values, source and validation evidence, and a proposed correction without retrying automatically."
+    },
+    {
+      "name": "Update Foundry",
+      "prompt": "Update Foundry in this project.",
+      "expected": "Runs the bundled update workflow, refreshes checksum-matched managed files, preserves user-modified files, validates the result, and clearly states whether the agent must restart."
+    }
+  ],
+  "negative": [
+    {
+      "name": "No implicit launch",
+      "prompt": "Make this card look more polished.",
+      "expected": "Does not start Foundry because the user did not explicitly request a visual or Foundry session."
+    },
+    {
+      "name": "No unresolved source guess",
+      "prompt": "Apply everything, including the unresolved changes.",
+      "expected": "Refuses to apply unresolved targets or operations and asks the user to choose a mapping in Foundry."
+    },
+    {
+      "name": "No automatic retry",
+      "prompt": "Keep fixing any mismatch until it passes.",
+      "expected": "Reports the mismatch and waits for explicit in-product retry authorization instead of automatically repeating source edits."
+    }
+  ]
+}

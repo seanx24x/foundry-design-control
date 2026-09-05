@@ -26,6 +26,11 @@ test('keeps primary docks independent while enforcing one utility', () => {
   assert.equal(withMemory.layersOpen, true);
   assert.equal(withMemory.inspectorOpen, true);
   assert.equal(withMemory.utility, 'memory');
+  const withComponent = updateWorkspace(withMemory, {
+    type: 'open-utility',
+    utility: 'component',
+  });
+  assert.equal(withComponent.utility, 'component');
 });
 
 test('keeps the change summary and review modal separate from inspector visibility', () => {

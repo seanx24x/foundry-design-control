@@ -1,4 +1,4 @@
-export type FoundryUtility = 'health' | 'memory' | null;
+export type FoundryUtility = 'health' | 'memory' | 'component' | null;
 export type InterfaceThemePreference = 'system' | 'light' | 'dark';
 export type ResolvedInterfaceTheme = 'light' | 'dark';
 

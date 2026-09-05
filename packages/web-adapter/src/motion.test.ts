@@ -120,7 +120,11 @@ test('workspace bridge serializes and accepts motion studio commands', () => {
   assert.match(source, /message\.command === 'motion-action'/);
   assert.match(source, /action === 'scrub'/);
   assert.match(source, /action === 'duration'/);
+  assert.match(source, /action === 'iterations'/);
+  assert.match(source, /action === 'direction'/);
+  assert.match(source, /action === 'fill'/);
   assert.match(source, /applyMotionTiming\(motion, action, after\)/);
+  assert.match(source, /reducedMotionProtected:/);
   assert.match(source, /action === 'keyframe-value'/);
   assert.match(source, /applyMotionKeyframe\(motion, Number\(payload\.index\), property, after\)/);
   assert.match(source, /motionKeyframeValue\(/);

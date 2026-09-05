@@ -12,7 +12,11 @@ import compassIcon from '@iconify-icons/keyline-icons/compass';
 import componentIcon from '@iconify-icons/keyline-icons/shapes';
 import contrastIcon from '@iconify-icons/keyline-icons/circle-half';
 import cursorIcon from '@iconify-icons/keyline-icons/cursor';
+import cursorTextIcon from '@iconify-icons/keyline-icons/cursor-text';
 import fileIcon from '@iconify-icons/keyline-icons/file-text';
+import gitBranchIcon from '@iconify-icons/keyline-icons/git-branch';
+import gitCompareIcon from '@iconify-icons/keyline-icons/git-compare';
+import gitMergeIcon from '@iconify-icons/keyline-icons/git-merge';
 import interactIcon from '@iconify-icons/keyline-icons/cursor-click';
 import layersIcon from '@iconify-icons/keyline-icons/grid-squares';
 import layoutIcon from '@iconify-icons/keyline-icons/layout-dashboard';
@@ -42,8 +46,12 @@ const ICONS = {
   component: componentIcon,
   contrast: contrastIcon,
   cursor: cursorIcon,
+  typography: cursorTextIcon,
   external: arrowUpRightIcon,
   file: fileIcon,
+  branch: gitBranchIcon,
+  compare: gitCompareIcon,
+  merge: gitMergeIcon,
   interact: interactIcon,
   layers: layersIcon,
   layout: layoutIcon,
@@ -74,6 +82,7 @@ const queryTheme = params.get('theme');
 let activeSession = null;
 let bridgeState = null;
 let bridgeConnected = false;
+let bridgeBranchSynced = false;
 let structureTab = 'layers';
 let activeMode = sessionStorage.getItem(modeKey) ?? 'canvas';
 let lastReviewFocus = null;
@@ -93,6 +102,31 @@ let commandRequestId = 0;
 let dismissedApplyRunId = null;
 let cancelConfirmationRunId = null;
 let cancelConfirmationUntil = 0;
+let workshopComponentId = '';
+let workshopVariantId = '';
+let workshopStateId = 'current';
+let responsiveCustomWidth = 1280;
+let responsiveStressMode = 'none';
+let responsiveEditScope = 'breakpoint';
+let responsiveActiveViewport = 'current';
+let designSystemTokenId = '';
+let designSystemCategory = 'all';
+let motionStudioId = '';
+let motionStudioInteracting = false;
+let typographySource = 'project';
+let typographyGoogleFonts = [];
+let typographyGoogleStatus = 'idle';
+let typographyLocalFonts = [];
+let typographyScale = { base: 16, ratio: 1.25, step: 1, fluid: false };
+let typographyGoogleStrategy = 'framework';
+let typographyGoogleSelection = null;
+let typographySearchTimer = null;
+let branchCompareLeft = 'main';
+let branchCompareRight = '';
+const branchDecisionSelection = new Set();
+const designBranchFrames = new Map();
+const responsiveFrames = new Map();
+const responsiveSnapshots = new Map();
 const pendingCommandRequests = new Map();
 const changedControls = new Set();
 const effectCommitTimers = new Map();
@@ -378,6 +412,15 @@ function setMode(mode, restoreFocus = true, returnFocus = null) {
   if (mode === 'states') renderStates();
   if (mode === 'health') renderHealth();
   if (mode === 'memory') renderMemory();
+  if (mode === 'components') renderComponentWorkshop();
+  if (mode === 'responsive') renderResponsiveLab();
+  if (mode === 'system') renderDesignSystem();
+  if (mode === 'motion') renderMotionStudio();
+  if (mode === 'typography') {
+    renderTypographyStudio();
+    if (typographyGoogleStatus === 'idle') void loadTypographyGoogleFonts('');
+  }
+  if (mode === 'branches') renderDesignBranches();
   if (activeSession) renderChangeSummary();
   closeWorkspaceMenu();
 }
@@ -413,7 +456,244 @@ function projectDesign() {
     breakpoints: preferLive('breakpoints'),
     themes: preferLive('themes'),
     states: preferLive('states'),
+    tokenUsages: preferLive('tokenUsages'),
+    designSystemFindings: preferLive('designSystemFindings'),
   };
+}
+
+function sourceText(source) {
+  if (!source) return 'Source mapping unavailable';
+  if (typeof source === 'string') return source;
+  return `${source.file ?? 'Source mapping unavailable'}${source.line ? `:${source.line}` : ''}`;
+}
+
+function normalizedWorkshopComponents() {
+  const layers = bridgeState?.layers ?? [];
+  const definitions = projectDesign().components.map((component) => ({
+    ...component,
+    instances: component.instances ?? 0,
+    variants: (component.variants ?? []).map((variant) => ({
+      id: variant.id,
+      name: variant.name ?? variant.label ?? 'Unnamed variant',
+      props:
+        variant.props ??
+        (variant.property && ['string', 'number', 'boolean'].includes(typeof variant.value)
+          ? { [variant.property]: variant.value }
+          : {}),
+      source: variant.source,
+    })),
+  }));
+  const catalog = new Map();
+  definitions.forEach((component) => {
+    catalog.set(component.id || component.name, {
+      ...component,
+      key: component.id || component.name,
+      elements: [],
+    });
+  });
+  layers
+    .filter((layer) => layer.component)
+    .forEach((layer) => {
+      const name = layer.component.split('/').filter(Boolean).at(-1) ?? layer.label;
+      const definition = definitions.find(
+        (component) =>
+          component.id === layer.component ||
+          component.name === layer.component ||
+          component.name === name,
+      );
+      const key = definition?.id || layer.component;
+      const entry = catalog.get(key) ?? {
+        id: layer.component,
+        key,
+        name,
+        source: layer.source,
+        instances: 0,
+        variants: [],
+        elements: [],
+      };
+      entry.elements.push(layer);
+      entry.instances = Math.max(entry.instances ?? 0, entry.elements.length);
+      catalog.set(key, entry);
+    });
+  return [...catalog.values()].sort(
+    (a, b) =>
+      Number(b.elements.length > 0) - Number(a.elements.length > 0) || a.name.localeCompare(b.name),
+  );
+}
+
+const WORKSHOP_STATES = [
+  ['current', 'Default', 'instrumented'],
+  ['hover', 'Hover', 'instrumented'],
+  ['focus', 'Focus', 'instrumented'],
+  ['active', 'Pressed', 'instrumented'],
+  ['disabled', 'Disabled', 'instrumented'],
+  ['loading', 'Loading', 'inferred'],
+  ['empty', 'Empty', 'inferred'],
+  ['error', 'Error', 'inferred'],
+];
+
+function workshopStates() {
+  const states = new Map(WORKSHOP_STATES.map((item) => [item[0], item]));
+  projectDesign().states.forEach((state) => {
+    states.set(state.id, [
+      state.id,
+      state.label,
+      state.confidence === 'instrumented' ? 'instrumented' : 'inferred',
+    ]);
+  });
+  return [...states.values()];
+}
+
+function currentWorkshopComponent() {
+  const catalog = normalizedWorkshopComponents();
+  const selectedComponent = bridgeState?.selection?.component;
+  return (
+    catalog.find(
+      (component) => component.key === workshopComponentId || component.id === workshopComponentId,
+    ) ??
+    catalog.find((component) => component.elements.some((element) => element.selected)) ??
+    catalog.find((component) => component.id === selectedComponent) ??
+    catalog.find((component) => component.elements.length) ??
+    catalog[0]
+  );
+}
+
+function renderComponentWorkshop() {
+  const list = $('#component-workshop-list');
+  const detail = $('#component-workshop-detail');
+  if (!list || !detail) return;
+  const query = $('#component-workshop-search').value.trim().toLowerCase();
+  const catalog = normalizedWorkshopComponents();
+  const component = currentWorkshopComponent();
+  if (component) workshopComponentId = component.key;
+  const visible = catalog.filter((item) =>
+    `${item.name} ${sourceText(item.source)}`.toLowerCase().includes(query),
+  );
+  list.innerHTML = visible.length
+    ? visible
+        .map(
+          (item) =>
+            `<button class="workshop-component-row ${item.key === component?.key ? 'is-active' : ''}" data-workshop-component="${escapeAttribute(item.key)}"><i data-icon="component"></i><span><strong>${escapeText(item.name)}</strong><span>${escapeText(sourceText(item.source))}</span></span><code>${item.elements.length || '—'}</code></button>`,
+        )
+        .join('')
+    : '<div class="empty-inspector">No components match this search.</div>';
+  renderIcons(list);
+  $$('[data-workshop-component]', list).forEach((button) =>
+    button.addEventListener('click', () => {
+      workshopComponentId = button.dataset.workshopComponent;
+      workshopVariantId = '';
+      workshopStateId = 'current';
+      const next = currentWorkshopComponent();
+      if (next?.elements.length)
+        sendCommand('select-component-instance', { componentId: next.key, index: 0 });
+      renderComponentWorkshop();
+    }),
+  );
+  if (!component) {
+    detail.innerHTML = '<div class="workshop-empty">No indexed components are available yet.</div>';
+    $('#component-workshop-readiness').textContent = 'Instrument a component to begin.';
+    return;
+  }
+  const variants = component.variants ?? [];
+  if (workshopVariantId && !variants.some((variant) => variant.id === workshopVariantId))
+    workshopVariantId = '';
+  const selectedVariant = variants.find((variant) => variant.id === workshopVariantId);
+  const scope = bridgeState?.context?.scope ?? 'instance';
+  const scopes = [
+    ['instance', component.elements.length > 0, 'Changes this rendered instance'],
+    [
+      'variant',
+      Boolean(component.elements.length && selectedVariant?.source),
+      selectedVariant?.source
+        ? 'Changes the mapped variant definition'
+        : 'Choose a source-mapped variant',
+    ],
+    [
+      'component',
+      Boolean(component.elements.length && component.source),
+      component.source
+        ? `Updates ${component.instances || component.elements.length} component instances`
+        : 'Component source mapping unavailable',
+    ],
+  ];
+  const activeScope = scopes.find((item) => item[0] === scope && item[1]) ?? scopes[0];
+  detail.innerHTML = `<div class="workshop-detail-head"><div><span class="eyebrow">${component.elements.length ? 'Live component' : 'Indexed definition'}</span><h2>${escapeText(component.name)}</h2><p>${escapeText(sourceText(selectedVariant?.source ?? component.source))}</p></div><div class="workshop-metrics"><div class="workshop-metric"><strong>${component.elements.length}</strong><span>Live instances</span></div><div class="workshop-metric"><strong>${variants.length}</strong><span>Mapped variants</span></div></div></div><div class="workshop-grid"><section class="workshop-card"><header><strong>Change scope</strong><span>${escapeText(activeScope[2])}</span></header><div class="workshop-scope">${scopes
+    .map(
+      ([id, enabled, reason]) =>
+        `<button data-workshop-scope="${id}" class="${scope === id ? 'is-active' : ''}" title="${escapeAttribute(reason)}" ${enabled ? '' : 'disabled'}>${id[0].toUpperCase()}${id.slice(1)}</button>`,
+    )
+    .join(
+      '',
+    )}</div><span class="workshop-help">Broader scopes remain unavailable until Foundry has an exact source target.</span></section><section class="workshop-card"><header><strong>Instances</strong><span>${component.elements.length ? 'Choose the live target' : 'Not on this canvas'}</span></header><div class="workshop-instances">${
+    component.elements.length
+      ? component.elements
+          .map(
+            (element, index) =>
+              `<button class="workshop-instance-row ${element.selected ? 'is-active' : ''}" data-workshop-instance="${index}"><span>${escapeText(element.label)}</span><code>${element.width ?? '—'} × ${element.height ?? '—'}</code></button>`,
+          )
+          .join('')
+      : '<span class="workshop-help">The definition is read-only until a live instance is available.</span>'
+  }</div></section><section class="workshop-card"><header><strong>Variants</strong><span>${selectedVariant ? escapeText(selectedVariant.name) : 'Choose one to preview'}</span></header><div class="workshop-variants">${
+    variants.length
+      ? variants
+          .map(
+            (variant) =>
+              `<button class="workshop-variant-row ${variant.id === workshopVariantId ? 'is-active' : ''}" data-workshop-variant="${escapeAttribute(variant.id)}" ${component.elements.length && Object.keys(variant.props).length ? '' : 'disabled'}><span>${escapeText(variant.name)}</span><code>${escapeText(
+                Object.entries(variant.props)
+                  .map(([key, value]) => `${key}=${value}`)
+                  .join(' · ') || 'No preview mapping',
+              )}</code></button>`,
+          )
+          .join('')
+      : '<span class="workshop-help">No Storybook or project variants were discovered.</span>'
+  }</div></section><section class="workshop-card"><header><strong>Visual states</strong><span>Preview only</span></header><div class="workshop-state-grid">${workshopStates()
+    .map(
+      ([id, label, confidence]) =>
+        `<button data-workshop-state="${escapeAttribute(id)}" data-confidence="${confidence}" class="${workshopStateId === id ? 'is-active' : ''}" ${component.elements.length ? '' : 'disabled'}><i class="workshop-state-dot"></i>${escapeText(label)}</button>`,
+    )
+    .join(
+      '',
+    )}</div><span class="workshop-help">Green states use native browser behavior. Product-specific states expose semantic attributes without creating a design change.</span></section><section class="workshop-card is-wide"><header><strong>Responsive verification</strong><span>${projectDesign().breakpoints.length} viewports · ${Math.max(1, projectDesign().themes.length)} themes</span></header><div class="workbench-grid">${projectDesign()
+    .breakpoints.map(
+      (viewport) =>
+        `<article class="condition-card"><strong>${escapeText(viewport.label)}</strong><span>${viewport.width} × ${viewport.height ?? 900} · Open the state matrix to verify</span></article>`,
+    )
+    .join('')}</div></section></div>`;
+  $$('[data-workshop-scope]', detail).forEach((button) =>
+    button.addEventListener('click', () => {
+      sendCommand('set-context', { key: 'scope', value: button.dataset.workshopScope });
+      bridgeState.context.scope = button.dataset.workshopScope;
+      renderComponentWorkshop();
+    }),
+  );
+  $$('[data-workshop-instance]', detail).forEach((button) =>
+    button.addEventListener('click', () =>
+      sendCommand('select-component-instance', {
+        componentId: component.key,
+        index: Number(button.dataset.workshopInstance),
+      }),
+    ),
+  );
+  $$('[data-workshop-variant]', detail).forEach((button) =>
+    button.addEventListener('click', () => {
+      workshopVariantId = button.dataset.workshopVariant;
+      sendCommand('preview-component-variant', {
+        componentId: component.key,
+        variantId: workshopVariantId,
+      });
+      renderComponentWorkshop();
+    }),
+  );
+  $$('[data-workshop-state]', detail).forEach((button) =>
+    button.addEventListener('click', () => {
+      workshopStateId = button.dataset.workshopState;
+      sendCommand('preview-component-state', { stateId: workshopStateId });
+      renderComponentWorkshop();
+    }),
+  );
+  $('#component-workshop-readiness').textContent = component.elements.length
+    ? `${component.name} is ready · ${activeScope[2]}`
+    : `${component.name} is indexed but not rendered on this canvas.`;
 }
 
 function selectedViewport() {
@@ -623,15 +903,24 @@ function renderLayers() {
       ? `<div class="component-list">${components
           .map(
             (component) =>
-              `<button class="component-card" data-component-name="${escapeText(component.name)}"><span class="component-icon"><i data-icon="component"></i></span><span class="component-copy"><strong>${escapeText(component.name)}</strong><span>${escapeText(component.source ?? 'Project component')}</span></span><span class="component-count">${component.instances ?? 0}</span></button>`,
+              `<button class="component-card" data-component-name="${escapeAttribute(component.name)}"><span class="component-icon"><i data-icon="component"></i></span><span class="component-copy"><strong>${escapeText(component.name)}</strong><span>${escapeText(sourceText(component.source))}</span></span><span class="component-count">${component.instances ?? 0}</span></button>`,
           )
           .join('')}</div>`
       : '<div class="empty-inspector">No components match this search.</div>';
     renderIcons(root);
     $$('[data-component-name]', root).forEach((button) =>
       button.addEventListener('click', () => {
-        const match = layers.find((item) => item.label === button.dataset.componentName);
+        const name = button.dataset.componentName;
+        const definition = projectComponents.find((item) => item.name === name);
+        const match = layers.find(
+          (item) =>
+            item.component === definition?.id || item.component === name || item.label === name,
+        );
+        workshopComponentId = definition?.id ?? match?.component ?? name;
+        workshopVariantId = '';
+        workshopStateId = 'current';
         if (match) sendCommand('select', { selector: match.selector });
+        setMode('components', true, button);
       }),
     );
     return;
@@ -909,7 +1198,7 @@ function renderInspector() {
       '<div class="empty-inspector">Select a rendered element to reveal only the controls Foundry can measure safely.</div>';
     return;
   }
-  summary.innerHTML = `<span class="selection-kind">${escapeText(selection.kind)}</span><strong>${escapeText(selection.label)}</strong><code>${escapeText(selection.source)}</code><p>${selection.width} × ${selection.height} px · ${escapeText(selection.confidence)}${selection.count > 1 ? ` · ${selection.count} selected` : ''}</p>`;
+  summary.innerHTML = `<span class="selection-kind">${escapeText(selection.kind)}</span><strong>${escapeText(selection.label)}</strong><code>${escapeText(sourceText(selection.source))}</code><p>${selection.width} × ${selection.height} px · ${escapeText(selection.confidence)}${selection.count > 1 ? ` · ${selection.count} selected` : ''}</p>`;
   const groups = new Map();
   for (const control of bridgeState.controls ?? []) {
     const group = controlGroup(control);
@@ -1464,8 +1753,8 @@ function renderApplyRun(runs = []) {
 }
 
 function renderChangeSummary() {
-  const changes =
-    activeSession?.changeSet?.changes?.filter((change) => change.status !== 'rejected') ?? [];
+  const direction = activeDesignDirection();
+  const changes = (direction?.changes ?? []).filter((change) => change.status !== 'rejected');
   const root = $('#change-summary');
   root.hidden = changes.length === 0 || activeMode !== 'canvas';
   if (!changes.length) return;
@@ -1474,7 +1763,7 @@ function renderChangeSummary() {
   const activeRun =
     run && ['queued', 'claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state);
   $('#change-count').textContent =
-    `${changes.length} ${changes.length === 1 ? 'change' : 'changes'} recorded`;
+    `${changes.length} ${changes.length === 1 ? 'change' : 'changes'} · ${direction.name}`;
   $('#latest-change').textContent = activeRun
     ? run.state.replaceAll('_', ' ')
     : `${latest.target.label} · ${latest.property}`;
@@ -1503,6 +1792,169 @@ function renderStates() {
         `<article class="condition-card"><strong>${escapeText(card.title)}</strong><span>${escapeText(card.detail)}</span></article>`,
     )
     .join('');
+}
+
+function responsiveViewportContexts() {
+  const sessionViewport = activeSession?.changeSet?.context?.viewport ?? {
+    width: 1440,
+    height: 900,
+  };
+  const configured = projectDesign()
+    .breakpoints.filter((item) => Number.isFinite(item.width) && item.width > 0)
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      width: item.width,
+      height: item.height ?? sessionViewport.height,
+    }));
+  const contexts = [...configured];
+  if (!contexts.some((item) => item.id === 'current')) {
+    contexts.push({ id: 'current', label: 'Current', ...sessionViewport });
+  }
+  const customHeight = Math.max(
+    480,
+    Math.round((responsiveCustomWidth * sessionViewport.height) / sessionViewport.width),
+  );
+  contexts.push({
+    id: 'custom',
+    label: 'Custom',
+    width: responsiveCustomWidth,
+    height: customHeight,
+  });
+  return contexts.sort((a, b) => a.width - b.width);
+}
+
+function responsiveFrameCommand(frame, command, payload = {}) {
+  if (!frame?.contentWindow) return;
+  frame.contentWindow.postMessage(
+    { type: 'foundry:workspace-command', sessionId, command, payload },
+    previewOrigin,
+  );
+}
+
+function syncResponsiveFrame(frame) {
+  const selector = bridgeState?.selection?.selector;
+  if (selector) responsiveFrameCommand(frame, 'select', { selector });
+  responsiveFrameCommand(frame, 'preview-responsive-stress', { mode: responsiveStressMode });
+}
+
+function responsiveFindingSummary(snapshot) {
+  if (!snapshot) return ['Live preview'];
+  const issues = [];
+  if (snapshot.documentScrollWidth > snapshot.viewportWidth + 1)
+    issues.push(`${Math.round(snapshot.documentScrollWidth - snapshot.viewportWidth)}px overflow`);
+  if (snapshot.selection?.scrollWidth > snapshot.selection?.clientWidth + 1)
+    issues.push('Selection clips horizontally');
+  if (snapshot.selection?.scrollHeight > snapshot.selection?.clientHeight + 1)
+    issues.push('Selection clips vertically');
+  return issues.length ? issues : ['No overflow detected'];
+}
+
+function updateResponsiveCard(viewportId) {
+  const card = $(`[data-responsive-card="${CSS.escape(viewportId)}"]`);
+  const snapshot = responsiveSnapshots.get(viewportId);
+  if (!card || !snapshot) return;
+  const findings = responsiveFindingSummary(snapshot);
+  const footer = $('footer', card);
+  footer.className = findings[0] === 'No overflow detected' ? 'is-clear' : 'has-issue';
+  $('span', footer).textContent = findings.join(' · ');
+}
+
+function scrubResponsiveCustomFrame() {
+  const frame = $('[data-responsive-frame="custom"]');
+  const shell = frame?.closest('.responsive-frame-viewport');
+  const card = frame?.closest('[data-responsive-card]');
+  if (!frame || !shell || !card) return;
+  const sessionViewport = activeSession?.changeSet?.context?.viewport ?? {
+    width: 1440,
+    height: 900,
+  };
+  const height = Math.max(
+    480,
+    Math.round((responsiveCustomWidth * sessionViewport.height) / sessionViewport.width),
+  );
+  const scale = Math.min(1, 320 / responsiveCustomWidth, 220 / height);
+  frame.width = responsiveCustomWidth;
+  frame.height = height;
+  shell.style.setProperty('--preview-width', `${responsiveCustomWidth}px`);
+  shell.style.setProperty('--preview-height', `${height}px`);
+  shell.style.setProperty('--preview-scale', scale);
+  const dimensions = $('header span', card);
+  if (dimensions) dimensions.textContent = `${responsiveCustomWidth} × ${height}`;
+  window.clearTimeout(scrubResponsiveCustomFrame.timer);
+  scrubResponsiveCustomFrame.timer = window.setTimeout(() => syncResponsiveFrame(frame), 120);
+}
+
+function renderResponsiveLab() {
+  const root = $('#responsive-viewport-grid');
+  if (!root) return;
+  const contexts = responsiveViewportContexts();
+  const minWidth = contexts[0]?.width ?? 320;
+  const maxWidth = contexts.at(-1)?.width ?? 1920;
+  $('#responsive-width').min = String(Math.min(320, minWidth));
+  $('#responsive-width').max = String(Math.max(3840, maxWidth));
+  $('#responsive-width').value = String(responsiveCustomWidth);
+  $('#responsive-width-output').textContent = `${responsiveCustomWidth}px`;
+  $('#responsive-boundaries').innerHTML = contexts
+    .filter((item) => item.id !== 'custom')
+    .map(
+      (item) =>
+        `<button data-responsive-boundary="${escapeAttribute(item.id)}"><strong>${escapeText(item.label)}</strong><span>${item.width}px</span></button>`,
+    )
+    .join('');
+  root.innerHTML = contexts
+    .map((item) => {
+      const scale = Math.min(1, 320 / item.width, 220 / item.height);
+      const snapshot = responsiveSnapshots.get(item.id);
+      const findings = responsiveFindingSummary(snapshot);
+      const preview = previewUrl
+        ? `<div class="responsive-frame-viewport" style="--preview-width:${item.width}px;--preview-height:${item.height}px;--preview-scale:${scale}"><iframe data-responsive-frame="${escapeAttribute(item.id)}" title="${escapeAttribute(item.label)} live viewport" width="${item.width}" height="${item.height}"></iframe></div>`
+        : '<div class="responsive-frame-empty">Preview unavailable</div>';
+      return `<article class="responsive-viewport-card ${responsiveActiveViewport === item.id ? 'is-active' : ''}" data-responsive-card="${escapeAttribute(item.id)}"><header><div><strong>${escapeText(item.label)}</strong><span>${item.width} × ${item.height}</span></div><button class="chip-button" data-responsive-open="${escapeAttribute(item.id)}">Inspect</button></header>${preview}<footer class="${findings[0] === 'No overflow detected' ? 'is-clear' : findings[0] === 'Live preview' ? '' : 'has-issue'}"><i></i><span>${escapeText(findings.join(' · '))}</span></footer></article>`;
+    })
+    .join('');
+  responsiveFrames.clear();
+  $$('[data-responsive-frame]', root).forEach((frame) => {
+    const item = contexts.find((candidate) => candidate.id === frame.dataset.responsiveFrame);
+    if (!item) return;
+    responsiveFrames.set(frame.contentWindow, item.id);
+    const url = new URL(previewUrl);
+    url.searchParams.set('__foundry_embedded', '1');
+    url.searchParams.set('__foundry_responsive_lab', item.id);
+    frame.addEventListener('load', () => syncResponsiveFrame(frame));
+    frame.src = url.href;
+  });
+  $$('[data-responsive-open]', root).forEach((button) =>
+    button.addEventListener('click', () => {
+      responsiveActiveViewport = button.dataset.responsiveOpen;
+      const viewport = contexts.find((item) => item.id === responsiveActiveViewport);
+      if (viewport?.id !== 'custom') {
+        $('#canvas-viewport').value = viewport.id;
+        syncCustomSelect($('#canvas-viewport'));
+        sendCommand('set-context', { key: 'breakpoint', value: viewport.id });
+      }
+      renderResponsiveLab();
+    }),
+  );
+  $$('[data-responsive-boundary]', $('#responsive-boundaries')).forEach((button) =>
+    button.addEventListener('click', () => {
+      responsiveActiveViewport = button.dataset.responsiveBoundary;
+      renderResponsiveLab();
+    }),
+  );
+  const issueCount = [...responsiveSnapshots.values()].reduce(
+    (total, snapshot) =>
+      total +
+      Math.max(
+        0,
+        responsiveFindingSummary(snapshot).length -
+          (responsiveFindingSummary(snapshot)[0] === 'No overflow detected' ? 1 : 0),
+      ),
+    0,
+  );
+  $('#responsive-lab-status').textContent = bridgeState?.selection
+    ? `${bridgeState.selection.label} linked across ${contexts.length} live viewports${issueCount ? ` · ${issueCount} findings` : ''}`
+    : 'Select an element on the canvas to link it across every viewport.';
 }
 
 function renderHealth() {
@@ -1540,6 +1992,567 @@ function renderMemory() {
         `<article class="memory-card"><strong>${card.title}</strong><p>${card.detail}</p></article>`,
     )
     .join('');
+}
+
+const DESIGN_SYSTEM_CATEGORY_LABELS = {
+  color: 'Color',
+  spacing: 'Spacing',
+  size: 'Size',
+  radius: 'Radius',
+  typography: 'Typography',
+  shadow: 'Shadow',
+  motion: 'Motion',
+  other: 'Other',
+};
+
+function renderDesignSystem() {
+  const project = projectDesign();
+  const tokens = project.tokens ?? [];
+  const usages = project.tokenUsages ?? [];
+  const findings = project.designSystemFindings ?? [];
+  const warnings = findings.filter((finding) => finding.severity === 'warning');
+  const literals = usages.filter((usage) => usage.kind === 'literal');
+  const mappedComponents = new Set(usages.map((usage) => usage.componentId).filter(Boolean));
+  $('#design-system-status').textContent =
+    `${tokens.length} ${tokens.length === 1 ? 'token' : 'tokens'} · ${warnings.length} ${warnings.length === 1 ? 'warning' : 'warnings'}`;
+  $('#design-system-summary').innerHTML = [
+    [tokens.length, 'Native tokens', 'Indexed from project source'],
+    [usages.length, 'Mapped usages', `${literals.length} literals to review`],
+    [mappedComponents.size, 'Components reached', 'Source-aware impact'],
+    [warnings.length, 'Drift warnings', 'No automatic changes'],
+  ]
+    .map(
+      ([value, label, detail]) =>
+        `<article><strong>${value}</strong><span>${label}</span><small>${detail}</small></article>`,
+    )
+    .join('');
+
+  const categoryCounts = tokens.reduce((counts, token) => {
+    counts[token.category] = (counts[token.category] ?? 0) + 1;
+    return counts;
+  }, {});
+  const categories = [
+    'all',
+    ...Object.keys(DESIGN_SYSTEM_CATEGORY_LABELS).filter((key) => categoryCounts[key]),
+  ];
+  $('#design-system-categories').innerHTML = categories
+    .map(
+      (category) =>
+        `<button class="chip-button ${designSystemCategory === category ? 'is-active' : ''}" data-system-category="${category}"><span>${category === 'all' ? 'All' : DESIGN_SYSTEM_CATEGORY_LABELS[category]}</span><code>${category === 'all' ? tokens.length : categoryCounts[category]}</code></button>`,
+    )
+    .join('');
+
+  const query = $('#design-system-search').value.trim().toLowerCase();
+  const visible = tokens.filter(
+    (token) =>
+      (designSystemCategory === 'all' || token.category === designSystemCategory) &&
+      `${token.name} ${token.value} ${token.category}`.toLowerCase().includes(query),
+  );
+  if (!tokens.some((token) => token.id === designSystemTokenId)) {
+    designSystemTokenId = visible[0]?.id ?? tokens[0]?.id ?? '';
+  }
+  $('#design-system-token-list').innerHTML = visible.length
+    ? visible
+        .map((token) => {
+          const tokenUsages = usages.filter((usage) => usage.tokenId === token.id);
+          const tokenFindings = findings.filter((finding) => finding.tokenIds?.includes(token.id));
+          const sample =
+            token.category === 'color'
+              ? `<i class="design-token-swatch" style="--token-color:${escapeAttribute(token.value)}"></i>`
+              : '<i class="design-token-glyph"></i>';
+          return `<button class="design-token-row ${token.id === designSystemTokenId ? 'is-active' : ''}" data-system-token="${escapeAttribute(token.id)}">${sample}<span><strong>${escapeText(token.name)}</strong><code>${escapeText(token.value)}</code></span><span class="design-token-count ${tokenFindings.some((finding) => finding.severity === 'warning') ? 'has-warning' : ''}">${tokenUsages.length}</span></button>`;
+        })
+        .join('')
+    : '<div class="empty-inspector">No project tokens match this search.</div>';
+
+  const token = tokens.find((candidate) => candidate.id === designSystemTokenId);
+  const detail = $('#design-system-detail');
+  if (!token) {
+    detail.innerHTML =
+      '<div class="workshop-empty">Index project tokens to map the design system.</div>';
+  } else {
+    const tokenUsages = usages.filter((usage) => usage.tokenId === token.id);
+    const tokenFindings = findings.filter((finding) => finding.tokenIds?.includes(token.id));
+    const files = new Set(tokenUsages.map((usage) => usage.source?.file).filter(Boolean));
+    const components = new Set(tokenUsages.map((usage) => usage.componentId).filter(Boolean));
+    const references = tokenUsages.filter((usage) => usage.kind !== 'literal');
+    const aliases = tokenUsages.filter((usage) => usage.kind === 'alias');
+    const literalUsages = tokenUsages.filter((usage) => usage.kind === 'literal');
+    const colorPreview =
+      token.category === 'color'
+        ? `<span class="design-system-color-preview" style="--token-color:${escapeAttribute(token.value)}"></span>`
+        : '';
+    const usageMarkup = tokenUsages.length
+      ? tokenUsages
+          .slice(0, 40)
+          .map(
+            (usage) =>
+              `<article><span class="usage-kind" data-kind="${escapeAttribute(usage.kind)}">${escapeText(usage.kind)}</span><span><strong>${escapeText(usage.property ?? token.name)}</strong><code>${escapeText(sourceText(usage.source))}</code></span><code>${escapeText(usage.value)}</code></article>`,
+          )
+          .join('')
+      : '<p class="design-system-empty">No indexed references. This token may be reserved or loaded dynamically.</p>';
+    const findingMarkup = tokenFindings.length
+      ? tokenFindings
+          .map(
+            (finding) =>
+              `<article data-severity="${escapeAttribute(finding.severity)}"><i></i><span><strong>${escapeText(finding.title)}</strong><p>${escapeText(finding.detail)}</p><small>${escapeText(finding.evidence?.join(' · ') || 'Project source analysis')}</small></span>${finding.componentIds?.length ? `<button class="secondary-button" data-system-component="${escapeAttribute(finding.componentIds[0])}">Inspect component</button>` : ''}</article>`,
+          )
+          .join('')
+      : '<p class="design-system-empty">This token follows the indexed project system.</p>';
+    detail.innerHTML = `<div class="design-system-detail-head"><div><span class="eyebrow">${escapeText(DESIGN_SYSTEM_CATEGORY_LABELS[token.category] ?? 'Project token')}</span><h2>${escapeText(token.name)}</h2><code>${escapeText(token.value)}</code></div>${colorPreview}</div><div class="design-system-grid"><section class="design-system-card"><header><strong>Source of truth</strong><span>${escapeText(token.confidence ?? 'inferred')}</span></header><div class="design-system-source"><code>${escapeText(sourceText(token.source))}</code><p>${escapeText(token.evidence?.join(' · ') || 'Indexed project value')}</p></div></section><section class="design-system-card"><header><strong>Impact preview</strong><span>Read only</span></header><p>Changing this token can affect <strong>${references.length}</strong> indexed references across <strong>${files.size}</strong> files and <strong>${components.size}</strong> mapped components.</p><div class="design-impact-pills"><span>${literalUsages.length} literals</span><span>${aliases.length} aliases</span><span>${tokenFindings.length} findings</span></div></section><section class="design-system-card is-wide"><header><strong>Usage trace</strong><span>${tokenUsages.length} indexed</span></header><div class="design-usage-list">${usageMarkup}</div></section><section class="design-system-card is-wide"><header><strong>System guidance</strong><span>${tokenFindings.length ? 'Review suggested' : 'Aligned'}</span></header><div class="design-finding-list">${findingMarkup}</div></section></div>`;
+  }
+
+  $$('[data-system-category]').forEach((button) =>
+    button.addEventListener('click', () => {
+      designSystemCategory = button.dataset.systemCategory;
+      designSystemTokenId = '';
+      renderDesignSystem();
+    }),
+  );
+  $$('[data-system-token]').forEach((button) =>
+    button.addEventListener('click', () => {
+      designSystemTokenId = button.dataset.systemToken;
+      renderDesignSystem();
+    }),
+  );
+  $$('[data-system-component]').forEach((button) =>
+    button.addEventListener('click', () => {
+      workshopComponentId = button.dataset.systemComponent;
+      setMode('components', true, button);
+    }),
+  );
+}
+
+async function loadTypographyGoogleFonts(query = '') {
+  typographyGoogleStatus = 'loading';
+  if (activeMode === 'typography') renderTypographyStudio();
+  try {
+    const payload = await api(
+      `/v1/sessions/${sessionId}/google-fonts?query=${encodeURIComponent(query)}&limit=60`,
+    );
+    typographyGoogleFonts = payload.fonts ?? [];
+    typographyGoogleStatus = payload.source ?? 'google';
+  } catch {
+    typographyGoogleFonts = [];
+    typographyGoogleStatus = 'error';
+  }
+  if (activeMode === 'typography') renderTypographyStudio();
+}
+
+function typographyControl(property) {
+  return (bridgeState?.controls ?? []).find((control) => control.property === property);
+}
+
+function typographyChanged(property) {
+  const selection = bridgeState?.selection;
+  return selection && changedControls.has(`${selection.id}:${property}`) ? ' is-changed' : '';
+}
+
+function typographyFontRows(fonts, origin) {
+  const query = $('#typography-search')?.value?.trim().toLowerCase() ?? '';
+  const filtered = fonts.filter((font) => font.family.toLowerCase().includes(query));
+  if (!filtered.length) {
+    if (origin === 'google' && typographyGoogleStatus === 'loading')
+      return '<div class="typography-studio-empty"><strong>Loading Google Fonts</strong><p>Fetching the current catalog.</p></div>';
+    return '<div class="typography-studio-empty"><strong>No matching fonts</strong><p>Try another search or font source.</p></div>';
+  }
+  return filtered
+    .slice(0, 80)
+    .map((font) => {
+      const index = origin === 'google' ? typographyGoogleFonts.indexOf(font) : -1;
+      const meta =
+        origin === 'google'
+          ? `${font.category} · ${font.variants?.length ?? 0} styles`
+          : `${font.weights?.length ?? 0} weights · ${(font.origins ?? [origin]).join(', ')}`;
+      return `<button class="typography-font-row" data-typography-family="${escapeAttribute(font.family)}" data-typography-origin="${origin}" ${index >= 0 ? `data-google-index="${index}"` : ''}><span class="typography-font-sample" style="font-family:${escapeAttribute(`&quot;${font.family}&quot;`)}">Ag</span><span><strong>${escapeText(font.family)}</strong><code>${escapeText(meta)}</code></span>${bridgeState?.typography?.preview?.family === font.family ? '<i data-icon="check"></i>' : ''}</button>`;
+    })
+    .join('');
+}
+
+function renderTypographyStudio() {
+  const selection = bridgeState?.selection;
+  const typography = bridgeState?.typography;
+  const summary = $('#typography-selection-summary');
+  const list = $('#typography-font-list');
+  const stage = $('#typography-studio-stage');
+  const properties = $('#typography-studio-properties');
+  if (!summary || !list || !stage || !properties) return;
+  $('#typography-studio-status').textContent = selection
+    ? `${typography?.metrics?.lineCount ?? 1} lines · ${typography?.metrics?.faceStatus ?? 'unresolved'}`
+    : 'Select a text layer';
+
+  if (!selection || !typography) {
+    summary.innerHTML =
+      '<span class="eyebrow">Selection</span><strong>No text selected</strong><p>Choose a rendered text layer on the canvas first.</p>';
+    list.innerHTML = '';
+    stage.innerHTML =
+      '<div class="typography-studio-empty"><i data-icon="typography"></i><strong>Select a text layer</strong><p>Foundry will reveal its rendered font, rhythm, usage, and source-safe options.</p></div>';
+    properties.innerHTML =
+      '<div class="typography-studio-empty"><strong>No typography properties</strong></div>';
+    renderIcons(stage);
+    return;
+  }
+
+  typographyScale = { ...typographyScale, ...(typography.scale ?? {}) };
+  typographyGoogleSelection = typography.googleSelection ?? typographyGoogleSelection;
+  summary.innerHTML = `<span class="eyebrow">Selection</span><strong>${escapeText(selection.label)}</strong><code>${escapeText(typography.selection.primaryFamily)}</code><p>${escapeText(sourceText(selection.source))}</p>`;
+  $$('[data-typography-source]').forEach((button) => {
+    const active = button.dataset.typographySource === typographySource;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  const projectFonts = typography.projectFonts ?? [];
+  const localFonts = typographyLocalFonts.map((font) => ({
+    family: font.family,
+    styles: font.styles,
+    weights: [],
+    origins: ['local'],
+  }));
+  list.innerHTML =
+    typographySource === 'google'
+      ? typographyFontRows(typographyGoogleFonts, 'google')
+      : typographySource === 'local'
+        ? `${typography.capabilities?.localFontAccess ? '<button class="secondary-button typography-local-access" id="typography-local-access">Read installed fonts</button>' : '<p class="typography-source-note">This browser does not expose local font access.</p>'}${typographyFontRows(localFonts, 'local')}`
+        : typographyFontRows(projectFonts, 'project');
+  renderIcons(list);
+
+  const specimen = typography.selection.text || selection.label;
+  const treatments = typography.treatments ?? [];
+  const usages = typography.usages ?? [];
+  stage.innerHTML = `<div class="typography-specimen"><header><span class="eyebrow">Live specimen</span><span>${escapeText(typography.selection.size)} / ${escapeText(typography.selection.lineHeight)}</span></header><div class="typography-specimen-text" style="font-family:${escapeAttribute(typography.selection.family)};font-weight:${escapeAttribute(typography.selection.weight)};font-style:${escapeAttribute(typography.selection.style)};font-size:${escapeAttribute(typography.selection.size)};line-height:${escapeAttribute(typography.selection.lineHeight)};letter-spacing:${escapeAttribute(typography.selection.letterSpacing)}">${escapeText(specimen)}</div></div><section class="typography-treatment-panel"><header><div><span class="eyebrow">Rhythm</span><strong>Type treatments</strong></div><button class="secondary-button compact" data-typography-action="reset-preview">Reset preview</button></header><div class="typography-treatment-grid">${treatments.map((treatment) => `<button data-treatment-id="${escapeAttribute(treatment.id)}" aria-pressed="${String(typography.preview?.treatmentId === treatment.id)}"><strong>${escapeText(treatment.label)}</strong><span>${escapeText(treatment.detail)}</span></button>`).join('')}</div><div class="typography-scale-panel"><label><span>Base size</span><input id="typography-scale-base" type="range" min="8" max="128" step="4" value="${Number(typographyScale.base)}"><output>${Number(typographyScale.base)}px</output></label><div class="typography-scale-options"><span>Ratio</span>${[1.125, 1.2, 1.25, 1.333].map((ratio) => `<button data-scale-ratio="${ratio}" aria-pressed="${String(Number(typographyScale.ratio) === ratio)}">${ratio}</button>`).join('')}</div><div class="typography-scale-options"><span>Step</span>${[-1, 0, 1, 2, 3].map((step) => `<button data-scale-step="${step}" aria-pressed="${String(Number(typographyScale.step) === step)}">${step > 0 ? '+' : ''}${step}</button>`).join('')}</div><div class="typography-scale-result"><code>${escapeText(typography.scale?.value ?? typography.selection.size)}</code><button data-scale-fluid aria-pressed="${String(Boolean(typographyScale.fluid))}">${typographyScale.fluid ? 'Fluid' : 'Fixed'}</button><button class="primary-button compact" data-preview-scale>Preview scale</button></div></div></section><section class="typography-usage-panel"><header><strong>Project usage</strong><span>${usages.reduce((total, usage) => total + usage.count, 0)} text nodes</span></header><div>${usages
+    .slice(0, 6)
+    .map(
+      (usage) =>
+        `<article><span class="typography-font-sample" style="font-family:${escapeAttribute(usage.family)}">Ag</span><span><strong>${escapeText(usage.family)}</strong><code>${usage.count} uses · ${escapeText(usage.weights.join(', '))}</code></span></article>`,
+    )
+    .join('')}</div></section>`;
+
+  const diagnosticMarkup = typography.diagnostics?.length
+    ? typography.diagnostics
+        .map(
+          (finding) =>
+            `<article data-severity="${escapeAttribute(finding.severity)}"><i></i><span><strong>${escapeText(finding.title)}</strong><p>${escapeText(finding.detail)}</p></span></article>`,
+        )
+        .join('')
+    : '<article class="is-clear"><i></i><span><strong>Rendered type is stable</strong><p>The active face and wrapping pass at this viewport.</p></span></article>';
+  const controlField = (property, label) => {
+    const control = typographyControl(property);
+    return control
+      ? `<label class="${typographyChanged(property)}"><span>${label}</span><input data-typography-control="${property}" value="${escapeAttribute(control.value)}"></label>`
+      : '';
+  };
+  const strategies = typography.strategies ?? [];
+  const savedStyles = typography.savedStyles ?? [];
+  properties.innerHTML = `<div class="typography-properties-head"><span class="eyebrow">Rendered values</span><strong>Typography properties</strong><code>${escapeText(typography.selection.primaryFamily)}</code></div><div class="typography-property-fields">${controlField('fontFamily', 'Font family')}${controlField('fontWeight', 'Weight')}${controlField('fontStyle', 'Style')}${controlField('fontSize', 'Size')}${controlField('lineHeight', 'Line height')}${controlField('letterSpacing', 'Tracking')}${controlField('fontVariationSettings', 'Variable axes')}</div><section class="typography-audit"><header><strong>Type health</strong><span>${typography.metrics.charactersPerLine} chars/line</span></header>${diagnosticMarkup}</section>${typographyGoogleSelection ? `<section class="typography-google-review"><header><strong>${escapeText(typographyGoogleSelection.font.family)}</strong><span>Google Fonts preview</span></header><label><span>Add to source</span><select id="typography-google-strategy">${strategies.map((strategy) => `<option value="${strategy.id}" ${strategy.id === typographyGoogleStrategy ? 'selected' : ''}>${escapeText(strategy.label)}</option>`).join('')}</select></label><button class="primary-button" id="typography-review-google">Add font to review</button></section>` : ''}<section class="typography-saved-styles"><header><strong>Project styles</strong><span>${savedStyles.length} saved</span></header><label><span>Style name</span><input id="typography-style-name" placeholder="Display / Balanced"></label><button class="secondary-button" id="typography-save-style" ${typography.preview ? '' : 'disabled'}>Save current preview</button><div>${savedStyles.map((style) => `<article><span><strong>${escapeText(style.name)}</strong><code>${escapeText(style.values.fontSize)} · ${escapeText(style.values.lineHeight)}</code></span><button data-apply-style="${escapeAttribute(style.id)}" aria-label="Apply ${escapeAttribute(style.name)}"><i data-icon="check"></i></button><button data-remove-style="${escapeAttribute(style.id)}" aria-label="Remove ${escapeAttribute(style.name)}"><i data-icon="bin"></i></button></article>`).join('')}</div></section>`;
+  renderIcons(properties);
+  upgradeSelects(properties);
+
+  $$('[data-typography-family]', list).forEach((button) =>
+    button.addEventListener('click', () => {
+      const origin = button.dataset.typographyOrigin;
+      if (origin === 'google') {
+        const font = typographyGoogleFonts[Number(button.dataset.googleIndex)];
+        if (font) sendCommand('typography-action', { action: 'preview-google', font });
+      } else {
+        sendCommand('typography-action', {
+          action: 'preview-family',
+          family: button.dataset.typographyFamily,
+          origin,
+        });
+      }
+    }),
+  );
+  $('#typography-local-access')?.addEventListener('click', async () => {
+    try {
+      const fonts = await window.queryLocalFonts();
+      const grouped = new Map();
+      for (const font of fonts) {
+        const record = grouped.get(font.family) ?? { family: font.family, styles: [] };
+        if (font.style && !record.styles.includes(font.style)) record.styles.push(font.style);
+        grouped.set(font.family, record);
+      }
+      typographyLocalFonts = [...grouped.values()].sort((a, b) => a.family.localeCompare(b.family));
+      renderTypographyStudio();
+    } catch {
+      toast('Local font access was not allowed.');
+    }
+  });
+  $$('[data-treatment-id]', stage).forEach((button) =>
+    button.addEventListener('click', () =>
+      sendCommand('typography-action', {
+        action: 'preview-treatment',
+        treatmentId: button.dataset.treatmentId,
+      }),
+    ),
+  );
+  $('[data-typography-action="reset-preview"]', stage)?.addEventListener('click', () =>
+    sendCommand('typography-action', { action: 'reset-preview' }),
+  );
+  $$('[data-scale-ratio]', stage).forEach((button) =>
+    button.addEventListener('click', () => {
+      typographyScale.ratio = Number(button.dataset.scaleRatio);
+      renderTypographyStudio();
+    }),
+  );
+  $$('[data-scale-step]', stage).forEach((button) =>
+    button.addEventListener('click', () => {
+      typographyScale.step = Number(button.dataset.scaleStep);
+      renderTypographyStudio();
+    }),
+  );
+  $('[data-scale-fluid]', stage)?.addEventListener('click', () => {
+    typographyScale.fluid = !typographyScale.fluid;
+    renderTypographyStudio();
+  });
+  $('#typography-scale-base')?.addEventListener('input', (event) => {
+    typographyScale.base = Number(event.target.value);
+    event.target
+      .closest('label')
+      ?.querySelector('output')
+      ?.replaceChildren(`${typographyScale.base}px`);
+  });
+  $('[data-preview-scale]', stage)?.addEventListener('click', () =>
+    sendCommand('typography-action', { action: 'preview-scale', ...typographyScale }),
+  );
+  $$('[data-typography-control]', properties).forEach((field) => {
+    let previous = field.value;
+    const commit = () => {
+      if (field.value === previous) return;
+      previous = field.value;
+      const property = field.dataset.typographyControl;
+      changedControls.add(`${selection.id}:${property}`);
+      field.closest('label')?.classList.add('is-changed');
+      sendCommand('set-control', { property, value: field.value });
+    };
+    field.addEventListener('change', commit);
+    field.addEventListener('blur', commit);
+  });
+  $('#typography-google-strategy')?.addEventListener('change', (event) => {
+    typographyGoogleStrategy = event.target.value;
+  });
+  $('#typography-review-google')?.addEventListener('click', () =>
+    sendCommand('typography-action', {
+      action: 'review-google',
+      strategy: typographyGoogleStrategy,
+      weight: typographyGoogleSelection.weight,
+      style: typographyGoogleSelection.style,
+    }),
+  );
+  $('#typography-save-style')?.addEventListener('click', () =>
+    sendCommand('typography-action', {
+      action: 'save-style',
+      name: $('#typography-style-name').value,
+    }),
+  );
+  $$('[data-apply-style]', properties).forEach((button) =>
+    button.addEventListener('click', () =>
+      sendCommand('typography-action', {
+        action: 'apply-style',
+        styleId: button.dataset.applyStyle,
+      }),
+    ),
+  );
+  $$('[data-remove-style]', properties).forEach((button) =>
+    button.addEventListener('click', () =>
+      sendCommand('typography-action', {
+        action: 'remove-style',
+        styleId: button.dataset.removeStyle,
+      }),
+    ),
+  );
+}
+
+function motionSourceLabel(kind) {
+  if (kind === 'css-animation') return 'CSS animation';
+  if (kind === 'css-transition') return 'CSS transition';
+  return 'Web animation';
+}
+
+function motionStudioChanged(selection, motion, property) {
+  return changedControls.has(`${selection.id}:motion.${motion.id}.${property}`)
+    ? ' is-changed'
+    : '';
+}
+
+function renderMotionStudio() {
+  const selection = bridgeState?.selection;
+  const motions = bridgeState?.motions ?? [];
+  const summary = $('#motion-selection-summary');
+  const list = $('#motion-studio-list');
+  const stage = $('#motion-studio-stage');
+  const properties = $('#motion-studio-properties');
+  $('#motion-studio-status').textContent = selection
+    ? `${motions.length} ${motions.length === 1 ? 'motion' : 'motions'} detected`
+    : 'Select a moving layer';
+
+  if (!selection) {
+    summary.innerHTML =
+      '<span class="eyebrow">Selection</span><strong>No layer selected</strong><p>Choose a rendered layer on the canvas first.</p>';
+    list.innerHTML = '';
+    stage.innerHTML =
+      '<div class="motion-studio-empty"><i data-icon="play"></i><strong>Select a moving layer</strong><p>Foundry will reveal its live CSS transitions, CSS animations, and Web Animations.</p></div>';
+    properties.innerHTML =
+      '<div class="motion-studio-empty"><strong>No motion properties</strong></div>';
+    renderIcons(stage);
+    return;
+  }
+
+  summary.innerHTML = `<span class="eyebrow">Selection</span><strong>${escapeText(selection.label)}</strong><code>${escapeText(sourceText(selection.source))}</code>`;
+  if (!motions.some((motion) => motion.id === motionStudioId))
+    motionStudioId = motions[0]?.id ?? '';
+  list.innerHTML = motions.length
+    ? motions
+        .map(
+          (motion) =>
+            `<button class="motion-studio-row ${motion.id === motionStudioId ? 'is-active' : ''}" data-motion-studio-select="${escapeAttribute(motion.id)}"><i data-icon="play"></i><span><strong>${escapeText(motion.label)}</strong><code>${escapeText(motionSourceLabel(motion.kind))} · ${Math.round(Number(motion.timing?.duration) || 0)} ms</code></span><span class="motion-cost" data-tier="${escapeAttribute(motion.performance?.tier ?? 'unknown')}">${escapeText(motion.performance?.label ?? 'Unresolved')}</span></button>`,
+        )
+        .join('')
+    : '<div class="motion-studio-empty"><strong>No motion detected</strong><p>Trigger the interaction in Interact mode, then return here while it is active.</p></div>';
+  renderIcons(list);
+
+  const motion = motions.find((candidate) => candidate.id === motionStudioId);
+  if (!motion) {
+    stage.innerHTML =
+      '<div class="motion-studio-empty"><i data-icon="play"></i><strong>No live animation</strong><p>Motion appears here when the selected layer exposes an animation.</p></div>';
+    properties.innerHTML =
+      '<div class="motion-studio-empty"><strong>No motion properties</strong></div>';
+    renderIcons(stage);
+    return;
+  }
+
+  const timing = motion.timing ?? {};
+  const duration = Math.max(1, Number(timing.duration) || 1000);
+  const currentTime = Math.min(duration, Math.max(0, Number(motion.currentTime) || 0));
+  const keyframes = Array.isArray(motion.keyframes) ? motion.keyframes : [];
+  const trackProperties = [
+    ...new Set(keyframes.flatMap((frame) => Object.keys(frame.values ?? {}))),
+  ];
+  const selectedKey = selectedMotionKeyframes.get(motion.id);
+  const selectedProperty = trackProperties.includes(selectedKey?.property)
+    ? selectedKey.property
+    : trackProperties[0];
+  const selectedFrame =
+    keyframes.find(
+      (frame) => frame.index === selectedKey?.index && frame.values?.[selectedProperty] != null,
+    ) ?? keyframes.find((frame) => frame.values?.[selectedProperty] != null);
+  if (selectedFrame && selectedProperty)
+    selectedMotionKeyframes.set(motion.id, {
+      index: selectedFrame.index,
+      property: selectedProperty,
+    });
+  const tracks = trackProperties.length
+    ? trackProperties
+        .map(
+          (property) =>
+            `<div class="motion-studio-track"><code>${escapeText(property)}</code><div class="motion-studio-rail">${keyframes
+              .filter((frame) => frame.values?.[property] != null)
+              .map(
+                (frame) =>
+                  `<button type="button" class="motion-keyframe${selectedFrame?.index === frame.index && selectedProperty === property ? ' is-selected' : ''}" data-studio-keyframe-index="${frame.index}" data-studio-keyframe-property="${escapeAttribute(property)}" style="--keyframe-offset:${Math.round(Number(frame.offset) * 10000) / 100}%" aria-label="Edit ${escapeAttribute(property)} keyframe at ${Math.round(Number(frame.offset) * 100)} percent"></button>`,
+              )
+              .join('')}</div></div>`,
+        )
+        .join('')
+    : '<div class="motion-studio-empty is-compact"><strong>No editable keyframes</strong><p>The live animation exposes timing but not a multi-keyframe track.</p></div>';
+  const speedOptions = [
+    [0.1, '10%'],
+    [0.25, '25%'],
+    [0.5, '50%'],
+    [1, '100%'],
+    [2, '200%'],
+  ]
+    .map(
+      ([rate, label]) =>
+        `<option value="${rate}" ${Math.abs(Number(motion.playbackRate ?? 1) - rate) < 0.001 ? 'selected' : ''}>${label}</option>`,
+    )
+    .join('');
+  const disabled = motion.active ? '' : 'disabled';
+  stage.innerHTML = `<div class="motion-studio-canvas" data-motion-id="${escapeAttribute(motion.id)}"><header class="motion-studio-canvas-head"><div><span class="eyebrow">Timeline</span><h2>${escapeText(motion.label)}</h2><p>${escapeText(motion.properties?.join(', ') || 'Properties appear when the transition runs')}</p></div><span class="motion-source-chip">${escapeText(motionSourceLabel(motion.kind))}</span></header><div class="motion-studio-transport"><button class="icon-button" data-studio-action="replay" aria-label="Replay motion" ${disabled}><i data-icon="undo"></i></button><button class="primary-button compact" data-studio-action="toggle" ${disabled}>${motion.playState === 'paused' ? 'Play' : 'Pause'}</button><button class="chip-button ${motion.looping ? 'is-active' : ''}" data-studio-action="loop" ${disabled}>Loop</button><select data-studio-action="speed" aria-label="Preview speed" ${disabled}>${speedOptions}</select><output>${Math.round(currentTime)} / ${Math.round(duration)} ms</output></div><div class="motion-studio-scrubber"><input data-studio-action="scrub" type="range" min="0" max="${duration}" step="1" value="${currentTime}" aria-label="Scrub ${escapeAttribute(motion.label)}" ${disabled}><div class="motion-studio-ruler"><span>0</span><span>25%</span><span>50%</span><span>75%</span><span>${Math.round(duration)} ms</span></div></div><div class="motion-studio-tracks">${tracks}</div></div>`;
+  renderIcons(stage);
+  upgradeSelects(stage);
+
+  const selectedValue = selectedFrame?.values?.[selectedProperty] ?? '';
+  const keyframePath = selectedFrame ? `keyframe.${selectedFrame.index}` : '';
+  const directionOptions = ['normal', 'reverse', 'alternate', 'alternate-reverse'];
+  const fillOptions = ['none', 'forwards', 'backwards', 'both', 'auto'];
+  properties.innerHTML = `<div class="motion-properties-head"><span class="eyebrow">Timing</span><strong>Animation properties</strong><code>${escapeText(motion.performance?.detail ?? 'Performance not classified')}</code></div><div class="motion-studio-fields" data-motion-id="${escapeAttribute(motion.id)}"><label class="${motionStudioChanged(selection, motion, 'duration')}"><span>Duration</span><span class="motion-field-with-unit"><input data-studio-property="duration" type="number" min="0" step="10" value="${Math.round(Number(timing.duration) || 0)}" ${disabled}><i>ms</i></span></label><label class="${motionStudioChanged(selection, motion, 'delay')}"><span>Delay</span><span class="motion-field-with-unit"><input data-studio-property="delay" type="number" step="10" value="${Math.round(Number(timing.delay) || 0)}" ${disabled}><i>ms</i></span></label><label class="is-wide${motionStudioChanged(selection, motion, 'easing')}"><span>Easing</span><input data-studio-property="easing" type="text" value="${escapeAttribute(timing.easing ?? 'linear')}" ${disabled}></label><label class="${motionStudioChanged(selection, motion, 'iterations')}"><span>Iterations</span><input data-studio-property="iterations" type="number" min="0" step="1" value="${Number.isFinite(Number(timing.iterations)) ? Number(timing.iterations) : 1}" ${disabled}></label><label class="${motionStudioChanged(selection, motion, 'direction')}"><span>Direction</span><select data-studio-property="direction" ${disabled}>${directionOptions.map((value) => `<option value="${value}" ${timing.direction === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label class="is-wide${motionStudioChanged(selection, motion, 'fill')}"><span>Fill</span><select data-studio-property="fill" ${disabled}>${fillOptions.map((value) => `<option value="${value}" ${timing.fill === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></div><section class="motion-studio-audit"><header><strong>Motion health</strong><span class="motion-cost" data-tier="${escapeAttribute(motion.performance?.tier ?? 'unknown')}">${escapeText(motion.performance?.label ?? 'Unresolved')}</span></header><div><i class="motion-audit-dot ${motion.reducedMotionProtected ? 'is-clear' : 'has-warning'}"></i><span><strong>${motion.reducedMotionProtected ? 'Reduced motion covered' : 'Reduced motion needs review'}</strong><p>${motion.reducedMotionProtected ? 'A matching preference rule or short duration protects this motion.' : 'No matching reduced-motion rule was found for this element.'}</p></span></div></section>${selectedFrame && selectedProperty ? `<section class="motion-studio-keyframe" data-motion-id="${escapeAttribute(motion.id)}"><header><strong>Keyframe ${selectedFrame.index + 1}</strong><code>${escapeText(selectedProperty)}</code></header><div class="motion-studio-fields"><label class="${motionStudioChanged(selection, motion, `${keyframePath}.offset`)}"><span>Position</span><span class="motion-field-with-unit"><input data-studio-keyframe-property="offset" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="number" min="0" max="100" step="1" value="${Math.round(Number(selectedFrame.offset) * 100)}"><i>%</i></span></label><label class="is-wide${motionStudioChanged(selection, motion, `${keyframePath}.${selectedProperty}`)}"><span>Value</span><input data-studio-keyframe-property="value" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="text" value="${escapeAttribute(selectedValue)}"></label><label class="is-wide${motionStudioChanged(selection, motion, `${keyframePath}.easing`)}"><span>Segment easing</span><input data-studio-keyframe-property="easing" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="text" value="${escapeAttribute(selectedFrame.easing ?? 'linear')}"></label></div></section>` : ''}`;
+  upgradeSelects(properties);
+
+  $$('[data-motion-studio-select]', list).forEach((button) =>
+    button.addEventListener('click', () => {
+      motionStudioId = button.dataset.motionStudioSelect;
+      renderMotionStudio();
+    }),
+  );
+  $$('[data-studio-keyframe-index]', stage).forEach((button) =>
+    button.addEventListener('click', () => {
+      selectedMotionKeyframes.set(motion.id, {
+        index: Number(button.dataset.studioKeyframeIndex),
+        property: button.dataset.studioKeyframeProperty,
+      });
+      renderMotionStudio();
+    }),
+  );
+  $$('[data-studio-action]', stage).forEach((control) => {
+    const action = control.dataset.studioAction;
+    if (action === 'scrub') {
+      control.addEventListener('pointerdown', () => (motionStudioInteracting = true));
+      control.addEventListener('input', () => {
+        $('output', stage).textContent =
+          `${Math.round(Number(control.value))} / ${Math.round(duration)} ms`;
+        sendCommand('motion-action', { id: motion.id, action, value: Number(control.value) });
+      });
+    } else if (action === 'speed') {
+      control.addEventListener('change', () =>
+        sendCommand('motion-action', { id: motion.id, action, value: Number(control.value) }),
+      );
+    } else {
+      control.addEventListener('click', () =>
+        sendCommand('motion-action', { id: motion.id, action }),
+      );
+    }
+  });
+  $$('[data-studio-property]', properties).forEach((field) => {
+    let previous = String(field.value);
+    const commit = () => {
+      if (String(field.value) === previous) return;
+      previous = String(field.value);
+      const property = field.dataset.studioProperty;
+      changedControls.add(`${selection.id}:motion.${motion.id}.${property}`);
+      field.closest('label')?.classList.add('is-changed');
+      sendCommand('motion-action', {
+        id: motion.id,
+        action: property,
+        value: ['duration', 'delay', 'iterations'].includes(property)
+          ? Number(field.value)
+          : field.value,
+      });
+    };
+    field.addEventListener('change', commit);
+    field.addEventListener('blur', commit);
+  });
+  $$('[data-studio-keyframe-property]', properties).forEach((field) => {
+    let previous = String(field.value);
+    const commit = () => {
+      if (String(field.value) === previous) return;
+      previous = String(field.value);
+      const action = field.dataset.studioKeyframeProperty;
+      const property = action === 'value' ? field.dataset.studioTrackProperty : action;
+      changedControls.add(
+        `${selection.id}:motion.${motion.id}.keyframe.${field.dataset.studioKeyframeIndex}.${property}`,
+      );
+      field.closest('label')?.classList.add('is-changed');
+      sendCommand('motion-action', {
+        id: motion.id,
+        action: `keyframe-${action}`,
+        index: Number(field.dataset.studioKeyframeIndex),
+        property: field.dataset.studioTrackProperty,
+        value: action === 'offset' ? Number(field.value) : field.value,
+      });
+    };
+    field.addEventListener('change', commit);
+    field.addEventListener('blur', commit);
+  });
 }
 
 function focusedInspectorEdit() {
@@ -1588,6 +2601,15 @@ function renderBridgeState() {
     : 'Select a rendered element';
   $('#undo').disabled = !bridgeState.history?.canUndo;
   $('#redo').disabled = !bridgeState.history?.canRedo;
+  if (activeMode === 'components') renderComponentWorkshop();
+  if (activeMode === 'responsive') {
+    responsiveSnapshots.clear();
+    renderResponsiveLab();
+  }
+  if (activeMode === 'system') renderDesignSystem();
+  if (activeMode === 'motion' && !motionStudioInteracting) renderMotionStudio();
+  if (activeMode === 'typography') renderTypographyStudio();
+  if (activeMode === 'branches') renderDesignBranches();
 }
 
 function renderSession(payload) {
@@ -1597,8 +2619,351 @@ function renderSession(payload) {
   renderChangeSummary();
   renderApplyRun(payload.applyRuns ?? []);
   if (activeMode === 'review') renderReview();
+  if (activeMode === 'components') renderComponentWorkshop();
+  if (activeMode === 'system') renderDesignSystem();
+  if (activeMode === 'motion') renderMotionStudio();
+  if (activeMode === 'typography') renderTypographyStudio();
+  if (activeMode === 'branches') renderDesignBranches();
   updateCanvasViewport();
 }
+
+function designBranchDirections() {
+  const main = {
+    id: 'main',
+    name: 'Main direction',
+    status: 'main',
+    changes: activeSession?.changeSet?.changes ?? [],
+    operations: activeSession?.changeSet?.operations ?? [],
+  };
+  return [
+    main,
+    ...(activeSession?.designBranches ?? []).filter((branch) => branch.status !== 'archived'),
+  ];
+}
+
+function designBranchById(id) {
+  return designBranchDirections().find((branch) => branch.id === id) ?? designBranchDirections()[0];
+}
+
+function activeDesignDirection() {
+  return designBranchById(activeSession?.activeDesignBranchId ?? 'main');
+}
+
+function branchChangeKey(change) {
+  return [
+    change.target?.id,
+    change.property,
+    change.scope,
+    change.context?.breakpoint,
+    change.context?.theme,
+    change.context?.state,
+  ].join(':');
+}
+
+function designBranchOptionMarkup(selectedId) {
+  return designBranchDirections()
+    .map(
+      (branch) =>
+        `<option value="${escapeAttribute(branch.id)}" ${branch.id === selectedId ? 'selected' : ''}>${escapeText(branch.name)}</option>`,
+    )
+    .join('');
+}
+
+function branchPreviewUrl(branchId) {
+  if (!previewUrl) return '';
+  const url = new URL(previewUrl);
+  url.searchParams.set('__foundry_embedded', '1');
+  url.searchParams.set('__foundry_design_branch', branchId);
+  return url.href;
+}
+
+function sendBranchPreview(frame, branch) {
+  if (!frame.contentWindow) return;
+  frame.contentWindow.postMessage(
+    {
+      type: 'foundry:workspace-command',
+      sessionId,
+      command: 'preview-design-branch',
+      payload: { changes: branch.changes ?? [] },
+    },
+    previewOrigin,
+  );
+}
+
+function renderDesignBranchPreviews() {
+  const root = $('#design-branch-previews');
+  if (!root) return;
+  designBranchFrames.clear();
+  const directions = [designBranchById(branchCompareLeft), designBranchById(branchCompareRight)];
+  const viewport = selectedViewport();
+  const previewScale = Math.min(1, 480 / viewport.width, 260 / viewport.height);
+  root.innerHTML = directions
+    .map((branch, index) => {
+      const source = branchPreviewUrl(branch.id);
+      const count = branch.changes?.length ?? 0;
+      return `<article class="design-branch-preview-card"><header><div><strong>${escapeText(branch.name)}</strong><span>${count} ${count === 1 ? 'decision' : 'decisions'}</span></div><span class="branch-status" data-status="${escapeAttribute(branch.status)}">${escapeText(branch.status === 'main' ? 'Source-ready' : branch.status)}</span></header><div class="design-branch-preview-viewport" style="--branch-width:${viewport.width};--branch-height:${viewport.height};--branch-scale:${previewScale}">${source ? `<iframe data-design-branch-frame="${index}" title="${escapeAttribute(branch.name)} preview" src="${escapeAttribute(source)}" width="${viewport.width}" height="${viewport.height}"></iframe>` : '<div class="branch-preview-empty">Project preview is not configured.</div>'}</div></article>`;
+    })
+    .join('');
+  $$('[data-design-branch-frame]', root).forEach((frame) => {
+    const index = Number(frame.dataset.designBranchFrame);
+    const branch = directions[index];
+    designBranchFrames.set(branch.id, frame);
+    frame.addEventListener('load', () => sendBranchPreview(frame, branch));
+  });
+}
+
+function renderDesignBranchDecisions() {
+  const root = $('#design-branch-decision-list');
+  if (!root) return;
+  const directionIds = [...new Set([branchCompareLeft, branchCompareRight])].filter(
+    (id) => id && id !== 'main',
+  );
+  const directions = directionIds.map(designBranchById);
+  const propertyCounts = new Map();
+  for (const branch of directions) {
+    for (const change of branch.changes ?? []) {
+      const key = branchChangeKey(change);
+      propertyCounts.set(key, (propertyCounts.get(key) ?? 0) + 1);
+    }
+  }
+  const rows = directions.flatMap((branch) =>
+    (branch.changes ?? []).map((change) => ({ branch, change })),
+  );
+  root.innerHTML = rows.length
+    ? rows
+        .map(({ branch, change }) => {
+          const selectionId = `${branch.id}:${change.id}`;
+          return `<label class="design-branch-decision-row"><input type="checkbox" data-branch-decision="${escapeAttribute(selectionId)}" data-branch-change-key="${escapeAttribute(branchChangeKey(change))}" ${branchDecisionSelection.has(selectionId) ? 'checked' : ''}><span class="branch-decision-source">${escapeText(branch.name)}</span><span class="branch-decision-property"><strong>${escapeText(change.target?.label ?? 'Selection')} · ${escapeText(change.property)}</strong><span>${escapeText(formatValue(change.before, change.unit))} → ${escapeText(formatValue(change.after, change.unit))}</span></span><span class="status-chip">${propertyCounts.get(branchChangeKey(change)) > 1 ? 'Alternative' : 'Distinct'}</span></label>`;
+        })
+        .join('')
+    : '<div class="branch-decisions-empty"><strong>No branch decisions to combine</strong><span>Compare two saved directions to select their strongest changes.</span></div>';
+  $$('[data-branch-decision]', root).forEach((input) =>
+    input.addEventListener('change', () => {
+      if (input.checked) {
+        $$('[data-branch-decision]', root)
+          .filter(
+            (other) =>
+              other !== input && other.dataset.branchChangeKey === input.dataset.branchChangeKey,
+          )
+          .forEach((other) => {
+            other.checked = false;
+            branchDecisionSelection.delete(other.dataset.branchDecision);
+          });
+        branchDecisionSelection.add(input.dataset.branchDecision);
+      } else branchDecisionSelection.delete(input.dataset.branchDecision);
+      updateDesignBranchSelection();
+    }),
+  );
+  updateDesignBranchSelection();
+}
+
+function updateDesignBranchSelection() {
+  const count = branchDecisionSelection.size;
+  $('#design-branch-selection-count').textContent = `${count} selected`;
+  $('#design-branch-compose').disabled = count === 0;
+}
+
+async function activateDesignDirection(branchId) {
+  const previous = activeDesignDirection();
+  const updated = await api(`/v1/sessions/${sessionId}/design-branches/activate`, {
+    method: 'POST',
+    body: JSON.stringify({ branchId: branchId === 'main' ? undefined : branchId }),
+  });
+  const next =
+    branchId === 'main'
+      ? { name: 'Main direction', changes: updated.changeSet.changes }
+      : updated.designBranches.find((branch) => branch.id === branchId);
+  if (bridgeConnected) {
+    await requestCommand('switch-design-branch', {
+      previousChanges: previous.changes ?? [],
+      nextChanges: next?.changes ?? [],
+    });
+  }
+  renderSession(updated);
+  toast(`${next?.name ?? 'Main direction'} is active`);
+}
+
+function renderDesignBranchDetail() {
+  const root = $('#design-branch-detail');
+  const active = activeDesignDirection();
+  const isMain = active.id === 'main';
+  const changes = active.changes ?? [];
+  root.innerHTML = `<div class="design-branch-detail-head"><span class="eyebrow">Active direction</span><i data-icon="branch"></i><h2>${escapeText(active.name)}</h2><p>${isMain ? 'The source-ready design change set.' : `${changes.length} isolated ${changes.length === 1 ? 'decision' : 'decisions'} in this direction.`}</p></div><div class="design-branch-metrics"><div><strong>${changes.length}</strong><span>Decisions</span></div><div><strong>${new Set(changes.map((change) => change.target?.id)).size}</strong><span>Layers</span></div></div>${isMain ? '<div class="branch-detail-note"><strong>Create a direction to explore safely</strong><span>New edits stay isolated until you explicitly choose a direction.</span></div>' : `<label class="branch-rejection-field"><span>Direction note</span><textarea id="design-branch-note" maxlength="280" placeholder="Why keep or reject this direction?">${escapeText(active.rejectionReason ?? '')}</textarea></label><div class="branch-detail-actions"><button class="secondary-button" data-branch-action="save-note">Save note</button><button class="secondary-button" data-branch-action="reject">Reject</button><button class="quiet-button" data-branch-action="archive"><i data-icon="bin"></i>Archive</button></div>`}`;
+  renderIcons(root);
+  $$('[data-branch-action]', root).forEach((button) =>
+    button.addEventListener('click', async () => {
+      const action = button.dataset.branchAction;
+      const note = $('#design-branch-note')?.value ?? '';
+      try {
+        const updated = await api(
+          `/v1/sessions/${sessionId}/design-branches/${encodeURIComponent(active.id)}`,
+          {
+            method: 'PATCH',
+            body: JSON.stringify({
+              rejectionReason: note,
+              ...(action === 'reject'
+                ? { status: 'rejected' }
+                : action === 'archive'
+                  ? { status: 'archived' }
+                  : {}),
+            }),
+          },
+        );
+        renderSession(updated);
+        toast(
+          action === 'archive'
+            ? 'Direction archived'
+            : action === 'reject'
+              ? 'Direction rejected'
+              : 'Direction note saved',
+        );
+      } catch (error) {
+        toast(error.message);
+      }
+    }),
+  );
+}
+
+function renderDesignBranches() {
+  if (!activeSession || !$('#design-branch-list')) return;
+  const directions = designBranchDirections();
+  const activeId = activeSession.activeDesignBranchId ?? 'main';
+  if (!directions.some((branch) => branch.id === branchCompareLeft)) branchCompareLeft = 'main';
+  if (!directions.some((branch) => branch.id === branchCompareRight)) {
+    branchCompareRight = directions.find((branch) => branch.id !== branchCompareLeft)?.id ?? 'main';
+  }
+  $('#design-branch-status').textContent = activeDesignDirection().name;
+  $('#design-branch-list').innerHTML = directions
+    .map(
+      (branch) =>
+        `<button class="design-branch-row ${branch.id === activeId ? 'is-active' : ''}" data-activate-branch="${escapeAttribute(branch.id)}"><i data-icon="${branch.id === 'main' ? 'file' : 'branch'}"></i><span><strong>${escapeText(branch.name)}</strong><small>${branch.changes?.length ?? 0} decisions</small></span>${branch.id === activeId ? '<i data-icon="check"></i>' : ''}</button>`,
+    )
+    .join('');
+  renderIcons($('#design-branch-list'));
+  $$('[data-activate-branch]').forEach((button) =>
+    button.addEventListener(
+      'click',
+      () =>
+        void activateDesignDirection(button.dataset.activateBranch).catch((error) =>
+          toast(error.message),
+        ),
+    ),
+  );
+
+  const left = $('#design-branch-left');
+  const right = $('#design-branch-right');
+  left.innerHTML = designBranchOptionMarkup(branchCompareLeft);
+  right.innerHTML = designBranchOptionMarkup(branchCompareRight);
+  left.value = branchCompareLeft;
+  right.value = branchCompareRight;
+  upgradeSelects($('.design-branch-compare-selects'));
+  syncCustomSelect(left);
+  syncCustomSelect(right);
+  left.onchange = () => {
+    branchCompareLeft = left.value;
+    renderDesignBranches();
+  };
+  right.onchange = () => {
+    branchCompareRight = right.value;
+    renderDesignBranches();
+  };
+  renderDesignBranchPreviews();
+  renderDesignBranchDecisions();
+  renderDesignBranchDetail();
+  $('#design-branch-promote').disabled = activeId === 'main';
+}
+
+$('#design-branch-create').addEventListener('click', async () => {
+  const input = $('#design-branch-name');
+  const name =
+    input.value.trim() || `Direction ${(activeSession?.designBranches?.length ?? 0) + 1}`;
+  try {
+    const previous = activeDesignDirection();
+    const updated = await api(`/v1/sessions/${sessionId}/design-branches`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        sourceBranchId: activeSession?.activeDesignBranchId,
+      }),
+    });
+    const next = updated.designBranches.find(
+      (branch) => branch.id === updated.activeDesignBranchId,
+    );
+    if (bridgeConnected) {
+      await requestCommand('switch-design-branch', {
+        previousChanges: previous.changes ?? [],
+        nextChanges: next?.changes ?? [],
+      });
+    }
+    input.value = '';
+    branchCompareRight = next?.id ?? branchCompareRight;
+    renderSession(updated);
+    toast(`${name} created`);
+  } catch (error) {
+    toast(error.message);
+  }
+});
+
+$('#design-branch-name').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') $('#design-branch-create').click();
+});
+
+$('#design-branch-compose').addEventListener('click', async () => {
+  const grouped = new Map();
+  for (const selection of branchDecisionSelection) {
+    const separator = selection.indexOf(':');
+    const branchId = selection.slice(0, separator);
+    const changeId = selection.slice(separator + 1);
+    grouped.set(branchId, [...(grouped.get(branchId) ?? []), changeId]);
+  }
+  try {
+    const previous = activeDesignDirection();
+    const updated = await api(`/v1/sessions/${sessionId}/design-branches`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'Combined direction',
+        selections: [...grouped].map(([branchId, changeIds]) => ({ branchId, changeIds })),
+      }),
+    });
+    const next = updated.designBranches.find(
+      (branch) => branch.id === updated.activeDesignBranchId,
+    );
+    if (bridgeConnected) {
+      await requestCommand('switch-design-branch', {
+        previousChanges: previous.changes ?? [],
+        nextChanges: next?.changes ?? [],
+      });
+    }
+    branchDecisionSelection.clear();
+    branchCompareRight = next?.id ?? branchCompareRight;
+    renderSession(updated);
+    toast('Selected decisions combined');
+  } catch (error) {
+    toast(error.message);
+  }
+});
+
+$('#design-branch-promote').addEventListener('click', async () => {
+  const chosen = activeDesignDirection();
+  if (chosen.id === 'main') return;
+  try {
+    const updated = await api(
+      `/v1/sessions/${sessionId}/design-branches/${encodeURIComponent(chosen.id)}/promote`,
+      { method: 'POST', body: '{}' },
+    );
+    if (bridgeConnected) {
+      await requestCommand('switch-design-branch', {
+        previousChanges: chosen.changes ?? [],
+        nextChanges: updated.changeSet.changes ?? [],
+      });
+    }
+    renderSession(updated);
+    setMode('review');
+    toast(`${chosen.name} moved to Review and apply`);
+  } catch (error) {
+    toast(error.message);
+  }
+});
 
 async function loadSession() {
   if (!sessionId || !token) return;
@@ -1619,6 +2984,9 @@ function setupPreview() {
   const embedded = new URL(previewUrl);
   embedded.searchParams.set('__foundry_embedded', '1');
   preview.src = embedded.href;
+  preview.addEventListener('load', () => {
+    bridgeBranchSynced = false;
+  });
   $('#direct-preview').href = previewUrl;
   $('#direct-preview-menu').href = previewUrl;
   setTimeout(() => {
@@ -1630,6 +2998,17 @@ function setupPreview() {
 }
 
 window.addEventListener('message', (event) => {
+  const responsiveViewportId = responsiveFrames.get(event.source);
+  if (
+    responsiveViewportId &&
+    event.origin === previewOrigin &&
+    event.data?.sessionId === sessionId &&
+    event.data?.type === 'foundry:workspace-state'
+  ) {
+    responsiveSnapshots.set(responsiveViewportId, event.data.payload?.responsive ?? {});
+    updateResponsiveCard(responsiveViewportId);
+    return;
+  }
   if (event.source !== preview.contentWindow || event.origin !== previewOrigin) return;
   if (event.data?.sessionId !== sessionId) return;
   if (event.data?.type === 'foundry:workspace-result') {
@@ -1680,6 +3059,16 @@ window.addEventListener('message', (event) => {
   if (event.data?.type !== 'foundry:workspace-state') return;
   bridgeConnected = true;
   bridgeState = event.data.payload;
+  if (!bridgeBranchSynced) {
+    bridgeBranchSynced = true;
+    const branch = activeDesignDirection();
+    if (branch.id !== 'main') {
+      sendCommand('switch-design-branch', {
+        previousChanges: [],
+        nextChanges: branch.changes ?? [],
+      });
+    }
+  }
   $('#preview-loading').hidden = true;
   $('#preview-fallback').hidden = true;
   renderBridgeState();
@@ -1709,6 +3098,80 @@ $$('[data-structure-tab]').forEach((button) =>
   }),
 );
 $('#structure-search').addEventListener('input', renderLayers);
+$('#component-workshop-search').addEventListener('input', renderComponentWorkshop);
+$('#component-open-canvas').addEventListener('click', () => setMode('canvas'));
+$('#component-workshop-review').addEventListener('click', () => setMode('review'));
+$('#responsive-open-canvas').addEventListener('click', () => setMode('canvas'));
+$('#responsive-review').addEventListener('click', () => setMode('review'));
+$('#design-system-search').addEventListener('input', () => renderDesignSystem());
+$('#motion-studio-review').addEventListener('click', () => setMode('review'));
+$('#typography-studio-review').addEventListener('click', () => setMode('review'));
+$$('[data-typography-source]').forEach((button) =>
+  button.addEventListener('click', () => {
+    typographySource = button.dataset.typographySource;
+    renderTypographyStudio();
+    if (typographySource === 'google' && typographyGoogleStatus === 'idle')
+      void loadTypographyGoogleFonts('');
+  }),
+);
+$('#typography-search').addEventListener('input', (event) => {
+  clearTimeout(typographySearchTimer);
+  if (typographySource === 'google') {
+    typographySearchTimer = setTimeout(
+      () => void loadTypographyGoogleFonts(event.target.value.trim()),
+      220,
+    );
+  } else {
+    renderTypographyStudio();
+    const input = $('#typography-search');
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+});
+$('#responsive-width').addEventListener('input', (event) => {
+  responsiveCustomWidth = Number(event.target.value);
+  $('#responsive-width-output').textContent = `${responsiveCustomWidth}px`;
+  scrubResponsiveCustomFrame();
+});
+$$('[data-responsive-stress]').forEach((button) =>
+  button.addEventListener('click', () => {
+    responsiveStressMode = button.dataset.responsiveStress;
+    $$('[data-responsive-stress]').forEach((candidate) =>
+      candidate.classList.toggle('is-active', candidate === button),
+    );
+    $$('[data-responsive-frame]').forEach((frame) =>
+      responsiveFrameCommand(frame, 'preview-responsive-stress', { mode: responsiveStressMode }),
+    );
+    toast(
+      responsiveStressMode === 'none'
+        ? 'Temporary stress test cleared'
+        : 'Temporary stress test applied',
+    );
+  }),
+);
+$$('[data-responsive-scope]').forEach((button) =>
+  button.addEventListener('click', () => {
+    const wantsAll = button.dataset.responsiveScope === 'all';
+    const hasSource = Boolean(bridgeState?.selection?.source);
+    if (wantsAll && !hasSource) {
+      toast('Source mapping is required to promote a change across breakpoints.');
+      return;
+    }
+    responsiveEditScope = wantsAll ? 'all' : 'breakpoint';
+    $$('[data-responsive-scope]').forEach((candidate) =>
+      candidate.classList.toggle(
+        'is-active',
+        candidate.dataset.responsiveScope === responsiveEditScope,
+      ),
+    );
+    if (responsiveEditScope === 'breakpoint') {
+      sendCommand('set-context', {
+        key: 'breakpoint',
+        value: responsiveActiveViewport === 'custom' ? 'current' : responsiveActiveViewport,
+      });
+    }
+  }),
+);
 $$('[data-canvas-mode]').forEach((button) =>
   button.addEventListener('click', () => setCanvasTool(button.dataset.canvasMode)),
 );
@@ -1805,6 +3268,12 @@ const commands = [
   ['states', 'State workbench', '3', 'play'],
   ['health', 'Design health', '4', 'activity'],
   ['memory', 'Design memory', '5', 'bookmark'],
+  ['components', 'Component workshop', '6', 'component'],
+  ['responsive', 'Responsive design lab', '7', 'layout'],
+  ['system', 'Design system', '8', 'sparkles'],
+  ['motion', 'Motion studio', '9', 'play'],
+  ['typography', 'Typography studio', '0', 'typography'],
+  ['branches', 'Design branches', 'b', 'branch'],
 ];
 function renderCommands(query = '') {
   const root = $('#command-list');
@@ -2013,6 +3482,11 @@ document.addEventListener('keyup', (event) => {
   if (event.code !== 'Space') return;
   canvasSpaceHeld = false;
   canvasStage.classList.remove('is-space-pan');
+});
+document.addEventListener('pointerup', () => {
+  if (!motionStudioInteracting) return;
+  motionStudioInteracting = false;
+  if (activeMode === 'motion') renderMotionStudio();
 });
 
 const storedDock = Number.parseFloat(localStorage.getItem(dockKey));

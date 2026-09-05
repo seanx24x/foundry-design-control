@@ -23,6 +23,18 @@ In web sessions, selection mode stays active so ordinary clicks can move continu
 
 Use the inspector controls as the user's visual editing surface, not as source truth. For sizing modes, project values, component variants, layer reordering, comparison, keyboard commands, and reset behavior, read [visual-workbench.md](references/visual-workbench.md).
 
+When the user asks to explore, compare, or edit a component across its instances, variants, or interaction states, read [component-workshop.md](references/component-workshop.md). Keep state previews temporary and require an exact source mapping before using variant or component scope.
+
+When the user asks to inspect, compare, or repair behavior across viewport widths, read [responsive-design-lab.md](references/responsive-design-lab.md). Preserve real iframe viewport dimensions, keep stress tests temporary, and require exact source mapping before promoting an edit across breakpoints.
+
+When the user asks to audit, trace, consolidate, or extend project tokens and component conventions, read [design-system-intelligence.md](references/design-system-intelligence.md). Treat findings and impact previews as evidence, preserve semantic aliases, and route every proposed source change through review.
+
+When the user asks to inspect, scrub, preview, or edit rendered motion, read [motion-studio.md](references/motion-studio.md). Keep transport and scrubbing preview-only, preserve exact source timing and keyframe semantics, and review every editable motion change before apply.
+
+When the user asks to audit, preview, or change fonts, type rhythm, scale, or reusable type styles, read [typography-studio.md](references/typography-studio.md). Keep local fonts preview-only, require an explicit integration strategy for new Google Fonts, and validate reviewed typography across the recorded viewport, theme, and state contexts.
+
+When the user asks to explore, compare, combine, reject, or choose parallel visual directions, read [design-branches.md](references/design-branches.md). Keep every direction isolated from Main, switch preview values reversibly, and require explicit promotion before anything enters Review and apply.
+
 When the user runs Design Health or asks to correct its findings, read [design-health.md](references/design-health.md). Preserve evidence-only findings when Foundry cannot propose a narrow, reversible preview.
 
 For web sessions, `start` indexes the local project design graph. Use `<skill-root>/scripts/foundry.sh index --project <root>` when the graph must be refreshed independently.

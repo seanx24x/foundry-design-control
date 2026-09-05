@@ -20,7 +20,7 @@ export const changeCategorySchema = z.enum([
   'state',
   'motion',
 ]);
-export const scopeSchema = z.enum(['instance', 'component']);
+export const scopeSchema = z.enum(['instance', 'variant', 'component']);
 export const confidenceSchema = z.enum(['measured', 'instrumented', 'inferred', 'unresolved']);
 
 export const geometrySchema = z.object({
@@ -126,6 +126,7 @@ export const componentVariantSchema = z.object({
   label: z.string().min(1),
   property: z.string().min(1),
   value: changeValueSchema,
+  props: z.record(z.string(), changeValueSchema).default({}),
   source: sourceRefSchema.optional(),
 });
 
@@ -179,6 +180,34 @@ export const motionPresetSchema = z.object({
   source: sourceRefSchema.optional(),
 });
 
+export const designTokenUsageSchema = z.object({
+  id: z.string().min(1),
+  tokenId: z.string().min(1),
+  tokenName: z.string().min(1),
+  value: z.string().min(1),
+  category: designTokenSchema.shape.category,
+  kind: z.enum(['reference', 'literal', 'alias']),
+  property: z.string().optional(),
+  componentId: z.string().optional(),
+  source: sourceRefSchema,
+  evidence: z.array(z.string()).default([]),
+});
+
+export const designSystemFindingSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum(['near-duplicate', 'literal-drift', 'unused-token', 'component-drift']),
+  severity: z.enum(['info', 'warning']).default('info'),
+  title: z.string().min(1),
+  detail: z.string().min(1),
+  category: designTokenSchema.shape.category.optional(),
+  tokenIds: z.array(z.string()).default([]),
+  usageIds: z.array(z.string()).default([]),
+  componentIds: z.array(z.string()).default([]),
+  suggestedTokenId: z.string().optional(),
+  source: sourceRefSchema.optional(),
+  evidence: z.array(z.string()).default([]),
+});
+
 export const projectDesignGraphSchema = z.object({
   protocolVersion: z.literal(PROTOCOL_VERSION),
   projectRoot: z.string().min(1),
@@ -189,6 +218,8 @@ export const projectDesignGraphSchema = z.object({
   themes: z.array(themeDefinitionSchema).default([]),
   states: z.array(stateDefinitionSchema).default([]),
   motionPresets: z.array(motionPresetSchema).default([]),
+  tokenUsages: z.array(designTokenUsageSchema).default([]),
+  designSystemFindings: z.array(designSystemFindingSchema).default([]),
   indexedAt: z.string().datetime(),
 });
 
@@ -272,6 +303,18 @@ export const changeSetSchema = z.object({
       }),
     )
     .default([]),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const designBranchSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(80),
+  status: z.enum(['exploring', 'chosen', 'rejected', 'archived']).default('exploring'),
+  originBranchId: z.string().optional(),
+  changes: z.array(designChangeSchema).default([]),
+  operations: z.array(designOperationSchema).default([]),
+  rejectionReason: z.string().max(280).optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -379,10 +422,13 @@ export type BreakpointDefinition = z.infer<typeof breakpointDefinitionSchema>;
 export type ThemeDefinition = z.infer<typeof themeDefinitionSchema>;
 export type MotionPreset = z.infer<typeof motionPresetSchema>;
 export type ProjectDesignGraph = z.infer<typeof projectDesignGraphSchema>;
+export type DesignTokenUsage = z.infer<typeof designTokenUsageSchema>;
+export type DesignSystemFinding = z.infer<typeof designSystemFindingSchema>;
 export type SourceMappingCandidate = z.infer<typeof sourceMappingCandidateSchema>;
 export type DesignOperation = z.infer<typeof designOperationSchema>;
 export type DesignOperationInput = z.input<typeof designOperationSchema>;
 export type ChangeSet = z.infer<typeof changeSetSchema>;
+export type DesignBranch = z.infer<typeof designBranchSchema>;
 export type VerificationResult = z.infer<typeof verificationResultSchema>;
 export type ApplyRunState = z.infer<typeof applyRunStateSchema>;
 export type ApplyRunMessage = z.infer<typeof applyRunMessageSchema>;

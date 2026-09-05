@@ -5,7 +5,9 @@ import {
   PROTOCOL_VERSION,
   projectDesignGraphSchema,
   type ComponentDefinition,
+  type DesignSystemFinding,
   type DesignToken,
+  type DesignTokenUsage,
   type MotionPreset,
   type ProjectDesignGraph,
 } from 'foundry-design-protocol';
@@ -43,6 +45,46 @@ function tokenCategory(name: string, value: string): DesignToken['category'] {
   if (/space|gap|padding|margin/.test(hint)) return 'spacing';
   if (/width|height|size/.test(hint)) return 'size';
   return 'other';
+}
+
+function declarationCategory(property: string, value: string): DesignToken['category'] | null {
+  const name = property.toLowerCase();
+  if (/shadow/.test(name)) return 'shadow';
+  if (/border.*radius|radius/.test(name)) return 'radius';
+  if (/font|line-height|letter-spacing|tracking/.test(name)) return 'typography';
+  if (/transition|animation|duration|easing/.test(name)) return 'motion';
+  if (/gap|padding|margin|inset/.test(name)) return 'spacing';
+  if (/color|background|fill|stroke/.test(name) && /#|rgb|hsl|oklch|color\(/i.test(value))
+    return 'color';
+  if (/width|height|size/.test(name) && /-?[\d.]+(?:px|rem|em|%|vh|vw)/i.test(value)) return 'size';
+  return null;
+}
+
+function comparable(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s*!important\s*$/, '')
+    .replaceAll(' ', '');
+}
+
+function numericValue(value: string): { amount: number; unit: string } | null {
+  const match = /^(-?[\d.]+)(px|rem|em|ms|s|%)$/i.exec(comparable(value));
+  return match ? { amount: Number(match[1]), unit: match[2]!.toLowerCase() } : null;
+}
+
+function closeNumericToken(value: string, tokens: DesignToken[]): DesignToken | undefined {
+  const parsed = numericValue(value);
+  if (!parsed) return undefined;
+  return tokens
+    .map((token) => ({ token, parsed: numericValue(token.value) }))
+    .filter((entry) => entry.parsed?.unit === parsed.unit)
+    .map((entry) => ({ ...entry, distance: Math.abs(entry.parsed!.amount - parsed.amount) }))
+    .filter(
+      (entry) =>
+        entry.distance > 0 && entry.distance <= Math.max(2, Math.abs(parsed.amount) * 0.25),
+    )
+    .sort((a, b) => a.distance - b.distance)[0]?.token;
 }
 
 async function sourceFiles(root: string, exclusions: string[]): Promise<string[]> {
@@ -84,10 +126,12 @@ export async function indexProjectDesign(
   const themes = new Set<string>();
   const motion = new Map<string, MotionPreset>();
   const storyVariants = new Map<string, ComponentDefinition['variants']>();
+  const documents: Array<{ file: string; content: string }> = [];
 
   for (const path of files) {
     const content = await readFile(path, 'utf8').catch(() => '');
     const file = relative(root, path).replaceAll('\\', '/');
+    documents.push({ file, content });
     for (const match of content.matchAll(/(--[\w-]+)\s*:\s*([^;}\n]+)/g)) {
       const name = match[1]!;
       const value = match[2]!.trim();
@@ -134,6 +178,7 @@ export async function indexProjectDesign(
             label: story[1]!,
             property: 'story',
             value: story[1]!,
+            props: { story: story[1]! },
             source: { file, line: lineAt(content, story.index ?? 0) },
           }),
         );
@@ -176,6 +221,141 @@ export async function indexProjectDesign(
     }
   }
 
+  const tokenList = [...tokens.values()];
+  const tokenUsages: DesignTokenUsage[] = [];
+  const findings: DesignSystemFinding[] = [];
+  const componentForSource = (file: string, line: number): ComponentDefinition | undefined =>
+    [...components.values()]
+      .filter(
+        (component) => component.source?.file === file && (component.source.line ?? 0) <= line,
+      )
+      .sort((a, b) => (b.source?.line ?? 0) - (a.source?.line ?? 0))[0];
+
+  for (const { file, content } of documents) {
+    for (const match of content.matchAll(/var\(\s*(--[\w-]+)(?:\s*,[^)]*)?\)/g)) {
+      const token = tokens.get(match[1]!);
+      if (!token) continue;
+      const line = lineAt(content, match.index ?? 0);
+      const lineStart = content.lastIndexOf('\n', match.index ?? 0) + 1;
+      const declarationPrefix = content.slice(lineStart, match.index ?? 0);
+      const alias = /--[\w-]+\s*:\s*$/.test(declarationPrefix);
+      const component = componentForSource(file, line);
+      tokenUsages.push({
+        id: stableId('use', `${file}:${match.index}:${token.id}`),
+        tokenId: token.id,
+        tokenName: token.name,
+        value: token.value,
+        category: token.category,
+        kind: alias ? 'alias' : 'reference',
+        componentId: component?.id,
+        source: { file, line },
+        evidence: [alias ? 'Token aliases this project value' : 'CSS variable reference'],
+      });
+    }
+
+    for (const match of content.matchAll(/([a-zA-Z][\w-]*)\s*:\s*([^;\n},]+)[;},]/g)) {
+      const property = match[1]!;
+      const value = match[2]!.trim();
+      if (property.startsWith('--') || value.includes('var(')) continue;
+      const category = declarationCategory(property, value);
+      if (!category) continue;
+      const categoryTokens = tokenList.filter((token) => token.category === category);
+      const exact = categoryTokens.find((token) => comparable(token.value) === comparable(value));
+      const suggested = exact ?? closeNumericToken(value, categoryTokens);
+      if (!suggested) continue;
+      const line = lineAt(content, match.index ?? 0);
+      const component = componentForSource(file, line);
+      const usage: DesignTokenUsage = {
+        id: stableId('use', `${file}:${match.index}:${suggested.id}:literal`),
+        tokenId: suggested.id,
+        tokenName: suggested.name,
+        value,
+        category,
+        kind: 'literal',
+        property,
+        componentId: component?.id,
+        source: { file, line },
+        evidence: [
+          exact
+            ? 'Literal equals an existing project token'
+            : 'Literal is close to a project token',
+        ],
+      };
+      tokenUsages.push(usage);
+      findings.push({
+        id: stableId('finding', usage.id),
+        kind: component ? 'component-drift' : 'literal-drift',
+        severity: exact ? 'info' : 'warning',
+        title: exact ? `Use ${suggested.name}` : `${value} is close to ${suggested.name}`,
+        detail: exact
+          ? `${property} repeats ${suggested.value} as a literal instead of its project token.`
+          : `${property} uses ${value}; the nearest ${category} token is ${suggested.name} at ${suggested.value}.`,
+        category,
+        tokenIds: [suggested.id],
+        usageIds: [usage.id],
+        componentIds: component ? [component.id] : [],
+        suggestedTokenId: suggested.id,
+        source: usage.source,
+        evidence: usage.evidence,
+      });
+    }
+  }
+
+  for (let index = 0; index < tokenList.length; index += 1) {
+    const token = tokenList[index]!;
+    const near = tokenList.slice(index + 1).find((candidate) => {
+      if (candidate.category !== token.category) return false;
+      const first = numericValue(token.value);
+      const second = numericValue(candidate.value);
+      return Boolean(
+        first &&
+        second &&
+        first.unit === second.unit &&
+        Math.abs(first.amount - second.amount) > 0 &&
+        Math.abs(first.amount - second.amount) <= Math.max(2, Math.abs(first.amount) * 0.2),
+      );
+    });
+    if (near) {
+      const relatedUsages = tokenUsages.filter(
+        (usage) => usage.tokenId === token.id || usage.tokenId === near.id,
+      );
+      findings.push({
+        id: stableId('finding', `near:${token.id}:${near.id}`),
+        kind: 'near-duplicate',
+        severity: 'warning',
+        title: `${token.name} and ${near.name} are unusually close`,
+        detail: `${token.value} and ${near.value} may represent the same ${token.category} decision.`,
+        category: token.category,
+        tokenIds: [token.id, near.id],
+        usageIds: relatedUsages.map((usage) => usage.id),
+        componentIds: [
+          ...new Set(
+            relatedUsages
+              .map((usage) => usage.componentId)
+              .filter((componentId): componentId is string => Boolean(componentId)),
+          ),
+        ],
+        source: near.source ?? token.source,
+        evidence: ['Same category', 'Values fall within the project drift threshold'],
+      });
+    }
+    if (!tokenUsages.some((usage) => usage.tokenId === token.id)) {
+      findings.push({
+        id: stableId('finding', `unused:${token.id}`),
+        kind: 'unused-token',
+        severity: 'info',
+        title: `${token.name} has no indexed references`,
+        detail: 'Confirm whether this token is intentionally reserved before removing it.',
+        category: token.category,
+        tokenIds: [token.id],
+        usageIds: [],
+        componentIds: [],
+        source: token.source,
+        evidence: ['No references were found in indexed project files'],
+      });
+    }
+  }
+
   const configuredViewports = config?.design?.viewports ?? [];
   const graphBreakpoints = configuredViewports.length
     ? configuredViewports.map((item) => ({ ...item, height: item.height ?? 900 }))
@@ -211,6 +391,8 @@ export async function indexProjectDesign(
     themes: graphThemes,
     states: config?.design?.states ?? [],
     motionPresets: [...motion.values()],
+    tokenUsages,
+    designSystemFindings: findings,
     indexedAt: new Date().toISOString(),
   });
 }

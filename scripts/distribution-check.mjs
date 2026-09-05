@@ -70,6 +70,33 @@ const claudeHook = readJson('plugins/foundry-design-control/hooks/hooks.json');
 if (!claudeHook.hooks?.SessionStart?.length)
   failures.push('Claude plugin has no SessionStart hook');
 
+const codexManifest = readJson('plugins/foundry-design-control/.codex-plugin/plugin.json');
+for (const field of ['privacyPolicyURL', 'termsOfServiceURL', 'logo']) {
+  if (!codexManifest.interface?.[field])
+    failures.push(`Codex plugin is missing interface.${field}`);
+}
+requirePath('Codex plugin logo', codexManifest.interface?.logo);
+
+const openAiSubmission = readJson('submission/openai/submission.json');
+if (openAiSubmission.submissionType !== 'skills-only')
+  failures.push('OpenAI submission must preserve the skills-only local-first boundary');
+for (const field of [
+  'name',
+  'shortDescription',
+  'longDescription',
+  'websiteURL',
+  'supportURL',
+  'privacyPolicyURL',
+  'termsOfServiceURL',
+]) {
+  if (!openAiSubmission[field]) failures.push(`OpenAI submission is missing ${field}`);
+}
+const openAiTests = readJson('submission/openai/test-cases.json');
+if (openAiTests.positive?.length !== 5)
+  failures.push('OpenAI submission must include five positive test cases');
+if (openAiTests.negative?.length !== 3)
+  failures.push('OpenAI submission must include three negative test cases');
+
 if (failures.length) {
   console.error(`Distribution check failed:\n- ${failures.join('\n- ')}`);
   process.exit(1);

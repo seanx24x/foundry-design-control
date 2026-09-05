@@ -4,6 +4,7 @@ import {
   applyRunSchema,
   coalesceChanges,
   designChangeSchema,
+  designBranchSchema,
   designOperationSchema,
   projectDesignGraphSchema,
   renderChangePrompt,
@@ -64,6 +65,21 @@ test('keeps edits with different responsive scopes separate', () => {
     },
   ]);
   assert.equal(changes.length, 2);
+});
+
+test('parses an isolated design branch with decisions and provenance', () => {
+  const branch = designBranchSchema.parse({
+    id: 'branch_a',
+    name: 'Quiet direction',
+    status: 'exploring',
+    changes: [base],
+    operations: [],
+    createdAt: '2026-09-05T00:00:00.000Z',
+    updatedAt: '2026-09-05T00:00:00.000Z',
+  });
+  assert.equal(branch.name, 'Quiet direction');
+  assert.equal(branch.changes[0]?.property, 'width');
+  assert.equal(branch.status, 'exploring');
 });
 
 test('renders a portable prompt from canonical JSON', () => {
@@ -153,15 +169,60 @@ test('parses a revisioned project design graph', () => {
         cssVariable: '--space-3',
       },
     ],
-    components: [],
+    components: [
+      {
+        id: 'component-button',
+        name: 'Button',
+        variants: [
+          {
+            id: 'variant-quiet',
+            label: 'Quiet',
+            property: 'story',
+            value: 'Quiet',
+            props: { story: 'Quiet', disabled: false },
+          },
+        ],
+      },
+    ],
     breakpoints: [{ id: 'mobile', label: 'Mobile', width: 390 }],
     themes: [],
     states: [],
     motionPresets: [],
+    tokenUsages: [
+      {
+        id: 'usage-space-3',
+        tokenId: 'token-space-3',
+        tokenName: '--space-3',
+        value: '12px',
+        category: 'spacing',
+        kind: 'reference',
+        source: { file: 'theme.css', line: 8 },
+      },
+    ],
+    designSystemFindings: [
+      {
+        id: 'finding-space-3',
+        kind: 'literal-drift',
+        title: 'Use --space-3',
+        detail: 'A literal repeats the project token.',
+        tokenIds: ['token-space-3'],
+        suggestedTokenId: 'token-space-3',
+      },
+    ],
     indexedAt: '2026-08-29T00:00:00.000Z',
   });
   assert.equal(graph.tokens[0]?.cssVariable, '--space-3');
   assert.equal(graph.breakpoints[0]?.height, 900);
+  assert.deepEqual(graph.components[0]?.variants[0]?.props, {
+    story: 'Quiet',
+    disabled: false,
+  });
+  assert.equal(graph.tokenUsages[0]?.source.line, 8);
+  assert.equal(graph.designSystemFindings[0]?.kind, 'literal-drift');
+});
+
+test('accepts source-aware variant change scope', () => {
+  assert.equal(designChangeSchema.parse({ ...base, scope: 'variant' }).scope, 'variant');
 });
 
 test('requires explicit resolution for ambiguous semantic operations', () => {
