@@ -34,6 +34,21 @@ function run(cwd, command, args, environment = {}) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+function runExpectFailure(cwd, command, args, environment = {}) {
+  const result = spawnSync(command, args, {
+    cwd,
+    env: {
+      ...process.env,
+      INIT_CWD: cwd,
+      npm_config_cache: join(matrixRoot, '.npm-cache'),
+      ...environment,
+    },
+    encoding: 'utf8',
+  });
+  if (result.status === 0) throw new Error(`Expected ${command} ${args.join(' ')} to fail.`);
+  return `${result.stdout ?? ''}${result.stderr ?? ''}`;
+}
+
 function expectedPaths(agent) {
   if (agent === 'codex') {
     return {
@@ -148,12 +163,9 @@ try {
   writeFileSync(join(pluginFixture, 'index.html'), '<main>Plugin product</main>\n');
   run(pluginFixture, 'npm', ['install', '--ignore-scripts', ...tarballs]);
   const hostFixture = join(matrixRoot, 'host');
-  run(
-    pluginFixture,
-    'node',
-    ['node_modules/foundry-design/dist/index.js', 'setup', '--global', '--yes'],
-    { HOME: hostFixture },
-  );
+  run(pluginFixture, 'node', ['node_modules/foundry-design/dist/index.js', 'install', '--yes'], {
+    HOME: hostFixture,
+  });
   run(pluginFixture, 'node', ['node_modules/foundry-design/dist/index.js', '--yes', '--no-start'], {
     HOME: hostFixture,
   });
@@ -163,10 +175,30 @@ try {
     }
   }
 
-  for (const path of ['.codex/config.toml', '.codex/skills/foundry-design-control/SKILL.md']) {
+  for (const path of [
+    '.codex/config.toml',
+    '.codex/skills/foundry-design-control/SKILL.md',
+    '.cursor/mcp.json',
+    '.cursor/skills/foundry-design-control/SKILL.md',
+    '.claude.json',
+    '.claude/skills/foundry-design-control/SKILL.md',
+    '.foundry/companion.json',
+  ]) {
     if (!existsSync(join(hostFixture, path))) {
       throw new Error(`Shared agent installation did not create ${path}`);
     }
+  }
+
+  const accidentalHome = join(matrixRoot, 'accidental-home');
+  mkdirSync(accidentalHome, { recursive: true });
+  const homeFailure = runExpectFailure(
+    accidentalHome,
+    'node',
+    [join(pluginFixture, 'node_modules/foundry-design/dist/index.js'), 'doctor'],
+    { HOME: accidentalHome },
+  );
+  if (!homeFailure.includes('will not use your home folder as a project')) {
+    throw new Error('Home-folder guard did not explain how to open a real project.');
   }
 
   const bundledSkill = join(

@@ -91,3 +91,19 @@ test('reports a bare shared MCP object that can prevent Claude from loading ever
   assert.match(schema?.detail ?? '', /\.mcp\.json/);
   assert.equal(report.ready, false);
 });
+
+test('deduplicates host and project agent paths when the project is the home folder', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'foundry-doctor-dedupe-'));
+  await mkdir(join(home, '.codex'), { recursive: true });
+  await writeFile(join(home, 'package.json'), '{}\n');
+  await writeFile(
+    join(home, '.codex', 'config.toml'),
+    `[mcp_servers.foundry-design-control]\ncommand = "npx"\nargs = ["-y", "${FOUNDRY_MCP_PACKAGE_SPEC}"]\n`,
+  );
+  const report = await collectDoctorReport(home, {
+    home,
+    store: new SessionStore(join(home, 'sessions')),
+    fetcher: async () => new Response('{}', { status: 503 }),
+  });
+  assert.deepEqual(report.configuredAgentFiles, [join(home, '.codex', 'config.toml')]);
+});

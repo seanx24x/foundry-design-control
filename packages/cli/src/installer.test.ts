@@ -176,7 +176,7 @@ test('installs Codex MCP configuration directly instead of writing a merge snipp
   await assert.rejects(readFile(join(root, '.codex', 'foundry-mcp.toml'), 'utf8'));
 });
 
-test('updates an existing plugin-only install for the active agent and is repeatable', async () => {
+test('updates an existing plugin-only install without creating project MCP precedence', async () => {
   const root = await fixture('update');
   const skillRoot = await skillFixture();
   await mkdir(join(root, 'src'), { recursive: true });
@@ -184,26 +184,24 @@ test('updates an existing plugin-only install for the active agent and is repeat
   await writeFile(join(root, 'src', 'main.ts'), "console.log('product');\n");
   await setupProject(root, { agents: [], skillRoot });
 
-  await writeFile(join(skillRoot, 'SKILL.md'), '# Foundry Design Control v2\n');
   const plan = await createUpdatePlan(root, {
     environment: { CODEX_THREAD_ID: 'thread-1' },
     skillRoot,
   });
-  assert.deepEqual(plan.agents, ['codex']);
+  assert.deepEqual(plan.agents, []);
   const first = await updateProject(root, {
     environment: { CODEX_THREAD_ID: 'thread-1' },
     skillRoot,
   });
   assert.deepEqual(first.preserved, []);
-  assert.match(
-    await readFile(join(root, '.agents', 'skills', 'foundry-design-control', 'SKILL.md'), 'utf8'),
-    /v2/,
+  await assert.rejects(
+    readFile(join(root, '.agents', 'skills', 'foundry-design-control', 'SKILL.md'), 'utf8'),
   );
-  assert.match(await readFile(join(root, '.codex', 'config.toml'), 'utf8'), /mcp_servers/);
+  await assert.rejects(readFile(join(root, '.codex', 'config.toml'), 'utf8'));
   const manifest = JSON.parse(
     await readFile(join(root, '.foundry', 'install-manifest.json'), 'utf8'),
   );
-  assert.deepEqual(manifest.agents, ['codex']);
+  assert.deepEqual(manifest.agents, []);
   assert.equal(typeof manifest.updatedAt, 'string');
 
   const second = await updateProject(root, {
@@ -235,6 +233,23 @@ test('retains configured preview and runtime URLs during update', async () => {
   const config = JSON.parse(await readFile(join(root, '.foundry', 'foundry.config.json'), 'utf8'));
   assert.equal(config.runtimeUrl, 'http://127.0.0.1:4487');
   assert.equal(config.targetUrl, 'http://127.0.0.1:4490');
+});
+
+test('upgrades an owned stale project MCP connection to the current exact release', async () => {
+  const root = await fixture('stale-project-mcp');
+  const skillRoot = await skillFixture();
+  await mkdir(join(root, '.codex'), { recursive: true });
+  await writeFile(join(root, 'package.json'), '{}\n');
+  await setupProject(root, { agents: ['codex'], skillRoot });
+
+  const configPath = join(root, '.codex', 'config.toml');
+  const current = await readFile(configPath, 'utf8');
+  const stale = current.replace(FOUNDRY_MCP_PACKAGE_SPEC, 'foundry-design-mcp-server@0.2.0-beta.7');
+  await writeFile(configPath, stale);
+  await updateProject(root, { agents: ['codex'], skillRoot });
+  const repaired = await readFile(configPath, 'utf8');
+  assert.match(repaired, new RegExp(FOUNDRY_MCP_PACKAGE_SPEC.replaceAll('.', '\\.')));
+  assert.doesNotMatch(repaired, /beta\.7/);
 });
 
 test('preserves customized skill files while refreshing unchanged siblings', async () => {

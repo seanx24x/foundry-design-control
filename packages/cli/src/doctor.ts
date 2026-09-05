@@ -82,19 +82,23 @@ export async function collectDoctorReport(
     }
   });
   const candidateAgentFiles = [
-    join(root, '.codex', 'config.toml'),
-    join(root, '.cursor', 'mcp.json'),
-    join(root, '.mcp.json'),
-    join(home, '.codex', 'config.toml'),
-    join(home, '.cursor', 'mcp.json'),
-    join(home, '.claude.json'),
-    join(home, '.mcp.json'),
+    ...new Set([
+      join(root, '.codex', 'config.toml'),
+      join(root, '.cursor', 'mcp.json'),
+      join(root, '.mcp.json'),
+      join(home, '.codex', 'config.toml'),
+      join(home, '.cursor', 'mcp.json'),
+      join(home, '.claude.json'),
+      join(home, '.mcp.json'),
+    ]),
   ];
   const schemaCheckedAgentFiles = [
-    join(root, '.cursor', 'mcp.json'),
-    join(root, '.mcp.json'),
-    join(home, '.cursor', 'mcp.json'),
-    join(home, '.mcp.json'),
+    ...new Set([
+      join(root, '.cursor', 'mcp.json'),
+      join(root, '.mcp.json'),
+      join(home, '.cursor', 'mcp.json'),
+      join(home, '.mcp.json'),
+    ]),
   ];
   const invalidAgentFiles = (
     await Promise.all(
@@ -117,6 +121,9 @@ export async function collectDoctorReport(
   ).filter(({ content }) => content.includes('foundry-design-control'));
   const exactAgentFiles = agentFiles.filter(({ content }) =>
     content.includes(FOUNDRY_MCP_PACKAGE_SPEC),
+  );
+  const staleAgentFiles = agentFiles.filter(
+    ({ content }) => !content.includes(FOUNDRY_MCP_PACKAGE_SPEC),
   );
   const runtimeHealthy = await available(fetcher, 'http://127.0.0.1:4387/v1/health');
   const sessions = await store.list().catch(() => []);
@@ -195,9 +202,11 @@ export async function collectDoctorReport(
           : agentFiles.length
             ? 'warning'
             : 'failed',
-      detail: exactAgentFiles.length
-        ? FOUNDRY_MCP_PACKAGE_SPEC
-        : `Expected ${FOUNDRY_MCP_PACKAGE_SPEC}.`,
+      detail: staleAgentFiles.length
+        ? `Expected ${FOUNDRY_MCP_PACKAGE_SPEC}. Update: ${staleAgentFiles.map(({ path }) => path).join(', ')}`
+        : exactAgentFiles.length
+          ? FOUNDRY_MCP_PACKAGE_SPEC
+          : `Expected ${FOUNDRY_MCP_PACKAGE_SPEC}.`,
     },
     {
       id: 'preview',

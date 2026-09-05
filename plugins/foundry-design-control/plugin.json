@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "foundry-design-control",
-  "version": "0.2.0-beta.12",
+  "version": "0.2.0-beta.13",
   "description": "Design directly in a running product, review exact changes, apply them with an agent, and verify the rebuilt result.",
   "author": {
     "name": "Sean Lynch"

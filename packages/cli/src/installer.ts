@@ -6,7 +6,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { Platform } from 'foundry-design-protocol';
-import { detectPlatform } from './project.js';
+import { detectPlatform, normalizeTargetUrl } from './project.js';
 import { FOUNDRY_MCP_PACKAGE_SPEC, FOUNDRY_VERSION } from './release.js';
 
 export type Agent = 'codex' | 'cursor' | 'claude';
@@ -484,7 +484,7 @@ export async function createSetupPlan(
     agents,
     files: [...new Set(files)],
     integrationFile: integration,
-    targetUrl: options.targetUrl ?? defaultTarget(framework),
+    targetUrl: normalizeTargetUrl(options.targetUrl ?? defaultTarget(framework)),
     devCommand: await detectDevCommand(root),
     skillDirectories,
   };
@@ -905,7 +905,7 @@ export async function createUpdatePlan(
     .catch(() => undefined);
   return createSetupPlan(root, {
     ...options,
-    agents: options.agents ?? (manifest.agents.length ? manifest.agents : undefined),
+    agents: options.agents ?? manifest.agents,
     targetUrl: options.targetUrl ?? config?.targetUrl,
     update: true,
   });

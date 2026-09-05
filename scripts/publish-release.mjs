@@ -44,12 +44,7 @@ for (const entry of packages) {
     console.log(`✓ ${entry.name}@${version} already exists; skipping immutable publication.`);
     continue;
   }
-  const publishArgs = [
-    'publish',
-    '--tag',
-    'beta',
-    '--no-git-checks',
-  ];
+  const publishArgs = ['publish', '--tag', 'beta', '--no-git-checks'];
   if (supportsProvenance) publishArgs.push('--provenance');
   const result = run('pnpm', publishArgs, { cwd: join(root, entry.directory) });
   if (result.status !== 0) process.exit(result.status ?? 1);

@@ -6,11 +6,19 @@ Foundry is a local-first precision design workbench for Codex, Cursor, and Claud
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
-> **Current public beta:** `0.2.0-beta.12`. Both npm `latest` and `beta` point to the same tested release. Use the unqualified command below for normal installation.
+> **Release candidate:** `0.2.0-beta.13`. The commands below are prepared for this release and must not be promoted to npm `latest` until the full installation matrix passes.
 
 Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 
-### Recommended: one command
+### Recommended: install once, use in every project
+
+Install Foundry's shared connection for Codex, Cursor, and Claude once:
+
+```bash
+npx foundry-design install
+```
+
+Restart the selected coding agents once. Then open any project and run:
 
 Open a terminal in the project, or ask Codex, Cursor, or Claude Code to run:
 
@@ -18,7 +26,7 @@ Open a terminal in the project, or ask Codex, Cursor, or Claude Code to run:
 npx foundry-design
 ```
 
-That command detects the project and active coding agent, installs or safely updates Foundry, repairs the shared agent connection, validates its integration, starts the project when needed, and opens the visual session. Before changing local configuration, Foundry prints the exact CLI and MCP bridge versions it will use. On the first installation only, restart the coding agent once so it can load the shared MCP connection. A reviewed batch can be queued before the restart and will be claimed when the agent reconnects.
+That command finds the nearest real project, detects its framework and active coding agent, installs or safely updates the development integration, validates it, starts the project when needed, and opens the visual session. It refuses to treat a home folder as a project. Before changing local configuration, Foundry prints the exact CLI and MCP bridge versions it will use.
 
 After the restart, reopen the same project folder and ask:
 
@@ -58,6 +66,14 @@ npx foundry-design status
 
 Foundry reports project integration, the exact MCP package version, runtime health, and the live agent listener separately. Run `npx foundry-design doctor --repair` if configuration or generated integration needs repair.
 
+If an older project has stale or conflicting agent configuration, run:
+
+```bash
+npx foundry-design reset
+```
+
+Reset refreshes both project-scoped and shared agent connections to the same release, preserves customized files, and reports anything it could not replace safely.
+
 Update an existing installation with:
 
 ```bash
@@ -84,7 +100,7 @@ If an npm mirror or existing `npx` cache reports an old tag, bypass it with a te
 
 ```bash
 FOUNDRY_NPX_CACHE="$(mktemp -d)"
-npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.12 foundry-design
+npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.13 foundry-design
 ```
 
 The beta supports Node.js 20 or newer. Read the [local-first safety model](https://withfoundry.ai/#safety) before using it with sensitive work.
@@ -98,6 +114,10 @@ Start Foundry for this project.
 ```
 
 Foundry remains local-first. Installing the plugin does not create an account, enable telemetry, or send project data to a Foundry service.
+
+### Cursor one-click connection
+
+[Add the Foundry MCP bridge to Cursor](https://cursor.com/link/mcp/install?name=foundry-design-control&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9ubGluZSIsImZvdW5kcnktZGVzaWduLW1jcC1zZXJ2ZXJAMC4yLjAtYmV0YS4xMyJdfQ%3D%3D), then run `npx foundry-design` inside the project. The repository's Cursor plugin additionally bundles the Foundry skill and session-start hook for marketplace distribution.
 
 ## Current capabilities
 

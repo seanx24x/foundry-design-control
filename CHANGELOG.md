@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0-beta.13 - 2026-09-04
+
+- Prevented accidental setup in a user home folder and added nearest-project discovery for commands launched from nested directories.
+- Unified project and shared-agent repair so stale project-scoped MCP references are upgraded with the active release.
+- Normalized common local preview addresses such as `localhost:3000` into valid browser URLs.
+- Added install-once host setup, connect, reset, and companion status commands.
+- Added a local companion registry for installed agents and recently opened projects without accounts or telemetry.
+- Deduplicated overlapping project and host configuration paths in Doctor output.
+
 ## 0.2.0-beta.12 - 2026-09-04
 
 - Keep agent claim leases alive through source application, rebuild, and rendered verification.

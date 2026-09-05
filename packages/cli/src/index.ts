@@ -19,11 +19,17 @@ import {
   type Agent,
   type FoundryProjectConfig,
 } from './installer.js';
-import { addSessionParams, detectPlatform } from './project.js';
+import {
+  addSessionParams,
+  detectPlatform,
+  normalizeTargetUrl,
+  resolveProjectRoot,
+} from './project.js';
 import { indexProjectDesign } from './indexer.js';
 import { startBasicPreviewProxy, type BasicPreviewProxy } from './proxy.js';
 import { FOUNDRY_VERSION, releasePreflight } from './release.js';
 import { collectDoctorReport } from './doctor.js';
+import { CompanionStore } from './companion.js';
 
 const args = process.argv.slice(2);
 const command = args[0]?.startsWith('-') ? 'launch' : (args[0] ?? 'launch');
@@ -38,8 +44,13 @@ function has(name: string): boolean {
   return args.includes(name);
 }
 
-function projectRoot(): string {
-  return resolve(process.env.INIT_CWD ?? process.cwd(), flag('--project') ?? '.');
+async function projectRoot(options: { allowUninitialized?: boolean } = {}): Promise<string> {
+  const specified = flag('--project');
+  const start = resolve(process.env.INIT_CWD ?? process.cwd(), specified ?? '.');
+  return resolveProjectRoot(start, {
+    explicit: Boolean(specified),
+    allowUninitialized: options.allowUninitialized,
+  });
 }
 
 function printHelp(): void {
@@ -49,6 +60,10 @@ Usage:
   foundry-design [--project PATH] [--url URL] [--yes] [--no-start]
   foundry-design setup [--project PATH] [--agent codex,cursor,claude] [--global] [--url URL] [--yes]
   foundry-design update [--project PATH] [--agent codex,cursor,claude] [--yes]
+  foundry-design install [--agent codex,cursor,claude] [--yes]
+  foundry-design connect [--project PATH] [--url URL] [--yes]
+  foundry-design reset [--project PATH] [--agent codex,cursor,claude] [--url URL] [--yes]
+  foundry-design companion [--json]
   foundry-design init <web|swiftui|react-native> [--project PATH]
   foundry-design start [--project PATH] [--url URL] [--platform PLATFORM] [--new] [--no-open] [--no-dev]
   foundry-design doctor [--project PATH] [--repair] [--json]
@@ -137,7 +152,7 @@ function requestedAgents(): Agent[] | undefined {
 
 async function setup(): Promise<void> {
   console.log(`${releasePreflight('set up this project')}\n`);
-  const root = projectRoot();
+  const root = await projectRoot();
   const requested = requestedAgents();
   const sharedAgentSetup = has('--global');
   const detectedPlan = sharedAgentSetup
@@ -145,7 +160,7 @@ async function setup(): Promise<void> {
     : undefined;
   const options = {
     agents: sharedAgentSetup ? [] : requested,
-    targetUrl: flag('--url'),
+    targetUrl: normalizeTargetUrl(flag('--url')),
     packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
   };
   const plan = await createSetupPlan(root, options);
@@ -214,7 +229,7 @@ async function setup(): Promise<void> {
 
 async function update(): Promise<void> {
   console.log(`${releasePreflight('update this project')}\n`);
-  const root = projectRoot();
+  const root = await projectRoot();
   const options = {
     agents: requestedAgents(),
     packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
@@ -249,7 +264,7 @@ async function initProject(): Promise<void> {
   const platform = (args[1] ?? 'web') as Platform;
   if (!['web', 'swiftui', 'react-native'].includes(platform))
     throw new Error(`Unsupported platform: ${platform}`);
-  const root = projectRoot();
+  const root = await projectRoot({ allowUninitialized: true });
   const configRoot = join(root, '.foundry');
   await mkdir(configRoot, { recursive: true });
   await writeFile(
@@ -307,7 +322,7 @@ async function initProject(): Promise<void> {
 }
 
 async function start(): Promise<void> {
-  const root = projectRoot();
+  const root = await projectRoot();
   let config: FoundryProjectConfig | undefined;
   try {
     config = JSON.parse(
@@ -320,7 +335,7 @@ async function start(): Promise<void> {
     (flag('--platform') as Platform | undefined) ??
     config?.platform ??
     (await detectPlatform(root));
-  const targetUrl = flag('--url') ?? config?.targetUrl;
+  const targetUrl = normalizeTargetUrl(flag('--url') ?? config?.targetUrl);
   let basicPreview: BasicPreviewProxy | undefined;
   let developmentServer: ReturnType<typeof spawn> | undefined;
   if (
@@ -450,7 +465,7 @@ async function start(): Promise<void> {
 }
 
 async function indexDesign(): Promise<void> {
-  const root = projectRoot();
+  const root = await projectRoot();
   const config = await readFile(join(root, '.foundry', 'foundry.config.json'), 'utf8')
     .then((content) => JSON.parse(content) as FoundryProjectConfig)
     .catch(() => undefined);
@@ -465,7 +480,7 @@ async function indexDesign(): Promise<void> {
 
 async function uninstall(): Promise<void> {
   console.log(`${releasePreflight('remove managed project integration')}\n`);
-  const root = projectRoot();
+  const root = await projectRoot();
   if (!(await confirm(`Remove Foundry-managed project integration from ${root}?`))) {
     console.log('Uninstall cancelled.');
     return;
@@ -479,7 +494,7 @@ async function uninstall(): Promise<void> {
 }
 
 async function doctor(): Promise<void> {
-  const root = projectRoot();
+  const root = await projectRoot();
   const report = await collectDoctorReport(root);
   if (has('--json')) console.log(JSON.stringify(report, null, 2));
   else {
@@ -496,17 +511,46 @@ async function doctor(): Promise<void> {
   if (has('--repair')) {
     console.log(`\n${releasePreflight('repair this project and agent connection')}\n`);
     const detectedAgents = (await createSetupPlan(root)).agents;
-    const configured = report.checks.find((check) => check.id === 'config')?.status === 'passed';
-    const result = configured
-      ? await updateProject(root, { agents: [] })
-      : await setupProject(root, { agents: [], targetUrl: flag('--url') });
-    for (const agent of detectedAgents)
+    const installed =
+      report.checks.find((check) => check.id === 'integration')?.status !== 'failed';
+    const configuredAgents = installed ? (await createUpdatePlan(root)).agents : [];
+    const hostAgents = [
+      ...new Set([...configuredAgents, ...detectedAgents, 'codex', 'cursor', 'claude'] as Agent[]),
+    ];
+    const result = installed
+      ? await updateProject(root, {
+          agents: configuredAgents,
+          targetUrl: normalizeTargetUrl(flag('--url')),
+        })
+      : await setupProject(root, {
+          agents: [],
+          targetUrl: normalizeTargetUrl(flag('--url')),
+        });
+    for (const agent of hostAgents)
       await installHostAgentIntegration(homedir(), agent, {
         packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
       });
     console.log(
-      `✓ Repaired ${result.changed.length} managed paths and the shared ${detectedAgents.join(', ')} connection.`,
+      `✓ Repaired ${result.changed.length} managed paths and the shared ${hostAgents.join(', ')} connection.`,
     );
+    const repaired = await collectDoctorReport(root);
+    const requiredAfterRepair = new Set([
+      'config',
+      'integration',
+      'agent-configured',
+      'agent-config-valid',
+      'agent-version',
+    ]);
+    const remaining = repaired.checks.filter(
+      (check) => requiredAfterRepair.has(check.id) && check.status === 'failed',
+    );
+    if (remaining.length) {
+      throw new Error(`Repair is incomplete: ${remaining.map((check) => check.label).join(', ')}`);
+    }
+    console.log('✓ Project and agent configuration now use the same Foundry release.');
+    if (repaired.checks.find((check) => check.id === 'agent-listening')?.status !== 'passed') {
+      console.log('△ Restart the active coding agent once to activate its listener.');
+    }
   } else if (report.checks.some((check) => check.status === 'failed')) {
     console.log('Run: foundry-design doctor --repair');
   }
@@ -514,25 +558,38 @@ async function doctor(): Promise<void> {
 
 async function launch(): Promise<void> {
   console.log(`${releasePreflight('install, update, and start Foundry')}\n`);
-  const root = projectRoot();
+  const root = await projectRoot();
   const manifest = join(root, '.foundry', 'install-manifest.json');
   const installed = await pathExists(manifest);
   const detectedAgents = (await createSetupPlan(root)).agents;
+  const configuredAgents = installed ? (await createUpdatePlan(root)).agents : [];
+  const resolvedAgents = [...new Set([...configuredAgents, ...detectedAgents])];
+  const hostAgents = resolvedAgents.length
+    ? resolvedAgents
+    : (['codex', 'cursor', 'claude'] as Agent[]);
   console.log(`Foundry\n\nProject: ${root}`);
   console.log(
-    `${installed ? 'Refreshing' : 'Preparing'} the project and shared ${detectedAgents.join(', ')} connection.`,
+    `${installed ? 'Refreshing' : 'Preparing'} the project and shared ${hostAgents.join(', ')} connection.`,
   );
   if (!(await confirm('Continue?'))) {
     console.log('Foundry cancelled.');
     return;
   }
   const result = installed
-    ? await updateProject(root, { agents: [], targetUrl: flag('--url') })
-    : await setupProject(root, { agents: [], targetUrl: flag('--url') });
-  for (const agent of detectedAgents)
+    ? await updateProject(root, {
+        agents: configuredAgents,
+        targetUrl: normalizeTargetUrl(flag('--url')),
+      })
+    : await setupProject(root, {
+        agents: [],
+        targetUrl: normalizeTargetUrl(flag('--url')),
+      });
+  for (const agent of hostAgents)
     await installHostAgentIntegration(homedir(), agent, {
       packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
     });
+  await new CompanionStore(homedir()).recordInstallation(hostAgents);
+  await new CompanionStore(homedir()).registerProject(root, result.targetUrl);
   console.log(`✓ ${installed ? 'Updated' : 'Installed'} and validated Foundry.`);
   for (const check of result.validation)
     console.log(
@@ -540,7 +597,7 @@ async function launch(): Promise<void> {
     );
   if (!installed)
     console.log(
-      `\nRestart ${detectedAgents.join(', ')} once to load the shared connection. The visual session will open now and queued batches will wait safely until it reconnects.`,
+      `\nRestart ${hostAgents.join(', ')} once to load the shared connection. The visual session will open now and queued batches will wait safely until it reconnects.`,
     );
   if (has('--no-start')) return;
   await start();
@@ -589,12 +646,13 @@ async function installAgent(): Promise<void> {
       console.log('Preserved customized skill files:');
       for (const path of result.preserved) console.log(`  ${path}`);
     }
+    await new CompanionStore(homedir()).recordInstallation([agent as Agent]);
     console.log(
       `Restart ${agent === 'codex' ? 'Codex' : agent === 'cursor' ? 'Cursor' : 'Claude Code'} once. Future projects can use "npx foundry-design setup --agent none --yes" without another MCP install.`,
     );
     return;
   }
-  const root = projectRoot();
+  const root = await projectRoot();
   const file = await installAgentIntegration(
     root,
     agent as Agent,
@@ -606,12 +664,84 @@ async function installAgent(): Promise<void> {
   );
 }
 
+async function installHost(): Promise<void> {
+  console.log(`${releasePreflight('install Foundry for your coding agents')}\n`);
+  const agents = requestedAgents() ?? (['codex', 'cursor', 'claude'] as Agent[]);
+  if (!(await confirm(`Install the shared Foundry connection for ${agents.join(', ')}?`))) {
+    console.log('Installation cancelled.');
+    return;
+  }
+  for (const agent of agents) {
+    const result = await installHostAgentIntegration(homedir(), agent, {
+      packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
+    });
+    console.log(`✓ ${agent}: ${result.configFile}`);
+  }
+  await new CompanionStore(homedir()).recordInstallation(agents);
+  console.log('\nFoundry is installed once for these agents. Restart each selected agent once.');
+  console.log('Then open any project and run: npx foundry-design');
+}
+
+async function reset(): Promise<void> {
+  console.log(`${releasePreflight('reset managed project and agent integration')}\n`);
+  const root = await projectRoot();
+  const installed = await pathExists(join(root, '.foundry', 'install-manifest.json'));
+  const configuredAgents = installed ? (await createUpdatePlan(root)).agents : [];
+  const requested = requestedAgents();
+  const projectAgents = requested ?? configuredAgents;
+  const detectedAgents = (await createSetupPlan(root)).agents;
+  const hostAgents = [
+    ...new Set([...configuredAgents, ...detectedAgents, 'codex', 'cursor', 'claude'] as Agent[]),
+  ];
+  if (!(await confirm(`Reset Foundry-managed integration for ${root}?`))) {
+    console.log('Reset cancelled.');
+    return;
+  }
+  const options = {
+    agents: projectAgents,
+    targetUrl: normalizeTargetUrl(flag('--url')),
+    packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
+  };
+  const result = installed ? await updateProject(root, options) : await setupProject(root, options);
+  for (const agent of hostAgents) await installHostAgentIntegration(homedir(), agent, options);
+  await new CompanionStore(homedir()).recordInstallation(hostAgents);
+  await new CompanionStore(homedir()).registerProject(root, result.targetUrl);
+  console.log(
+    `✓ Reset ${result.changed.length} managed paths and ${hostAgents.join(', ')} shared connections.`,
+  );
+  if (result.preserved.length) {
+    console.log('Preserved customized files:');
+    for (const path of result.preserved) console.log(`  ${path}`);
+  }
+  console.log(
+    'Restart the active coding agent once, reopen this project, then run npx foundry-design.',
+  );
+}
+
+async function companion(): Promise<void> {
+  const state = await new CompanionStore(homedir()).read();
+  if (has('--json')) {
+    console.log(JSON.stringify(state, null, 2));
+    return;
+  }
+  console.log(`Foundry ${state.foundryVersion}`);
+  console.log(`Installed agents: ${state.agents.join(', ') || 'none'}`);
+  console.log(`Recent projects: ${state.projects.length}`);
+  for (const project of state.projects.slice(0, 5)) {
+    console.log(`  ${project.root}${project.targetUrl ? ` · ${project.targetUrl}` : ''}`);
+  }
+}
+
 try {
   if (has('--version') || command === 'version') console.log(FOUNDRY_VERSION);
   else if (has('--help') || command === 'help') printHelp();
   else if (command === 'launch') await launch();
   else if (command === 'setup') await setup();
   else if (command === 'update') await update();
+  else if (command === 'install') await installHost();
+  else if (command === 'connect') await launch();
+  else if (command === 'reset') await reset();
+  else if (command === 'companion') await companion();
   else if (command === 'init') await initProject();
   else if (command === 'start') await start();
   else if (command === 'doctor' || command === 'status') await doctor();
