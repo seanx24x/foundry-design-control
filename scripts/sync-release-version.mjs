@@ -34,7 +34,7 @@ writeFileSync(
 
 const releaseTestPath = join(root, 'packages/cli/src/release.test.ts');
 const releaseTest = readFileSync(releaseTestPath, 'utf8').replaceAll(
-  /0\.2\.0-beta\.\d+/g,
+  /0\.2\.0-beta\.\d+(?:\.\d+)?/g,
   release.version,
 );
 writeFileSync(releaseTestPath, releaseTest);
@@ -52,6 +52,19 @@ for (const relativePath of [
     `foundry-design-mcp-server@${release.version}`,
   ];
   writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+for (const relativePath of [
+  '.agents/plugins/marketplace.json',
+  '.cursor-plugin/marketplace.json',
+  '.claude-plugin/marketplace.json',
+]) {
+  const path = join(root, relativePath);
+  const marketplace = JSON.parse(readFileSync(path, 'utf8'));
+  const plugin = marketplace.plugins?.find((entry) => entry.name === 'foundry-design-control');
+  if (!plugin) throw new Error(`${relativePath} is missing the Foundry plugin entry.`);
+  plugin.version = release.version;
+  writeFileSync(path, `${JSON.stringify(marketplace, null, 2)}\n`);
 }
 
 console.log(`Synchronized Foundry release metadata at ${release.version}.`);

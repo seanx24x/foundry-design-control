@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       promote_latest:
-        description: Move npm latest to this validated beta
+        description: Move npm latest after publishing (requires NODE_AUTH_TOKEN)
         required: true
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: read
@@ -22,9 +22,10 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
-          cache: pnpm
+          package-manager-cache: false
+      - run: npm install --global npm@latest
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm check
@@ -32,8 +33,7 @@ jobs:
       - run: pnpm release:check
       - run: pnpm release:pack
       - run: pnpm release:test-install
+      - run: pnpm distribution:check
       - run: pnpm mcpb:build
       - name: Publish beta packages
         run: pnpm release:publish -- ${{ inputs.promote_latest && '--promote-latest' || '' }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

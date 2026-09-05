@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
@@ -16,6 +16,7 @@ const packageDirectories = [
 const registry = 'https://registry.npmjs.org';
 const promoteLatest = process.argv.includes('--promote-latest');
 const supportsProvenance = process.env.GITHUB_ACTIONS === 'true';
+const artifactDirectory = join(root, 'artifacts', 'npm');
 
 function run(command, args, options = {}) {
   return spawnSync(command, args, {
@@ -45,6 +46,8 @@ const packages = packageDirectories.map((directory) => ({
 for (const [command, args, label] of [
   ['pnpm', ['build'], 'release build'],
   ['pnpm', ['release:check'], 'release metadata check'],
+  ['pnpm', ['release:pack'], 'release package build'],
+  ['pnpm', ['distribution:check'], 'agent distribution check'],
 ]) {
   const result = run(command, args);
   if (result.status !== 0) {
@@ -58,9 +61,14 @@ for (const entry of packages) {
     console.log(`✓ ${entry.name}@${version} already exists; skipping immutable publication.`);
     continue;
   }
-  const publishArgs = ['publish', '--tag', 'beta', '--no-git-checks'];
+  const tarball = join(artifactDirectory, `${entry.name}-${version}.tgz`);
+  if (!existsSync(tarball)) {
+    console.error(`Cannot publish: missing ${tarball}.`);
+    process.exit(1);
+  }
+  const publishArgs = ['publish', tarball, '--tag', 'beta', '--registry', registry];
   if (supportsProvenance) publishArgs.push('--provenance');
-  const result = run('pnpm', publishArgs, { cwd: join(root, entry.directory) });
+  const result = run('npm', publishArgs);
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
@@ -70,8 +78,15 @@ if (missing.length) {
   process.exit(1);
 }
 
+if (promoteLatest && supportsProvenance && !process.env.NODE_AUTH_TOKEN) {
+  console.error(
+    'All packages were published under beta with trusted publishing. Moving latest requires an npm token because OIDC currently authorizes publish, not dist-tag changes. Re-run with NODE_AUTH_TOKEN or promote latest in npm.',
+  );
+  process.exit(1);
+}
+
 for (const entry of packages) {
-  const tags = ['beta', ...(promoteLatest ? ['latest'] : [])];
+  const tags = promoteLatest ? ['latest'] : [];
   for (const tag of tags) {
     const result = run('npm', [
       'dist-tag',

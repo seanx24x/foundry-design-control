@@ -6,7 +6,7 @@ Foundry is a local-first precision design workbench for Codex, Cursor, and Claud
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
-> **Release candidate:** `0.2.0-beta.14`. The commands below are prepared for this release and must not be promoted to npm `latest` until the full installation matrix passes.
+> **Release candidate:** `0.2.0-beta.15`. The commands below are prepared for this release and must not be promoted to npm `latest` until the full installation matrix passes.
 
 Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 
@@ -110,6 +110,25 @@ Supported automatic web integration currently includes Next.js App Router, Vite,
 
 The npm setup above is the public beta installation path and includes the same portable skill and MCP connection used by the agent plugin bundle.
 
+### Agent-native installation
+
+The npm installer remains the universal route. Foundry also ships one versioned plugin bundle for Codex, Cursor, and Claude Code, so each host can load the same skill, MCP bridge, and session guidance through its native plugin system.
+
+For Claude Code, add the public marketplace and install Foundry once:
+
+```text
+/plugin marketplace add seanx24x/foundry-design-control
+/plugin install foundry-design-control@foundry-design-control
+```
+
+Run `/reload-plugins`, open a project, then run `npx foundry-design` once to connect its development adapter.
+
+For Cursor, use the one-click MCP connection below while the complete plugin awaits marketplace review. The repository contains a validated Cursor plugin with the Foundry skill, command, hook, and MCP bridge for local testing and submission.
+
+For Codex, the repository contains the Agent Plugin and Codex presentation metadata used for public marketplace submission. Until that listing is available, `npx foundry-design install-agent codex` installs the identical shared skill and bridge without requiring the repository.
+
+See [Distribution](DISTRIBUTION.md) for the exact supported route, validation command, and update boundary for every host.
+
 ### Claude Desktop extension
 
 The repository also produces a validated `.mcpb` extension for Claude Desktop. It bundles the local Foundry MCP bridge and can be installed through **Settings → Extensions → Advanced → Install Extension**. This provides a host-native alternative when a Claude Desktop surface does not merge the normal user-level Claude Code MCP configuration. Project instrumentation is still installed with `npx foundry-design`.
@@ -118,14 +137,14 @@ If an npm mirror or existing `npx` cache reports an old tag, bypass it with a te
 
 ```bash
 FOUNDRY_NPX_CACHE="$(mktemp -d)"
-npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.14 foundry-design
+npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.15 foundry-design
 ```
 
 The beta supports Node.js 20 or newer. Read the [local-first safety model](https://withfoundry.ai/#safety) before using it with sensitive work.
 
 ## Agent plugin
 
-The portable plugin lives at `plugins/foundry-design-control`. The repository also includes marketplace manifests for Codex, Cursor, and Claude-compatible plugin import. Until public marketplace review is complete, `setup --global` installs the same reusable skill and MCP connection from npm without requiring source-repository access. Once installed, ask your agent:
+The portable plugin lives at `plugins/foundry-design-control`. The repository also includes marketplace manifests for Codex, Cursor, and Claude-compatible plugin import. Until public marketplace review is complete, `npx foundry-design install` installs the same reusable skill and MCP connection from npm without requiring source-repository access. Once installed, ask your agent:
 
 ```text
 Start Foundry for this project.
@@ -135,7 +154,7 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 
 ### Cursor one-click connection
 
-[Add the Foundry MCP bridge to Cursor](https://cursor.com/link/mcp/install?name=foundry-design-control&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9ubGluZSIsImZvdW5kcnktZGVzaWduLW1jcC1zZXJ2ZXJAMC4yLjAtYmV0YS4xNCJdfQ%3D%3D), then run `npx foundry-design` inside the project. The repository's Cursor plugin additionally bundles the Foundry skill and session-start hook for marketplace distribution.
+[Add the Foundry MCP bridge to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=foundry-design-control&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9ubGluZSIsImZvdW5kcnktZGVzaWduLW1jcC1zZXJ2ZXJAMC4yLjAtYmV0YS4xNSJdLCJlbnYiOnsiRk9VTkRSWV9ERVNJR05fUlVOVElNRV9VUkwiOiJodHRwOi8vMTI3LjAuMC4xOjQzODcifX0%3D), then run `npx foundry-design` inside the project. The repository's Cursor plugin additionally bundles the Foundry skill and session-start hook for marketplace distribution.
 
 ## Current capabilities
 

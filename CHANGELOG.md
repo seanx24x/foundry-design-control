@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0-beta.15 - 2026-09-04
+
+- Aligned one portable plugin bundle across Codex, Cursor, Claude Code, and Claude Desktop with synchronized release metadata.
+- Added automated distribution checks for plugin manifests, marketplace entries, lifecycle hooks, and exact MCP bridge pins.
+- Added agent-native installation and update guidance, including Claude Code marketplace commands and the current Cursor MCP install link.
+- Prepared Cursor and Anthropic marketplace submission materials without replacing the universal npm setup path.
+- Updated the release workflow for npm trusted publishing with Node 24, npm 11, OIDC provenance, and token-free beta publication.
+- Made release publication build and publish the validated tarballs rather than relying on mutable workspace package state.
+
 ## 0.2.0-beta.14 - 2026-09-04
 
 - Made one machine-level agent bridge the default for Codex, Cursor, and Claude Code while keeping project-scoped installation as an explicit compatibility option.

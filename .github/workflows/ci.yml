@@ -25,4 +25,5 @@ jobs:
       - run: pnpm release:check
       - run: pnpm release:pack
       - run: pnpm release:test-install
+      - run: pnpm distribution:check
       - run: pnpm mcpb:build

@@ -29,6 +29,11 @@ const manifestPaths = [
   'plugins/foundry-design-control/.cursor-plugin/plugin.json',
   'plugins/foundry-design-control/.claude-plugin/plugin.json',
 ];
+const marketplacePaths = [
+  '.agents/plugins/marketplace.json',
+  '.cursor-plugin/marketplace.json',
+  '.claude-plugin/marketplace.json',
+];
 
 const failures = [];
 const readJson = (path) => JSON.parse(readFileSync(join(root, path), 'utf8'));
@@ -108,6 +113,14 @@ for (const path of manifestPaths) {
   if (manifest.version !== version) failures.push(`${path} has version ${manifest.version}`);
   if (manifest.name !== 'foundry-design-control')
     failures.push(`${path} has an unexpected plugin name`);
+}
+
+for (const path of marketplacePaths) {
+  const marketplace = readJson(path);
+  const plugin = marketplace.plugins?.find((entry) => entry.name === 'foundry-design-control');
+  if (!plugin) failures.push(`${path} is missing the Foundry plugin entry`);
+  else if (plugin.version !== version)
+    failures.push(`${path} has plugin version ${plugin.version ?? 'missing'}`);
 }
 
 const mcpbManifest = readJson('extensions/claude-desktop/manifest.json');
