@@ -35,6 +35,10 @@ function published(packageName) {
   return result.status === 0 && result.stdout.trim() === version;
 }
 
+function wait(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
 const packages = packageDirectories.map((directory) => ({
   directory,
   name: JSON.parse(readFileSync(join(root, directory, 'package.json'), 'utf8')).name,
@@ -72,7 +76,14 @@ for (const entry of packages) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-const missing = packages.filter((entry) => !published(entry.name));
+let missing = packages.filter((entry) => !published(entry.name));
+for (let attempt = 1; missing.length && attempt <= 12; attempt += 1) {
+  console.log(
+    `Waiting for npm to finish processing ${missing.map((entry) => entry.name).join(', ')} (${attempt}/12).`,
+  );
+  wait(10_000);
+  missing = missing.filter((entry) => !published(entry.name));
+}
 if (missing.length) {
   console.error(`Publication incomplete: ${missing.map((entry) => entry.name).join(', ')}`);
   process.exit(1);

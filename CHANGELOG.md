@@ -5,6 +5,7 @@
 - Added a registry-backed preflight that verifies the trusted GitHub publisher for all seven public packages before release dispatch.
 - Added a checked-in trusted-publisher contract so repository, workflow, environment, permissions, and package coverage cannot drift silently.
 - Updated the release workflow to the Node 24 versions of checkout, setup-node, and pnpm setup, removing the deprecated-action and unsupported-input warnings.
+- Made publication verification wait for npm's asynchronous package processing before reporting a release as incomplete.
 - Prepared the first release that can prove token-free npm publication through GitHub Actions.
 
 ## 0.2.0-beta.15 - 2026-09-04
