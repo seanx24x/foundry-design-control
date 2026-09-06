@@ -11,6 +11,12 @@ const baseline = {
   interactive: false,
   targetSizeEligible: false,
   accessibleName: '',
+  keyboardCandidate: false,
+  keyboardReachable: false,
+  positiveTabIndex: false,
+  focusIndicatorVisible: true,
+  imageElement: false,
+  imageHasAlternative: true,
   width: 200,
   height: 80,
   left: 0,
@@ -69,6 +75,34 @@ test('finds viewport and content overflow', () => {
   const clipped = auditHealthSnapshot({ ...baseline, scrollWidth: 260, overflowX: 'hidden' });
   assert.equal(clipped[0]?.ruleId, 'content-overflow');
   assert.equal(auditHealthSnapshot({ ...baseline, scrollHeight: 100 }).length, 0);
+});
+
+test('finds missing image alternatives and keyboard navigation failures', () => {
+  const findings = auditHealthSnapshot({
+    ...baseline,
+    interactive: true,
+    accessibleName: 'Open details',
+    keyboardCandidate: true,
+    keyboardReachable: false,
+    imageElement: true,
+    imageHasAlternative: false,
+  });
+  assert.deepEqual(
+    findings.map((finding) => finding.ruleId),
+    ['image-alternative', 'keyboard-unreachable'],
+  );
+
+  const focusFindings = auditHealthSnapshot({
+    ...baseline,
+    keyboardCandidate: true,
+    keyboardReachable: true,
+    positiveTabIndex: true,
+    focusIndicatorVisible: false,
+  });
+  assert.deepEqual(
+    focusFindings.map((finding) => finding.ruleId),
+    ['focus-order', 'focus-visible'],
+  );
 });
 
 test('scores health by severity without going below zero', () => {

@@ -167,7 +167,7 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 - A searchable, collapsible, virtualized live layer hierarchy with mapped-source context, Shadow DOM traversal, drag reordering, and selection persistence across HMR
 - Multi-selection, measured spacing annotations, sibling-aware resize snapping, keyboard nudging, alignment, distribution, and preview undo/redo
 - A revisioned local design graph for CSS tokens, components, Storybook variants, breakpoints, themes, states, and motion presets
-- A Design System workspace that traces native tokens from definition to indexed usages, previews source blast radius, detects near-duplicates and literal/component drift, and explains every recommendation without changing source automatically
+- A Design System workspace that resolves semantic alias chains, surfaces broken and circular references, traces native tokens from definition to indexed usages, groups recurring literals into existing-token-first promotion plans, and sends exact source refactors through Review without changing source automatically
 - Semantic source-mapping choices that block ambiguous changes until the user selects the intended implementation
 - Fixed, hug, fill, and min/max sizing; flex and grid flow; linked spacing; aspect ratio; overflow; and positional controls
 - Project-native spacing, radius, typography, and color choices with token-only filtering, exact and nearest-token ranking, component variants, type presets, gradients, opacity, and live contrast guidance
@@ -176,7 +176,7 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 - Design Health scans for contrast, overflow and clipping, touch targets, accessible names, reduced-motion coverage, and project spacing consistency, with evidence, intentional-issue ignores, and safe corrections routed into review
 - An in-app state workbench with real viewport frames, theme switching, forced interaction states, motion controls, and contextual verification
 - A dedicated Motion Studio for live CSS and Web Animation discovery, preview-only transport, timeline scrubbing, keyframe editing, complete timing controls, performance classification, and reduced-motion review
-- Isolated Design Branches with fixed-viewport comparison, selective composition, rejection notes, and explicit promotion into the source-ready review ledger
+- Isolated Design Branches with fixed-viewport comparison, selective composition, rejection notes, explicit promotion into the source-ready review ledger, and portable chosen or rejected decision records with source-aware compatibility, import, export, restore, removal, and explicit Design Memory linkage
 - Persistent, coalescing change ledger with JSON and consolidated prompt export
 - Center-workspace review with editable approved batches, grouped targets, and unresolved-target blocking
 - Persistent Apply with agent runs across Codex, Cursor, and Claude Code through MCP

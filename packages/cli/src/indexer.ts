@@ -5,11 +5,14 @@ import {
   PROTOCOL_VERSION,
   projectDesignGraphSchema,
   type ComponentDefinition,
+  type ComponentVariantAxis,
+  type ContainerQueryDefinition,
   type DesignSystemFinding,
   type DesignToken,
   type DesignTokenUsage,
   type MotionPreset,
   type ProjectDesignGraph,
+  type TokenPromotionCandidate,
 } from 'foundry-design-protocol';
 import type { FoundryProjectConfig } from './installer.js';
 
@@ -87,6 +90,276 @@ function closeNumericToken(value: string, tokens: DesignToken[]): DesignToken | 
     .sort((a, b) => a.distance - b.distance)[0]?.token;
 }
 
+function tokenComparableValue(token: DesignToken): string {
+  return token.resolvedValue ?? token.value;
+}
+
+function aliasTarget(value: string): string | undefined {
+  return /^var\(\s*(--[\w-]+)(?:\s*,[^)]*)?\s*\)$/.exec(value.trim())?.[1];
+}
+
+function resolveTokenAliases(tokens: Map<string, DesignToken>): void {
+  type AliasResolution = {
+    aliasChain: string[];
+    aliasStatus: 'direct' | 'resolved' | 'broken' | 'circular';
+    resolvedValue?: string;
+  };
+  const resolve = (token: DesignToken, trail: string[] = []): AliasResolution => {
+    const targetName = aliasTarget(token.value);
+    if (!targetName)
+      return { aliasChain: [token.name], aliasStatus: 'direct', resolvedValue: token.value };
+    if (trail.includes(token.name)) {
+      return { aliasChain: [...trail, token.name], aliasStatus: 'circular' };
+    }
+    const target = tokens.get(targetName);
+    if (!target) return { aliasChain: [token.name, targetName], aliasStatus: 'broken' };
+    const resolved = resolve(target, [...trail, token.name]);
+    return {
+      aliasChain: [token.name, ...resolved.aliasChain.filter((name) => name !== token.name)],
+      aliasStatus: resolved.aliasStatus === 'direct' ? 'resolved' : resolved.aliasStatus,
+      resolvedValue: resolved.resolvedValue,
+    };
+  };
+
+  for (const token of tokens.values()) {
+    const targetName = aliasTarget(token.value);
+    if (targetName) {
+      token.aliasOfTokenName = targetName;
+      const target = tokens.get(targetName);
+      token.aliasOfTokenId = target?.id;
+      if (token.category === 'other' && target) token.category = target.category;
+    }
+    Object.assign(token, resolve(token));
+  }
+}
+
+function promotionTokenName(
+  category: DesignToken['category'],
+  property: string,
+  value: string,
+): string {
+  const propertySlug = property
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  const valueSlug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, '-')
+    .replaceAll('.', '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 24);
+  return `--${category}-${propertySlug || 'value'}${valueSlug ? `-${valueSlug}` : ''}`;
+}
+
+function objectNumber(source: string, property: string): number | undefined {
+  const match = new RegExp(`\\b${property}\\s*:\\s*(-?[\\d.]+)`).exec(source);
+  const value = Number(match?.[1]);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function objectString(source: string, property: string): string | undefined {
+  const quoted = new RegExp(`\\b${property}\\s*:\\s*['\"]([^'\"]+)['\"]`).exec(source);
+  if (quoted?.[1]) return quoted[1];
+  const array = new RegExp(`\\b${property}\\s*:\\s*\\[([^\\]]+)\\]`).exec(source);
+  if (!array?.[1]) return undefined;
+  const values = array[1]
+    .split(',')
+    .map((value) => Number(value.trim()))
+    .filter(Number.isFinite);
+  return values.length === 4 ? `cubic-bezier(${values.join(', ')})` : undefined;
+}
+
+function nativeMotionPresets(file: string, content: string): MotionPreset[] {
+  const presets: MotionPreset[] = [];
+  const push = (
+    adapter: 'motion' | 'gsap' | 'react-spring',
+    label: string,
+    sourceProperty: string,
+    index: number,
+    body: string,
+  ): void => {
+    const seconds = adapter !== 'react-spring';
+    const duration = objectNumber(body, 'duration');
+    const delay = objectNumber(body, 'delay');
+    const easing =
+      objectString(body, adapter === 'gsap' ? 'ease' : 'ease') ?? objectString(body, 'easing');
+    const configuration = Object.fromEntries(
+      [
+        'type',
+        'mass',
+        'stiffness',
+        'damping',
+        'tension',
+        'friction',
+        'velocity',
+        'repeat',
+        'repeatType',
+        'yoyo',
+      ]
+        .map((property) => [property, objectNumber(body, property) ?? objectString(body, property)])
+        .filter((entry): entry is [string, string | number] => entry[1] != null),
+    );
+    presets.push({
+      id: stableId('mot', `${file}:${index}:${adapter}`),
+      label,
+      duration: duration == null ? undefined : seconds ? duration * 1000 : duration,
+      delay: delay == null ? undefined : seconds ? delay * 1000 : delay,
+      easing,
+      adapter,
+      sourceProperty,
+      configuration,
+      source: { file, line: lineAt(content, index) },
+      evidence: [`${adapter} source import`, `${sourceProperty} authoring site`],
+    });
+  };
+
+  if (/from\s+['\"](?:motion\/react|framer-motion)['\"]/.test(content)) {
+    for (const match of content.matchAll(/<motion\.([A-Za-z][\w]*)\b([\s\S]*?)>/g)) {
+      const body = match[2] ?? '';
+      if (!/\b(?:animate|transition|variants)\s*=/.test(body)) continue;
+      push('motion', `Motion ${match[1]}`, 'transition', match.index ?? 0, body);
+    }
+  }
+  if (/from\s+['\"]gsap['\"]|require\(['\"]gsap['\"]\)/.test(content)) {
+    for (const match of content.matchAll(
+      /gsap\.(to|from|fromTo|set)\s*\(([\s\S]{0,1200}?)\)\s*[;,]/g,
+    )) {
+      push('gsap', `GSAP ${match[1]} tween`, 'vars', match.index ?? 0, match[2] ?? '');
+    }
+  }
+  if (/from\s+['\"](?:@react-spring\/web|react-spring)['\"]/.test(content)) {
+    for (const match of content.matchAll(
+      /\b(useSpring|useTransition|useTrail)\s*\(([\s\S]{0,1200}?)\)\s*[;,]/g,
+    )) {
+      push(
+        'react-spring',
+        `React Spring ${match[1]}`,
+        match[1] === 'useSpring' ? 'config' : (match[1] ?? 'config'),
+        match.index ?? 0,
+        match[2] ?? '',
+      );
+    }
+  }
+  return presets;
+}
+
+function balancedObject(
+  content: string,
+  openIndex: number,
+): { body: string; start: number; end: number } | null {
+  if (content[openIndex] !== '{') return null;
+  let depth = 0;
+  let quote = '';
+  let escaped = false;
+  for (let index = openIndex; index < content.length; index += 1) {
+    const char = content[index]!;
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char;
+      continue;
+    }
+    if (char === '{') depth += 1;
+    if (char === '}') depth -= 1;
+    if (depth === 0)
+      return { body: content.slice(openIndex + 1, index), start: openIndex, end: index };
+  }
+  return null;
+}
+
+function objectProperty(
+  content: string,
+  property: string,
+  offset = 0,
+): { body: string; start: number; end: number } | null {
+  const match = new RegExp(`(?:^|[,\\s])${property}\\s*:\\s*\\{`, 'm').exec(content.slice(offset));
+  if (!match) return null;
+  const openIndex = offset + match.index + match[0].lastIndexOf('{');
+  return balancedObject(content, openIndex);
+}
+
+function topLevelObjectKeys(content: string): Array<{ key: string; index: number }> {
+  const keys: Array<{ key: string; index: number }> = [];
+  let depth = 0;
+  let quote = '';
+  let escaped = false;
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index]!;
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char;
+      continue;
+    }
+    if (char === '{' || char === '[' || char === '(') depth += 1;
+    if (char === '}' || char === ']' || char === ')') depth -= 1;
+    if (depth !== 0) continue;
+    const match = /^\s*(?:['"]([^'"]+)['"]|([A-Za-z_$][\w$-]*))\s*:/.exec(content.slice(index));
+    const key = match?.[1] ?? match?.[2];
+    if (!key || keys.some((item) => item.key === key)) continue;
+    keys.push({ key, index });
+    index += (match?.[0].length ?? 1) - 1;
+  }
+  return keys;
+}
+
+function sourceVariantAxes(file: string, content: string): ComponentVariantAxis[] {
+  const axes: ComponentVariantAxis[] = [];
+  for (const cva of content.matchAll(/\bcva\s*\(/g)) {
+    const configOpen = content.indexOf('{', cva.index ?? 0);
+    const config = configOpen >= 0 ? balancedObject(content, configOpen) : null;
+    if (!config) continue;
+    const variants = objectProperty(config.body, 'variants');
+    if (!variants) continue;
+    for (const axisKey of topLevelObjectKeys(variants.body)) {
+      const axisOpen = variants.body.indexOf('{', axisKey.index);
+      const axis = axisOpen >= 0 ? balancedObject(variants.body, axisOpen) : null;
+      if (!axis) continue;
+      const values = topLevelObjectKeys(axis.body).map((item) => item.key);
+      if (!values.length) continue;
+      const absolute = config.start + 1 + variants.start + 1 + axisOpen;
+      axes.push({
+        id: stableId('axis', `${file}:cva:${axisKey.key}`),
+        label: axisKey.key,
+        property: axisKey.key,
+        values,
+        adapter: 'cva',
+        source: { file, line: lineAt(content, absolute) },
+        sourceProperty: `variants.${axisKey.key}`,
+        canCreate: true,
+        evidence: ['CVA variants object', `Writable ${axisKey.key} option map`],
+      });
+    }
+  }
+  for (const match of content.matchAll(
+    /\b([A-Za-z_$][\w$]*)\??\s*:\s*((?:['"][^'"]+['"]\s*\|\s*)+['"][^'"]+['"])/g,
+  )) {
+    const property = match[1]!;
+    const values = [...match[2]!.matchAll(/['"]([^'"]+)['"]/g)].map((item) => item[1]!);
+    if (values.length < 2 || axes.some((axis) => axis.property === property)) continue;
+    axes.push({
+      id: stableId('axis', `${file}:typescript:${property}`),
+      label: property,
+      property,
+      values,
+      adapter: 'typescript',
+      source: { file, line: lineAt(content, match.index ?? 0) },
+      sourceProperty: property,
+      canCreate: true,
+      evidence: ['TypeScript string union', `Writable ${property} prop type`],
+    });
+  }
+  return axes;
+}
+
 async function sourceFiles(root: string, exclusions: string[]): Promise<string[]> {
   const files: string[] = [];
   const excluded = new Set([
@@ -123,15 +396,18 @@ export async function indexProjectDesign(
   const tokens = new Map<string, DesignToken>();
   const components = new Map<string, ComponentDefinition>();
   const breakpoints = new Map<number, { width: number; source?: { file: string; line: number } }>();
+  const containerQueries = new Map<string, ContainerQueryDefinition>();
   const themes = new Set<string>();
   const motion = new Map<string, MotionPreset>();
   const storyVariants = new Map<string, ComponentDefinition['variants']>();
+  const axesByFile = new Map<string, ComponentVariantAxis[]>();
   const documents: Array<{ file: string; content: string }> = [];
 
   for (const path of files) {
     const content = await readFile(path, 'utf8').catch(() => '');
     const file = relative(root, path).replaceAll('\\', '/');
     documents.push({ file, content });
+    for (const preset of nativeMotionPresets(file, content)) motion.set(preset.id, preset);
     for (const match of content.matchAll(/(--[\w-]+)\s*:\s*([^;}\n]+)/g)) {
       const name = match[1]!;
       const value = match[2]!.trim();
@@ -151,7 +427,10 @@ export async function indexProjectDesign(
           id: stableId('mot', name),
           label: name.replace(/^--/, ''),
           duration: duration ? Number(duration[1]) * (value.includes('ms') ? 1 : 1000) : undefined,
+          adapter: 'css',
+          configuration: {},
           source: { file, line: lineAt(content, match.index ?? 0) },
+          evidence: ['CSS custom property'],
         });
       }
     }
@@ -164,12 +443,45 @@ export async function indexProjectDesign(
         source: { file, line: lineAt(content, match.index ?? 0) },
       });
     }
+    for (const match of content.matchAll(/@container(?:\s+([\w-]+))?\s*\(([^)]*)\)/g)) {
+      const name = match[1];
+      const condition = match[2]!.trim();
+      const min =
+        /min-(?:width|inline-size)\s*:\s*([\d.]+)px/i.exec(condition)?.[1] ??
+        /(?:width|inline-size)\s*>=?\s*([\d.]+)px/i.exec(condition)?.[1];
+      const max =
+        /max-(?:width|inline-size)\s*:\s*([\d.]+)px/i.exec(condition)?.[1] ??
+        /(?:width|inline-size)\s*<=?\s*([\d.]+)px/i.exec(condition)?.[1];
+      if (!min && !max) continue;
+      const axis = /block-size|height/i.test(condition)
+        ? 'block-size'
+        : /\bsize\b/i.test(condition) && !/inline-size/i.test(condition)
+          ? 'size'
+          : 'inline-size';
+      const id = stableId('container', `${file}:${name ?? 'anonymous'}:${condition}`);
+      containerQueries.set(id, {
+        id,
+        label: `${name ?? 'Anonymous container'} · ${condition}`,
+        ...(name ? { name } : {}),
+        condition,
+        axis,
+        ...(min ? { minWidth: Number(min) } : {}),
+        ...(max ? { maxWidth: Number(max) } : {}),
+        source: { file, line: lineAt(content, match.index ?? 0) },
+        evidence: [
+          'CSS @container rule',
+          ...(content.includes('container-type') ? ['CSS container-type declaration'] : []),
+          ...(name && content.includes('container-name') ? ['CSS container-name declaration'] : []),
+        ],
+      });
+    }
     for (const match of content.matchAll(/(?:data-theme=["']|\[data-theme=["'])([\w-]+)/g)) {
       themes.add(match[1]!);
     }
     if (/(?:^|\s)\.dark(?:\s|[{,:])/.test(content)) themes.add('dark');
 
     if (/\.(?:tsx?|jsx?|mjs|cjs)$/.test(path)) {
+      axesByFile.set(file, sourceVariantAxes(file, content));
       if (/\.stories\.[cm]?[jt]sx?$/.test(path)) {
         const componentName = basename(path).replace(/\.stories\.[cm]?[jt]sx?$/, '');
         const variants = [...content.matchAll(/export\s+const\s+([A-Z][A-Za-z0-9_]*)/g)].map(
@@ -180,6 +492,8 @@ export async function indexProjectDesign(
             value: story[1]!,
             props: { story: story[1]! },
             source: { file, line: lineAt(content, story.index ?? 0) },
+            adapter: 'storybook' as const,
+            sourceProperty: story[1]!,
           }),
         );
         storyVariants.set(componentName, variants);
@@ -196,6 +510,7 @@ export async function indexProjectDesign(
           source: { file, line: lineAt(content, match.index ?? 0) },
           instances: 0,
           variants: [],
+          variantAxes: [],
           evidence: ['exported component'],
         };
         components.set(id, component);
@@ -207,6 +522,17 @@ export async function indexProjectDesign(
     const component = [...components.values()].find((item) => item.name === componentName);
     if (component) {
       component.variants = variants;
+      component.variantAxes.push({
+        id: stableId('axis', `${variants[0]?.source?.file}:storybook:story`),
+        label: 'Story',
+        property: 'story',
+        values: variants.map((variant) => variant.value),
+        adapter: 'storybook',
+        source: variants[0]!.source!,
+        sourceProperty: 'named export',
+        canCreate: true,
+        evidence: ['Storybook named exports', 'Writable story definition'],
+      });
       component.evidence.push('Storybook story');
     } else if (variants[0]?.source) {
       const id = stableId('cmp', `${variants[0].source.file}:${componentName}`);
@@ -216,14 +542,61 @@ export async function indexProjectDesign(
         source: variants[0].source,
         instances: 0,
         variants,
+        variantAxes: [
+          {
+            id: stableId('axis', `${variants[0].source.file}:storybook:story`),
+            label: 'Story',
+            property: 'story',
+            values: variants.map((variant) => variant.value),
+            adapter: 'storybook',
+            source: variants[0].source,
+            sourceProperty: 'named export',
+            canCreate: true,
+            evidence: ['Storybook named exports', 'Writable story definition'],
+          },
+        ],
         evidence: ['Storybook story'],
       });
     }
   }
 
+  for (const component of components.values()) {
+    const nativeAxes = axesByFile.get(component.source?.file ?? '') ?? [];
+    const known = new Set(component.variantAxes.map((axis) => axis.property));
+    component.variantAxes.push(...nativeAxes.filter((axis) => !known.has(axis.property)));
+    for (const axis of nativeAxes) {
+      for (const value of axis.values) {
+        const id = stableId('var', `${component.id}:${axis.property}:${String(value)}`);
+        if (component.variants.some((variant) => variant.id === id)) continue;
+        component.variants.push({
+          id,
+          label: String(value),
+          property: axis.property,
+          value,
+          props: { [axis.property]: value },
+          source: axis.source,
+          adapter: axis.adapter,
+          sourceProperty: `${axis.sourceProperty}.${String(value)}`,
+        });
+      }
+    }
+    if (nativeAxes.length) component.evidence.push('Source-backed variant axis');
+  }
+
+  resolveTokenAliases(tokens);
   const tokenList = [...tokens.values()];
   const tokenUsages: DesignTokenUsage[] = [];
   const findings: DesignSystemFinding[] = [];
+  const recurringLiterals = new Map<
+    string,
+    {
+      value: string;
+      category: DesignToken['category'];
+      properties: string[];
+      sources: Array<{ file: string; line: number }>;
+      componentIds: string[];
+    }
+  >();
   const componentForSource = (file: string, line: number): ComponentDefinition | undefined =>
     [...components.values()]
       .filter(
@@ -260,11 +633,34 @@ export async function indexProjectDesign(
       const category = declarationCategory(property, value);
       if (!category) continue;
       const categoryTokens = tokenList.filter((token) => token.category === category);
-      const exact = categoryTokens.find((token) => comparable(token.value) === comparable(value));
-      const suggested = exact ?? closeNumericToken(value, categoryTokens);
-      if (!suggested) continue;
+      const exact = categoryTokens
+        .filter((token) => comparable(tokenComparableValue(token)) === comparable(value))
+        .sort(
+          (a, b) =>
+            (b.aliasChain?.length ?? 0) - (a.aliasChain?.length ?? 0) ||
+            a.name.localeCompare(b.name),
+        )[0];
+      const suggested =
+        exact ??
+        closeNumericToken(
+          value,
+          categoryTokens.map((token) => ({ ...token, value: tokenComparableValue(token) })),
+        );
       const line = lineAt(content, match.index ?? 0);
       const component = componentForSource(file, line);
+      const recurringKey = `${category}:${comparable(value)}`;
+      const recurring = recurringLiterals.get(recurringKey) ?? {
+        value,
+        category,
+        properties: [],
+        sources: [],
+        componentIds: [],
+      };
+      recurring.properties.push(property);
+      recurring.sources.push({ file, line });
+      if (component?.id) recurring.componentIds.push(component.id);
+      recurringLiterals.set(recurringKey, recurring);
+      if (!suggested) continue;
       const usage: DesignTokenUsage = {
         id: stableId('use', `${file}:${match.index}:${suggested.id}:literal`),
         tokenId: suggested.id,
@@ -300,6 +696,75 @@ export async function indexProjectDesign(
       });
     }
   }
+
+  const tokenPromotions: TokenPromotionCandidate[] = [...recurringLiterals.entries()]
+    .filter(([, recurring]) => recurring.sources.length >= 2)
+    .map(([key, recurring]): TokenPromotionCandidate => {
+      const categoryTokens = tokenList.filter((token) => token.category === recurring.category);
+      const exact = categoryTokens
+        .filter((token) => comparable(tokenComparableValue(token)) === comparable(recurring.value))
+        .sort(
+          (a, b) =>
+            (b.aliasChain?.length ?? 0) - (a.aliasChain?.length ?? 0) ||
+            a.name.localeCompare(b.name),
+        )[0];
+      const near = exact
+        ? undefined
+        : closeNumericToken(
+            recurring.value,
+            categoryTokens.map((token) => ({ ...token, value: tokenComparableValue(token) })),
+          );
+      const suggested = exact ?? near;
+      const property = [...recurring.properties].sort(
+        (a, b) =>
+          recurring.properties.filter((item) => item === b).length -
+            recurring.properties.filter((item) => item === a).length || a.localeCompare(b),
+      )[0]!;
+      const sources = recurring.sources.filter(
+        (source, index, all) =>
+          all.findIndex(
+            (candidate) => candidate.file === source.file && candidate.line === source.line,
+          ) === index,
+      );
+      const relation = exact ? 'exact' : near ? 'near' : 'new';
+      const proposedTokenName = promotionTokenName(recurring.category, property, recurring.value);
+      const suggestedTokenName =
+        suggested?.name ??
+        (tokens.has(proposedTokenName)
+          ? `${proposedTokenName}-${stableId('token-name', key).slice(-4)}`
+          : proposedTokenName);
+      return {
+        id: stableId('promotion', key),
+        value: recurring.value,
+        category: recurring.category,
+        property,
+        occurrenceCount: sources.length,
+        sources,
+        componentIds: [...new Set(recurring.componentIds)],
+        recommendation: suggested ? ('use-existing' as const) : ('create-token' as const),
+        relation,
+        suggestedTokenId: suggested?.id,
+        suggestedTokenName,
+        suggestedValue: suggested ? `var(${suggested.name})` : recurring.value,
+        aliasChain: suggested?.aliasChain ?? [],
+        canStage: sources.length > 0,
+        blockers: [],
+        evidence: [
+          `${sources.length} authored literal occurrences`,
+          ...(suggested
+            ? [
+                relation === 'exact'
+                  ? 'Resolved value matches an existing project token'
+                  : 'Nearest compatible project token requires explicit review',
+              ]
+            : ['No compatible project token exists; create one before replacing usages']),
+          ...(suggested?.aliasStatus === 'resolved'
+            ? [`Preserves alias chain ${(suggested.aliasChain ?? []).join(' → ')}`]
+            : []),
+        ],
+      };
+    })
+    .sort((a, b) => b.occurrenceCount - a.occurrenceCount || a.value.localeCompare(b.value));
 
   for (let index = 0; index < tokenList.length; index += 1) {
     const token = tokenList[index]!;
@@ -388,11 +853,15 @@ export async function indexProjectDesign(
     tokens: [...tokens.values()],
     components: [...components.values()],
     breakpoints: graphBreakpoints,
+    containerQueries: [...containerQueries.values()].sort(
+      (a, b) => (a.minWidth ?? a.maxWidth ?? 0) - (b.minWidth ?? b.maxWidth ?? 0),
+    ),
     themes: graphThemes,
     states: config?.design?.states ?? [],
     motionPresets: [...motion.values()],
     tokenUsages,
     designSystemFindings: findings,
+    tokenPromotions,
     indexedAt: new Date().toISOString(),
   });
 }

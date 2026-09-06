@@ -15,20 +15,41 @@ let sessionId = '';
 const preview = createServer((_request, response) => {
   response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   response.end(
-    `<!doctype html><html><body style="margin:0"><main><button data-foundry-component="Signup/PrimaryAction" data-story="Primary" style="width:100px;height:40px">Create workspace</button></main><script>
+    `<!doctype html><html><body style="margin:0"><main data-foundry-container="signup-shell" style="container:signup-shell / inline-size;width:640px"><button data-foundry-component="Signup/PrimaryAction" data-story="Primary" style="width:100px;height:40px">Create workspace</button><button data-foundry-component="Signup/PrimaryAction" data-story="Quiet" style="width:100px;height:40px">Save draft</button></main><script>
+      let stressConditions = [];
+      let stressScope = 'selection';
       const publish = () => parent.postMessage({ type: 'foundry:workspace-state', sessionId: '${sessionId}', payload: {
         context: { scope: 'instance', breakpoint: 'current', theme: 'current', state: 'current' },
-        selection: { id: 'create-workspace', label: 'Create workspace', selector: 'button', source: { file: 'PrimaryAction.tsx', line: 1 }, component: 'Signup/PrimaryAction', width: 100, height: 40 },
-        layers: [{ id: 'create-workspace', selector: 'button', label: 'Create workspace', kind: 'component', component: 'Signup/PrimaryAction', source: { file: 'PrimaryAction.tsx', line: 1 }, width: 100, height: 40, depth: 0, instrumented: true, hasChildren: false, selected: true }],
-        controls: [{ index: 0, category: 'typography', property: 'fontFamily', label: 'Font family', kind: 'text', value: 'Inter, sans-serif' }, { index: 1, category: 'typography', property: 'fontSize', label: 'Font size', kind: 'number', value: '16px' }], typography: { selection: { family: 'Inter, sans-serif', primaryFamily: 'Inter', weight: '600', style: 'normal', size: '16px', lineHeight: '20px', letterSpacing: '0px', variationSettings: 'normal', text: 'Create workspace' }, projectFonts: [{ family: 'Inter', weights: ['400', '600'], styles: ['normal'], origins: ['active', 'project'] }, { family: 'Foundry JetBrains Mono', weights: ['400'], styles: ['normal'], origins: ['project'] }], savedStyles: [], diagnostics: [], metrics: { lineCount: 1, charactersPerLine: 16, faceStatus: 'loaded' }, usages: [{ family: 'Inter', count: 4, weights: ['400', '600'], sizes: ['12px', '16px'], examples: ['Create workspace'] }], preview: null, treatments: [{ id: 'tight', label: 'Tight', detail: 'Compact display rhythm', lineHeight: 1.1, letterSpacing: '-0.02em' }, { id: 'balanced', label: 'Balanced', detail: 'Default interface rhythm', lineHeight: 1.25, letterSpacing: '0em' }, { id: 'open', label: 'Open', detail: 'Relaxed reading rhythm', lineHeight: 1.5, letterSpacing: '0.01em' }], scale: { base: 16, ratio: 1.25, step: 1, fluid: false, value: '20px' }, strategies: [{ id: 'framework', label: 'Framework native' }, { id: 'stylesheet', label: 'Stylesheet' }], googleSelection: null, validation: { breakpoints: [{ id: 'current', label: 'Current' }], themes: [{ id: 'light', label: 'Light' }], states: [{ id: 'current', label: 'Current' }] }, capabilities: { localFontAccess: false } }, motions: [{ id: 'motion_primary', label: 'Primary action entrance', kind: 'web-animation', properties: ['opacity', 'transform'], timing: { duration: 480, delay: 0, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', iterations: 1, direction: 'normal', fill: 'both' }, keyframes: [{ index: 0, offset: 0, easing: 'ease-out', values: { opacity: '0', transform: 'translateY(12px)' } }, { index: 1, offset: 1, easing: 'linear', values: { opacity: '1', transform: 'translateY(0px)' } }], performance: { tier: 'compositor', label: 'Compositor', detail: 'Transform and opacity stay on the compositor.' }, active: true, playState: 'paused', currentTime: 160, playbackRate: 1, looping: false, reducedMotionProtected: true }], history: { canUndo: false, canRedo: false },
-        responsive: { viewportWidth: innerWidth, viewportHeight: innerHeight, documentScrollWidth: document.documentElement.scrollWidth, documentScrollHeight: document.documentElement.scrollHeight, selection: { scrollWidth: 100, scrollHeight: 40, clientWidth: 100, clientHeight: 40 } }
+        selection: { id: 'create-workspace', label: 'Create workspace', kind: 'button', selector: 'button', source: { file: 'PrimaryAction.tsx', line: 1 }, component: 'Signup/PrimaryAction', confidence: 'instrumented', width: 100, height: 40, count: 1, targets: [{ id: 'create-workspace', label: 'Create workspace', kind: 'button', selector: 'button', source: 'PrimaryAction.tsx:1', component: 'Signup/PrimaryAction', confidence: 'instrumented', geometry: { x: 20, y: 20, width: 100, height: 40, scale: 1 }, measurements: { fontSize: '16px', borderRadius: '8px' } }] },
+        visualAgent: { region: null, capturingRegion: false },
+        layers: [{ id: 'create-workspace', selector: 'button:first-of-type', label: 'Create workspace', kind: 'component', component: 'Signup/PrimaryAction', source: { file: 'PrimaryAction.tsx', line: 1 }, width: 100, height: 40, depth: 0, instrumented: true, hasChildren: false, selected: true, variantProps: { story: document.querySelector('button:first-of-type').dataset.story } }, { id: 'save-draft', selector: 'button:last-of-type', label: 'Save draft', kind: 'component', component: 'Signup/PrimaryAction', source: { file: 'PrimaryAction.tsx', line: 2 }, width: 100, height: 40, depth: 0, instrumented: true, hasChildren: false, selected: false, variantProps: { story: document.querySelector('button:last-of-type').dataset.story } }],
+        controls: [{ index: 0, category: 'typography', property: 'fontFamily', label: 'Font family', kind: 'text', value: 'Inter, sans-serif' }, { index: 1, category: 'typography', property: 'fontSize', label: 'Font size', kind: 'number', value: '16px' }], typography: { selection: { family: 'Inter, sans-serif', primaryFamily: 'Inter', weight: '600', style: 'normal', size: '16px', lineHeight: '20px', letterSpacing: '0px', variationSettings: 'normal', text: 'Create workspace' }, projectFonts: [{ family: 'Inter', weights: ['400', '600'], styles: ['normal'], origins: ['active', 'project'] }, { family: 'Foundry JetBrains Mono', weights: ['400'], styles: ['normal'], origins: ['project'] }], savedStyles: [], diagnostics: [], metrics: { lineCount: 1, charactersPerLine: 16, faceStatus: 'loaded' }, usages: [{ family: 'Inter', count: 4, weights: ['400', '600'], sizes: ['12px', '16px'], examples: ['Create workspace'] }], preview: null, treatments: [{ id: 'tight', label: 'Tight', detail: 'Compact display rhythm', lineHeight: 1.1, letterSpacing: '-0.02em' }, { id: 'balanced', label: 'Balanced', detail: 'Default interface rhythm', lineHeight: 1.25, letterSpacing: '0em' }, { id: 'open', label: 'Open', detail: 'Relaxed reading rhythm', lineHeight: 1.5, letterSpacing: '0.01em' }], scale: { base: 16, ratio: 1.25, step: 1, fluid: false, value: '20px' }, strategies: [{ id: 'framework', label: 'Framework native' }, { id: 'stylesheet', label: 'Stylesheet' }], googleSelection: null, validation: { breakpoints: [{ id: 'current', label: 'Current' }], themes: [{ id: 'light', label: 'Light' }], states: [{ id: 'current', label: 'Current' }] }, capabilities: { localFontAccess: false } }, motions: [{ id: 'motion_primary', label: 'Primary action entrance', kind: 'motion-react', authoring: { adapter: 'motion', label: 'Motion for React', source: { file: 'src/PrimaryAction.tsx', line: 18 }, sourceProperties: { duration: 'transition.duration', delay: 'transition.delay', easing: 'transition.ease', keyframes: 'animate / variants' }, evidence: ['motion source import', 'transition authoring site'] }, properties: ['opacity', 'transform'], timing: { duration: 480, delay: 0, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', iterations: 1, direction: 'normal', fill: 'both' }, curve: { kind: 'cubic-bezier', sourceValue: 'cubic-bezier(0.2, 0.8, 0.2, 1)', previewValue: 'cubic-bezier(0.2, 0.8, 0.2, 1)', cubicBezier: { x1: 0.2, y1: 0.8, x2: 0.2, y2: 1 }, points: [{ x: 0, y: 0 }, { x: 0.1, y: 0.3 }, { x: 0.25, y: 0.68 }, { x: 0.5, y: 0.94 }, { x: 0.75, y: 0.99 }, { x: 1, y: 1 }], diagnostics: { duration: 0, overshoot: 0, sampleCount: 61 } }, keyframes: [{ index: 0, offset: 0, easing: 'ease-out', values: { opacity: '0', transform: 'translateY(12px)' } }, { index: 1, offset: 1, easing: 'linear', values: { opacity: '1', transform: 'translateY(0px)' } }], path: { supported: true, property: 'transform', points: [{ index: 0, offset: 0, x: 0, y: 12, sourceValue: 'translateY(12px)' }, { index: 1, offset: 1, x: 0, y: 0, sourceValue: 'translateY(0px)' }], bounds: { minX: 0, maxX: 0, minY: 0, maxY: 12, width: 0, height: 12 }, distance: 12 }, comparison: { changed: true, before: { timing: { duration: 560 }, curve: { points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }, path: { supported: true, points: [{ index: 0, offset: 0, x: -16, y: 16 }, { index: 1, offset: 1, x: 0, y: 0 }], distance: 22.6 } }, after: { timing: { duration: 480 }, curve: { points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }, path: { supported: true, points: [{ index: 0, offset: 0, x: 0, y: 12 }, { index: 1, offset: 1, x: 0, y: 0 }], distance: 12 } }, diagnostics: { durationDelta: -80, distanceDelta: -10.6, pointDelta: 0 } }, performance: { tier: 'compositor', label: 'Compositor', detail: 'Transform and opacity stay on the compositor.' }, active: true, playState: 'paused', currentTime: 160, playbackRate: 1, looping: false, reducedMotionProtected: true }], history: { canUndo: false, canRedo: false },
+        responsive: { viewportWidth: innerWidth, viewportHeight: innerHeight, documentScrollWidth: document.documentElement.scrollWidth, documentScrollHeight: document.documentElement.scrollHeight, container: { name: 'signup-shell', type: 'inline-size', width: document.querySelector('main').getBoundingClientRect().width, height: document.querySelector('main').getBoundingClientRect().height, selector: 'main', previewed: Boolean(document.querySelector('main').style.inlineSize) }, selection: { width: 100, height: 40, scrollWidth: 100, scrollHeight: 40, clientWidth: 100, clientHeight: 40, lineCount: 1 } },
+        stressTesting: { profiles: [
+          { id: 'long-content', category: 'content', label: 'Long content', description: 'Expands rendered labels.', combination: 'content' },
+          { id: 'loading-state', category: 'state', label: 'Loading', description: 'Requests the loading state.', combination: 'state' },
+          { id: 'keyboard-only', category: 'accessibility', label: 'Keyboard only', description: 'Audits focus behavior.', combination: 'navigation' }
+        ], active: stressConditions, scope: stressScope, target: stressScope === 'selection' ? 'Create workspace' : 'Entire canvas' },
+        decisionMemory: { canCapture: true, hasEditedValues: true, context: { component: 'Signup/PrimaryAction', kind: 'button', source: 'PrimaryAction.tsx:1', properties: ['fontSize'], breakpoint: 'current', theme: 'current', state: 'current', values: [{ property: 'fontSize', value: '20px', category: 'typography' }] }, decisions: [{ id: 'decision-motion', title: 'Keep primary actions compact', summary: 'Primary action labels stay at the project body size.', rationale: 'The larger branch weakened the form hierarchy.', outcome: 'rejected', categories: ['typography', 'component'], conditions: { components: ['Signup/PrimaryAction'], elementKinds: ['button'], properties: ['fontSize'], sources: ['PrimaryAction.tsx'] }, rules: [{ property: 'fontSize', category: 'typography', operator: 'avoid', value: '20px', guidance: 'Keep the primary action compact.' }], evidence: [{ kind: 'branch', label: 'Editorial scale', refId: 'branch-editorial' }], sourceLocations: ['PrimaryAction.tsx:1'], enabled: true, createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z' }], relevant: [{ decision: { id: 'decision-motion', title: 'Keep primary actions compact', summary: 'Primary action labels stay at the project body size.', rationale: 'The larger branch weakened the form hierarchy.', outcome: 'rejected', categories: ['typography', 'component'], conditions: { components: ['Signup/PrimaryAction'], elementKinds: ['button'], properties: ['fontSize'], sources: ['PrimaryAction.tsx'] }, rules: [{ property: 'fontSize', category: 'typography', operator: 'avoid', value: '20px', guidance: 'Keep the primary action compact.' }], evidence: [{ kind: 'branch', label: 'Editorial scale', refId: 'branch-editorial' }], sourceLocations: ['PrimaryAction.tsx:1'], enabled: true, createdAt: '2026-09-05T00:00:00.000Z', updatedAt: '2026-09-05T00:00:00.000Z' }, score: 92, reasons: ['Same component', 'Same element kind', 'Affects the same properties', 'Same source location'], conflicts: [{ property: 'fontSize', category: 'typography', operator: 'avoid', value: '20px' }] }] },
+        visualRecipes: { canSave: true, recipes: [{ id: 'recipe-focus', name: 'Accessible focus treatment', sourceLabel: 'Primary action', intent: 'Keep keyboard focus visible in every theme.', component: 'Signup/PrimaryAction', categories: ['color', 'effects'], conditions: { components: ['Signup/PrimaryAction'], elementKinds: ['button'], requiredProperties: ['fontSize'] }, values: [{ property: 'fontSize', value: '16px', category: 'typography' }], createdAt: '2026-09-05T00:00:00.000Z' }], assessment: { 'recipe-focus': { compatibility: 'exact', score: 100, matched: 1, total: 1, ambiguous: 0, mappings: [{ property: 'fontSize', category: 'typography', sourceValue: '16px', currentValue: '16px', resolvedValue: '16px', status: 'mapped', detail: 'Uses the saved literal because no compatible destination token was found.' }], reasons: ['1 of 1 properties map to this target.'] } } },
+        health: [{ id: 'button:target-size', kind: 'target-size', title: 'Touch target is too small', detail: 'Create workspace: Increase the interactive area.', description: 'Increase the interactive area.', evidence: '100 × 40 px measured; 44 px height recommended', severity: 'medium', source: 'PrimaryAction.tsx:1', viewport: '1440 × 900', stressConditions, canFix: true, previewed: false }]
       }}, 'http://127.0.0.1:${runtimePort}');
       addEventListener('message', (event) => {
         if (event.data?.type !== 'foundry:workspace-command') return;
         if (event.data.command === 'set-context') event.data.payload && publish();
         if (event.data.command === 'preview-component-variant') document.querySelector('button').dataset.story = event.data.payload.variantId.includes('quiet') ? 'Quiet' : 'Primary';
+        if (event.data.command === 'stage-component-variant') { document.documentElement.dataset.stagedVariant = event.data.payload.value; publish(); }
+        if (event.data.command === 'stage-token-promotion') { document.documentElement.dataset.stagedTokenPromotion = event.data.payload.candidateId; publish(); }
+        if (event.data.command === 'repair-component-variant-drift') { document.querySelector('button:last-of-type').dataset.story = event.data.payload.variantId.includes('quiet') ? 'Quiet' : 'Primary'; publish(); }
         if (event.data.command === 'preview-component-state') document.querySelector('button').dataset.foundryState = event.data.payload.stateId;
         if (event.data.command === 'preview-responsive-stress') { document.documentElement.dataset.foundryResponsiveStress = event.data.payload.mode; publish(); }
+        if (event.data.command === 'preview-responsive-container') { const main = document.querySelector('main'); main.style.inlineSize = event.data.payload.width ? event.data.payload.width + 'px' : ''; main.style.maxInlineSize = event.data.payload.width ? 'none' : ''; publish(); }
+        if (event.data.command === 'apply-health-stress') { stressConditions = event.data.payload.conditions; stressScope = event.data.payload.scope; document.documentElement.dataset.foundryStress = stressConditions.join(' '); publish(); }
+        if (event.data.command === 'clear-health-stress') { stressConditions = []; delete document.documentElement.dataset.foundryStress; publish(); }
+        if (event.data.command === 'scan-health') publish();
+        if (event.data.command === 'preview-health-fix') publish();
+        if (event.data.command === 'apply-visual-recipe') { document.documentElement.dataset.foundryRecipe = event.data.payload.recipeId; publish(); }
+        if (event.data.command === 'save-design-decision') { document.documentElement.dataset.foundryDecision = event.data.payload.outcome; publish(); }
         if (event.data.command === 'motion-action') document.documentElement.dataset.lastMotionAction = event.data.payload.action;
         if (event.data.command === 'typography-action') document.documentElement.dataset.lastTypographyAction = event.data.payload.action;
       });
@@ -69,6 +90,9 @@ try {
         confidence: 'measured',
         evidence: ['CSS custom property'],
         cssVariable: '--color-signal',
+        resolvedValue: '#3478f6',
+        aliasChain: ['--color-signal'],
+        aliasStatus: 'direct',
         source: { file: 'style.css', line: 1 },
       },
     ],
@@ -77,7 +101,20 @@ try {
         id: 'Signup/PrimaryAction',
         name: 'PrimaryAction',
         source: { file: 'PrimaryAction.tsx', line: 1 },
-        instances: 1,
+        instances: 2,
+        variantAxes: [
+          {
+            id: 'storybook-story',
+            label: 'Story',
+            property: 'story',
+            values: ['Primary', 'Quiet'],
+            adapter: 'storybook',
+            source: { file: 'PrimaryAction.stories.tsx', line: 1 },
+            sourceProperty: 'named export',
+            canCreate: true,
+            evidence: ['Storybook named exports'],
+          },
+        ],
         variants: [
           {
             id: 'variant-primary',
@@ -102,6 +139,28 @@ try {
     breakpoints: [
       { id: 'mobile', label: 'Mobile', width: 390, height: 844 },
       { id: 'desktop', label: 'Desktop', width: 1440, height: 900 },
+    ],
+    containerQueries: [
+      {
+        id: 'container-compact',
+        label: 'signup-shell ≥ 480px',
+        name: 'signup-shell',
+        condition: 'min-width: 480px',
+        axis: 'inline-size',
+        minWidth: 480,
+        source: { file: 'Signup.css', line: 12 },
+        evidence: ['CSS @container query'],
+      },
+      {
+        id: 'container-wide',
+        label: 'signup-shell ≤ 720px',
+        name: 'signup-shell',
+        condition: 'width <= 720px',
+        axis: 'inline-size',
+        maxWidth: 720,
+        source: { file: 'Signup.css', line: 20 },
+        evidence: ['CSS @container query'],
+      },
     ],
     themes: [
       { id: 'light', label: 'Light' },
@@ -139,6 +198,33 @@ try {
         evidence: ['Literal is close to a project token'],
       },
     ],
+    tokenPromotions: [
+      {
+        id: 'promotion-color-signal',
+        value: '#3478f6',
+        category: 'color',
+        property: 'background-color',
+        occurrenceCount: 3,
+        sources: [
+          { file: 'PrimaryAction.css', line: 12 },
+          { file: 'PrimaryAction.css', line: 28 },
+          { file: 'Banner.css', line: 8 },
+        ],
+        componentIds: ['Signup/PrimaryAction'],
+        recommendation: 'use-existing',
+        relation: 'exact',
+        suggestedTokenId: 'token-color-signal',
+        suggestedTokenName: '--color-signal',
+        suggestedValue: 'var(--color-signal)',
+        aliasChain: ['--color-signal'],
+        canStage: true,
+        blockers: [],
+        evidence: [
+          '3 authored literal occurrences',
+          'Resolved value matches an existing project token',
+        ],
+      },
+    ],
     indexedAt: new Date().toISOString(),
   });
   await store.addChange(sessionId, {
@@ -148,7 +234,7 @@ try {
       semanticRole: 'button',
       label: 'Create workspace',
       componentPath: [],
-      source: { file: 'index.html', line: 1 },
+      source: { file: 'PrimaryAction.tsx', line: 1 },
       geometry: { x: 0, y: 0, width: 100, height: 40, scale: 1 },
       locator: { selector: 'button' },
       confidence: 'instrumented',
@@ -173,7 +259,7 @@ try {
       semanticRole: 'button',
       label: 'Create workspace',
       componentPath: [],
-      source: { file: 'index.html', line: 1 },
+      source: { file: 'PrimaryAction.tsx', line: 1 },
       geometry: { x: 0, y: 0, width: 100, height: 40, scale: 1 },
       locator: { selector: 'button' },
       confidence: 'instrumented',
@@ -221,9 +307,21 @@ try {
   await page.getByRole('button', { name: /Component workshop/ }).click();
   await page.getByRole('heading', { name: 'Component workshop' }).waitFor();
   await page.getByRole('heading', { name: 'PrimaryAction' }).waitFor();
-  assert.equal(await page.locator('.workshop-instance-row').count(), 1);
+  assert.equal(await page.locator('.workshop-instance-row').count(), 2);
   assert.equal(await page.locator('.workshop-variant-row').count(), 2);
   assert.equal(await page.locator('[data-workshop-state]').count(), 8);
+  await page.locator('.workshop-variant-row').filter({ hasText: 'Primary' }).click();
+  assert.equal(await page.locator('.workshop-drift').getAttribute('data-drift-count'), '1');
+  assert.match((await page.locator('.workshop-drift-list').textContent()) ?? '', /Save draft/);
+  await page.locator('[data-workshop-variant-label]').fill('Danger');
+  await page.locator('[data-workshop-variant-value]').fill('danger');
+  await page.getByRole('button', { name: 'Stage source variant' }).click();
+  await page
+    .frameLocator('#product-preview')
+    .locator('html[data-staged-variant="danger"]')
+    .waitFor();
+  await page.getByRole('button', { name: 'Repair 1 value' }).click();
+  await page.locator('.workshop-drift[data-drift-count="0"]').waitFor();
 
   const artifactDirectory = join(root, 'artifacts', 'e2e');
   await mkdir(artifactDirectory, { recursive: true });
@@ -242,9 +340,139 @@ try {
     document.documentElement.dataset.theme = 'light';
   });
   await page.locator('#workspace-menu-trigger').click();
+  await page.getByRole('button', { name: /Design memory/ }).click();
+  await page.getByRole('heading', { name: 'Design decision memory' }).waitFor();
+  assert.equal(await page.locator('.decision-memory-row').count(), 1);
+  assert.match(
+    (await page.locator('.decision-relevance').textContent()) ?? '',
+    /Potential conflict/,
+  );
+  assert.match((await page.locator('#decision-memory-stage').textContent()) ?? '', /fontSize/);
+  await page.locator('#decision-memory-title').fill('Retain compact primary actions');
+  await page
+    .locator('#decision-memory-summary')
+    .fill('Keep primary action labels at the project body size.');
+  await page.getByRole('button', { name: 'Save decision' }).click();
+  await page
+    .frameLocator('#product-preview')
+    .locator('html[data-foundry-decision="approved"]')
+    .waitFor();
+  await page.waitForTimeout(1900);
+  await page.screenshot({
+    path: join(artifactDirectory, 'design-decision-memory-light.png'),
+    fullPage: true,
+  });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await page.screenshot({
+    path: join(artifactDirectory, 'design-decision-memory-dark.png'),
+    fullPage: true,
+  });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+  await page.locator('#workspace-menu-trigger').click();
+  await page.getByRole('button', { name: /Visual recipes/ }).click();
+  await page.getByRole('heading', { name: 'Visual recipes' }).waitFor();
+  assert.equal(await page.locator('.visual-recipe-row').count(), 1);
+  assert.match((await page.locator('.visual-recipe-mapping').textContent()) ?? '', /100% exact/);
+  assert.match((await page.locator('.visual-recipe-mapping').textContent()) ?? '', /fontSize/);
+  await page.getByRole('button', { name: 'Add mapped values to Review' }).click();
+  await page
+    .frameLocator('#product-preview')
+    .locator('html[data-foundry-recipe="recipe-focus"]')
+    .waitFor();
+  await page.waitForTimeout(1900);
+  assert.equal(
+    await page.frameLocator('#product-preview').locator('html').getAttribute('data-foundry-recipe'),
+    'recipe-focus',
+  );
+  await page.screenshot({
+    path: join(artifactDirectory, 'visual-recipes-light.png'),
+    fullPage: true,
+  });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await page.screenshot({
+    path: join(artifactDirectory, 'visual-recipes-dark.png'),
+    fullPage: true,
+  });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+  await page.locator('#workspace-menu-trigger').click();
+  await page.getByRole('button', { name: /Visual agent/ }).click();
+  await page.getByRole('heading', { name: 'Visual agent' }).waitFor();
+  assert.match(
+    (await page.locator('#visual-agent-context').textContent()) ?? '',
+    /Create workspace/,
+  );
+  assert.match((await page.locator('#visual-agent-context').textContent()) ?? '', /100 × 40/);
+  await page.locator('#visual-agent-comment').fill('The primary action feels detached.');
+  await page
+    .locator('#visual-agent-prompt')
+    .fill('Why does this action feel inconsistent? Give me one exact source-safe direction.');
+  await page.getByRole('button', { name: 'Ask active agent' }).click();
+  await page.locator('.visual-agent-thread').waitFor();
+  const visualStored = await store.read(sessionId);
+  const visualRequest = visualStored.visualAgentRequests.at(-1);
+  assert.ok(visualRequest);
+  const visualRequestId = visualRequest.id;
+  const visualClaimed = await store.claimVisualAgentRequest(sessionId, visualRequestId, {
+    agent: { name: 'codex', taskId: 'workspace-e2e' },
+  });
+  const visualChange = visualClaimed.changeSet.changes[0];
+  const visualClaim = visualClaimed.visualAgentRequests.at(-1);
+  assert.ok(visualChange);
+  assert.ok(visualClaim?.claimAttemptId);
+  await store.respondToVisualAgentRequest(sessionId, visualRequestId, {
+    claimAttemptId: visualClaim.claimAttemptId,
+    message: 'The action uses a different corner rhythm than the surrounding interface.',
+    proposals: [
+      {
+        name: 'Shared action radius',
+        summary: 'Map the button to the project radius while preserving its measured size.',
+        reasoning: ['The current radius is the only value outside the nearby component rhythm.'],
+        exactValues: ['border-radius: 8px'],
+        sourceLocations: ['PrimaryAction.tsx:1'],
+        responsiveImpact: 'The fixed radius is stable across configured breakpoints.',
+        verificationPlan: ['Rebuild, measure the radius, and compare mobile and desktop.'],
+        changes: [{ ...visualChange, after: '8px', status: 'draft' }],
+      },
+    ],
+  });
+  await page.waitForTimeout(1700);
+  await page.locator('.visual-agent-proposal').waitFor();
+  assert.match(
+    (await page.locator('.visual-agent-proposal').textContent()) ?? '',
+    /Shared action radius/,
+  );
+  assert.match(
+    (await page.locator('.visual-agent-proposal').textContent()) ?? '',
+    /border-radius: 8px/,
+  );
+  assert.equal(await page.getByRole('button', { name: 'Preview direction' }).isEnabled(), true);
+  await page.screenshot({
+    path: join(artifactDirectory, 'visual-agent-light.png'),
+    fullPage: true,
+  });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await page.screenshot({
+    path: join(artifactDirectory, 'visual-agent-dark.png'),
+    fullPage: true,
+  });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+  await page.locator('#workspace-menu-trigger').click();
   await page.getByRole('button', { name: /Design system/ }).click();
   await page.getByRole('heading', { name: 'Design System' }).waitFor();
   assert.match((await page.locator('#design-system-status').textContent()) ?? '', /1 token/);
+  assert.match((await page.locator('#design-system-status').textContent()) ?? '', /1 promotion/);
   assert.equal(await page.locator('.design-token-row').count(), 1);
   assert.match((await page.locator('#design-system-detail').textContent()) ?? '', /--color-signal/);
   assert.match((await page.locator('#design-system-detail').textContent()) ?? '', /1 indexed/);
@@ -252,6 +480,22 @@ try {
     (await page.locator('#design-system-detail').textContent()) ?? '',
     /near-duplicate literal/,
   );
+  assert.match((await page.locator('#design-system-detail').textContent()) ?? '', /Alias chain/);
+  await page.locator('[data-system-view="promotions"]').click();
+  assert.equal(await page.locator('[data-system-promotion]').count(), 1);
+  assert.match(
+    (await page.locator('#design-system-detail').textContent()) ?? '',
+    /Recommended plan/,
+  );
+  assert.match(
+    (await page.locator('#design-system-detail').textContent()) ?? '',
+    /3 authored occurrences/,
+  );
+  await page.locator('[data-stage-token-promotion]').click();
+  await page
+    .frameLocator('#product-preview')
+    .locator('html[data-staged-token-promotion="promotion-color-signal"]')
+    .waitFor();
   await page.screenshot({
     path: join(artifactDirectory, 'design-system-light.png'),
     fullPage: true,
@@ -280,6 +524,49 @@ try {
     await page.locator('[data-responsive-frame="custom"]').getAttribute('width'),
     '1024',
   );
+  await page.locator('[data-responsive-target="container"]').click();
+  assert.equal(await page.locator('[data-responsive-container-boundary]').count(), 2);
+  await page.locator('#responsive-width').evaluate((element) => {
+    element.value = '420';
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page
+    .frameLocator('[data-responsive-frame="custom"]')
+    .locator('main')
+    .evaluate(
+      (element) =>
+        new Promise((resolve) => {
+          const done = () => element.style.inlineSize === '420px' && resolve();
+          done();
+          const observer = new MutationObserver(() => {
+            done();
+            if (element.style.inlineSize === '420px') observer.disconnect();
+          });
+          observer.observe(element, { attributes: true, attributeFilter: ['style'] });
+        }),
+    );
+  await page.locator('#responsive-capture-before').click();
+  await page.locator('#responsive-width').evaluate((element) => {
+    element.value = '640';
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page
+    .frameLocator('[data-responsive-frame="custom"]')
+    .locator('main')
+    .evaluate(
+      (element) =>
+        new Promise((resolve) => {
+          const done = () => element.style.inlineSize === '640px' && resolve();
+          done();
+          const observer = new MutationObserver(() => {
+            done();
+            if (element.style.inlineSize === '640px') observer.disconnect();
+          });
+          observer.observe(element, { attributes: true, attributeFilter: ['style'] });
+        }),
+    );
+  await page.locator('#responsive-capture-after').click();
+  await page.locator('.responsive-comparison-delta').getByText('+220px container').waitFor();
   await page.locator('[data-responsive-stress="dynamic-type"]').click();
   assert.equal(await page.locator('#change-count').textContent(), '1 change · Main direction');
   await page.screenshot({
@@ -294,16 +581,114 @@ try {
     fullPage: true,
   });
   await page.locator('#workspace-menu-trigger').click();
+  await page.getByRole('button', { name: /Content stress lab/ }).click();
+  await page.getByRole('heading', { name: 'Content and accessibility lab' }).waitFor();
+  await page
+    .frameLocator('[data-responsive-frame="custom"]')
+    .locator('main')
+    .evaluate(
+      (element) =>
+        new Promise((resolve) => {
+          const done = () => element.style.inlineSize === '' && resolve();
+          done();
+          const observer = new MutationObserver(() => {
+            done();
+            if (element.style.inlineSize === '') observer.disconnect();
+          });
+          observer.observe(element, { attributes: true, attributeFilter: ['style'] });
+        }),
+    );
+  assert.equal(await page.locator('.stress-profile').count(), 3);
+  await page.getByRole('button', { name: /Long content/ }).click();
+  await page.getByRole('button', { name: /Keyboard only/ }).click();
+  await page.locator('#apply-stress').click();
+  await page.locator('#stress-lab-status').getByText('2 conditions active').waitFor();
+  assert.equal(
+    await page.frameLocator('#product-preview').locator('html').getAttribute('data-foundry-stress'),
+    'long-content keyboard-only',
+  );
+  assert.equal(await page.locator('#change-count').textContent(), '1 change · Main direction');
+  assert.match(
+    (await page.locator('.stress-finding-card').first().textContent()) ?? '',
+    /PrimaryAction\.tsx:1/,
+  );
+  await page.screenshot({
+    path: join(artifactDirectory, 'content-accessibility-lab-light.png'),
+    fullPage: true,
+  });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await page.screenshot({
+    path: join(artifactDirectory, 'content-accessibility-lab-dark.png'),
+    fullPage: true,
+  });
+  await page.getByRole('button', { name: 'Source' }).click();
+  assert.match(
+    (await page.locator('.stress-finding-group > header').first().textContent()) ?? '',
+    /PrimaryAction\.tsx:1/,
+  );
+  await page.locator('#clear-stress').click();
+  await page.locator('#stress-lab-status').getByText('No temporary conditions').waitFor();
+  assert.equal(
+    await page.frameLocator('#product-preview').locator('html').getAttribute('data-foundry-stress'),
+    null,
+  );
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+  await page.locator('#workspace-menu-trigger').click();
   await page.getByRole('button', { name: /Motion studio/ }).click();
   await page.getByRole('heading', { name: 'Motion studio' }).waitFor();
   assert.equal(await page.locator('.motion-studio-row').count(), 1);
   assert.equal(await page.locator('.motion-studio-track').count(), 2);
+  assert.equal(await page.locator('.motion-curve-editor').count(), 1);
+  assert.equal(await page.locator('[data-curve-handle]').count(), 2);
+  assert.equal(await page.locator('.motion-path-editor').count(), 1);
+  assert.equal(await page.locator('[data-path-point]').count(), 2);
+  assert.equal(await page.locator('.motion-comparison').count(), 1);
+  assert.equal(await page.locator('[data-comparison-dot]').count(), 2);
+  assert.equal(await page.locator('[data-native-adapter="motion"]').count(), 1);
+  assert.match(
+    (await page.locator('.motion-native-source').textContent()) ?? '',
+    /Motion for React.*transition\.duration.*animate \/ variants/s,
+  );
+  assert.match(
+    (await page.locator('.motion-curve-source').textContent()) ?? '',
+    /cubic-bezier\(0\.2, 0\.8, 0\.2, 1\)/,
+  );
   assert.match(
     (await page.locator('#motion-studio-properties').textContent()) ?? '',
     /Reduced motion covered/,
   );
   await page.locator('[data-studio-action="replay"]').click();
   assert.equal(await page.locator('#change-count').textContent(), '1 change · Main direction');
+  await page.getByRole('button', { name: 'Ease out' }).click();
+  await page
+    .frameLocator('#product-preview')
+    .locator('html[data-last-motion-action="curve"]')
+    .waitFor();
+  assert.equal(
+    await page
+      .frameLocator('#product-preview')
+      .locator('html')
+      .getAttribute('data-last-motion-action'),
+    'curve',
+  );
+  await page.locator('.motion-comparison.is-changed').waitFor();
+  await page.getByRole('button', { name: 'Replay synchronized comparison' }).click();
+  await page.waitForFunction(
+    () => Number(document.querySelector('[data-comparison-scrub]')?.value ?? 0) > 0,
+  );
+  await page.getByRole('button', { name: 'Preview curve' }).click();
+  await page.waitForFunction(() =>
+    document.querySelector('.motion-curve-preview-dot')?.classList.contains('is-playing'),
+  );
+  assert.ok(
+    await page
+      .locator('.motion-curve-preview-dot')
+      .evaluate((node) => node.classList.contains('is-playing')),
+  );
   await page.screenshot({
     path: join(artifactDirectory, 'motion-studio-light.png'),
     fullPage: true,
@@ -346,6 +731,27 @@ try {
   await page.locator('#design-branch-status').getByText('Editorial scale').waitFor();
   assert.equal(await page.locator('#design-branch-status').textContent(), 'Editorial scale');
   assert.equal(await page.locator('#change-count').textContent(), '2 changes · Editorial scale');
+  await page.getByRole('button', { name: 'Choose direction' }).click();
+  await page.getByRole('heading', { name: 'Review and apply' }).waitFor();
+  await page.locator('#workspace-menu-trigger').click();
+  await page.getByRole('button', { name: /Design branches/ }).click();
+  await page.getByRole('heading', { name: 'Design branches' }).waitFor();
+  assert.equal(await page.locator('.design-branch-record').count(), 1);
+  assert.match(
+    (await page.locator('.design-branch-record').textContent()) ?? '',
+    /Editorial scale.*chosen.*Ready/s,
+  );
+  await page.getByRole('button', { name: 'Add to Memory' }).click();
+  await page
+    .frameLocator('#product-preview')
+    .locator('html[data-foundry-decision="approved"]')
+    .waitFor();
+  await page.getByRole('button', { name: 'Restore direction' }).click();
+  await page
+    .locator('#design-branch-status')
+    .getByText(/Editorial scale \(restored\)/)
+    .waitFor();
+  assert.equal(await page.locator('.design-branch-row').count(), 3);
   await page.screenshot({
     path: join(artifactDirectory, 'design-branches-light.png'),
     fullPage: true,
@@ -365,7 +771,8 @@ try {
   await page.getByRole('button', { name: /Review changes/ }).click();
 
   await page.getByRole('heading', { name: 'Review and apply' }).waitFor();
-  assert.match((await page.locator('#review-count').textContent()) ?? '', /1 included/);
+  assert.equal(await page.locator('#review-count').textContent(), '0 included');
+  assert.equal(await page.locator('.change-row').count(), 2);
   assert.deepEqual(pageErrors, []);
 
   await page.screenshot({
@@ -373,7 +780,7 @@ try {
     fullPage: true,
   });
   console.log(
-    'Workspace Playwright flow passed: session, native viewport, Component Workshop, Design System, Responsive Lab, Motion Studio, Typography Studio, Design Branches, change summary, and review.',
+    'Workspace Playwright flow passed: session, native viewport, Component Workshop, Design System, Responsive Lab, Content and Accessibility Lab, Motion Studio, Typography Studio, Design Branches, change summary, and review.',
   );
 } finally {
   await browser?.close();

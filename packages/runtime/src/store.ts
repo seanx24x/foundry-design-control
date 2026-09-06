@@ -7,24 +7,35 @@ import {
   applyRunSchema,
   changeSetSchema,
   coalesceChanges,
+  designBranchRecordBundleSchema,
+  designBranchRecordSchema,
   designBranchSchema,
   designChangeSchema,
   designOperationSchema,
   projectDesignGraphSchema,
   sessionContextSchema,
   verificationResultSchema,
+  visualAgentContextSchema,
+  visualAgentProposalSchema,
+  visualAgentRequestSchema,
   type ApplyRun,
   type ApplyRunState,
   type ChangeSet,
   type DesignChange,
   type DesignChangeInput,
   type DesignBranch,
+  type DesignBranchRecord,
+  type DesignBranchRecordBundle,
   type DesignOperation,
   type DesignOperationInput,
   type ProjectDesignGraph,
   type SessionContext,
   type VerificationResult,
+  type VisualAgentContext,
+  type VisualAgentProposal,
+  type VisualAgentRequest,
 } from 'foundry-design-protocol';
+import { assessBranchRecord, createBranchRecord } from './branch-records.js';
 
 export interface StoredSession {
   token: string;
@@ -33,7 +44,9 @@ export interface StoredSession {
   applyRuns: ApplyRun[];
   designGraph: ProjectDesignGraph | null;
   designBranches: DesignBranch[];
+  designBranchRecords: DesignBranchRecord[];
   activeDesignBranchId?: string;
+  visualAgentRequests: VisualAgentRequest[];
 }
 
 export interface SessionStoreOptions {
@@ -72,6 +85,22 @@ function branchId(): string {
   return `branch_${randomUUID().replaceAll('-', '')}`;
 }
 
+function branchRecordId(): string {
+  return `record_${randomUUID().replaceAll('-', '')}`;
+}
+
+function visualRequestId(): string {
+  return `ask_${randomUUID().replaceAll('-', '')}`;
+}
+
+function visualMessageId(): string {
+  return `msg_${randomUUID().replaceAll('-', '')}`;
+}
+
+function visualProposalId(): string {
+  return `proposal_${randomUUID().replaceAll('-', '')}`;
+}
+
 const activeRunStates = new Set<ApplyRunState>([
   'queued',
   'claimed',
@@ -84,6 +113,7 @@ export class SessionStore {
   readonly root: string;
   private readonly changeMutationTails = new Map<string, Promise<void>>();
   private readonly applyRunMutationTails = new Map<string, Promise<void>>();
+  private readonly visualAgentMutationTails = new Map<string, Promise<void>>();
   private readonly claimLeaseMs: number;
   private readonly now: () => Date;
 
@@ -123,8 +153,53 @@ export class SessionStore {
     }
   }
 
+  private async serializeVisualAgentMutation<T>(
+    id: string,
+    mutation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.visualAgentMutationTails.get(id) ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(mutation);
+    const tail = current.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.visualAgentMutationTails.set(id, tail);
+    try {
+      return await current;
+    } finally {
+      if (this.visualAgentMutationTails.get(id) === tail) this.visualAgentMutationTails.delete(id);
+    }
+  }
+
   private nowIso(): string {
     return this.now().toISOString();
+  }
+
+  private captureBranchRecord(
+    stored: StoredSession,
+    branch: DesignBranch,
+    outcome: 'chosen' | 'rejected',
+    now: string,
+  ): void {
+    const existing = stored.designBranchRecords.find((record) => record.branchId === branch.id);
+    const record = createBranchRecord(
+      branch,
+      outcome,
+      stored.changeSet.context,
+      stored.designGraph,
+      existing?.id ?? branchRecordId(),
+      now,
+    );
+    if (existing) {
+      const index = stored.designBranchRecords.indexOf(existing);
+      stored.designBranchRecords[index] = {
+        ...record,
+        importedAt: existing.importedAt,
+        createdAt: existing.createdAt,
+      };
+    } else {
+      stored.designBranchRecords.unshift(record);
+    }
   }
 
   private recoverExpiredClaims(stored: StoredSession): boolean {
@@ -165,6 +240,24 @@ export class SessionStore {
       run.updatedAt = nowIso;
       recovered = true;
     }
+    for (const request of stored.visualAgentRequests) {
+      if (request.status !== 'thinking' || !request.claimExpiresAt) continue;
+      if (Date.parse(request.claimExpiresAt) > now.getTime()) continue;
+      request.status = 'needs_attention';
+      request.error =
+        'The agent disconnected before returning a visual proposal. Review the context, then retry this request.';
+      request.agent = undefined;
+      request.claimAttemptId = undefined;
+      request.claimExpiresAt = undefined;
+      request.messages.push({
+        id: visualMessageId(),
+        role: 'system',
+        body: request.error,
+        createdAt: nowIso,
+      });
+      request.updatedAt = nowIso;
+      recovered = true;
+    }
     if (recovered) stored.changeSet.updatedAt = nowIso;
     return recovered;
   }
@@ -188,6 +281,8 @@ export class SessionStore {
       applyRuns: [],
       designGraph: null,
       designBranches: [],
+      designBranchRecords: [],
+      visualAgentRequests: [],
     };
     await this.write(stored);
     return stored;
@@ -206,7 +301,9 @@ export class SessionStore {
           applyRuns: stored.applyRuns,
           designGraph: stored.designGraph,
           designBranches: stored.designBranches,
+          designBranchRecords: stored.designBranchRecords,
           activeDesignBranchId: stored.activeDesignBranchId,
+          visualAgentRequests: stored.visualAgentRequests,
         });
       } catch {
         // Ignore incomplete files from interrupted development sessions.
@@ -231,7 +328,18 @@ export class SessionStore {
       applyRuns: (raw.applyRuns ?? []).map((run) => applyRunSchema.parse(run)),
       designGraph: raw.designGraph ? projectDesignGraphSchema.parse(raw.designGraph) : null,
       designBranches: (raw.designBranches ?? []).map((branch) => designBranchSchema.parse(branch)),
+      designBranchRecords: (raw.designBranchRecords ?? []).map((record) =>
+        assessBranchRecord(
+          designBranchRecordSchema.parse(record),
+          changeSetSchema.parse(changeSetInput).context,
+          raw.designGraph ? projectDesignGraphSchema.parse(raw.designGraph) : null,
+          this.nowIso(),
+        ),
+      ),
       activeDesignBranchId: raw.activeDesignBranchId,
+      visualAgentRequests: (raw.visualAgentRequests ?? []).map((request) =>
+        visualAgentRequestSchema.parse(request),
+      ),
     };
     if (this.recoverExpiredClaims(stored)) await this.write(stored);
     return stored;
@@ -246,6 +354,9 @@ export class SessionStore {
     stored.designGraph = graph;
     stored.changeSet.designGraphRevision = graph.revision ?? graph.indexedAt;
     stored.changeSet.context.designGraphRevision = stored.changeSet.designGraphRevision;
+    stored.designBranchRecords = stored.designBranchRecords.map((record) =>
+      assessBranchRecord(record, stored.changeSet.context, graph, this.nowIso()),
+    );
     stored.changeSet.updatedAt = new Date().toISOString();
     await this.write(stored);
     return stored;
@@ -465,6 +576,9 @@ export class SessionStore {
       if (branch.status === 'archived' && stored.activeDesignBranchId === branch.id) {
         stored.activeDesignBranchId = undefined;
       }
+      if (branch.status === 'rejected') {
+        this.captureBranchRecord(stored, branch, 'rejected', branch.updatedAt);
+      }
       stored.changeSet.updatedAt = branch.updatedAt;
       await this.write(stored);
       return stored;
@@ -503,8 +617,117 @@ export class SessionStore {
         else if (item.status === 'chosen') item.status = 'exploring';
       }
       branch.updatedAt = now;
+      this.captureBranchRecord(stored, branch, 'chosen', now);
       stored.activeDesignBranchId = undefined;
       stored.changeSet.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async importDesignBranchRecords(
+    id: string,
+    input: DesignBranchRecordBundle | unknown,
+  ): Promise<StoredSession> {
+    return this.serializeChangeMutation(id, async () => {
+      const stored = await this.read(id);
+      const bundle = designBranchRecordBundleSchema.parse(input);
+      const now = this.nowIso();
+      for (const imported of bundle.records) {
+        const record = assessBranchRecord(
+          { ...imported, importedAt: now },
+          stored.changeSet.context,
+          stored.designGraph,
+          now,
+        );
+        const existing = stored.designBranchRecords.findIndex((item) => item.id === record.id);
+        if (existing >= 0) stored.designBranchRecords[existing] = record;
+        else stored.designBranchRecords.push(record);
+      }
+      stored.designBranchRecords = stored.designBranchRecords
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(0, 100);
+      stored.changeSet.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async restoreDesignBranchRecord(id: string, recordId: string): Promise<StoredSession> {
+    return this.serializeChangeMutation(id, async () => {
+      const stored = await this.read(id);
+      if (stored.designBranches.filter((branch) => branch.status !== 'archived').length >= 8) {
+        throw new Error('Archive a direction before restoring another one.');
+      }
+      const record = stored.designBranchRecords.find((item) => item.id === recordId);
+      if (!record) throw new Error(`Unknown branch record: ${recordId}`);
+      const checked = assessBranchRecord(
+        record,
+        stored.changeSet.context,
+        stored.designGraph,
+        this.nowIso(),
+      );
+      if (checked.compatibility.status !== 'current') {
+        throw new Error(
+          'Refresh or repair stale source relationships before restoring this record.',
+        );
+      }
+      const now = this.nowIso();
+      const operationIds = new Map<string, string>();
+      const operations: DesignOperation[] = checked.operations.map((operation) => {
+        const nextId = operationId();
+        operationIds.set(operation.id, nextId);
+        return {
+          ...operation,
+          id: nextId,
+          changeIds: [],
+          status: 'preview' as const,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      const changes = checked.changes.map((change) => ({
+        ...change,
+        id: changeId(),
+        operationId: change.operationId ? operationIds.get(change.operationId) : undefined,
+        status: change.status === 'unresolved' ? ('unresolved' as const) : ('draft' as const),
+        createdAt: now,
+        updatedAt: now,
+      }));
+      for (const operation of operations) {
+        operation.changeIds = changes
+          .filter((change) => change.operationId === operation.id)
+          .map((change) => change.id);
+      }
+      const branch = designBranchSchema.parse({
+        id: branchId(),
+        name: `${checked.name} (restored)`.slice(0, 80),
+        status: 'exploring',
+        changes,
+        operations,
+        rejectionReason: checked.rationale,
+        createdAt: now,
+        updatedAt: now,
+      });
+      stored.designBranches.push(branch);
+      stored.activeDesignBranchId = branch.id;
+      stored.changeSet.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async removeDesignBranchRecord(id: string, recordId: string): Promise<StoredSession> {
+    return this.serializeChangeMutation(id, async () => {
+      const stored = await this.read(id);
+      const before = stored.designBranchRecords.length;
+      stored.designBranchRecords = stored.designBranchRecords.filter(
+        (item) => item.id !== recordId,
+      );
+      if (stored.designBranchRecords.length === before) {
+        throw new Error(`Unknown branch record: ${recordId}`);
+      }
+      stored.changeSet.updatedAt = this.nowIso();
       await this.write(stored);
       return stored;
     });
@@ -883,6 +1106,236 @@ export class SessionStore {
     return stored;
   }
 
+  async createVisualAgentRequest(
+    id: string,
+    input: { title?: string; prompt: string; context: VisualAgentContext },
+  ): Promise<StoredSession> {
+    return this.serializeVisualAgentMutation(id, async () => {
+      const stored = await this.read(id);
+      const now = this.nowIso();
+      const prompt = input.prompt.trim();
+      if (!prompt) throw new Error('Describe the visual improvement you want to discuss.');
+      const context = visualAgentContextSchema.parse(input.context);
+      if (!context.targets.length && !context.region) {
+        throw new Error('Attach at least one rendered element or canvas region.');
+      }
+      const request = visualAgentRequestSchema.parse({
+        id: visualRequestId(),
+        sessionId: id,
+        title: input.title?.trim() || prompt.slice(0, 72),
+        prompt,
+        status: 'queued',
+        context,
+        messages: [
+          { id: visualMessageId(), role: 'user', body: prompt, createdAt: now },
+          {
+            id: visualMessageId(),
+            role: 'system',
+            body: 'Context captured from the rendered product. Waiting for the active agent.',
+            createdAt: now,
+          },
+        ],
+        proposals: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      stored.visualAgentRequests = [...stored.visualAgentRequests.slice(-49), request];
+      stored.changeSet.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async claimVisualAgentRequest(
+    id: string,
+    requestId: string,
+    input: { agent: NonNullable<VisualAgentRequest['agent']>; ttlMs?: number },
+  ): Promise<StoredSession> {
+    return this.serializeVisualAgentMutation(id, async () => {
+      const stored = await this.read(id);
+      const request = stored.visualAgentRequests.find((item) => item.id === requestId);
+      if (!request) throw new Error(`Unknown visual agent request: ${requestId}`);
+      if (request.status !== 'queued') return stored;
+      const now = this.now();
+      const nowIso = now.toISOString();
+      const ttlMs = Math.min(Math.max(input.ttlMs ?? 70_000, 15_000), 10 * 60_000);
+      request.status = 'thinking';
+      request.agent = input.agent;
+      request.claimAttemptId = `claim_${randomUUID().replaceAll('-', '')}`;
+      request.claimExpiresAt = new Date(now.getTime() + ttlMs).toISOString();
+      request.error = undefined;
+      request.messages.push({
+        id: visualMessageId(),
+        role: 'system',
+        body: `${input.agent.name} is inspecting the attached pixels and source context.`,
+        createdAt: nowIso,
+      });
+      request.updatedAt = nowIso;
+      stored.changeSet.updatedAt = nowIso;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async respondToVisualAgentRequest(
+    id: string,
+    requestId: string,
+    input: {
+      claimAttemptId: string;
+      message: string;
+      proposals: Array<Omit<VisualAgentProposal, 'id' | 'createdAt' | 'updatedAt' | 'status'>>;
+    },
+  ): Promise<StoredSession> {
+    return this.serializeVisualAgentMutation(id, async () => {
+      const stored = await this.read(id);
+      const request = stored.visualAgentRequests.find((item) => item.id === requestId);
+      if (!request) throw new Error(`Unknown visual agent request: ${requestId}`);
+      if (request.status !== 'thinking' || request.claimAttemptId !== input.claimAttemptId) {
+        throw new Error('This visual request is no longer claimed by the current agent attempt.');
+      }
+      const now = this.nowIso();
+      request.messages.push({
+        id: visualMessageId(),
+        role: 'agent',
+        body: input.message.trim(),
+        createdAt: now,
+      });
+      request.proposals = input.proposals.map((proposal) =>
+        visualAgentProposalSchema.parse({
+          ...proposal,
+          id: visualProposalId(),
+          status: 'proposed',
+          createdAt: now,
+          updatedAt: now,
+        }),
+      );
+      request.status = 'ready';
+      request.claimAttemptId = undefined;
+      request.claimExpiresAt = undefined;
+      request.updatedAt = now;
+      stored.changeSet.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async heartbeatVisualAgentRequest(
+    id: string,
+    requestId: string,
+    claimAttemptId: string,
+  ): Promise<StoredSession> {
+    return this.serializeVisualAgentMutation(id, async () => {
+      const stored = await this.read(id);
+      const request = stored.visualAgentRequests.find((item) => item.id === requestId);
+      if (!request) throw new Error(`Unknown visual agent request: ${requestId}`);
+      if (request.status !== 'thinking' || request.claimAttemptId !== claimAttemptId) {
+        throw new Error('This visual request is no longer claimed by the current agent attempt.');
+      }
+      const now = this.now();
+      request.claimExpiresAt = new Date(now.getTime() + 10 * 60_000).toISOString();
+      request.updatedAt = now.toISOString();
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async retryVisualAgentRequest(id: string, requestId: string): Promise<StoredSession> {
+    return this.serializeVisualAgentMutation(id, async () => {
+      const stored = await this.read(id);
+      const request = stored.visualAgentRequests.find((item) => item.id === requestId);
+      if (!request) throw new Error(`Unknown visual agent request: ${requestId}`);
+      if (!['needs_attention', 'ready'].includes(request.status)) {
+        throw new Error('Only completed or interrupted visual requests can be retried.');
+      }
+      const now = this.nowIso();
+      request.status = 'queued';
+      request.agent = undefined;
+      request.error = undefined;
+      request.claimAttemptId = undefined;
+      request.claimExpiresAt = undefined;
+      request.messages.push({
+        id: visualMessageId(),
+        role: 'system',
+        body: 'Retry authorized. Waiting for the active agent.',
+        createdAt: now,
+      });
+      request.updatedAt = now;
+      stored.changeSet.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  async updateVisualAgentProposal(
+    id: string,
+    requestId: string,
+    proposalId: string,
+    action: 'preview' | 'promote' | 'reject',
+  ): Promise<StoredSession> {
+    return this.serializeVisualAgentMutation(id, async () => {
+      const stored = await this.read(id);
+      const request = stored.visualAgentRequests.find((item) => item.id === requestId);
+      const proposal = request?.proposals.find((item) => item.id === proposalId);
+      if (!request || !proposal) throw new Error(`Unknown visual proposal: ${proposalId}`);
+      const now = this.nowIso();
+      if (action === 'reject') proposal.status = 'rejected';
+      if (action === 'preview') {
+        if (!proposal.changes.length)
+          throw new Error('This proposal does not include previewable changes.');
+        let branch = stored.designBranches.find((item) => item.id === proposal.branchId);
+        if (!branch) {
+          if (stored.designBranches.filter((item) => item.status !== 'archived').length >= 8) {
+            throw new Error('Archive a direction before previewing another proposal.');
+          }
+          branch = designBranchSchema.parse({
+            id: branchId(),
+            name: proposal.name,
+            status: 'exploring',
+            changes: coalesceChanges([...stored.changeSet.changes, ...proposal.changes]).map(
+              (change) => ({
+                ...change,
+                id: changeId(),
+                status: change.status === 'unresolved' ? 'unresolved' : 'draft',
+                createdAt: now,
+                updatedAt: now,
+              }),
+            ),
+            operations: [],
+            createdAt: now,
+            updatedAt: now,
+          });
+          stored.designBranches.push(branch);
+        }
+        stored.activeDesignBranchId = branch.id;
+        proposal.branchId = branch.id;
+        proposal.status = 'previewing';
+      }
+      if (action === 'promote') {
+        const branch = stored.designBranches.find((item) => item.id === proposal.branchId);
+        if (!branch) throw new Error('Preview this proposal before promoting it to Review.');
+        stored.changeSet.changes = branch.changes.map((change) => ({
+          ...change,
+          id: changeId(),
+          status: change.status === 'unresolved' ? 'unresolved' : 'draft',
+          updatedAt: now,
+        }));
+        stored.changeSet.operations = [];
+        for (const item of stored.designBranches) {
+          if (item.status === 'chosen') item.status = 'exploring';
+        }
+        branch.status = 'chosen';
+        branch.updatedAt = now;
+        stored.activeDesignBranchId = undefined;
+        proposal.status = 'promoted';
+      }
+      proposal.updatedAt = now;
+      request.updatedAt = now;
+      stored.changeSet.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
   async authenticate(id: string, token: string | undefined): Promise<StoredSession> {
     const stored = await this.read(id);
     if (!token || token !== stored.token) throw new Error('Invalid session token');
@@ -898,7 +1351,13 @@ export class SessionStore {
       applyRuns: stored.applyRuns.map((run) => applyRunSchema.parse(run)),
       designGraph: stored.designGraph ? projectDesignGraphSchema.parse(stored.designGraph) : null,
       designBranches: stored.designBranches.map((branch) => designBranchSchema.parse(branch)),
+      designBranchRecords: stored.designBranchRecords.map((record) =>
+        designBranchRecordSchema.parse(record),
+      ),
       activeDesignBranchId: stored.activeDesignBranchId,
+      visualAgentRequests: stored.visualAgentRequests.map((request) =>
+        visualAgentRequestSchema.parse(request),
+      ),
     };
     const target = join(this.root, `${stored.changeSet.sessionId}.json`);
     const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;

@@ -28,6 +28,32 @@ export interface ResponsiveSnapshot {
   left?: number;
 }
 
+export interface ContainerQueryInput {
+  id: string;
+  label: string;
+  name?: string;
+  condition: string;
+  minWidth?: number;
+  maxWidth?: number;
+}
+
+export interface ResponsiveContainerRange {
+  min: number;
+  max: number;
+  boundaries: number[];
+}
+
+export interface ResponsiveComparison {
+  changed: boolean;
+  viewportWidthDelta: number;
+  containerWidthDelta: number;
+  elementWidthDelta: number;
+  elementHeightDelta: number;
+  positionDelta: number;
+  lineCountDelta: number;
+  overflowDelta: number;
+}
+
 export interface ResponsiveFinding {
   kind: 'overflow' | 'clipping' | 'awkward-wrap' | 'layout-jump';
   severity: 'warning' | 'error';
@@ -115,6 +141,51 @@ export function responsiveFindings(snapshots: ResponsiveSnapshot[]): ResponsiveF
     }
   }
   return findings;
+}
+
+export function responsiveContainerRange(
+  queries: ContainerQueryInput[] | null | undefined,
+  currentWidth: number,
+): ResponsiveContainerRange {
+  const boundaries = [
+    ...new Set(
+      (queries ?? [])
+        .flatMap((query) => [query.minWidth, query.maxWidth])
+        .filter((width): width is number => Number.isFinite(width)),
+    ),
+  ].sort((a, b) => a - b);
+  if (!boundaries.length) {
+    return { min: 64, max: Math.max(1280, currentWidth), boundaries };
+  }
+  return {
+    min: Math.max(64, Math.floor(boundaries[0]! - 160)),
+    max: Math.max(currentWidth, Math.ceil(boundaries.at(-1)! + 160)),
+    boundaries,
+  };
+}
+
+export function responsiveComparison(
+  before: ResponsiveSnapshot & { containerWidth?: number },
+  after: ResponsiveSnapshot & { containerWidth?: number },
+): ResponsiveComparison {
+  const beforeOverflow = Math.max(0, before.scrollWidth - before.clientWidth);
+  const afterOverflow = Math.max(0, after.scrollWidth - after.clientWidth);
+  const result = {
+    viewportWidthDelta: after.viewportWidth - before.viewportWidth,
+    containerWidthDelta: (after.containerWidth ?? 0) - (before.containerWidth ?? 0),
+    elementWidthDelta: after.elementWidth - before.elementWidth,
+    elementHeightDelta: after.elementHeight - before.elementHeight,
+    positionDelta: Math.hypot(
+      (after.left ?? 0) - (before.left ?? 0),
+      (after.top ?? 0) - (before.top ?? 0),
+    ),
+    lineCountDelta: (after.lineCount ?? 0) - (before.lineCount ?? 0),
+    overflowDelta: afterOverflow - beforeOverflow,
+  };
+  return {
+    changed: Object.values(result).some((value) => Math.abs(value) > 0.5),
+    ...result,
+  };
 }
 
 export function responsiveEditScopes(hasSourceMapping: boolean): Array<{

@@ -1,15 +1,174 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  PROTOCOL_VERSION,
   applyRunSchema,
   coalesceChanges,
+  designBranchRecordBundleSchema,
   designChangeSchema,
   designBranchSchema,
   designOperationSchema,
   projectDesignGraphSchema,
   renderChangePrompt,
+  stressTestSessionSchema,
+  visualAgentRequestSchema,
   type ChangeSet,
 } from './index.js';
+
+test('parses portable branch records with source context and compatibility evidence', () => {
+  const bundle = designBranchRecordBundleSchema.parse({
+    format: 'foundry.design-branch-records',
+    version: 1,
+    exportedAt: '2026-09-06T00:00:00.000Z',
+    records: [
+      {
+        version: 1,
+        id: 'record_1',
+        branchId: 'branch_1',
+        name: 'Editorial hierarchy',
+        outcome: 'chosen',
+        rationale: 'Clearer progression from headline to supporting copy.',
+        context: {
+          projectRoot: '/project',
+          revision: 'rev-1',
+          designGraphRevision: 'graph-1',
+          platform: 'web',
+          viewport: { width: 1440, height: 900 },
+          theme: 'light',
+          breakpoint: 'desktop',
+          state: 'default',
+        },
+        changes: [],
+        operations: [],
+        sourceRelationships: [
+          {
+            targetId: 'hero',
+            targetLabel: 'Hero heading',
+            property: 'fontSize',
+            componentPath: ['LandingPage', 'Hero'],
+            source: { file: 'src/Hero.tsx', line: 18 },
+          },
+        ],
+        compatibility: {
+          status: 'current',
+          matchedSources: 1,
+          totalSources: 1,
+          warnings: [],
+          checkedAt: '2026-09-06T00:00:00.000Z',
+        },
+        createdAt: '2026-09-06T00:00:00.000Z',
+        updatedAt: '2026-09-06T00:00:00.000Z',
+      },
+    ],
+  });
+  assert.equal(bundle.records[0]?.sourceRelationships[0]?.source?.file, 'src/Hero.tsx');
+  assert.equal(bundle.records[0]?.compatibility.status, 'current');
+});
+
+test('keeps visual agent proposals grounded and separate from approved changes', () => {
+  const request = visualAgentRequestSchema.parse({
+    id: 'ask_1',
+    sessionId: 'ses_1',
+    title: 'Improve hierarchy',
+    prompt: 'Why do these labels feel inconsistent?',
+    status: 'ready',
+    context: {
+      targets: [
+        {
+          id: 'label-1',
+          selector: '[data-foundry-id="label-1"]',
+          label: 'Field label',
+          kind: 'label',
+          source: 'src/Form.tsx:20',
+          confidence: 'instrumented',
+          geometry: { x: 20, y: 40, width: 120, height: 20, scale: 2 },
+          measurements: { fontSize: '12px' },
+        },
+      ],
+      comments: [],
+      viewport: { width: 1440, height: 900 },
+      breakpoint: 'desktop',
+      theme: 'dark',
+      state: 'default',
+      tokens: [],
+    },
+    messages: [],
+    proposals: [
+      {
+        id: 'proposal_1',
+        name: 'Quiet hierarchy',
+        summary: 'Align the labels to one shared type token.',
+        reasoning: ['The selected labels use two sizes.'],
+        exactValues: ['font-size: 12px'],
+        sourceLocations: ['src/Form.tsx:20'],
+        responsiveImpact: 'No breakpoint change.',
+        verificationPlan: ['Measure both labels after rebuild.'],
+        changes: [],
+        status: 'proposed',
+        createdAt: '2026-09-05T00:00:00.000Z',
+        updatedAt: '2026-09-05T00:00:00.000Z',
+      },
+    ],
+    createdAt: '2026-09-05T00:00:00.000Z',
+    updatedAt: '2026-09-05T00:00:00.000Z',
+  });
+  assert.equal(request.context.targets[0]?.measurements.fontSize, '12px');
+  assert.equal(request.proposals[0]?.status, 'proposed');
+});
+
+test('keeps stress sessions explicitly temporary and viewport-bound', () => {
+  const session = stressTestSessionSchema.parse({
+    conditions: ['long-content', 'keyboard-only'],
+    scope: 'selection',
+    targetId: 'button-primary',
+    viewport: { width: 390, height: 844 },
+    temporary: true,
+    appliedAt: '2026-09-05T00:00:00.000Z',
+  });
+  assert.deepEqual(session.conditions, ['long-content', 'keyboard-only']);
+  assert.equal(session.temporary, true);
+  assert.equal(session.viewport.width, 390);
+});
+
+test('parses alias-aware tokens and reviewable token promotion candidates', () => {
+  const graph = projectDesignGraphSchema.parse({
+    protocolVersion: PROTOCOL_VERSION,
+    projectRoot: '/project',
+    tokens: [
+      {
+        id: 'semantic',
+        name: '--color-action',
+        value: 'var(--blue-500)',
+        category: 'color',
+        aliasOfTokenId: 'primitive',
+        aliasOfTokenName: '--blue-500',
+        resolvedValue: '#3478f6',
+        aliasChain: ['--color-action', '--blue-500'],
+        aliasStatus: 'resolved',
+      },
+    ],
+    tokenPromotions: [
+      {
+        id: 'promotion-1',
+        value: '#3478f6',
+        category: 'color',
+        property: 'background-color',
+        occurrenceCount: 3,
+        sources: [{ file: 'src/Button.css', line: 12 }],
+        recommendation: 'use-existing',
+        relation: 'exact',
+        suggestedTokenId: 'semantic',
+        suggestedTokenName: '--color-action',
+        suggestedValue: 'var(--color-action)',
+        aliasChain: ['--color-action', '--blue-500'],
+      },
+    ],
+    indexedAt: '2026-09-06T00:00:00.000Z',
+  });
+  assert.equal(graph.tokens[0]?.aliasStatus, 'resolved');
+  assert.equal(graph.tokenPromotions?.[0]?.occurrenceCount, 3);
+  assert.equal(graph.tokenPromotions?.[0]?.recommendation, 'use-existing');
+});
 
 const base = designChangeSchema.parse({
   id: 'chg_1',
@@ -187,7 +346,19 @@ test('parses a revisioned project design graph', () => {
     breakpoints: [{ id: 'mobile', label: 'Mobile', width: 390 }],
     themes: [],
     states: [],
-    motionPresets: [],
+    motionPresets: [
+      {
+        id: 'motion-card',
+        label: 'Motion article',
+        duration: 480,
+        easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+        adapter: 'motion',
+        sourceProperty: 'transition',
+        configuration: { type: 'tween' },
+        source: { file: 'Card.tsx', line: 12 },
+        evidence: ['Motion source import'],
+      },
+    ],
     tokenUsages: [
       {
         id: 'usage-space-3',
@@ -212,6 +383,8 @@ test('parses a revisioned project design graph', () => {
     indexedAt: '2026-08-29T00:00:00.000Z',
   });
   assert.equal(graph.tokens[0]?.cssVariable, '--space-3');
+  assert.equal(graph.motionPresets[0]?.adapter, 'motion');
+  assert.equal(graph.motionPresets[0]?.sourceProperty, 'transition');
   assert.equal(graph.breakpoints[0]?.height, 900);
   assert.deepEqual(graph.components[0]?.variants[0]?.props, {
     story: 'Quiet',
@@ -255,4 +428,69 @@ test('requires explicit resolution for ambiguous semantic operations', () => {
   });
   assert.equal(operation.mappingCandidates.length, 2);
   assert.equal(operation.selectedMappingId, undefined);
+});
+
+test('preserves source-backed component variant authoring and operations', () => {
+  const graph = projectDesignGraphSchema.parse({
+    protocolVersion: PROTOCOL_VERSION,
+    projectRoot: '/tmp/project',
+    components: [
+      {
+        id: 'button',
+        name: 'Button',
+        variantAxes: [
+          {
+            id: 'tone',
+            label: 'Tone',
+            property: 'tone',
+            values: ['primary', 'quiet'],
+            adapter: 'cva',
+            source: { file: 'src/Button.tsx', line: 5 },
+            sourceProperty: 'variants.tone',
+            canCreate: true,
+            evidence: ['CVA variants object'],
+          },
+        ],
+      },
+    ],
+    containerQueries: [
+      {
+        id: 'container-card-480',
+        label: 'card · min 480px',
+        name: 'card',
+        condition: 'min-width: 480px',
+        minWidth: 480,
+        source: { file: 'src/Card.css', line: 24 },
+        evidence: ['CSS @container rule'],
+      },
+    ],
+    indexedAt: '2026-09-05T00:00:00.000Z',
+  });
+  assert.equal(graph.components[0]?.variantAxes[0]?.adapter, 'cva');
+  assert.equal(graph.containerQueries?.[0]?.minWidth, 480);
+  const operation = designOperationSchema.parse({
+    id: 'op-variant',
+    kind: 'component-variant',
+    label: 'Create Danger variant',
+    targetIds: ['button'],
+    mappingCandidates: [
+      {
+        id: 'map-variant',
+        label: 'Create source-backed component variant',
+        intent: 'component-variant',
+        property: 'component.variant.create.tone',
+        value: 'danger',
+        source: { file: 'src/Button.tsx', line: 5 },
+        scope: 'component',
+        confidence: 'instrumented',
+        evidence: ['indexed component variant axis'],
+        blastRadius: 4,
+      },
+    ],
+    selectedMappingId: 'map-variant',
+    status: 'resolved',
+    createdAt: '2026-09-05T00:00:00.000Z',
+    updatedAt: '2026-09-05T00:00:00.000Z',
+  });
+  assert.equal(operation.kind, 'component-variant');
 });

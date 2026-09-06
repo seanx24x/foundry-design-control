@@ -18,6 +18,17 @@ Use the Design System workspace to understand and extend the product's existing 
 
 Recommendations explain the matching category, value relationship, and source evidence. Exact token matches rank first in Inspector menus, followed by the nearest compatible project values. Never recommend a token from an unrelated category merely because its serialized value matches.
 
+## Promote recurring values
+
+1. Open **Promote** in the Design System workspace.
+2. Select a recurring authored value and inspect every indexed source location.
+3. Prefer the recommended existing semantic token when its resolved value matches. Foundry ranks the deepest compatible alias chain ahead of a raw primitive so theme and component intent survive the refactor.
+4. When no compatible token exists, review the proposed project-native token name and value. Treat the generated name as a source plan, not an applied convention.
+5. Add the plan to Review. Foundry records the exact locations, resolved value, alias chain, source blast radius, and required rebuild checks in one `token-refactor` operation.
+6. Apply with the active coding agent, re-index the project, and verify every affected consumer before marking the operation complete.
+
+Broken and circular aliases remain visible in the token detail view but never receive an invented resolved value. Dynamic and generated usages remain outside the indexed count and must be reported as unresolved.
+
 ## Change the system safely
 
 1. Inspect affected components and contexts before proposing a replacement or token edit.
@@ -26,4 +37,4 @@ Recommendations explain the matching category, value relationship, and source ev
 4. Require an exact source mapping and explicit component, theme, breakpoint, and state scope.
 5. Rebuild and verify every affected rendered context. A token definition change is complete only after its indexed consumers remain visually and functionally correct.
 
-The Design System workspace never applies source changes automatically. Its index, guidance, selection, and impact preview are presentation and evidence state.
+The Design System workspace never applies source changes automatically. Token promotion creates a draft Review operation; only the normal reviewed Apply workflow may change source.

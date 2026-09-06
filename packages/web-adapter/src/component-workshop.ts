@@ -14,6 +14,22 @@ export interface RawComponentVariant {
   value?: string | number | boolean | null | unknown[] | Record<string, unknown>;
   props?: Record<string, string | number | boolean>;
   source?: ComponentWorkshopSource;
+  adapter?: ComponentVariantAdapter;
+  sourceProperty?: string;
+}
+
+export type ComponentVariantAdapter = 'storybook' | 'cva' | 'typescript' | 'configured';
+
+export interface ComponentVariantAxis {
+  id: string;
+  label: string;
+  property: string;
+  values: Array<string | number | boolean | null | unknown[] | Record<string, unknown>>;
+  adapter: ComponentVariantAdapter;
+  source: ComponentWorkshopSource;
+  sourceProperty: string;
+  canCreate: boolean;
+  evidence: string[];
 }
 
 export interface ComponentWorkshopVariant {
@@ -21,6 +37,8 @@ export interface ComponentWorkshopVariant {
   name: string;
   props: Record<string, string | number | boolean>;
   source?: ComponentWorkshopSource;
+  adapter?: ComponentVariantAdapter;
+  sourceProperty?: string;
 }
 
 export interface RawComponentDefinition {
@@ -30,6 +48,7 @@ export interface RawComponentDefinition {
   source?: ComponentWorkshopSource;
   instances?: number;
   variants?: RawComponentVariant[];
+  variantAxes?: ComponentVariantAxis[];
   evidence?: string[];
 }
 
@@ -40,6 +59,7 @@ export interface ComponentWorkshopDefinition {
   source?: ComponentWorkshopSource;
   instances: number;
   variants: ComponentWorkshopVariant[];
+  variantAxes: ComponentVariantAxis[];
   evidence: string[];
 }
 
@@ -145,8 +165,80 @@ export function normalizeWorkshopComponents(
       name: variant.name ?? variant.label ?? 'Unnamed variant',
       props: variantProps(variant),
       source: variant.source,
+      adapter: variant.adapter,
+      sourceProperty: variant.sourceProperty,
+    })),
+    variantAxes: (component.variantAxes ?? []).map((axis) => ({
+      ...axis,
+      values: [...axis.values],
+      evidence: [...axis.evidence],
     })),
   }));
+}
+
+export interface ComponentVariantDraft {
+  componentId: string;
+  label: string;
+  property: string;
+  value: string;
+  adapter: ComponentVariantAdapter;
+  source: ComponentWorkshopSource;
+  sourceProperty: string;
+  baseVariantId?: string;
+}
+
+export function createComponentVariantDraft(input: {
+  component: ComponentWorkshopDefinition;
+  axisId: string;
+  label: string;
+  value: string;
+  baseVariantId?: string;
+}): ComponentVariantDraft {
+  const axis = input.component.variantAxes.find((item) => item.id === input.axisId);
+  const label = input.label.trim();
+  const value = input.value.trim();
+  if (!axis?.canCreate) throw new Error('This variant source is read-only.');
+  if (!label || !value) throw new Error('Add both a variant name and source value.');
+  if (axis.values.some((item) => String(item).toLowerCase() === value.toLowerCase()))
+    throw new Error(`${value} already exists on ${axis.label}.`);
+  return {
+    componentId: input.component.id,
+    label,
+    property: axis.property,
+    value,
+    adapter: axis.adapter,
+    source: axis.source,
+    sourceProperty: axis.sourceProperty,
+    baseVariantId: input.baseVariantId,
+  };
+}
+
+export interface ComponentVariantInstance {
+  id: string;
+  label: string;
+  props: Record<string, string | number | boolean>;
+}
+
+export interface ComponentVariantDrift {
+  instanceId: string;
+  label: string;
+  property: string;
+  expected: string | number | boolean;
+  actual: string | number | boolean;
+}
+
+export function componentVariantDrift(
+  instances: ComponentVariantInstance[],
+  variant?: ComponentWorkshopVariant,
+): ComponentVariantDrift[] {
+  if (!variant) return [];
+  return instances.flatMap((instance) =>
+    Object.entries(variant.props).flatMap(([property, expected]) => {
+      const actual = instance.props[property];
+      if (actual == null || String(actual) === String(expected)) return [];
+      return [{ instanceId: instance.id, label: instance.label, property, expected, actual }];
+    }),
+  );
 }
 
 export function componentWorkshopStates(

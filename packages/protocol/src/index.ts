@@ -116,8 +116,32 @@ export const designTokenSchema = z.object({
     'other',
   ]),
   cssVariable: z.string().optional(),
+  aliasOfTokenId: z.string().optional(),
+  aliasOfTokenName: z.string().optional(),
+  resolvedValue: z.string().optional(),
+  aliasChain: z.array(z.string()).optional(),
+  aliasStatus: z.enum(['direct', 'resolved', 'broken', 'circular']).optional(),
   source: sourceRefSchema.optional(),
   confidence: confidenceSchema.default('inferred'),
+  evidence: z.array(z.string()).default([]),
+});
+
+export const tokenPromotionCandidateSchema = z.object({
+  id: z.string().min(1),
+  value: z.string().min(1),
+  category: designTokenSchema.shape.category,
+  property: z.string().min(1),
+  occurrenceCount: z.number().int().positive(),
+  sources: z.array(sourceRefSchema).min(1),
+  componentIds: z.array(z.string()).default([]),
+  recommendation: z.enum(['use-existing', 'create-token']),
+  relation: z.enum(['exact', 'near', 'new']),
+  suggestedTokenId: z.string().optional(),
+  suggestedTokenName: z.string().min(1),
+  suggestedValue: z.string().min(1),
+  aliasChain: z.array(z.string()).default([]),
+  canStage: z.boolean().default(true),
+  blockers: z.array(z.string()).default([]),
   evidence: z.array(z.string()).default([]),
 });
 
@@ -128,6 +152,20 @@ export const componentVariantSchema = z.object({
   value: changeValueSchema,
   props: z.record(z.string(), changeValueSchema).default({}),
   source: sourceRefSchema.optional(),
+  adapter: z.enum(['storybook', 'cva', 'typescript', 'configured']).optional(),
+  sourceProperty: z.string().optional(),
+});
+
+export const componentVariantAxisSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  property: z.string().min(1),
+  values: z.array(changeValueSchema).default([]),
+  adapter: z.enum(['storybook', 'cva', 'typescript', 'configured']),
+  source: sourceRefSchema,
+  sourceProperty: z.string().min(1),
+  canCreate: z.boolean().default(false),
+  evidence: z.array(z.string()).default([]),
 });
 
 export const componentDefinitionSchema = z.object({
@@ -137,6 +175,7 @@ export const componentDefinitionSchema = z.object({
   selector: z.string().optional(),
   instances: z.number().int().nonnegative().default(0),
   variants: z.array(componentVariantSchema).default([]),
+  variantAxes: z.array(componentVariantAxisSchema).default([]),
   evidence: z.array(z.string()).default([]),
 });
 
@@ -162,6 +201,18 @@ export const breakpointDefinitionSchema = z.object({
   source: sourceRefSchema.optional(),
 });
 
+export const containerQueryDefinitionSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  name: z.string().optional(),
+  condition: z.string().min(1),
+  axis: z.enum(['inline-size', 'block-size', 'size']).default('inline-size'),
+  minWidth: z.number().nonnegative().optional(),
+  maxWidth: z.number().nonnegative().optional(),
+  source: sourceRefSchema,
+  evidence: z.array(z.string()).default([]),
+});
+
 export const themeDefinitionSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
@@ -177,7 +228,11 @@ export const motionPresetSchema = z.object({
   duration: z.number().nonnegative().optional(),
   easing: z.string().optional(),
   delay: z.number().nonnegative().optional(),
+  adapter: z.enum(['css', 'motion', 'gsap', 'react-spring']).optional(),
+  sourceProperty: z.string().optional(),
+  configuration: z.record(z.string(), z.unknown()).default({}),
   source: sourceRefSchema.optional(),
+  evidence: z.array(z.string()).default([]),
 });
 
 export const designTokenUsageSchema = z.object({
@@ -215,11 +270,13 @@ export const projectDesignGraphSchema = z.object({
   tokens: z.array(designTokenSchema).default([]),
   components: z.array(componentDefinitionSchema).default([]),
   breakpoints: z.array(breakpointDefinitionSchema).default([]),
+  containerQueries: z.array(containerQueryDefinitionSchema).optional(),
   themes: z.array(themeDefinitionSchema).default([]),
   states: z.array(stateDefinitionSchema).default([]),
   motionPresets: z.array(motionPresetSchema).default([]),
   tokenUsages: z.array(designTokenUsageSchema).default([]),
   designSystemFindings: z.array(designSystemFindingSchema).default([]),
+  tokenPromotions: z.array(tokenPromotionCandidateSchema).optional(),
   indexedAt: z.string().datetime(),
 });
 
@@ -236,6 +293,8 @@ export const sourceMappingCandidateSchema = z.object({
     'content',
     'motion',
     'state',
+    'component-variant',
+    'token-refactor',
   ]),
   property: z.string().min(1),
   targetId: z.string().optional(),
@@ -249,7 +308,18 @@ export const sourceMappingCandidateSchema = z.object({
 
 export const designOperationSchema = z.object({
   id: z.string().min(1),
-  kind: z.enum(['resize', 'spacing', 'align', 'distribute', 'style', 'content', 'motion', 'state']),
+  kind: z.enum([
+    'resize',
+    'spacing',
+    'align',
+    'distribute',
+    'style',
+    'content',
+    'motion',
+    'state',
+    'component-variant',
+    'token-refactor',
+  ]),
   label: z.string().min(1),
   targetIds: z.array(z.string().min(1)).min(1),
   changeIds: z.array(z.string().min(1)).default([]),
@@ -317,6 +387,44 @@ export const designBranchSchema = z.object({
   rejectionReason: z.string().max(280).optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+});
+
+export const designBranchRecordSourceSchema = z.object({
+  targetId: z.string().min(1),
+  targetLabel: z.string().min(1),
+  property: z.string().min(1),
+  componentPath: z.array(z.string()).default([]),
+  source: sourceRefSchema.optional(),
+});
+
+export const designBranchRecordSchema = z.object({
+  version: z.literal(1),
+  id: z.string().min(1),
+  branchId: z.string().min(1),
+  name: z.string().min(1).max(80),
+  outcome: z.enum(['chosen', 'rejected']),
+  rationale: z.string().max(280).optional(),
+  context: sessionContextSchema,
+  changes: z.array(designChangeSchema).default([]),
+  operations: z.array(designOperationSchema).default([]),
+  sourceRelationships: z.array(designBranchRecordSourceSchema).default([]),
+  compatibility: z.object({
+    status: z.enum(['current', 'stale', 'missing']),
+    matchedSources: z.number().int().nonnegative(),
+    totalSources: z.number().int().nonnegative(),
+    warnings: z.array(z.string()).default([]),
+    checkedAt: z.string().datetime(),
+  }),
+  importedAt: z.string().datetime().optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const designBranchRecordBundleSchema = z.object({
+  format: z.literal('foundry.design-branch-records'),
+  version: z.literal(1),
+  exportedAt: z.string().datetime(),
+  records: z.array(designBranchRecordSchema).max(100),
 });
 
 export const verificationResultSchema = z.object({
@@ -389,6 +497,118 @@ export const applyRunSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const visualAgentContextTargetSchema = z.object({
+  id: z.string().min(1),
+  selector: z.string().min(1),
+  label: z.string().min(1),
+  kind: z.string().min(1),
+  component: z.string().nullable().optional(),
+  source: z.string().optional(),
+  confidence: confidenceSchema,
+  geometry: geometrySchema,
+  measurements: z.record(z.string(), changeValueSchema).default({}),
+});
+
+export const visualAgentCommentSchema = z.object({
+  id: z.string().min(1),
+  body: z.string().min(1).max(2000),
+  targetId: z.string().optional(),
+  regionId: z.string().optional(),
+  createdAt: z.string().datetime(),
+});
+
+export const visualAgentContextSchema = z.object({
+  targets: z.array(visualAgentContextTargetSchema).default([]),
+  region: z
+    .object({
+      id: z.string().min(1),
+      x: z.number().finite(),
+      y: z.number().finite(),
+      width: z.number().nonnegative().finite(),
+      height: z.number().nonnegative().finite(),
+      label: z.string().default('Canvas region'),
+    })
+    .optional(),
+  comments: z.array(visualAgentCommentSchema).default([]),
+  viewport: z.object({ width: z.number().positive(), height: z.number().positive() }),
+  breakpoint: z.string().default('current'),
+  theme: z.string().default('current'),
+  state: z.string().default('current'),
+  tokens: z.array(designTokenSchema).default([]),
+  designGraphRevision: z.string().optional(),
+});
+
+export const visualAgentProposalSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(80),
+  summary: z.string().min(1).max(2000),
+  reasoning: z.array(z.string().min(1)).default([]),
+  exactValues: z.array(z.string().min(1)).default([]),
+  sourceLocations: z.array(z.string().min(1)).default([]),
+  responsiveImpact: z.string().min(1).max(2000),
+  verificationPlan: z.array(z.string().min(1)).default([]),
+  changes: z.array(designChangeSchema).default([]),
+  branchId: z.string().optional(),
+  status: z.enum(['proposed', 'previewing', 'promoted', 'rejected']).default('proposed'),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const visualAgentMessageSchema = z.object({
+  id: z.string().min(1),
+  role: z.enum(['user', 'agent', 'system']),
+  body: z.string().min(1),
+  createdAt: z.string().datetime(),
+});
+
+export const visualAgentRequestSchema = z.object({
+  id: z.string().min(1),
+  sessionId: z.string().min(1),
+  title: z.string().min(1).max(120),
+  prompt: z.string().min(1).max(8000),
+  status: z.enum(['queued', 'thinking', 'ready', 'needs_attention', 'closed']),
+  context: visualAgentContextSchema,
+  messages: z.array(visualAgentMessageSchema).default([]),
+  proposals: z.array(visualAgentProposalSchema).default([]),
+  agent: z
+    .object({
+      name: z.string().min(1),
+      version: z.string().optional(),
+      taskId: z.string().optional(),
+    })
+    .optional(),
+  claimAttemptId: z.string().optional(),
+  claimExpiresAt: z.string().datetime().optional(),
+  error: z.string().optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const stressConditionIdSchema = z.enum([
+  'long-content',
+  'empty-content',
+  'large-numbers',
+  'missing-images',
+  'loading-state',
+  'error-state',
+  'offline-state',
+  'text-200',
+  'browser-zoom-200',
+  'high-contrast',
+  'monochrome',
+  'reduced-motion',
+  'keyboard-only',
+]);
+
+export const stressTestSessionSchema = z.object({
+  conditions: z.array(stressConditionIdSchema).default([]),
+  scope: z.enum(['selection', 'canvas']).default('selection'),
+  targetId: z.string().optional(),
+  viewport: z.object({ width: z.number().positive(), height: z.number().positive() }),
+  temporary: z.literal(true),
+  appliedAt: z.string().datetime(),
+});
+
 export const surfaceSnapshotSchema = z.object({
   platform: z.enum(['swiftui', 'react-native']),
   width: z.number().positive(),
@@ -410,6 +630,7 @@ export const previewCommandSchema = z.object({
 
 export type Platform = z.infer<typeof platformSchema>;
 export type ChangeCategory = z.infer<typeof changeCategorySchema>;
+export type SourceRef = z.infer<typeof sourceRefSchema>;
 export type SessionContext = z.infer<typeof sessionContextSchema>;
 export type TargetRef = z.infer<typeof targetRefSchema>;
 export type ControlDescriptor = z.infer<typeof controlDescriptorSchema>;
@@ -417,6 +638,8 @@ export type DesignChange = z.infer<typeof designChangeSchema>;
 export type DesignChangeInput = z.input<typeof designChangeSchema>;
 export type DesignToken = z.infer<typeof designTokenSchema>;
 export type ComponentDefinition = z.infer<typeof componentDefinitionSchema>;
+export type ComponentVariantAxis = z.infer<typeof componentVariantAxisSchema>;
+export type ContainerQueryDefinition = z.infer<typeof containerQueryDefinitionSchema>;
 export type StateDefinition = z.infer<typeof stateDefinitionSchema>;
 export type BreakpointDefinition = z.infer<typeof breakpointDefinitionSchema>;
 export type ThemeDefinition = z.infer<typeof themeDefinitionSchema>;
@@ -424,16 +647,28 @@ export type MotionPreset = z.infer<typeof motionPresetSchema>;
 export type ProjectDesignGraph = z.infer<typeof projectDesignGraphSchema>;
 export type DesignTokenUsage = z.infer<typeof designTokenUsageSchema>;
 export type DesignSystemFinding = z.infer<typeof designSystemFindingSchema>;
+export type TokenPromotionCandidate = z.infer<typeof tokenPromotionCandidateSchema>;
 export type SourceMappingCandidate = z.infer<typeof sourceMappingCandidateSchema>;
 export type DesignOperation = z.infer<typeof designOperationSchema>;
 export type DesignOperationInput = z.input<typeof designOperationSchema>;
 export type ChangeSet = z.infer<typeof changeSetSchema>;
 export type DesignBranch = z.infer<typeof designBranchSchema>;
+export type DesignBranchRecordSource = z.infer<typeof designBranchRecordSourceSchema>;
+export type DesignBranchRecord = z.infer<typeof designBranchRecordSchema>;
+export type DesignBranchRecordBundle = z.infer<typeof designBranchRecordBundleSchema>;
 export type VerificationResult = z.infer<typeof verificationResultSchema>;
 export type ApplyRunState = z.infer<typeof applyRunStateSchema>;
 export type ApplyRunMessage = z.infer<typeof applyRunMessageSchema>;
 export type ValidationResult = z.infer<typeof validationResultSchema>;
 export type ApplyRun = z.infer<typeof applyRunSchema>;
+export type VisualAgentContextTarget = z.infer<typeof visualAgentContextTargetSchema>;
+export type VisualAgentComment = z.infer<typeof visualAgentCommentSchema>;
+export type VisualAgentContext = z.infer<typeof visualAgentContextSchema>;
+export type VisualAgentProposal = z.infer<typeof visualAgentProposalSchema>;
+export type VisualAgentMessage = z.infer<typeof visualAgentMessageSchema>;
+export type VisualAgentRequest = z.infer<typeof visualAgentRequestSchema>;
+export type StressConditionId = z.infer<typeof stressConditionIdSchema>;
+export type StressTestSession = z.infer<typeof stressTestSessionSchema>;
 export type SurfaceSnapshot = z.infer<typeof surfaceSnapshotSchema>;
 export type PreviewCommand = z.infer<typeof previewCommandSchema>;
 

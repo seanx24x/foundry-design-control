@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   availableWorkshopScopes,
+  componentVariantDrift,
   componentWorkshopStates,
+  createComponentVariantDraft,
   normalizeWorkshopComponents,
   sourceLabel,
 } from './component-workshop.js';
@@ -79,5 +81,81 @@ test('keeps broader scopes read-only until source mapping is available', () => {
   assert.deepEqual(
     mapped.map(({ enabled }) => enabled),
     [true, true, true],
+  );
+});
+
+test('creates a source-accountable component variant draft', () => {
+  const [component] = normalizeWorkshopComponents([
+    {
+      id: 'button',
+      name: 'Button',
+      source: { file: 'src/Button.tsx', line: 8 },
+      variantAxes: [
+        {
+          id: 'tone',
+          label: 'Tone',
+          property: 'tone',
+          values: ['primary', 'quiet'],
+          adapter: 'cva',
+          source: { file: 'src/Button.tsx', line: 4 },
+          sourceProperty: 'variants.tone',
+          canCreate: true,
+          evidence: ['CVA variants object'],
+        },
+      ],
+    },
+  ]);
+  const draft = createComponentVariantDraft({
+    component: component!,
+    axisId: 'tone',
+    label: 'Danger',
+    value: 'danger',
+    baseVariantId: 'quiet',
+  });
+  assert.deepEqual(draft, {
+    componentId: 'button',
+    label: 'Danger',
+    property: 'tone',
+    value: 'danger',
+    adapter: 'cva',
+    source: { file: 'src/Button.tsx', line: 4 },
+    sourceProperty: 'variants.tone',
+    baseVariantId: 'quiet',
+  });
+  assert.throws(
+    () =>
+      createComponentVariantDraft({
+        component: component!,
+        axisId: 'tone',
+        label: 'Quiet duplicate',
+        value: 'quiet',
+      }),
+    /already exists/,
+  );
+});
+
+test('finds explicit cross-instance variant drift and ignores unavailable attributes', () => {
+  assert.deepEqual(
+    componentVariantDrift(
+      [
+        { id: 'a', label: 'First', props: { tone: 'primary', size: 'medium' } },
+        { id: 'b', label: 'Second', props: { tone: 'quiet', size: 'medium' } },
+        { id: 'c', label: 'Uninstrumented', props: {} },
+      ],
+      {
+        id: 'primary',
+        name: 'Primary',
+        props: { tone: 'primary', size: 'medium' },
+      },
+    ),
+    [
+      {
+        instanceId: 'b',
+        label: 'Second',
+        property: 'tone',
+        expected: 'primary',
+        actual: 'quiet',
+      },
+    ],
   );
 });

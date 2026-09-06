@@ -14,10 +14,10 @@ Resolve `<skill-root>` to the directory containing this `SKILL.md` before runnin
 1. Inspect the project, current worktree, framework, development command, and existing Foundry configuration.
 2. Run `<skill-root>/scripts/foundry.sh doctor --project <root>`.
 3. If setup is absent, stale, or Doctor reports a missing or conflicting connection, read [platform-setup.md](references/platform-setup.md), then run `<skill-root>/scripts/foundry.sh doctor --project <root> --repair`. Repair refreshes both project-scoped and shared agent configuration to the same exact release. It is transactional, validates the project, and restores every touched file if Foundry introduces a failure.
-4. Confirm that `foundry_design_wait_for_apply` is callable before promising Apply with agent. If setup just added MCP configuration but the tool is unavailable in the current process, stop and ask the user to restart their coding agent and reopen the same project root. Do not start a session or describe the connection as ready.
+4. Confirm that `foundry_design_wait_for_work` or the legacy `foundry_design_wait_for_apply` is callable before promising agent collaboration. If setup just added MCP configuration but neither tool is available in the current process, stop and ask the user to restart their coding agent and reopen the same project root. Do not start a session or describe the connection as ready.
 5. Run `<skill-root>/scripts/foundry.sh start --project <root>`. It may start the detected development command and resumes the most recent session for the same source revision. Use `--new` only when the user explicitly wants a clean ledger.
-6. Read the project design graph, then immediately call `foundry_design_wait_for_apply` in bounded waits using the returned session credentials and current revisions. This call publishes the agent-listener heartbeat that unlocks Apply with agent in the browser. Repeat the wait while the session is active. Do not finish the turn merely because one wait returns `waiting`; the browser cannot initiate a new agent turn by itself.
-7. Keep the Foundry runtime and apply listener alive while the user selects and refines elements. End the wait loop only when the user exits Foundry, cancels the workflow, or asks to stop.
+6. Read the project design graph, then immediately call `foundry_design_wait_for_work` in bounded waits using the returned session credentials and current revisions. This one listener receives reviewed Apply runs and grounded Visual Agent requests. Fall back to `foundry_design_wait_for_apply` only when the unified tool is unavailable. Repeat the wait while the session is active. Do not finish the turn merely because one wait returns `waiting`; the browser cannot initiate a new agent turn by itself.
+7. Keep the Foundry runtime and agent listener alive while the user selects, discusses, and refines elements. End the wait loop only when the user exits Foundry, cancels the workflow, or asks to stop.
 
 In web sessions, selection mode stays active so ordinary clicks can move continuously between elements. Inspector categories filter the selected element's controls without changing selection mode. Switch the pointer tool to interaction mode only when testing the underlying app; Option-click still makes a temporary selection there. Repeating a click cycles overlapping layers, and Option-click prioritizes the strongest mapped or semantic target. Use the Layers panel or the Parent and Child controls for obscured and nested targets. Shift-click builds a multi-selection and exposes measured gaps when the layers share a parent.
 
@@ -33,7 +33,7 @@ When the user asks to inspect, scrub, preview, or edit rendered motion, read [mo
 
 When the user asks to audit, preview, or change fonts, type rhythm, scale, or reusable type styles, read [typography-studio.md](references/typography-studio.md). Keep local fonts preview-only, require an explicit integration strategy for new Google Fonts, and validate reviewed typography across the recorded viewport, theme, and state contexts.
 
-When the user asks to explore, compare, combine, reject, or choose parallel visual directions, read [design-branches.md](references/design-branches.md). Keep every direction isolated from Main, switch preview values reversibly, and require explicit promotion before anything enters Review and apply.
+When the user asks to explore, compare, combine, reject, choose, export, import, or restore parallel visual directions, read [design-branches.md](references/design-branches.md). For portable chosen and rejected outcomes, also read [portable-branch-records.md](references/portable-branch-records.md). Keep every direction isolated from Main, switch preview values reversibly, require explicit promotion before anything enters Review and apply, and never turn a portable record into Design Memory without a separate user action.
 
 When the user runs Design Health or asks to correct its findings, read [design-health.md](references/design-health.md). Preserve evidence-only findings when Foundry cannot propose a narrow, reversible preview.
 
@@ -52,13 +52,17 @@ Do not launch Foundry merely because a task contains design work. Require an exp
 
 Read [change-contract.md](references/change-contract.md) when interpreting or troubleshooting a change set.
 
+## Discuss a visual request
+
+When `foundry_design_wait_for_work` returns `kind: visual_request`, read [visual-agent-conversation.md](references/visual-agent-conversation.md). Ground the response in the attached rendered targets or region, source locations, viewport, theme, state, measurements, project tokens, and contextual comments. Return concrete proposals through `foundry_design_respond_to_visual_request`, then resume the unified listener. Never edit source from a proposal. Only a proposal the user previews, promotes to Review, and applies through a reviewed Apply run authorizes source work.
+
 ## Apply the reviewed batch
 
 1. Read the project design graph with `foundry_design_get_project_design`.
-2. For an interactive web session, keep calling `foundry_design_wait_for_apply` in bounded waits as soon as Foundry starts. Include the current source revision, design-graph revision, and agent identity. A reviewed run may already be queued while the agent was offline. A `waiting` result means poll again while the session remains active, not that the workflow is complete.
+2. For an interactive session, keep calling `foundry_design_wait_for_work` in bounded waits as soon as Foundry starts. Include the current source revision, design-graph revision, and agent identity. A reviewed run or visual request may already be queued while the agent was offline. A `waiting` result means poll again while the session remains active, not that the workflow is complete.
 3. If a run is claimed, retain its `claimAttemptId`, read [apply-run-contract.md](references/apply-run-contract.md), and follow its state transitions. Do not edit from an unreviewed draft ledger.
 4. Immediately report `applying` with the current `claimAttemptId`, then reinspect current source before editing. The MCP bridge automatically renews a fresh claim while this turn is inspecting prerequisites, but do not rely on that as a progress state. If a long prerequisite prevents the transition, explicitly extend the lease with `foundry_design_heartbeat_apply_run` while the run remains `claimed`.
-5. Stop if the claim is no longer active or the source inspection finds a stale revision, stale graph, unresolved target, or unresolved operation. Return to `foundry_design_wait_for_apply` when Foundry has safely requeued an abandoned handoff.
+5. Stop if the claim is no longer active or the source inspection finds a stale revision, stale graph, unresolved target, or unresolved operation. Return to `foundry_design_wait_for_work` when Foundry has safely requeued an abandoned handoff.
 6. Implement the user's selected semantic mapping at the narrowest source of truth.
 7. Preserve existing tokens and component conventions. Prefer a matching token over a new literal. Do not invent a global token for an instance-scoped adjustment.
 8. Apply the batch as a normal, reviewable source diff. Never write generated preview styles into production code.

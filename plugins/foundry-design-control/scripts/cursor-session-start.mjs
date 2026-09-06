@@ -20,7 +20,7 @@ try {
   process.stdout.write(
     JSON.stringify({
       additional_context:
-        'This workspace is configured for Foundry Design Control. When the user starts Foundry or submits a reviewed batch, use the foundry-design-control skill and keep wait_for_apply_request active until the user stops the session.',
+        'This workspace is configured for Foundry Design Control. When the user starts Foundry, submits a visual question, or submits a reviewed batch, use the foundry-design-control skill and keep foundry_design_wait_for_work active until the user stops the session.',
     }),
   );
 } catch {

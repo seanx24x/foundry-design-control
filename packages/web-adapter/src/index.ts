@@ -37,19 +37,30 @@ import {
   type BrowserMappingCandidate,
 } from './semantic.js';
 import {
+  addDesignDecision,
   addRecipe,
   addVerifiedBaseline,
   baselineForContext,
   emptyDesignMemory,
   readDesignMemory,
+  removeDesignDecision,
   removeRecipe,
+  updateDesignDecision,
   writeDesignMemory,
   type ProjectDesignMemory,
   type VerifiedBaseline,
 } from './design-memory.js';
+import { decisionCategories, relevantDesignDecisions } from './design-decisions.js';
+import { assessRecipe, recipeCategories } from './visual-recipes.js';
 import { renderKeylineIcons } from './keyline-icons.js';
 import { FOUNDRY_UI_FOUNDATION_CSS } from './ui-foundations.js';
 import { createSafeDiagnostics } from './diagnostics.js';
+import {
+  STRESS_CONDITIONS,
+  normalizeStressConditions,
+  type StressConditionId,
+  type StressScope,
+} from './stress-testing.js';
 import { applyRunAction, applyRunMessage, isActiveApplyRun } from './apply-run.js';
 import {
   DEFAULT_WORKSPACE_STATE,
@@ -63,13 +74,16 @@ import {
 } from './workspace.js';
 import {
   availableWorkshopScopes,
+  componentVariantDrift,
   componentWorkshopStates,
+  createComponentVariantDraft,
   normalizeWorkshopComponents,
   sourceLabel as workshopSourceLabel,
   type ComponentWorkshopDefinition,
   type ComponentWorkshopScope,
   type ComponentWorkshopState,
   type ComponentWorkshopVariant,
+  type ComponentWorkshopSource,
 } from './component-workshop.js';
 import {
   blurAmount,
@@ -116,10 +130,28 @@ import {
   discoverElementMotion,
   editableKeyframes,
   findDiscoveredMotion,
+  motionCurveSnapshot,
   motionKeyframeValue,
   motionKeyframes,
+  motionPathSnapshot,
+  normalizeCubicBezier,
+  normalizeSpring,
+  parseMotionCurve,
+  replaceMotionTranslation,
   updateMotionKeyframe,
   type DiscoveredMotion,
+  type MotionCurve,
+  type MotionCurveSnapshot,
+  type MotionKeyframe,
+  type NativeMotionAuthoring,
+} from './motion.js';
+
+export { nativeMotionBinding, registerNativeMotion } from './motion.js';
+export type {
+  NativeMotionAdapter,
+  NativeMotionBinding,
+  NativeMotionInput,
+  NativeMotionSource,
 } from './motion.js';
 
 export interface FoundryInspectorOptions {
@@ -244,7 +276,12 @@ const CONTROL_SECTIONS: Partial<Record<Category, ControlSection[]>> = {
       label: 'Margin',
       properties: ['marginTop', 'marginRight', 'marginBottom', 'marginLeft'],
       columns: 2,
-      prefixes: { marginTop: 'T', marginRight: 'R', marginBottom: 'B', marginLeft: 'L' },
+      prefixes: {
+        marginTop: 'T',
+        marginRight: 'R',
+        marginBottom: 'B',
+        marginLeft: 'L',
+      },
     },
   ],
   typography: [
@@ -267,7 +304,11 @@ const CONTROL_SECTIONS: Partial<Record<Category, ControlSection[]>> = {
   ],
   color: [
     { label: 'Appearance', properties: ['opacity'] },
-    { label: 'Fill', properties: ['color', 'backgroundColor', 'backgroundImage'], stacked: true },
+    {
+      label: 'Fill',
+      properties: ['color', 'backgroundColor', 'backgroundImage'],
+      stacked: true,
+    },
   ],
   effects: [
     {
@@ -374,6 +415,7 @@ const PANEL_CSS = `
   .layers-switch { display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-bottom:1px solid var(--fdc-line);background:var(--fdc-paper); }.layers-switch button { min-width:0;height:28px;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 8px;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);font-size:12px;cursor:pointer; }.layers-switch button:hover { color:var(--fdc-ink);background:white; }.layers-switch button.active { color:var(--fdc-ink);background:white;box-shadow:0 0 0 1px var(--fdc-line),0 1px 4px rgb(0 0 0 / 5%); }.layers-switch button span { min-width:16px;height:16px;display:grid;place-items:center;padding:0 4px;border-radius:1000px;background:var(--fdc-subtle);color:#747474;font-size:8px; }.layers-switch button[data-layer-view="components"].active { color:var(--fdc-ink); }.layers-switch button[data-layer-view="components"].active span { color:var(--fdc-ink);background:var(--fdc-component-soft); }.component-list { display:grid;gap:4px;padding:4px; }.component-card { overflow:hidden;border:1px solid var(--fdc-line);border-radius:8px;background:white; }.component-card:hover { border-color:var(--fdc-line-strong);box-shadow:0 4px 8px rgb(0 0 0 / 6%); }.component-card.selected { border-color:var(--fdc-ink);background:var(--fdc-subtle);box-shadow:0 0 0 4px rgb(0 0 0 / 8%); }.component-main { width:100%;min-height:52px;display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px 8px;border:0;background:transparent;color:var(--fdc-ink);text-align:left;cursor:pointer; }.component-main:disabled { cursor:default; }.component-mark { width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:var(--fdc-component);background:var(--fdc-component-soft); }.component-mark svg { width:16px;height:16px; }.component-copy { min-width:0; }.component-copy strong,.component-copy span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-copy strong { font-size:12px;font-weight:550; }.component-copy span { margin-top:4px;color:var(--fdc-muted);font-size:8px; }.component-status { display:flex;flex-direction:column;align-items:flex-end;gap:4px; }.component-status span { padding:4px 4px;border-radius:1000px;color:var(--fdc-ink);background:var(--fdc-component-soft);font-size:8px;white-space:nowrap; }.component-status small { color:#8b8b8b;font-size:8px;white-space:nowrap; }.component-variants { display:flex;gap:4px;overflow:hidden;padding:0 8px 8px 44px; }.component-variants span { max-width:88px;overflow:hidden;text-overflow:ellipsis;padding:4px 4px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-muted);background:var(--fdc-paper);font-size:8px;white-space:nowrap; }
   .layer-tree { position:relative;scrollbar-gutter:stable; }.layer-selection-glide { position:absolute;z-index:0;top:0;right:4px;left:4px;height:32px;border:1px solid rgb(72 132 220 / 22%);border-radius:8px;background:var(--fdc-signal-soft);transform:translateY(var(--layer-glide-y));transition:transform .24s cubic-bezier(.16,1,.3,1),height .18s cubic-bezier(.16,1,.3,1);pointer-events:none; }.layer-row { position:relative;z-index:1;grid-template-columns:16px minmax(0,1fr);gap:1px;padding-right:4px;cursor:default; }.layer-row.entering { animation:layer-row-enter .22s cubic-bezier(.16,1,.3,1) both;animation-delay:min(calc(var(--layer-position) * 18ms),90ms); }.layer-row.selected { background:transparent; }.layer-row.dragging { opacity:.45; }.layer-row.drop-target { box-shadow:inset 0 4px 0 var(--fdc-signal); }.layer-branch { position:absolute;z-index:-1;top:-1px;bottom:-1px;left:var(--layer-branch-left);width:1px;background:var(--fdc-line);transform-origin:top;animation:layer-branch-draw .28s cubic-bezier(.16,1,.3,1) both;pointer-events:none; }.layer-spacer { width:1px;pointer-events:none; }.layer-toggle { width:16px;height:28px;display:grid;place-items:center;padding:0;border:0;background:transparent;color:#858585;cursor:pointer;transition:color .16s ease; }.layer-toggle:hover { color:var(--fdc-ink); }.layer-toggle:disabled { visibility:hidden; }.layer-toggle svg { width:12px;height:12px;transition:transform .24s cubic-bezier(.16,1,.3,1); }.layer-select { min-width:0;height:28px;display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:4px;padding:0 4px;border:0;border-radius:4px;background:transparent;color:inherit;text-align:left;cursor:pointer;outline:none; }.layer-select:focus-visible { box-shadow:inset 0 0 0 1px var(--fdc-signal); }.layer-select:active .layer-icon { transform:scale(.88); }.layer-icon { transition:color .16s ease,transform .16s cubic-bezier(.16,1,.3,1); }@keyframes layer-row-enter { from { opacity:0;transform:translateY(-4px); } to { opacity:1;transform:translateY(0); } }@keyframes layer-branch-draw { from { opacity:0;transform:scaleY(0); } to { opacity:1;transform:scaleY(1); } }
   .health-panel { position:fixed;z-index:2147483646;top:12px;left:12px;width:304px;max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--fdc-line);border-radius:12px;background:var(--fdc-surface);box-shadow:0 1px 4px rgb(0 0 0 / 5%),0 12px 28px rgb(0 0 0 / 10%);pointer-events:auto; }.health-panel[hidden] { display:none; }.health-head { min-height:48px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line); }.health-head>svg { width:16px;height:16px; }.health-head strong { font-size:12px;font-weight:550; }.health-head .icon-button { margin-left:auto; }.health-summary { display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;padding:12px;border-bottom:1px solid var(--fdc-line); }.health-score { width:56px;height:56px;display:grid;place-items:center;border-radius:50%;background:conic-gradient(var(--score-color) calc(var(--score) * 1%),#ececec 0); }.health-score::before { content:"";grid-area:1/1;width:44px;height:44px;border-radius:50%;background:white; }.health-score strong { z-index:1;grid-area:1/1;font-size:16px;font-weight:600; }.health-summary-copy { min-width:0;align-self:center; }.health-summary-copy strong { display:block;font-size:12px;font-weight:550; }.health-summary-copy span { display:block;margin-top:4px;color:var(--fdc-muted);font-size:8px;line-height:1.4; }.health-filters { display:flex;gap:4px;padding:8px 8px;border-bottom:1px solid var(--fdc-line);background:var(--fdc-paper); }.health-filters button { min-height:28px;padding:0 8px;border:1px solid transparent;border-radius:4px;background:transparent;color:#666;font-size:8px;cursor:pointer; }.health-filters button:hover,.health-filters button.active { border-color:var(--fdc-line);background:white;color:var(--fdc-ink); }.health-list { min-height:120px;overflow:auto;padding:8px; }.health-card { padding:12px;border:1px solid var(--fdc-line);border-radius:8px;background:white; }.health-card+.health-card { margin-top:8px; }.health-card-top { display:flex;align-items:center;gap:8px; }.health-severity { width:8px;height:8px;flex:none;border-radius:50%;background:#a3a3a3; }.health-severity.high { background:#d15d43; }.health-severity.medium { background:#d69b3c; }.health-severity.low { background:#4b84cb; }.health-card-top strong { min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:550;white-space:nowrap; }.health-card-top span:last-child { margin-left:auto;color:var(--fdc-muted);font-size:8px;text-transform:capitalize; }.health-card p { margin:8px 0 0;color:#5d5d5d;font-size:8px;line-height:1.45; }.health-evidence { margin-top:8px;padding:8px;border-radius:4px;background:var(--fdc-paper);color:#777;font-size:8px;line-height:1.4; }.health-actions { display:flex;gap:4px;margin-top:8px; }.health-actions button { min-height:28px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#555;font-size:8px;cursor:pointer; }.health-actions button:hover { border-color:#c8c8c8;color:var(--fdc-ink); }.health-actions .health-fix { margin-left:auto;color:white;border-color:var(--fdc-ink);background:var(--fdc-ink); }.health-actions .health-fix.previewed { color:#23715c;border-color:#bcded2;background:#edf8f4;cursor:default; }.health-actions .health-fix:disabled { opacity:1; }.health-actions .health-ignore { padding:0 8px;color:#888;border-color:transparent; }.health-footer { display:flex;align-items:center;gap:4px;padding:8px;border-top:1px solid var(--fdc-line); }.health-footer button { min-height:32px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#555;font-size:8px;cursor:pointer; }.health-footer .health-rescan { flex:1;color:white;border-color:var(--fdc-ink);background:var(--fdc-ink); }.health-empty { padding:36px 20px;text-align:center;color:var(--fdc-muted);font-size:12px;line-height:1.5; }.health-empty svg { display:block;width:24px;height:24px;margin:0 auto 12px;color:#2b9a76; }
+  .health-stress { padding:8px;border-bottom:1px solid var(--fdc-line);background:var(--fdc-paper); }.health-stress-head { display:flex;align-items:center;justify-content:space-between;min-height:24px;padding:0 4px 4px; }.health-stress-head strong { font-size:12px;font-weight:550; }.health-stress-head span { color:var(--fdc-muted);font:400 8px/1 var(--fdc-font-mono); }.health-stress-scope { display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;padding:4px;border-radius:4px;background:var(--fdc-subtle); }.health-stress-scope button,.health-stress-options button { min-height:28px;padding:0 8px;border:1px solid transparent;border-radius:4px;color:var(--fdc-muted);background:transparent;font-size:8px;cursor:pointer; }.health-stress-scope button.active,.health-stress-options button.active { color:var(--fdc-ink);border-color:var(--fdc-line);background:var(--fdc-surface); }.health-stress-options { max-height:96px;display:flex;flex-wrap:wrap;gap:4px;overflow:auto;padding:4px 0; }.health-stress-actions { display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px; }.health-stress-actions button { min-height:28px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-ink);background:var(--fdc-surface);font-size:8px;cursor:pointer; }.health-stress-actions button:last-child { color:var(--fdc-paper);border-color:var(--fdc-ink);background:var(--fdc-ink); }
   .tool-select:disabled { color:#b6b6b6;cursor:default; }.tool-select:disabled:hover { background:transparent; }
   .token-row { grid-column:2;display:flex;flex-wrap:wrap;gap:4px;margin-top:8px; }.token-chip { height:24px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:1000px;background:var(--fdc-paper);color:#4d4d4d;font-size:8px;cursor:pointer; }.token-chip:hover { border-color:#b7d5ff;color:#0761d1;background:#edf6ff; }
   .section-head .section-action { width:24px;height:24px;display:grid;place-items:center;margin-left:auto;padding:0;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.section-head .section-action:hover,.section-head .section-action.active { color:var(--fdc-signal);background:#edf6ff; }.section-head .section-action svg { width:12px;height:12px; }
@@ -390,7 +432,7 @@ const PANEL_CSS = `
   .review-visual { display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px; }.review-sample { position:relative;min-height:36px;display:grid;place-items:center;overflow:hidden;border:1px solid var(--fdc-line);border-radius:4px;background:#fafafa;color:#777;font-size:8px; }.review-sample::after { content:attr(data-label);position:absolute;left:4px;bottom:4px;padding:4px 4px;border-radius:4px;background:rgb(255 255 255 / 84%);color:#777;font-size:8px; }.review-sample>i { width:32px;height:16px;display:block;border:1px solid #bbb;background:var(--sample-color,#e8e8e8);border-radius:var(--sample-radius,4px);transform:scale(var(--sample-scale,1)); }.review-card.locating { background:#f5f9ff; }.review-group-title .included-count { margin-left:auto;color:#23715c; }.review-group-title .group-total { margin-left:4px; }.baseline-badge { display:inline-flex;align-items:center;gap:4px;margin-top:8px;padding:4px 8px;border-radius:4px;color:#23715c;background:#edf8f4;font-size:8px; }.baseline-badge::before { content:"";width:4px;height:4px;border-radius:50%;background:#2ca67f; }
   .workbench-matrix { display:grid;grid-template-columns:92px repeat(var(--matrix-columns),minmax(112px,1fr));gap:1px;width:min(900px,100%);margin:0 auto 24px;padding:1px;background:#303030;border-radius:8px;overflow:hidden; }.matrix-cell { min-height:52px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;padding:8px;border:0;background:#1d1d1d;color:#ddd;font-size:8px;text-align:left;cursor:pointer; }.matrix-cell:hover { background:#252525; }.matrix-cell.header { min-height:32px;color:#888;background:#181818;cursor:default; }.matrix-cell strong { font-size:8px;font-weight:500; }.matrix-cell span { color:#777;font-size:8px; }.matrix-cell.verified span { color:#68caa8; }.workbench-stage.matrix-mode { display:block; }.workbench-stage.matrix-mode .frame-shell { margin:0 auto; }
   .component-actions { display:flex;gap:4px;padding:0 8px 8px 44px; }.component-actions button,.component-variants button { height:24px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-ink);background:var(--fdc-paper);font-size:8px;cursor:pointer; }.component-actions button:hover,.component-variants button:hover { border-color:var(--fdc-line-strong);background:var(--fdc-subtle); }
-  .component-workshop-panel { width:384px;display:flex;flex-direction:column;overflow:hidden;color:var(--fdc-ink);background:var(--fdc-surface);border:1px solid var(--fdc-line);border-radius:12px;pointer-events:auto; }.component-workshop-head { min-height:48px;display:grid;grid-template-columns:24px minmax(0,1fr) 32px;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line); }.component-workshop-head>svg { width:20px;height:20px;color:var(--fdc-muted); }.component-workshop-head strong,.component-workshop-head span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-workshop-head strong { font-size:12px;font-weight:550; }.component-workshop-head span { margin-top:4px;color:var(--fdc-muted);font-size:8px; }.component-workshop-body { min-height:0;flex:1;overflow:auto; }.component-workshop-empty { padding:40px 20px;color:var(--fdc-muted);font-size:12px;line-height:1.5;text-align:center; }.component-workshop-section { padding:12px;border-bottom:1px solid var(--fdc-line); }.component-workshop-section>header { display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:12px; }.component-workshop-section>header strong { font-size:12px;font-weight:550; }.component-workshop-section>header span { color:var(--fdc-muted);font:400 8px/1.4 var(--fdc-font-mono);text-align:right; }.component-workshop-picker { display:grid;gap:8px;padding:12px;border-bottom:1px solid var(--fdc-line); }.component-workshop-picker label { color:var(--fdc-muted);font-size:12px; }.component-workshop-picker .fdc-select { margin-top:8px; }.component-workshop-meta { display:grid;grid-template-columns:1fr 1fr;gap:8px; }.component-workshop-stat { min-width:0;padding:8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.component-workshop-stat strong,.component-workshop-stat span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-workshop-stat strong { font:550 12px/1.2 var(--fdc-font); }.component-workshop-stat span { margin-top:4px;color:var(--fdc-muted);font:400 8px/1.4 var(--fdc-font-mono); }.component-workshop-scope,.component-workshop-states { display:grid;grid-template-columns:repeat(3,1fr);gap:4px; }.component-workshop-scope button,.component-workshop-states button,.component-workshop-variant,.component-workshop-instance { min-width:0;min-height:36px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-muted);background:var(--fdc-paper);font-size:12px;cursor:pointer; }.component-workshop-scope button:hover:not(:disabled),.component-workshop-states button:hover:not(:disabled),.component-workshop-variant:hover:not(:disabled),.component-workshop-instance:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.component-workshop-scope button.active,.component-workshop-states button.active,.component-workshop-variant.active,.component-workshop-instance.active { color:var(--fdc-ink);border-color:var(--fdc-ink);background:var(--fdc-subtle); }.component-workshop-scope button:disabled,.component-workshop-variant:disabled { opacity:.4;cursor:not-allowed; }.component-workshop-scope-note,.component-workshop-state-note { display:block;margin-top:8px;color:var(--fdc-muted);font-size:8px;line-height:1.45; }.component-workshop-variants,.component-workshop-instances { display:grid;gap:4px; }.component-workshop-variant,.component-workshop-instance { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;text-align:left; }.component-workshop-variant span,.component-workshop-instance span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-workshop-variant code,.component-workshop-instance code { margin-left:8px;color:var(--fdc-muted);font:400 8px/1 var(--fdc-font-mono); }.component-workshop-states { grid-template-columns:repeat(2,1fr); }.component-workshop-state-signal { width:8px;height:8px;margin-right:8px;display:inline-block;border-radius:50%;background:var(--fdc-muted); }.component-workshop-states button[data-confidence="instrumented"] .component-workshop-state-signal { background:#2ca67f; }.component-workshop-actions { display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px; }.component-workshop-actions button { min-height:36px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-paper);font-size:12px;cursor:pointer; }.component-workshop-actions button.primary { color:var(--fdc-paper);background:var(--fdc-ink);border-color:var(--fdc-ink); }
+  .component-workshop-panel { width:384px;display:flex;flex-direction:column;overflow:hidden;color:var(--fdc-ink);background:var(--fdc-surface);border:1px solid var(--fdc-line);border-radius:12px;pointer-events:auto; }.component-workshop-head { min-height:48px;display:grid;grid-template-columns:24px minmax(0,1fr) 32px;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line); }.component-workshop-head>svg { width:20px;height:20px;color:var(--fdc-muted); }.component-workshop-head strong,.component-workshop-head span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-workshop-head strong { font-size:12px;font-weight:550; }.component-workshop-head span { margin-top:4px;color:var(--fdc-muted);font-size:8px; }.component-workshop-body { min-height:0;flex:1;overflow:auto; }.component-workshop-empty { padding:40px 20px;color:var(--fdc-muted);font-size:12px;line-height:1.5;text-align:center; }.component-workshop-section { padding:12px;border-bottom:1px solid var(--fdc-line); }.component-workshop-section>header { display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:12px; }.component-workshop-section>header strong { font-size:12px;font-weight:550; }.component-workshop-section>header span { color:var(--fdc-muted);font:400 8px/1.4 var(--fdc-font-mono);text-align:right; }.component-workshop-picker { display:grid;gap:8px;padding:12px;border-bottom:1px solid var(--fdc-line); }.component-workshop-picker label { color:var(--fdc-muted);font-size:12px; }.component-workshop-picker .fdc-select { margin-top:8px; }.component-workshop-meta { display:grid;grid-template-columns:1fr 1fr;gap:8px; }.component-workshop-stat { min-width:0;padding:8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.component-workshop-stat strong,.component-workshop-stat span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-workshop-stat strong { font:550 12px/1.2 var(--fdc-font); }.component-workshop-stat span { margin-top:4px;color:var(--fdc-muted);font:400 8px/1.4 var(--fdc-font-mono); }.component-workshop-scope,.component-workshop-states { display:grid;grid-template-columns:repeat(3,1fr);gap:4px; }.component-workshop-scope button,.component-workshop-states button,.component-workshop-variant,.component-workshop-instance { min-width:0;min-height:36px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-muted);background:var(--fdc-paper);font-size:12px;cursor:pointer; }.component-workshop-scope button:hover:not(:disabled),.component-workshop-states button:hover:not(:disabled),.component-workshop-variant:hover:not(:disabled),.component-workshop-instance:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.component-workshop-scope button.active,.component-workshop-states button.active,.component-workshop-variant.active,.component-workshop-instance.active { color:var(--fdc-ink);border-color:var(--fdc-ink);background:var(--fdc-subtle); }.component-workshop-scope button:disabled,.component-workshop-variant:disabled { opacity:.4;cursor:not-allowed; }.component-workshop-scope-note,.component-workshop-state-note { display:block;margin-top:8px;color:var(--fdc-muted);font-size:8px;line-height:1.45; }.component-workshop-variants,.component-workshop-instances { display:grid;gap:4px; }.component-workshop-variant,.component-workshop-instance { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;text-align:left; }.component-workshop-variant span,.component-workshop-instance span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-workshop-variant code,.component-workshop-instance code { margin-left:8px;color:var(--fdc-muted);font:400 8px/1 var(--fdc-font-mono); }.component-workshop-states { grid-template-columns:repeat(2,1fr); }.component-workshop-state-signal { width:8px;height:8px;margin-right:8px;display:inline-block;border-radius:50%;background:var(--fdc-muted); }.component-workshop-states button[data-confidence="instrumented"] .component-workshop-state-signal { background:#2ca67f; }.component-workshop-actions { display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px; }.component-workshop-actions button { min-height:36px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-paper);font-size:12px;cursor:pointer; }.component-workshop-actions button.primary { color:var(--fdc-paper);background:var(--fdc-ink);border-color:var(--fdc-ink); }.component-workshop-form { display:grid;grid-template-columns:1fr 1fr;gap:8px; }.component-workshop-form label { min-width:0;color:var(--fdc-muted);font-size:8px;line-height:1.4; }.component-workshop-form input,.component-workshop-form select { width:100%;min-height:36px;margin-top:4px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-paper);font:400 12px/1 var(--fdc-font-mono);box-sizing:border-box; }.component-workshop-form>button { grid-column:1/-1;min-height:36px;border:1px solid var(--fdc-ink);border-radius:8px;color:var(--fdc-paper);background:var(--fdc-ink);font-size:12px;cursor:pointer; }.component-workshop-form>button:disabled { opacity:.4;cursor:not-allowed; }.component-workshop-drift[data-drift-count="0"] { background:transparent; }.component-workshop-drift-list { display:grid;gap:4px;margin-bottom:8px; }.component-workshop-drift-list>span { min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.component-workshop-drift-list strong,.component-workshop-drift-list code { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.component-workshop-drift-list strong { font-size:12px;font-weight:500; }.component-workshop-drift-list code { color:var(--fdc-muted);font:400 8px/1.4 var(--fdc-font-mono); }.component-workshop-drift>button { width:100%;min-height:36px;border:1px solid var(--fdc-line);border-radius:8px;color:var(--fdc-ink);background:var(--fdc-paper);font-size:12px;cursor:pointer; }
   .token-provenance { grid-column:2;display:flex;align-items:center;gap:4px;margin-top:4px;color:#23715c;font-size:8px; }.token-provenance.literal { color:#985033; }.token-provenance::before { content:"";width:4px;height:4px;border-radius:50%;background:currentColor; }
   .workbench-matrix[hidden] { display:none; }
   /* Foundry dark instrument theme */
@@ -1311,7 +1353,7 @@ export function installFoundryInspector(
     </aside>
     <aside class="health-panel utility-panel" data-utility="health" aria-label="Design health" hidden>
       <div class="health-head utility-handle"><i data-foundry-icon="activity"></i><strong>Design health</strong><button class="icon-button close-health" aria-label="Close design health"><i data-foundry-icon="x"></i></button></div>
-      <div class="health-summary"></div><div class="health-filters" role="group" aria-label="Filter design health issues"></div><div class="health-list"></div><div class="health-footer"><button class="health-show-ignored" hidden></button><button class="health-rescan">Scan again</button></div><button class="utility-resizer" aria-label="Resize design health"></button>
+      <div class="health-summary"></div><div class="health-stress"></div><div class="health-filters" role="group" aria-label="Filter design health issues"></div><div class="health-list"></div><div class="health-footer"><button class="health-show-ignored" hidden></button><button class="health-rescan">Scan again</button></div><button class="utility-resizer" aria-label="Resize design health"></button>
     </aside>
     <aside class="panel" aria-label="Foundry design inspector">
       <div class="inspector-head"><strong>Inspector</strong><span>Selection properties</span><button class="icon-button toggle-inspector inspector-collapse" aria-label="Close inspector"><i data-foundry-icon="x"></i></button></div>
@@ -1767,6 +1809,7 @@ export function installFoundryInspector(
   const hoverOutline = shadow.querySelector<HTMLElement>('.hover-outline')!;
   const healthPanel = shadow.querySelector<HTMLElement>('.health-panel')!;
   const healthSummary = shadow.querySelector<HTMLElement>('.health-summary')!;
+  const healthStress = shadow.querySelector<HTMLElement>('.health-stress')!;
   const healthFilters = shadow.querySelector<HTMLElement>('.health-filters')!;
   const healthList = shadow.querySelector<HTMLElement>('.health-list')!;
   const scope = shadow.querySelector<HTMLSelectElement>('[data-scope]')!;
@@ -1885,7 +1928,23 @@ export function installFoundryInspector(
   let designGraph: {
     tokens: BrowserDesignToken[];
     components: ComponentWorkshopDefinition[];
-    breakpoints: Array<{ id: string; label: string; width: number; height: number }>;
+    breakpoints: Array<{
+      id: string;
+      label: string;
+      width: number;
+      height: number;
+    }>;
+    containerQueries?: Array<{
+      id: string;
+      label: string;
+      name?: string;
+      condition: string;
+      axis: 'inline-size' | 'block-size' | 'size';
+      minWidth?: number;
+      maxWidth?: number;
+      source: { file: string; line?: number; column?: number };
+      evidence: string[];
+    }>;
     themes: Array<{
       id: string;
       label: string;
@@ -1895,6 +1954,24 @@ export function installFoundryInspector(
     }>;
     states: Array<any>;
     motionPresets: Array<any>;
+    tokenPromotions?: Array<{
+      id: string;
+      value: string;
+      category: string;
+      property: string;
+      occurrenceCount: number;
+      sources: Array<{ file: string; line?: number; column?: number }>;
+      componentIds: string[];
+      recommendation: 'use-existing' | 'create-token';
+      relation: 'exact' | 'near' | 'new';
+      suggestedTokenId?: string;
+      suggestedTokenName: string;
+      suggestedValue: string;
+      aliasChain: string[];
+      canStage: boolean;
+      blockers: string[];
+      evidence: string[];
+    }>;
   } | null = null;
   let workshopComponentId = '';
   let workshopVariantId = '';
@@ -1914,6 +1991,8 @@ export function installFoundryInspector(
     element: HTMLElement;
     elementLabel: string;
     previewed: boolean;
+    source?: string;
+    stressConditions: StressConditionId[];
   }
   const previewHistory: HistoryEntry[] = [];
   let historyCursor = 0;
@@ -2017,14 +2096,131 @@ export function installFoundryInspector(
   let responsiveStressMode = 'none';
   let responsiveStressTextTarget: HTMLElement | null = null;
   let responsiveStressOriginalText = '';
+  let responsiveContainerPreview: {
+    element: HTMLElement;
+    inlineSize: string;
+    maxInlineSize: string;
+    flexBasis: string;
+  } | null = null;
+  let activeStressConditions: StressConditionId[] = [];
+  let activeStressScope: StressScope = 'selection';
+  let stressDraftConditions: StressConditionId[] = [];
+  let stressDraftScope: StressScope = 'selection';
+  let stressAppliedAt = '';
+  let stressRestore: Array<() => void> = [];
   const utilityRects = new Map<Exclude<FoundryUtility, null>, FoundryRect>();
   let workspacePublishFrame = 0;
+  let visualAgentRegion: {
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null = null;
+  let visualAgentRegionCleanup: (() => void) | null = null;
+
+  function captureVisualAgentRegion(): void {
+    visualAgentRegionCleanup?.();
+    const overlay = document.createElement('div');
+    overlay.dataset.foundryAgentRegion = 'true';
+    Object.assign(overlay.style, {
+      position: 'fixed',
+      zIndex: '2147483646',
+      border: '1px solid #3478f6',
+      background: 'rgb(52 120 246 / 10%)',
+      pointerEvents: 'none',
+      display: 'none',
+    });
+    document.body.append(overlay);
+    let start: { x: number; y: number } | null = null;
+    const move = (event: PointerEvent): void => {
+      if (!start) return;
+      const x = Math.min(start.x, event.clientX);
+      const y = Math.min(start.y, event.clientY);
+      const width = Math.abs(event.clientX - start.x);
+      const height = Math.abs(event.clientY - start.y);
+      Object.assign(overlay.style, {
+        display: 'block',
+        left: `${x}px`,
+        top: `${y}px`,
+        width: `${width}px`,
+        height: `${height}px`,
+      });
+    };
+    const cleanup = (): void => {
+      window.removeEventListener('pointerdown', down, true);
+      window.removeEventListener('pointermove', move, true);
+      window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('keydown', keydown, true);
+      overlay.remove();
+      visualAgentRegionCleanup = null;
+      document.documentElement.style.cursor = '';
+    };
+    const down = (event: PointerEvent): void => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      start = { x: event.clientX, y: event.clientY };
+      move(event);
+    };
+    const up = (event: PointerEvent): void => {
+      if (!start) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const x = Math.min(start.x, event.clientX);
+      const y = Math.min(start.y, event.clientY);
+      const width = Math.abs(event.clientX - start.x);
+      const height = Math.abs(event.clientY - start.y);
+      visualAgentRegion =
+        width >= 8 && height >= 8 ? { id: `region_${Date.now()}`, x, y, width, height } : null;
+      cleanup();
+      publishWorkspaceState();
+    };
+    const keydown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      cleanup();
+      publishWorkspaceState();
+    };
+    visualAgentRegionCleanup = cleanup;
+    document.documentElement.style.cursor = 'crosshair';
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('pointermove', move, true);
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('keydown', keydown, true);
+  }
 
   function workspaceSnapshot(): Record<string, unknown> {
     if (!layerEntries.length) discoverLayers();
     const rect = selected?.getBoundingClientRect();
     const selectionStyle = selected ? getComputedStyle(selected) : null;
     const lineHeight = selectionStyle ? Number.parseFloat(selectionStyle.lineHeight) : 0;
+    const decisionEntries = selected
+      ? [
+          ...new Map(
+            previewHistory
+              .slice(0, historyCursor)
+              .filter((entry) => entry.element === selected)
+              .map((entry) => [entry.property, entry]),
+          ).values(),
+        ]
+      : [];
+    const decisionContext = {
+      component: selected?.dataset.foundryComponent,
+      kind: selected?.tagName.toLowerCase(),
+      source: selected?.dataset.foundrySource,
+      properties:
+        decisionEntries.length > 0
+          ? decisionEntries.map((entry) => entry.property)
+          : selectedControls.map((control) => control.property),
+      breakpoint: breakpoint.value,
+      theme: theme.value,
+      state: state.value,
+      values: decisionEntries.map((entry) => ({
+        property: entry.property,
+        value: entry.after,
+        category: entry.category,
+      })),
+    };
     return {
       version: 1,
       mode: inspecting ? 'select' : 'interact',
@@ -2047,10 +2243,64 @@ export function installFoundryInspector(
             width: rect ? Math.round(rect.width * 100) / 100 : 0,
             height: rect ? Math.round(rect.height * 100) / 100 : 0,
             count: selectedElements.length,
+            targets: selectedElements.map((element) => {
+              const target = targetFor(element);
+              const targetRect = element.getBoundingClientRect();
+              const style = getComputedStyle(element);
+              return {
+                id: foundryTargetId(element),
+                selector: foundrySelector(element),
+                label: target.label,
+                kind: element.tagName.toLowerCase(),
+                component: element.dataset.foundryComponent ?? null,
+                source: element.dataset.foundrySource ?? foundrySelector(element),
+                confidence: target.confidence,
+                geometry: {
+                  x: targetRect.x,
+                  y: targetRect.y,
+                  width: targetRect.width,
+                  height: targetRect.height,
+                  scale: window.devicePixelRatio || 1,
+                },
+                measurements: {
+                  display: style.display,
+                  position: style.position,
+                  color: style.color,
+                  backgroundColor: style.backgroundColor,
+                  fontFamily: style.fontFamily,
+                  fontSize: style.fontSize,
+                  fontWeight: style.fontWeight,
+                  lineHeight: style.lineHeight,
+                  padding: style.padding,
+                  margin: style.margin,
+                  gap: style.gap,
+                  borderRadius: style.borderRadius,
+                },
+              };
+            }),
           }
         : null,
+      visualAgent: {
+        region: visualAgentRegion,
+        capturingRegion: Boolean(visualAgentRegionCleanup),
+      },
       layers: layerEntries.slice(0, 500).map((entry) => {
         const layerRect = entry.element.getBoundingClientRect();
+        const definition = designGraph?.components.find((component) => {
+          const path = entry.element.dataset.foundryComponent;
+          const name = path?.split('/').filter(Boolean).at(-1);
+          return component.id === path || component.name === path || component.name === name;
+        });
+        const variantProperties = new Set(
+          definition?.variants.flatMap((variant) => Object.keys(variant.props)) ?? [],
+        );
+        const variantProps = Object.fromEntries(
+          [...variantProperties].flatMap((property) => {
+            const attribute = `data-${property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+            const value = entry.element.getAttribute(attribute);
+            return value == null ? [] : [[property, value]];
+          }),
+        );
         return {
           id: foundryTargetId(entry.element),
           selector: foundrySelector(entry.element),
@@ -2064,6 +2314,7 @@ export function installFoundryInspector(
           instrumented: entry.instrumented,
           hasChildren: entry.hasChildren,
           selected: selectedElements.includes(entry.element),
+          variantProps,
         };
       }),
       controls: selectedControls.map((control, index) => ({
@@ -2081,28 +2332,122 @@ export function installFoundryInspector(
       })),
       typography: selected ? workspaceTypographySnapshot(selected) : null,
       motions: selected ? workspaceMotionSnapshot(selected) : [],
-      history: { canUndo: historyCursor > 0, canRedo: historyCursor < previewHistory.length },
+      history: {
+        canUndo: historyCursor > 0,
+        canRedo: historyCursor < previewHistory.length,
+      },
       project: {
         tokens: designGraph?.tokens ?? [],
         components: designGraph?.components ?? [],
         breakpoints: designGraph?.breakpoints ?? [],
+        containerQueries: designGraph?.containerQueries ?? [],
         themes: designGraph?.themes ?? [],
         states: designGraph?.states ?? [],
       },
       health: healthIssues.map((issue) => ({
         id: issue.id,
+        ruleId: issue.ruleId,
         kind: issue.category,
         title: issue.title,
         detail: `${issue.elementLabel}: ${issue.description}`,
+        description: issue.description,
+        evidence: issue.evidence,
         severity: issue.severity,
+        source: issue.source,
+        viewport: `${window.innerWidth} × ${window.innerHeight}`,
+        stressConditions: issue.stressConditions,
+        canFix: Boolean(issue.fix),
+        previewed: issue.previewed,
       })),
+      stressTesting: {
+        profiles: STRESS_CONDITIONS,
+        active: activeStressConditions,
+        scope: activeStressScope,
+        appliedAt: stressAppliedAt || null,
+        target:
+          activeStressScope === 'selection' && selected ? layerLabel(selected) : 'Entire canvas',
+      },
       memory: designMemory,
+      decisionMemory: {
+        decisions: designMemory.decisions,
+        canCapture: Boolean(selected),
+        hasEditedValues: decisionEntries.length > 0,
+        relevant: relevantDesignDecisions(designMemory.decisions, decisionContext),
+        context: decisionContext,
+      },
+      visualRecipes: {
+        recipes: designMemory.recipes,
+        canSave: Boolean(selected && previewHistory.some((entry) => entry.element === selected)),
+        assessment: selected
+          ? Object.fromEntries(
+              designMemory.recipes.map((recipe) => [
+                recipe.id,
+                assessRecipe(
+                  recipe,
+                  selectedControls.map((control) => ({
+                    property: control.property,
+                    value: control.read(),
+                    category: control.category,
+                    unit: control.unit,
+                  })),
+                  designGraph?.tokens ?? [],
+                  {
+                    component: selected!.dataset.foundryComponent,
+                    kind: selected!.tagName.toLowerCase(),
+                  },
+                ),
+              ]),
+            )
+          : {},
+        suggestions: selected
+          ? designMemory.recipes
+              .map((recipe) => ({
+                recipeId: recipe.id,
+                recipeName: recipe.name,
+                ...assessRecipe(
+                  recipe,
+                  selectedControls.map((control) => ({
+                    property: control.property,
+                    value: control.read(),
+                    category: control.category,
+                    unit: control.unit,
+                  })),
+                  designGraph?.tokens ?? [],
+                  {
+                    component: selected!.dataset.foundryComponent,
+                    kind: selected!.tagName.toLowerCase(),
+                  },
+                ),
+              }))
+              .filter((item) => item.compatibility !== 'incompatible')
+              .sort((a, b) => b.score - a.score)
+          : [],
+      },
       responsive: {
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
         documentScrollWidth: document.documentElement.scrollWidth,
         documentScrollHeight: document.documentElement.scrollHeight,
         stressMode: responsiveStressMode,
+        container: selected
+          ? (() => {
+              const container = nearestResponsiveContainer(selected);
+              if (!container) return null;
+              const containerRect = container.getBoundingClientRect();
+              const containerStyle = getComputedStyle(container) as CSSStyleDeclaration & {
+                containerName?: string;
+                containerType?: string;
+              };
+              return {
+                name: containerStyle.containerName || container.dataset.foundryContainer || null,
+                type: containerStyle.containerType || 'inline-size',
+                width: containerRect.width,
+                height: containerRect.height,
+                selector: foundrySelector(container),
+                previewed: responsiveContainerPreview?.element === container,
+              };
+            })()
+          : null,
         selection: selected
           ? {
               width: rect?.width ?? 0,
@@ -2206,8 +2551,11 @@ export function installFoundryInspector(
       validation: currentTypographyValidationPlan(),
       capabilities: {
         localFontAccess:
-          typeof (window as Window & { queryLocalFonts?: () => Promise<LocalFontRecord[]> })
-            .queryLocalFonts === 'function',
+          typeof (
+            window as Window & {
+              queryLocalFonts?: () => Promise<LocalFontRecord[]>;
+            }
+          ).queryLocalFonts === 'function',
       },
     };
   }
@@ -2222,6 +2570,208 @@ export function installFoundryInspector(
     responsiveStressTextTarget = null;
     responsiveStressOriginalText = '';
     responsiveStressMode = 'none';
+  }
+
+  function nearestResponsiveContainer(element: HTMLElement): HTMLElement | null {
+    let candidate: HTMLElement | null = element;
+    while (candidate) {
+      const style = getComputedStyle(candidate) as CSSStyleDeclaration & {
+        containerType?: string;
+      };
+      if (
+        candidate.dataset.foundryContainer != null ||
+        (style.containerType && style.containerType !== 'normal')
+      )
+        return candidate;
+      candidate = candidate.parentElement;
+    }
+    return null;
+  }
+
+  function clearResponsiveContainerPreview(): void {
+    if (!responsiveContainerPreview) return;
+    const { element, inlineSize, maxInlineSize, flexBasis } = responsiveContainerPreview;
+    if (element.isConnected) {
+      element.style.inlineSize = inlineSize;
+      element.style.maxInlineSize = maxInlineSize;
+      element.style.flexBasis = flexBasis;
+    }
+    responsiveContainerPreview = null;
+  }
+
+  function previewResponsiveContainer(width?: number): void {
+    const container = selected ? nearestResponsiveContainer(selected) : null;
+    if (!container || !Number.isFinite(width) || Number(width) <= 0) {
+      clearResponsiveContainerPreview();
+      window.setTimeout(publishWorkspaceState, 0);
+      return;
+    }
+    if (responsiveContainerPreview?.element !== container) clearResponsiveContainerPreview();
+    if (!responsiveContainerPreview) {
+      responsiveContainerPreview = {
+        element: container,
+        inlineSize: container.style.inlineSize,
+        maxInlineSize: container.style.maxInlineSize,
+        flexBasis: container.style.flexBasis,
+      };
+    }
+    container.style.inlineSize = `${Math.round(Number(width))}px`;
+    container.style.maxInlineSize = 'none';
+    container.style.flexBasis = `${Math.round(Number(width))}px`;
+    window.setTimeout(publishWorkspaceState, 0);
+  }
+
+  function stressRoots(scope: StressScope): HTMLElement[] {
+    if (scope === 'selection' && selected?.isConnected) return [selected];
+    return [document.body];
+  }
+
+  function textNodesInside(root: HTMLElement): Text[] {
+    const nodes: Text[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const parent = node.parentElement;
+        if (
+          !parent ||
+          ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA'].includes(parent.tagName) ||
+          !node.textContent?.trim()
+        )
+          return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    while (walker.nextNode() && nodes.length < 200) nodes.push(walker.currentNode as Text);
+    return nodes;
+  }
+
+  function restoreStressConditions(announce = true): void {
+    for (const restore of stressRestore.reverse()) restore();
+    stressRestore = [];
+    activeStressConditions = [];
+    stressAppliedAt = '';
+    document.documentElement.removeAttribute('data-foundry-stress');
+    window.dispatchEvent(
+      new CustomEvent('foundry:stress-state', {
+        detail: { active: [], scope: activeStressScope, temporary: true },
+      }),
+    );
+    if (announce) {
+      window.setTimeout(() => {
+        scanDesignHealth();
+        publishWorkspaceState();
+      }, 0);
+    }
+  }
+
+  function applyStressConditions(conditions: readonly unknown[], scope: StressScope): void {
+    restoreStressConditions(false);
+    activeStressScope = scope;
+    activeStressConditions = normalizeStressConditions(conditions);
+    stressDraftScope = scope;
+    stressDraftConditions = [...activeStressConditions];
+    const roots = stressRoots(scope);
+    const textNodes = roots.flatMap(textNodesInside);
+    const saveStyle = (
+      element: HTMLElement,
+      property: keyof CSSStyleDeclaration,
+      value: string,
+    ) => {
+      const previous = String(element.style[property] ?? '');
+      (element.style[property] as string) = value;
+      stressRestore.push(() => {
+        (element.style[property] as string) = previous;
+      });
+    };
+    const replaceText = (node: Text, value: string) => {
+      const previous = node.data;
+      node.data = value;
+      stressRestore.push(() => {
+        if (node.isConnected) node.data = previous;
+      });
+    };
+
+    if (activeStressConditions.includes('long-content')) {
+      for (const node of textNodes) {
+        const original = node.data.trim();
+        replaceText(
+          node,
+          `${original} · ${original} with a deliberately longer localized value for layout testing`,
+        );
+      }
+    }
+    if (activeStressConditions.includes('large-numbers')) {
+      for (const node of textNodes) {
+        if (!/\d/.test(node.data)) continue;
+        replaceText(node, node.data.replace(/[\d,.]+/g, '9,999,999,999.99'));
+      }
+    }
+    if (activeStressConditions.includes('empty-content')) {
+      for (const node of textNodes) replaceText(node, '');
+    }
+    if (activeStressConditions.includes('missing-images')) {
+      for (const root of roots) {
+        const images = [
+          ...(root instanceof HTMLImageElement ? [root] : []),
+          ...root.querySelectorAll<HTMLImageElement>('img'),
+        ];
+        for (const image of images) {
+          const source = image.getAttribute('src');
+          const sourceSet = image.getAttribute('srcset');
+          image.removeAttribute('src');
+          image.removeAttribute('srcset');
+          image.dataset.foundryMissingImage = 'true';
+          stressRestore.push(() => {
+            if (source == null) image.removeAttribute('src');
+            else image.setAttribute('src', source);
+            if (sourceSet == null) image.removeAttribute('srcset');
+            else image.setAttribute('srcset', sourceSet);
+            delete image.dataset.foundryMissingImage;
+          });
+        }
+      }
+    }
+    if (activeStressConditions.includes('text-200')) {
+      saveStyle(document.documentElement, 'fontSize', '200%');
+    }
+    if (activeStressConditions.includes('browser-zoom-200')) {
+      saveStyle(document.documentElement, 'zoom', '2');
+    }
+    const filters: string[] = [];
+    if (activeStressConditions.includes('high-contrast')) filters.push('contrast(1.5)');
+    if (activeStressConditions.includes('monochrome')) filters.push('grayscale(1)');
+    if (filters.length) saveStyle(document.body, 'filter', filters.join(' '));
+    if (activeStressConditions.includes('reduced-motion')) {
+      const style = document.createElement('style');
+      style.dataset.foundryStressStyle = 'reduced-motion';
+      style.textContent =
+        '*,:before,:after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}';
+      document.head.append(style);
+      stressRestore.push(() => style.remove());
+    }
+    if (activeStressConditions.includes('keyboard-only')) {
+      const first = roots
+        .flatMap((root) => [root, ...root.querySelectorAll<HTMLElement>('*')])
+        .find((element) => isInteractiveElement(element) && element.tabIndex >= 0);
+      const previous = document.activeElement as HTMLElement | null;
+      first?.focus({ preventScroll: true });
+      stressRestore.push(() => previous?.isConnected && previous.focus({ preventScroll: true }));
+    }
+
+    stressAppliedAt = new Date().toISOString();
+    document.documentElement.dataset.foundryStress = activeStressConditions.join(' ');
+    window.dispatchEvent(
+      new CustomEvent('foundry:stress-state', {
+        detail: {
+          active: activeStressConditions,
+          scope: activeStressScope,
+          temporary: true,
+        },
+      }),
+    );
+    window.setTimeout(() => {
+      scanDesignHealth();
+      publishWorkspaceState();
+    }, 0);
   }
 
   function applyResponsiveStress(mode: string): void {
@@ -2247,7 +2797,11 @@ export function installFoundryInspector(
     cancelAnimationFrame(workspacePublishFrame);
     workspacePublishFrame = requestAnimationFrame(() => {
       window.parent.postMessage(
-        { type: 'foundry:workspace-state', sessionId, payload: workspaceSnapshot() },
+        {
+          type: 'foundry:workspace-state',
+          sessionId,
+          payload: workspaceSnapshot(),
+        },
         runtimeOrigin,
       );
     });
@@ -2256,7 +2810,11 @@ export function installFoundryInspector(
   function publishCanvasInput(action: string, payload: Record<string, unknown> = {}): void {
     if (!embeddedWorkspace) return;
     window.parent.postMessage(
-      { type: 'foundry:canvas-input', sessionId, payload: { action, ...payload } },
+      {
+        type: 'foundry:canvas-input',
+        sessionId,
+        payload: { action, ...payload },
+      },
       runtimeOrigin,
     );
   }
@@ -2342,6 +2900,12 @@ export function installFoundryInspector(
       return;
     }
     if (message.command === 'request-state') publishWorkspaceState();
+    if (message.command === 'capture-agent-region') captureVisualAgentRegion();
+    if (message.command === 'clear-agent-region') {
+      visualAgentRegionCleanup?.();
+      visualAgentRegion = null;
+      publishWorkspaceState();
+    }
     if (message.command === 'set-mode') {
       workspaceCanvasTool =
         payload.mode === 'pan' ? 'pan' : payload.mode === 'interact' ? 'interact' : 'select';
@@ -2383,8 +2947,136 @@ export function installFoundryInspector(
       );
       if (entry && variant) void previewWorkshopVariant(entry, variant).then(publishWorkspaceState);
     }
+    if (message.command === 'stage-component-variant') {
+      workshopComponentId = String(payload.componentId ?? workshopComponentId);
+      const entry = currentWorkshopEntry();
+      if (entry)
+        void stageWorkshopVariant(entry, {
+          axisId: String(payload.axisId ?? ''),
+          label: String(payload.label ?? ''),
+          value: String(payload.value ?? ''),
+          baseVariantId: String(payload.baseVariantId ?? '') || undefined,
+        }).then(publishWorkspaceState);
+    }
+    if (message.command === 'stage-token-promotion') {
+      void stageTokenPromotion(String(payload.candidateId ?? ''));
+    }
+    if (message.command === 'repair-component-variant-drift') {
+      workshopComponentId = String(payload.componentId ?? workshopComponentId);
+      const entry = currentWorkshopEntry();
+      const variant = entry?.definition?.variants.find(
+        (item) => item.id === String(payload.variantId ?? ''),
+      );
+      if (entry && variant)
+        void repairWorkshopVariantDrift(entry, variant).then(publishWorkspaceState);
+    }
     if (message.command === 'preview-responsive-stress') {
       applyResponsiveStress(String(payload.mode ?? 'none'));
+    }
+    if (message.command === 'preview-responsive-container') {
+      previewResponsiveContainer(payload.width == null ? undefined : Number(payload.width));
+    }
+    if (message.command === 'apply-health-stress') {
+      applyStressConditions(
+        Array.isArray(payload.conditions) ? payload.conditions : [],
+        payload.scope === 'canvas' ? 'canvas' : 'selection',
+      );
+    }
+    if (message.command === 'clear-health-stress') {
+      stressDraftConditions = [];
+      restoreStressConditions();
+    }
+    if (message.command === 'select-health-issue') {
+      const issue = healthIssues.find((item) => item.id === String(payload.issueId ?? ''));
+      if (issue?.element.isConnected) select(issue.element);
+    }
+    if (message.command === 'preview-health-fix') {
+      const issue = healthIssues.find((item) => item.id === String(payload.issueId ?? ''));
+      if (issue && !issue.previewed) void previewHealthFix(issue).then(publishWorkspaceState);
+    }
+    if (message.command === 'save-visual-recipe') {
+      saveSelectedRecipe(String(payload.name ?? ''), String(payload.intent ?? ''));
+      publishWorkspaceState();
+    }
+    if (message.command === 'remove-visual-recipe') {
+      designMemory = removeRecipe(designMemory, String(payload.recipeId ?? ''));
+      persistDesignMemory();
+      renderDesignMemory();
+      publishWorkspaceState();
+    }
+    if (message.command === 'apply-visual-recipe') {
+      void applyRecipe(String(payload.recipeId ?? '')).then(publishWorkspaceState);
+    }
+    if (message.command === 'import-visual-recipes') {
+      try {
+        const imported = JSON.parse(String(payload.json ?? ''));
+        const recipes = Array.isArray(imported) ? imported : imported?.recipes;
+        if (!Array.isArray(recipes)) throw new Error('No recipes were found in this file');
+        for (const recipe of recipes) {
+          if (!recipe?.id || !recipe?.name || !Array.isArray(recipe.values)) continue;
+          designMemory = addRecipe(designMemory, recipe);
+        }
+        persistDesignMemory();
+        renderDesignMemory();
+        publishWorkspaceState();
+        showToast(
+          `${recipes.length} visual ${recipes.length === 1 ? 'recipe' : 'recipes'} imported`,
+        );
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Could not import these recipes');
+      }
+    }
+    if (message.command === 'save-design-decision') {
+      saveSelectedDesignDecision(payload);
+      publishWorkspaceState();
+    }
+    if (message.command === 'update-design-decision') {
+      designMemory = updateDesignDecision(designMemory, String(payload.decisionId ?? ''), {
+        title: typeof payload.title === 'string' ? payload.title.trim() : undefined,
+        summary: typeof payload.summary === 'string' ? payload.summary.trim() : undefined,
+        rationale: typeof payload.rationale === 'string' ? payload.rationale.trim() : undefined,
+        enabled: typeof payload.enabled === 'boolean' ? payload.enabled : undefined,
+      });
+      persistDesignMemory();
+      renderDesignMemory();
+      publishWorkspaceState();
+    }
+    if (message.command === 'remove-design-decision') {
+      designMemory = removeDesignDecision(designMemory, String(payload.decisionId ?? ''));
+      persistDesignMemory();
+      renderDesignMemory();
+      publishWorkspaceState();
+    }
+    if (message.command === 'import-design-decisions') {
+      try {
+        const imported = JSON.parse(String(payload.json ?? ''));
+        const decisions = Array.isArray(imported) ? imported : imported?.decisions;
+        if (!Array.isArray(decisions)) throw new Error('No design decisions were found');
+        let importedCount = 0;
+        for (const decision of decisions) {
+          if (!decision?.id || !decision?.title || !decision?.outcome) continue;
+          designMemory = addDesignDecision(designMemory, {
+            ...decision,
+            categories: Array.isArray(decision.categories) ? decision.categories : [],
+            conditions: decision.conditions ?? {},
+            rules: Array.isArray(decision.rules) ? decision.rules : [],
+            evidence: Array.isArray(decision.evidence) ? decision.evidence : [],
+            sourceLocations: Array.isArray(decision.sourceLocations)
+              ? decision.sourceLocations
+              : [],
+            enabled: decision.enabled !== false,
+          });
+          importedCount += 1;
+        }
+        persistDesignMemory();
+        renderDesignMemory();
+        publishWorkspaceState();
+        showToast(
+          `${importedCount} design ${importedCount === 1 ? 'decision' : 'decisions'} imported`,
+        );
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Could not import these decisions');
+      }
     }
     if (message.command === 'set-control') {
       const control =
@@ -2445,6 +3137,28 @@ export function installFoundryInspector(
             renderControls();
             publishWorkspaceState();
           });
+        }
+        if (action === 'curve') {
+          void applyMotionCurve(motion, requestedMotionCurve(payload)).then(() => {
+            renderControls();
+            publishWorkspaceState();
+          });
+        }
+        if (action === 'path-point') {
+          const index = Number(payload.index);
+          const frame = motion.descriptor.keyframes.find((candidate) => candidate.index === index);
+          if (frame) {
+            const currentTransform = String(frame.values.transform ?? 'none');
+            const nextTransform = replaceMotionTranslation(
+              currentTransform,
+              Number(payload.x),
+              Number(payload.y),
+            );
+            void applyMotionKeyframe(motion, index, 'transform', nextTransform).then(() => {
+              renderControls();
+              publishWorkspaceState();
+            });
+          }
         }
         if (
           action === 'keyframe-value' ||
@@ -2618,14 +3332,20 @@ export function installFoundryInspector(
     if (embeddedPanPointer instanceof HTMLElement)
       embeddedPanPointer.setPointerCapture(event.pointerId);
     document.documentElement.style.cursor = 'grabbing';
-    publishCanvasInput('pan-start', { screenX: event.screenX, screenY: event.screenY });
+    publishCanvasInput('pan-start', {
+      screenX: event.screenX,
+      screenY: event.screenY,
+    });
   }
 
   function handleEmbeddedCanvasPointerMove(event: PointerEvent): void {
     if (!embeddedPanActive) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    publishCanvasInput('pan-move', { screenX: event.screenX, screenY: event.screenY });
+    publishCanvasInput('pan-move', {
+      screenX: event.screenX,
+      screenY: event.screenY,
+    });
   }
 
   function handleEmbeddedCanvasPointerUp(event: PointerEvent): void {
@@ -2656,7 +3376,10 @@ export function installFoundryInspector(
     }
     if (workspaceCanvasTool === 'interact') return;
     event.preventDefault();
-    publishCanvasInput('pan-wheel', { deltaX: event.deltaX, deltaY: event.deltaY });
+    publishCanvasInput('pan-wheel', {
+      deltaX: event.deltaX,
+      deltaY: event.deltaY,
+    });
   }
 
   window.addEventListener('message', handleWorkspaceMessage);
@@ -2666,7 +3389,10 @@ export function installFoundryInspector(
   document.addEventListener('pointermove', handleEmbeddedCanvasPointerMove, true);
   document.addEventListener('pointerup', handleEmbeddedCanvasPointerUp, true);
   document.addEventListener('pointercancel', handleEmbeddedCanvasPointerUp, true);
-  document.addEventListener('wheel', handleEmbeddedCanvasWheel, { capture: true, passive: false });
+  document.addEventListener('wheel', handleEmbeddedCanvasWheel, {
+    capture: true,
+    passive: false,
+  });
 
   const onboardingSteps: Array<{
     id: OnboardingStepId;
@@ -2901,7 +3627,10 @@ export function installFoundryInspector(
           },
           canvasBounds(),
         );
-        Object.assign(utilityPanel.style, { left: `${rect.x}px`, top: `${rect.y}px` });
+        Object.assign(utilityPanel.style, {
+          left: `${rect.x}px`,
+          top: `${rect.y}px`,
+        });
         utilityRects.set(utility, rect);
       };
       const finish = (): void => {
@@ -3075,7 +3804,10 @@ export function installFoundryInspector(
         fetch(`${runtimeUrl}/v1/sessions/${sessionId}`, {
           headers: { 'x-foundry-token': token },
         }),
-        sessionRequest('/agent-presence').catch(() => ({ connected: false, presence: null })),
+        sessionRequest('/agent-presence').catch(() => ({
+          connected: false,
+          presence: null,
+        })),
       ]);
       if (!response.ok) throw new Error('The local session could not be read.');
       const payload = await response.json();
@@ -3097,7 +3829,10 @@ export function installFoundryInspector(
       }
       projectRevision = changeSet.context.revision ?? '';
       designGraph = graph
-        ? { ...graph, components: normalizeWorkshopComponents(graph.components) }
+        ? {
+            ...graph,
+            components: normalizeWorkshopComponents(graph.components),
+          }
         : null;
       populateDesignContext();
       if (!layersPanel.hidden) renderLayers();
@@ -3165,6 +3900,13 @@ export function installFoundryInspector(
 
   function renderDesignMemory(): void {
     const body = libraryPanel.querySelector<HTMLElement>('.library-body')!;
+    const decisions = designMemory.decisions
+      .slice(0, 12)
+      .map(
+        (decision) =>
+          `<article class="memory-card"><div class="memory-card-top"><i class="memory-status"></i><strong>${escapeHtml(decision.title)}</strong></div><p>${escapeHtml(decision.outcome)} · ${escapeHtml(decision.summary)}${decision.enabled ? '' : ' · disabled'}</p></article>`,
+      )
+      .join('');
     const recipes = designMemory.recipes
       .map(
         (recipe) =>
@@ -3178,7 +3920,7 @@ export function installFoundryInspector(
           `<article class="memory-card"><div class="memory-card-top"><i class="memory-status"></i><strong>${escapeHtml(baseline.targetLabel)}</strong></div><p>${escapeHtml(baselineLabel(baseline))} · ${baseline.values.length} rendered ${baseline.values.length === 1 ? 'value' : 'values'} verified · ${new Date(baseline.verifiedAt).toLocaleString()}</p></article>`,
       )
       .join('');
-    body.innerHTML = `<section class="library-section"><div class="library-section-head">Treatments <span>${designMemory.recipes.length}</span></div>${recipes || '<div class="library-empty">Select and refine an element, then save its treatment for similar components.</div>'}</section><section class="library-section"><div class="library-section-head">Verified baselines <span>${designMemory.baselines.length}</span></div>${baselines || '<div class="library-empty">Passed apply runs become exact local baselines automatically.</div>'}</section>`;
+    body.innerHTML = `<section class="library-section"><div class="library-section-head">Decisions <span>${designMemory.decisions.length}</span></div>${decisions || '<div class="library-empty">Approved directions, rejected experiments, and project rules appear here.</div>'}</section><section class="library-section"><div class="library-section-head">Treatments <span>${designMemory.recipes.length}</span></div>${recipes || '<div class="library-empty">Select and refine an element, then save its treatment for similar components.</div>'}</section><section class="library-section"><div class="library-section-head">Verified baselines <span>${designMemory.baselines.length}</span></div>${baselines || '<div class="library-empty">Passed apply runs become exact local baselines automatically.</div>'}</section>`;
     libraryPanel.querySelector<HTMLButtonElement>('[data-save-recipe]')!.disabled =
       !selected || !previewHistory.some((entry) => entry.element === selected);
     libraryPanel.querySelector<HTMLButtonElement>('[data-capture-baseline]')!.disabled = !selected;
@@ -3204,7 +3946,7 @@ export function installFoundryInspector(
     if (workspaceState.utility === 'memory') setUtility(null);
   }
 
-  function saveSelectedRecipe(): void {
+  function saveSelectedRecipe(requestedName = '', requestedIntent = ''): void {
     if (!selected) return;
     const entries = previewHistory.filter((entry) => entry.element === selected);
     if (!entries.length) {
@@ -3223,15 +3965,116 @@ export function installFoundryInspector(
     );
     designMemory = addRecipe(designMemory, {
       id: `recipe_${Date.now().toString(36)}`,
-      name: `${sourceLabel} treatment`,
+      name: requestedName.trim() || `${sourceLabel} treatment`,
       sourceLabel,
       component,
+      intent:
+        requestedIntent.trim() ||
+        `Reuse the approved visual treatment from ${sourceLabel} without copying its source structure.`,
+      categories: recipeCategories(values),
+      conditions: {
+        components: component ? [component] : undefined,
+        elementKinds: [selected.tagName.toLowerCase()],
+        requiredProperties: values.map((value) => value.property),
+      },
       values,
       createdAt: new Date().toISOString(),
     });
     persistDesignMemory();
     renderDesignMemory();
     showToast('Treatment saved to this project');
+  }
+
+  function saveSelectedDesignDecision(payload: Record<string, unknown>): void {
+    const title = String(payload.title ?? '').trim();
+    const summary = String(payload.summary ?? '').trim();
+    if (!title || !summary) {
+      showToast('Add a clear title and guidance before saving');
+      return;
+    }
+    const outcome =
+      payload.outcome === 'rejected' || payload.outcome === 'rule' ? payload.outcome : 'approved';
+    const providedChanges = Array.isArray(payload.changes)
+      ? payload.changes.filter((change): change is Record<string, any> =>
+          Boolean(change && typeof change === 'object' && change.property),
+        )
+      : [];
+    const entries = providedChanges.length
+      ? providedChanges.map((change) => ({
+          property: String(change.property),
+          category: String(change.category ?? 'other') as Category,
+          after: change.after as string | number,
+        }))
+      : selected
+        ? [
+            ...new Map(
+              previewHistory
+                .slice(0, historyCursor)
+                .filter((entry) => entry.element === selected)
+                .map((entry) => [entry.property, entry]),
+            ).values(),
+          ]
+        : [];
+    const properties = entries.map((entry) => entry.property);
+    const firstChange = providedChanges[0];
+    const source =
+      String(firstChange?.target?.source?.file ?? firstChange?.target?.selector ?? '') ||
+      selected?.dataset.foundrySource ||
+      '';
+    const component =
+      String(firstChange?.target?.component ?? '') || selected?.dataset.foundryComponent;
+    const now = new Date().toISOString();
+    const evidenceKind =
+      payload.evidenceKind === 'branch' ||
+      payload.evidenceKind === 'recipe' ||
+      payload.evidenceKind === 'baseline'
+        ? payload.evidenceKind
+        : 'manual';
+    const rules = entries.length
+      ? entries.map((entry) => ({
+          property: entry.property,
+          category: entry.category,
+          operator: outcome === 'rejected' ? ('avoid' as const) : ('prefer' as const),
+          value: entry.after,
+          guidance: summary,
+        }))
+      : [{ operator: 'require' as const, guidance: summary }];
+    designMemory = addDesignDecision(designMemory, {
+      id: `decision_${Date.now().toString(36)}`,
+      title,
+      summary,
+      rationale: String(payload.rationale ?? '').trim() || undefined,
+      outcome,
+      categories:
+        Array.isArray(payload.categories) && payload.categories.length
+          ? payload.categories.map(String)
+          : decisionCategories(properties),
+      conditions: {
+        components: component ? [component] : undefined,
+        elementKinds:
+          selected && !providedChanges.length ? [selected.tagName.toLowerCase()] : undefined,
+        properties: properties.length ? properties : undefined,
+        breakpoints: breakpoint.value !== 'current' ? [breakpoint.value] : undefined,
+        themes: theme.value !== 'current' ? [theme.value] : undefined,
+        states: state.value !== 'current' ? [state.value] : undefined,
+        sources: source ? [source] : undefined,
+      },
+      rules,
+      evidence: [
+        {
+          kind: evidenceKind,
+          label: String(payload.evidenceLabel ?? '').trim() || 'Captured in Foundry',
+          refId: String(payload.refId ?? '').trim() || undefined,
+        },
+      ],
+      sourceLocations: source ? [source] : [],
+      enabled: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    persistDesignMemory();
+    renderDesignMemory();
+    showToast('Decision saved to this project');
   }
 
   async function applyRecipe(recipeId: string): Promise<void> {
@@ -3242,11 +4085,26 @@ export function installFoundryInspector(
     const recipe = designMemory.recipes.find((item) => item.id === recipeId);
     if (!recipe) return;
     const available = controlsFor(selected);
+    const assessment = assessRecipe(
+      recipe,
+      available.map((control) => ({
+        property: control.property,
+        value: control.read(),
+        category: control.category,
+        unit: control.unit,
+      })),
+      designGraph?.tokens ?? [],
+      {
+        component: selected.dataset.foundryComponent,
+        kind: selected.tagName.toLowerCase(),
+      },
+    );
     let applied = 0;
-    for (const value of recipe.values) {
-      const control = available.find((item) => item.property === value.property);
+    for (const mapping of assessment.mappings) {
+      if (mapping.status === 'unsupported' || mapping.resolvedValue == null) continue;
+      const control = available.find((item) => item.property === mapping.property);
       if (!control) continue;
-      await applyControlValue(control, value.value, `Apply ${recipe.name}`);
+      await applyControlValue(control, mapping.resolvedValue, `Apply ${recipe.name}`);
       applied += 1;
     }
     selectedControls = controlsFor(selected);
@@ -3559,7 +4417,10 @@ export function installFoundryInspector(
       );
       if (match) {
         match.indexedInstances = Math.max(match.indexedInstances, component.instances);
-        match.variants = component.variants.map(({ id, name }) => ({ id, name }));
+        match.variants = component.variants.map(({ id, name }) => ({
+          id,
+          name,
+        }));
         continue;
       }
       const path = component.id || component.name;
@@ -3712,6 +4573,229 @@ export function installFoundryInspector(
     showToast(`${variant.name} previewed on ${entry.name}`);
   }
 
+  function workshopElementProps(
+    element: HTMLElement,
+    variant: ComponentWorkshopVariant,
+  ): Record<string, string> {
+    return Object.fromEntries(
+      Object.keys(variant.props).flatMap((property) => {
+        const attribute = `data-${property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+        const value = element.getAttribute(attribute);
+        return value == null ? [] : [[property, value]];
+      }),
+    );
+  }
+
+  async function stageWorkshopVariant(
+    entry: NonNullable<ReturnType<typeof currentWorkshopEntry>>,
+    input: { axisId: string; label: string; value: string; baseVariantId?: string },
+  ): Promise<void> {
+    const definition = entry.definition;
+    const target = selected && entry.elements.includes(selected) ? selected : entry.elements[0];
+    if (!definition || !target) return;
+    try {
+      const draft = createComponentVariantDraft({ component: definition, ...input });
+      const attribute = `data-${draft.property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+      const before = target.getAttribute(attribute) ?? '';
+      target.setAttribute(attribute, draft.value);
+      const control: Control = {
+        category: 'content',
+        property: `component.variant.create.${draft.property}`,
+        label: `Create ${draft.label} variant`,
+        kind: 'text',
+        value: before,
+        read: () => target.getAttribute(attribute) ?? '',
+        apply: (next) => target.setAttribute(attribute, String(next)),
+      };
+      await record(
+        control,
+        before,
+        draft.value,
+        target,
+        `Create ${draft.label} source variant`,
+        [
+          `Component: ${definition.name}`,
+          `Variant adapter: ${draft.adapter}`,
+          `Variant property: ${draft.sourceProperty}`,
+          `Variant label: ${draft.label}`,
+          ...(draft.baseVariantId ? [`Base variant: ${draft.baseVariantId}`] : []),
+          'Create the source option and preserve the current preview as its initial treatment.',
+        ],
+        { source: draft.source, scope: 'component' },
+      );
+      showToast(`${draft.label} is ready for review`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not stage this variant');
+    }
+  }
+
+  async function stageTokenPromotion(candidateId: string): Promise<void> {
+    const candidate = designGraph?.tokenPromotions?.find((item) => item.id === candidateId);
+    if (!candidate || !sessionId || !token) return;
+    if (!candidate.canStage || !candidate.sources.length) {
+      showToast(candidate.blockers[0] ?? 'This promotion has no exact source mapping');
+      return;
+    }
+    const source = candidate.sources[0]!;
+    const operationId = `op_${crypto.randomUUID().replaceAll('-', '')}`;
+    const mappingId = `map_${candidate.id}`;
+    const targetId = `token-source:${candidate.id}`;
+    const replacement =
+      candidate.recommendation === 'use-existing'
+        ? `var(${candidate.suggestedTokenName})`
+        : `${candidate.suggestedTokenName}: ${candidate.value}; then replace ${candidate.occurrenceCount} literals`;
+    const category =
+      candidate.category === 'color'
+        ? 'color'
+        : candidate.category === 'typography'
+          ? 'typography'
+          : candidate.category === 'shadow'
+            ? 'effect'
+            : candidate.category === 'motion'
+              ? 'motion'
+              : candidate.category === 'radius'
+                ? 'border'
+                : candidate.category === 'spacing'
+                  ? 'spacing'
+                  : 'layout';
+    const mappingCandidates = [
+      {
+        id: mappingId,
+        label:
+          candidate.recommendation === 'use-existing'
+            ? `Promote literals to ${candidate.suggestedTokenName}`
+            : `Create ${candidate.suggestedTokenName} and promote literals`,
+        intent: 'token-refactor',
+        property: candidate.property,
+        targetId,
+        value: replacement,
+        source,
+        scope: 'component',
+        confidence: 'instrumented',
+        evidence: candidate.evidence,
+        blastRadius: candidate.occurrenceCount,
+      },
+    ];
+    try {
+      let responsePayload = await sessionRequest('/changes', {
+        method: 'POST',
+        body: JSON.stringify({
+          target: {
+            id: targetId,
+            platform: 'web',
+            semanticRole: 'design-token',
+            label: candidate.suggestedTokenName,
+            componentPath: [],
+            source,
+            geometry: { x: 0, y: 0, width: 0, height: 0, scale: 1 },
+            locator: { sources: candidate.sources },
+            confidence: 'instrumented',
+            evidence: ['Project token index', 'Exact authored source locations'],
+          },
+          category,
+          property: `designToken.${candidate.recommendation === 'use-existing' ? 'promote' : 'create'}`,
+          before: candidate.value,
+          after: replacement,
+          token: candidate.suggestedTokenName,
+          operationId,
+          stateIds: [],
+          mappingCandidates,
+          selectedMappingId: mappingId,
+          scope: 'component',
+          context: { breakpoint: 'current', theme: 'current', state: 'current' },
+          confidence: 'instrumented',
+          evidence: [
+            ...candidate.evidence,
+            ...candidate.sources.map((item) => `${item.file}${item.line ? `:${item.line}` : ''}`),
+            'Preserve the resolved rendered value and semantic alias chain.',
+            'Re-index, rebuild, and verify every affected consumer after apply.',
+          ],
+          status: 'draft',
+        }),
+      });
+      const changeIds = responsePayload.changeSet.changes
+        .filter((change: any) => change.operationId === operationId)
+        .map((change: any) => change.id);
+      responsePayload = await sessionRequest('/operations', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: operationId,
+          kind: 'token-refactor',
+          label:
+            candidate.recommendation === 'use-existing'
+              ? `Promote ${candidate.occurrenceCount} literals to ${candidate.suggestedTokenName}`
+              : `Create ${candidate.suggestedTokenName} and promote ${candidate.occurrenceCount} literals`,
+          targetIds: [targetId],
+          changeIds,
+          stateIds: [],
+          mappingCandidates,
+          selectedMappingId: mappingId,
+          status: 'resolved',
+        }),
+      });
+      const activeChanges = responsePayload.changeSet.changes.filter(
+        (change: any) =>
+          change.status !== 'rejected' && String(change.before) !== String(change.after),
+      );
+      recordedChangeCount = activeChanges.length;
+      lastRecordedSummary = `${candidate.suggestedTokenName} · ${candidate.occurrenceCount} source locations`;
+      updateChangeCount(activeChanges.length, activeChanges.at(-1));
+      showToast('Token plan added to Review');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not stage this token plan');
+    }
+    publishWorkspaceState();
+  }
+
+  async function repairWorkshopVariantDrift(
+    entry: NonNullable<ReturnType<typeof currentWorkshopEntry>>,
+    variant: ComponentWorkshopVariant,
+  ): Promise<void> {
+    const drift = componentVariantDrift(
+      entry.elements.map((element) => ({
+        id: foundryTargetId(element),
+        label: layerLabel(element),
+        props: workshopElementProps(element, variant),
+      })),
+      variant,
+    );
+    for (const mismatch of drift) {
+      const target = entry.elements.find(
+        (element) => foundryTargetId(element) === mismatch.instanceId,
+      );
+      if (!target) continue;
+      const attribute = `data-${mismatch.property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+      target.setAttribute(attribute, String(mismatch.expected));
+      const control: Control = {
+        category: 'content',
+        property: `variant.${mismatch.property}`,
+        label: `Repair ${entry.name} ${mismatch.property}`,
+        kind: 'text',
+        value: String(mismatch.actual),
+        read: () => target.getAttribute(attribute) ?? '',
+        apply: (next) => target.setAttribute(attribute, String(next)),
+      };
+      await record(
+        control,
+        String(mismatch.actual),
+        String(mismatch.expected),
+        target,
+        `Repair ${variant.name} cross-instance drift`,
+        [
+          `Expected ${mismatch.property}=${mismatch.expected}`,
+          `Rendered ${mismatch.property}=${mismatch.actual}`,
+          `Variant source: ${workshopSourceLabel(variant.source)}`,
+        ],
+        { source: variant.source },
+      );
+    }
+    showToast(
+      drift.length
+        ? `${drift.length} drift ${drift.length === 1 ? 'value' : 'values'} ready for review`
+        : 'No explicit variant drift was found',
+    );
+  }
+
   function renderComponentWorkshop(): void {
     const body = componentWorkshopPanel.querySelector<HTMLElement>('.component-workshop-body')!;
     const catalog = workshopCatalog();
@@ -3737,6 +4821,31 @@ export function installFoundryInspector(
     const activeScope = scopes.find((item) => item.id === scope.value) ?? scopes[0]!;
     const states = componentWorkshopStates(designGraph?.states);
     if (!states.some((item) => item.id === workshopStateId)) workshopStateId = 'current';
+    const axes = definition?.variantAxes ?? [];
+    const drift = componentVariantDrift(
+      entry.elements.map((element) => ({
+        id: foundryTargetId(element),
+        label: layerLabel(element),
+        props: chosenVariant ? workshopElementProps(element, chosenVariant) : {},
+      })),
+      chosenVariant,
+    );
+    const authoring = axes.length
+      ? `<section class="component-workshop-section component-workshop-authoring"><header><strong>Create source variant</strong><span>Reviewed source operation</span></header><div class="component-workshop-form"><label>Variant property<select data-workshop-axis>${axes.map((axis) => `<option value="${escapeHtml(axis.id)}">${escapeHtml(axis.label)} · ${escapeHtml(axis.adapter)}</option>`).join('')}</select></label><label>Variant name<input data-workshop-variant-label placeholder="Danger" /></label><label>Source value<input data-workshop-variant-value placeholder="danger" /></label><label>Start from<select data-workshop-base><option value="">Current preview</option>${variants.map((variant) => `<option value="${escapeHtml(variant.id)}">${escapeHtml(variant.name)}</option>`).join('')}</select></label><button class="primary" data-workshop-create-variant ${entry.elements.length && axes.some((axis) => axis.canCreate) ? '' : 'disabled'}>Stage source variant</button></div><span class="component-workshop-state-note">Foundry records the exact authoring location. The coding agent creates the option only after Review.</span></section>`
+      : '<section class="component-workshop-section"><header><strong>Create source variant</strong><span>Read-only</span></header><span class="component-workshop-state-note">No writable Storybook, CVA, or TypeScript variant axis was found.</span></section>';
+    const driftMarkup = `<section class="component-workshop-section component-workshop-drift" data-drift-count="${drift.length}"><header><strong>Cross-instance drift</strong><span>${chosenVariant ? `${drift.length} ${drift.length === 1 ? 'difference' : 'differences'}` : 'Choose a variant'}</span></header>${
+      drift.length
+        ? `<div class="component-workshop-drift-list">${drift
+            .slice(0, 4)
+            .map(
+              (item) =>
+                `<span><strong>${escapeHtml(item.label)}</strong><code>${escapeHtml(item.property)} ${escapeHtml(String(item.actual))} → ${escapeHtml(String(item.expected))}</code></span>`,
+            )
+            .join(
+              '',
+            )}</div><button data-workshop-repair-drift>Repair ${drift.length} ${drift.length === 1 ? 'value' : 'values'}</button>`
+        : `<span class="component-workshop-state-note">${chosenVariant ? 'Every explicitly instrumented instance matches this variant.' : 'Select a source variant to compare its rendered instances.'}</span>`
+    }</section>`;
     body.innerHTML = `<div class="component-workshop-picker"><label>Component<select data-workshop-component aria-label="Component">${catalog
       .map(
         (item) =>
@@ -3773,7 +4882,7 @@ export function installFoundryInspector(
             )
             .join('')
         : '<span class="component-workshop-scope-note">No variants were discovered for this component.</span>'
-    }</div></section><section class="component-workshop-section"><header><strong>Visual states</strong><span>Preview only · never saved as a design change</span></header><div class="component-workshop-states">${states
+    }</div></section>${authoring}${driftMarkup}<section class="component-workshop-section"><header><strong>Visual states</strong><span>Preview only · never saved as a design change</span></header><div class="component-workshop-states">${states
       .map(
         (item) =>
           `<button class="${workshopStateId === item.id ? 'active' : ''}" data-workshop-state="${escapeHtml(item.id)}" data-confidence="${item.confidence}" ${entry.elements.length ? '' : 'disabled'}><i class="component-workshop-state-signal"></i>${escapeHtml(item.label)}</button>`,
@@ -3818,6 +4927,22 @@ export function installFoundryInspector(
         if (variant) void previewWorkshopVariant(entry, variant);
       }),
     );
+    body
+      .querySelector<HTMLButtonElement>('[data-workshop-create-variant]')
+      ?.addEventListener('click', () => {
+        void stageWorkshopVariant(entry, {
+          axisId: body.querySelector<HTMLSelectElement>('[data-workshop-axis]')!.value,
+          label: body.querySelector<HTMLInputElement>('[data-workshop-variant-label]')!.value,
+          value: body.querySelector<HTMLInputElement>('[data-workshop-variant-value]')!.value,
+          baseVariantId:
+            body.querySelector<HTMLSelectElement>('[data-workshop-base]')!.value || undefined,
+        });
+      });
+    body
+      .querySelector<HTMLButtonElement>('[data-workshop-repair-drift]')
+      ?.addEventListener('click', () => {
+        if (chosenVariant) void repairWorkshopVariantDrift(entry, chosenVariant);
+      });
     body.querySelectorAll<HTMLButtonElement>('[data-workshop-state]').forEach((button) =>
       button.addEventListener('click', () => {
         const nextState = states.find((item) => item.id === button.dataset.workshopState);
@@ -4497,7 +5622,10 @@ export function installFoundryInspector(
   }
 
   function openWorkbench(): void {
-    workspaceState = updateWorkspace(workspaceState, { type: 'set-workbench', open: true });
+    workspaceState = updateWorkspace(workspaceState, {
+      type: 'set-workbench',
+      open: true,
+    });
     workbench.hidden = false;
     const workbenchButton = shadow.querySelector<HTMLButtonElement>('.open-workbench')!;
     workbenchButton.classList.add('active');
@@ -4512,7 +5640,10 @@ export function installFoundryInspector(
   }
 
   function closeWorkbench(): void {
-    workspaceState = updateWorkspace(workspaceState, { type: 'set-workbench', open: false });
+    workspaceState = updateWorkspace(workspaceState, {
+      type: 'set-workbench',
+      open: false,
+    });
     workbench.hidden = true;
     const workbenchButton = shadow.querySelector<HTMLButtonElement>('.open-workbench')!;
     workbenchButton.classList.remove('active');
@@ -4778,7 +5909,11 @@ export function installFoundryInspector(
         suspendedPreviewRestore = after;
         select(element);
         suspendReview();
-        element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        element.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'center',
+        });
         showToast('Before value shown · Return to continue reviewing');
       });
     });
@@ -4796,7 +5931,11 @@ export function installFoundryInspector(
       button.addEventListener('click', () => {
         select(element);
         suspendReview();
-        element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        element.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'center',
+        });
         showToast('Located on the live canvas · Return to continue reviewing');
       });
     });
@@ -4807,7 +5946,9 @@ export function installFoundryInspector(
           renderReviewPayload(
             await sessionRequest(`/operations/${encodeURIComponent(field.dataset.operationId!)}`, {
               method: 'PATCH',
-              body: JSON.stringify({ selectedMappingId: field.dataset.mappingChoice }),
+              body: JSON.stringify({
+                selectedMappingId: field.dataset.mappingChoice,
+              }),
             }),
           );
         } catch (error) {
@@ -4995,7 +6136,10 @@ export function installFoundryInspector(
     suspendedPreviewRestore = undefined;
     reviewSuspended = false;
     dockReviewButton.textContent = 'Review';
-    workspaceState = updateWorkspace(workspaceState, { type: 'set-review', open: true });
+    workspaceState = updateWorkspace(workspaceState, {
+      type: 'set-review',
+      open: true,
+    });
     reviewTakeover.hidden = false;
     outline.hidden = true;
     const [payload, presence] = await Promise.all([
@@ -5017,7 +6161,10 @@ export function installFoundryInspector(
 
   function closeReview(restoreFocus = true): void {
     reviewScrollTop = reviewBody.scrollTop;
-    workspaceState = updateWorkspace(workspaceState, { type: 'set-review', open: false });
+    workspaceState = updateWorkspace(workspaceState, {
+      type: 'set-review',
+      open: false,
+    });
     reviewTakeover.hidden = true;
     clearInterval(reviewPoll);
     reviewPoll = undefined;
@@ -5296,6 +6443,10 @@ export function installFoundryInspector(
     element = selected,
     operationLabel?: string,
     extraEvidence: string[] = [],
+    options: {
+      source?: ComponentWorkshopSource;
+      scope?: ComponentWorkshopScope;
+    } = {},
   ): Promise<void> {
     if (!element || !sessionId || !token) {
       showToast('Session connection is missing');
@@ -5311,13 +6462,14 @@ export function installFoundryInspector(
             : control.category;
     const target = targetFor(element);
     const operationId = `op_${crypto.randomUUID().replaceAll('-', '')}`;
+    const recordScope = options.scope ?? (scope.value as ComponentWorkshopScope);
     const candidates = candidatesForElement(
       element,
       control.property,
       after,
       target.id,
-      scope.value as ComponentWorkshopScope,
-      target.source,
+      recordScope,
+      options.source ?? target.source,
     );
     const ambiguous = candidates.length > 1;
     const selectedMappingId = ambiguous ? undefined : candidates[0]?.id;
@@ -5342,7 +6494,7 @@ export function installFoundryInspector(
       stateIds,
       mappingCandidates: candidates,
       selectedMappingId,
-      scope: scope.value,
+      scope: recordScope,
       context: {
         breakpoint: breakpoint.value,
         theme: theme.value,
@@ -6511,7 +7663,9 @@ export function installFoundryInspector(
       .querySelector<HTMLButtonElement>('[data-load-local-fonts]')
       ?.addEventListener('click', async () => {
         const queryLocalFonts = (
-          window as Window & { queryLocalFonts?: () => Promise<LocalFontRecord[]> }
+          window as Window & {
+            queryLocalFonts?: () => Promise<LocalFontRecord[]>;
+          }
         ).queryLocalFonts;
         if (!queryLocalFonts) return;
         try {
@@ -6963,7 +8117,8 @@ export function installFoundryInspector(
         const discovered = findDiscoveredMotion(element, motion[1]!);
         const effect = discovered?.animation?.effect as KeyframeEffect | null;
         if (!effect) throw new Error('The edited motion is not currently rendered.');
-        effect.updateTiming({ [motion[2]!]: value });
+        if (motion[2] === 'easing') applyMotionEasingValue(effect, value);
+        else effect.updateTiming({ [motion[2]!]: value });
       } else {
         if (['aria-label', 'role', 'tabindex', 'alt', 'src'].includes(property) && value === '') {
           element.removeAttribute(property);
@@ -7115,7 +8270,10 @@ export function installFoundryInspector(
       return;
     }
     comparisonActive = true;
-    workspaceState = updateWorkspace(workspaceState, { type: 'set-comparison', open: true });
+    workspaceState = updateWorkspace(workspaceState, {
+      type: 'set-comparison',
+      open: true,
+    });
     trayCompare.classList.add('active');
     compareBar.hidden = false;
     compareBar.querySelector<HTMLInputElement>('[data-compare-scrub]')!.value =
@@ -7238,22 +8396,70 @@ export function installFoundryInspector(
     if (isolatedComparisonElement) toggleComparisonIsolation();
     showComparison('after');
     comparisonActive = false;
-    workspaceState = updateWorkspace(workspaceState, { type: 'set-comparison', open: false });
+    workspaceState = updateWorkspace(workspaceState, {
+      type: 'set-comparison',
+      open: false,
+    });
     trayCompare.classList.remove('active');
     compareBar.hidden = true;
   }
 
   const commands = [
-    { id: 'health', label: 'Scan design health', shortcut: '⇧H', icon: 'activity' },
+    {
+      id: 'health',
+      label: 'Scan design health',
+      shortcut: '⇧H',
+      icon: 'activity',
+    },
     { id: 'layers', label: 'Open layers', shortcut: '⇧L', icon: 'layers-3' },
-    { id: 'components', label: 'Open component workshop', shortcut: '⇧K', icon: 'component' },
-    { id: 'compare', label: 'Compare before and after', shortcut: '⇧C', icon: 'contrast' },
-    { id: 'workbench', label: 'Open state workbench', shortcut: '', icon: 'panels-top-left' },
-    { id: 'memory', label: 'Open design memory', shortcut: '', icon: 'bookmark' },
-    { id: 'recipe', label: 'Save selected treatment', shortcut: '', icon: 'save' },
-    { id: 'tidy', label: 'Tidy selected layout', shortcut: '', icon: 'wand-sparkles' },
-    { id: 'parent', label: 'Select parent layer', shortcut: '[', icon: 'chevron-right' },
-    { id: 'child', label: 'Select child layer', shortcut: ']', icon: 'chevron-down' },
+    {
+      id: 'components',
+      label: 'Open component workshop',
+      shortcut: '⇧K',
+      icon: 'component',
+    },
+    {
+      id: 'compare',
+      label: 'Compare before and after',
+      shortcut: '⇧C',
+      icon: 'contrast',
+    },
+    {
+      id: 'workbench',
+      label: 'Open state workbench',
+      shortcut: '',
+      icon: 'panels-top-left',
+    },
+    {
+      id: 'memory',
+      label: 'Open design memory',
+      shortcut: '',
+      icon: 'bookmark',
+    },
+    {
+      id: 'recipe',
+      label: 'Save selected treatment',
+      shortcut: '',
+      icon: 'save',
+    },
+    {
+      id: 'tidy',
+      label: 'Tidy selected layout',
+      shortcut: '',
+      icon: 'wand-sparkles',
+    },
+    {
+      id: 'parent',
+      label: 'Select parent layer',
+      shortcut: '[',
+      icon: 'chevron-right',
+    },
+    {
+      id: 'child',
+      label: 'Select child layer',
+      shortcut: ']',
+      icon: 'chevron-down',
+    },
     { id: 'undo', label: 'Undo preview', shortcut: '⌘Z', icon: 'undo-2' },
     { id: 'redo', label: 'Redo preview', shortcut: '⇧⌘Z', icon: 'redo-2' },
     { id: 'review', label: 'Review changes', shortcut: '', icon: 'file-text' },
@@ -7416,9 +8622,52 @@ export function installFoundryInspector(
       .sort((first, second) => first.ratio - second.ratio);
     if (tokenCandidates[0]) return tokenCandidates[0];
     const fallback = ['#111111', '#ffffff']
-      .map((value) => ({ value, ratio: contrastRatio(value, backgroundColor) ?? 0 }))
+      .map((value) => ({
+        value,
+        ratio: contrastRatio(value, backgroundColor) ?? 0,
+      }))
       .sort((first, second) => second.ratio - first.ratio)[0];
     return fallback && fallback.ratio >= threshold ? { value: fallback.value } : undefined;
+  }
+
+  function keyboardReachable(element: HTMLElement): boolean {
+    if (element.getAttribute('aria-disabled') === 'true') return false;
+    if (
+      (element instanceof HTMLButtonElement ||
+        element instanceof HTMLInputElement ||
+        element instanceof HTMLSelectElement ||
+        element instanceof HTMLTextAreaElement) &&
+      element.disabled
+    )
+      return false;
+    return element.tabIndex >= 0;
+  }
+
+  function visibleFocusTreatment(element: HTMLElement): boolean | undefined {
+    if (!activeStressConditions.includes('keyboard-only') || !keyboardReachable(element))
+      return undefined;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const before = getComputedStyle(element);
+    const baseline = {
+      outlineStyle: before.outlineStyle,
+      outlineWidth: before.outlineWidth,
+      boxShadow: before.boxShadow,
+      borderColor: before.borderColor,
+      backgroundColor: before.backgroundColor,
+    };
+    element.focus({ preventScroll: true });
+    const focused = getComputedStyle(element);
+    const outlineVisible =
+      focused.outlineStyle !== 'none' && Number.parseFloat(focused.outlineWidth) > 0;
+    const treatmentChanged =
+      focused.boxShadow !== baseline.boxShadow ||
+      focused.borderColor !== baseline.borderColor ||
+      focused.backgroundColor !== baseline.backgroundColor ||
+      focused.outlineStyle !== baseline.outlineStyle ||
+      focused.outlineWidth !== baseline.outlineWidth;
+    if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    else element.blur();
+    return outlineVisible || treatmentChanged;
   }
 
   function scanDesignHealth(): void {
@@ -7441,17 +8690,37 @@ export function installFoundryInspector(
       const backgroundColor = opaqueBackground(element);
       const animationDuration = durationMilliseconds(style.animationDuration);
       const transitionDuration = durationMilliseconds(style.transitionDuration);
+      const interactive = isInteractiveElement(element);
+      const keyboardCandidate =
+        interactive &&
+        element.getAttribute('aria-disabled') !== 'true' &&
+        !(
+          (element instanceof HTMLButtonElement ||
+            element instanceof HTMLInputElement ||
+            element instanceof HTMLSelectElement ||
+            element instanceof HTMLTextAreaElement) &&
+          element.disabled
+        );
       const findings = auditHealthSnapshot({
         hasVisibleText: Boolean(directText(element)),
         color: style.color,
         backgroundColor,
         fontSize: Number.parseFloat(style.fontSize) || 16,
         fontWeight: Number.parseFloat(style.fontWeight) || 400,
-        interactive: isInteractiveElement(element),
+        interactive,
         targetSizeEligible:
-          isInteractiveElement(element) &&
+          interactive &&
           !(element.tagName === 'A' && ['inline', 'contents'].includes(style.display)),
         accessibleName: accessibleName(element),
+        keyboardCandidate,
+        keyboardReachable: keyboardCandidate ? keyboardReachable(element) : false,
+        positiveTabIndex: element.tabIndex > 0,
+        focusIndicatorVisible: keyboardCandidate ? visibleFocusTreatment(element) : undefined,
+        imageElement: element instanceof HTMLImageElement,
+        imageHasAlternative:
+          !(element instanceof HTMLImageElement) ||
+          element.hasAttribute('alt') ||
+          Boolean(element.getAttribute('aria-label') || element.getAttribute('aria-labelledby')),
         width: rect.width,
         height: rect.height,
         left: rect.left,
@@ -7482,6 +8751,8 @@ export function installFoundryInspector(
           element,
           elementLabel: layerLabel(element),
           previewed: healthIssues.find((issue) => issue.id === id)?.previewed ?? false,
+          source: element.dataset.foundrySource ?? undefined,
+          stressConditions: [...activeStressConditions],
         });
       }
     }
@@ -7497,6 +8768,7 @@ export function installFoundryInspector(
     const score = healthScore(visibleIssues);
     const scoreColor = score >= 90 ? '#2b9a76' : score >= 70 ? '#d69b3c' : '#d15d43';
     healthSummary.innerHTML = `<div class="health-score" style="--score:${score};--score-color:${scoreColor}"><strong>${score}</strong></div><div class="health-summary-copy"><strong>${visibleIssues.length ? `${visibleIssues.length} issue${visibleIssues.length === 1 ? '' : 's'} found` : 'No issues found'}</strong><span>${visibleIssues.length ? 'Review evidence before previewing a correction.' : 'The current viewport passed this health scan.'}</span></div>`;
+    healthStress.innerHTML = `<div class="health-stress-head"><strong>Temporary stress</strong><span>${activeStressConditions.length ? `${activeStressConditions.length} active` : 'Preview only'}</span></div><div class="health-stress-scope" role="group" aria-label="Stress test scope"><button class="${stressDraftScope === 'selection' ? 'active' : ''}" data-health-stress-scope="selection" aria-pressed="${stressDraftScope === 'selection'}">Selection</button><button class="${stressDraftScope === 'canvas' ? 'active' : ''}" data-health-stress-scope="canvas" aria-pressed="${stressDraftScope === 'canvas'}">Canvas</button></div><div class="health-stress-options">${STRESS_CONDITIONS.map((condition) => `<button class="${stressDraftConditions.includes(condition.id) ? 'active' : ''}" data-health-stress-condition="${condition.id}" aria-pressed="${stressDraftConditions.includes(condition.id)}" title="${escapeHtml(condition.description)}">${escapeHtml(condition.label)}</button>`).join('')}</div><div class="health-stress-actions"><button data-health-stress-clear>Clear</button><button data-health-stress-apply ${stressDraftConditions.length ? '' : 'disabled'}>Apply and scan</button></div>`;
     const filters = ['all', 'high', 'medium', 'low'];
     healthFilters.innerHTML = filters
       .map((filter) => {
@@ -7521,6 +8793,54 @@ export function installFoundryInspector(
     ignoredButton.hidden = ignoredCount === 0;
     ignoredButton.textContent = `Restore ${ignoredCount} ignored`;
     renderIcons(healthPanel);
+    healthStress
+      .querySelectorAll<HTMLButtonElement>('[data-health-stress-scope]')
+      .forEach((button) =>
+        button.addEventListener('click', () => {
+          stressDraftScope = button.dataset.healthStressScope === 'canvas' ? 'canvas' : 'selection';
+          renderHealthPanel();
+        }),
+      );
+    healthStress
+      .querySelectorAll<HTMLButtonElement>('[data-health-stress-condition]')
+      .forEach((button) =>
+        button.addEventListener('click', () => {
+          const id = button.dataset.healthStressCondition as StressConditionId;
+          const definition = STRESS_CONDITIONS.find((condition) => condition.id === id);
+          if (stressDraftConditions.includes(id)) {
+            stressDraftConditions = stressDraftConditions.filter((condition) => condition !== id);
+          } else {
+            if (definition?.combination === 'state') {
+              const stateIds = new Set(
+                STRESS_CONDITIONS.filter((condition) => condition.combination === 'state').map(
+                  (condition) => condition.id,
+                ),
+              );
+              stressDraftConditions = stressDraftConditions.filter(
+                (condition) => !stateIds.has(condition),
+              );
+            }
+            stressDraftConditions = [...stressDraftConditions, id];
+          }
+          renderHealthPanel();
+        }),
+      );
+    healthStress
+      .querySelector<HTMLButtonElement>('[data-health-stress-clear]')
+      ?.addEventListener('click', () => {
+        stressDraftConditions = [];
+        restoreStressConditions();
+      });
+    healthStress
+      .querySelector<HTMLButtonElement>('[data-health-stress-apply]')
+      ?.addEventListener('click', () => {
+        if (stressDraftScope === 'selection' && !selected) {
+          showToast('Select a layer before applying selection stress');
+          return;
+        }
+        applyStressConditions(stressDraftConditions, stressDraftScope);
+        showToast('Temporary stress applied');
+      });
     healthFilters.querySelectorAll<HTMLButtonElement>('[data-health-filter]').forEach((button) =>
       button.addEventListener('click', () => {
         healthFilter = button.dataset.healthFilter ?? 'all';
@@ -7612,23 +8932,234 @@ export function installFoundryInspector(
   }
 
   const previewLoopIterations = new WeakMap<Animation, number>();
+  const previewMotionCurves = new WeakMap<Animation, MotionCurveSnapshot>();
+  const motionComparisonBaselines = new WeakMap<
+    Animation,
+    {
+      timing: DiscoveredMotion['descriptor']['timing'];
+      keyframes: MotionKeyframe[];
+      curve: MotionCurveSnapshot;
+    }
+  >();
+
+  function ensureMotionComparisonBaseline(motion: DiscoveredMotion): void {
+    const animation = motion.animation;
+    if (!animation || motionComparisonBaselines.has(animation)) return;
+    motionComparisonBaselines.set(animation, {
+      timing: { ...motion.descriptor.timing },
+      keyframes: motion.descriptor.keyframes.map((frame) => ({
+        ...frame,
+        values: { ...frame.values },
+      })),
+      curve:
+        previewMotionCurves.get(animation) ?? motionCurveSnapshot(motion.descriptor.timing.easing),
+    });
+  }
+
+  function requestedMotionCurve(payload: Record<string, unknown>): MotionCurve {
+    const kind = String(payload.kind ?? 'cubic-bezier');
+    if (kind === 'spring') {
+      return normalizeSpring({
+        mass: Number(payload.mass),
+        stiffness: Number(payload.stiffness),
+        damping: Number(payload.damping),
+        velocity: Number(payload.velocity),
+      });
+    }
+    return normalizeCubicBezier({
+      x1: Number(payload.x1),
+      y1: Number(payload.y1),
+      x2: Number(payload.x2),
+      y2: Number(payload.y2),
+    });
+  }
+
+  function nativeMotionAuthoring(
+    element: HTMLElement,
+    motion: DiscoveredMotion,
+  ): NativeMotionAuthoring | undefined {
+    if (motion.descriptor.authoring) return motion.descriptor.authoring;
+    const mappedElement = element.closest<HTMLElement>('[data-foundry-source]') ?? element;
+    const source = parseSource(mappedElement.dataset.foundrySource);
+    if (!source) return undefined;
+    const sourceFile = source.file.replace(/^\.\//, '');
+    const preset = (designGraph?.motionPresets ?? [])
+      .filter((candidate) => candidate.adapter && candidate.adapter !== 'css' && candidate.source)
+      .filter((candidate) => {
+        const candidateFile = String(candidate.source.file ?? '').replace(/^\.\//, '');
+        return candidateFile === sourceFile || candidateFile.endsWith(`/${sourceFile}`);
+      })
+      .sort(
+        (left, right) =>
+          Math.abs(Number(left.source.line ?? 0) - Number(source.line ?? 0)) -
+          Math.abs(Number(right.source.line ?? 0) - Number(source.line ?? 0)),
+      )[0];
+    if (!preset) return undefined;
+    const adapter = preset.adapter as NativeMotionAuthoring['adapter'];
+    const base = String(preset.sourceProperty ?? (adapter === 'gsap' ? 'vars' : 'config'));
+    const sourceProperties =
+      adapter === 'react-spring'
+        ? {
+            duration: `${base}.duration`,
+            delay: `${base}.delay`,
+            easing: base,
+            spring: base,
+            keyframes: 'from / to',
+          }
+        : {
+            duration: `${base}.duration`,
+            delay: `${base}.delay`,
+            easing: `${base}.${adapter === 'gsap' ? 'ease' : 'ease'}`,
+            spring: `${base}.type`,
+            keyframes: adapter === 'gsap' ? base : 'animate / variants',
+          };
+    return {
+      adapter,
+      label:
+        adapter === 'motion' ? 'Motion for React' : adapter === 'gsap' ? 'GSAP' : 'React Spring',
+      source: preset.source,
+      sourceProperties,
+      evidence: [
+        ...(Array.isArray(preset.evidence) ? preset.evidence : []),
+        `Project motion preset: ${preset.label}`,
+      ],
+    };
+  }
+
+  function motionSourceEvidence(
+    element: HTMLElement | null,
+    motion: DiscoveredMotion,
+    property: string,
+  ): string[] {
+    if (!element) return [];
+    const authoring = nativeMotionAuthoring(element, motion);
+    if (!authoring) return [];
+    const sourceProperty =
+      authoring.sourceProperties[property] ?? authoring.sourceProperties.keyframes;
+    return [
+      `native adapter: ${authoring.label}`,
+      ...(sourceProperty ? [`native source property: ${sourceProperty}`] : []),
+      ...(authoring.source
+        ? [`native source: ${authoring.source.file}:${authoring.source.line ?? 1}`]
+        : []),
+      ...authoring.evidence,
+    ];
+  }
 
   function workspaceMotionSnapshot(element: HTMLElement): Array<Record<string, unknown>> {
-    return discoverElementMotion(element).map(({ descriptor, animation }) => ({
-      id: descriptor.id,
-      label: descriptor.label,
-      kind: descriptor.kind,
-      properties: descriptor.properties,
-      timing: descriptor.timing,
-      keyframes: descriptor.keyframes,
-      performance: descriptor.performance,
-      active: Boolean(animation?.effect),
-      playState: animation?.playState ?? 'idle',
-      currentTime: Math.max(0, Number(animation?.currentTime ?? 0)),
-      playbackRate: animation?.playbackRate ?? 1,
-      looping: Boolean(animation && previewLoopIterations.has(animation)),
-      reducedMotionProtected: descriptor.timing.duration <= 300 || hasReducedMotionRule(element),
-    }));
+    return discoverElementMotion(element).map((motion) => {
+      const { descriptor, animation } = motion;
+      const authoring = nativeMotionAuthoring(element, motion);
+      const curve =
+        (animation && previewMotionCurves.get(animation)) ??
+        motionCurveSnapshot(descriptor.timing.easing);
+      const path = motionPathSnapshot(descriptor.keyframes);
+      const baseline = animation ? motionComparisonBaselines.get(animation) : undefined;
+      const beforeTiming = baseline?.timing ?? descriptor.timing;
+      const beforeKeyframes = baseline?.keyframes ?? descriptor.keyframes;
+      const beforeCurve = baseline?.curve ?? curve;
+      const beforePath = motionPathSnapshot(beforeKeyframes);
+      const changed = Boolean(
+        baseline &&
+        (JSON.stringify(beforeTiming) !== JSON.stringify(descriptor.timing) ||
+          JSON.stringify(beforeKeyframes) !== JSON.stringify(descriptor.keyframes) ||
+          beforeCurve.sourceValue !== curve.sourceValue),
+      );
+      return {
+        id: descriptor.id,
+        label: descriptor.label,
+        kind:
+          authoring?.adapter === 'motion'
+            ? 'motion-react'
+            : (authoring?.adapter ?? descriptor.kind),
+        authoring,
+        properties: descriptor.properties,
+        timing: descriptor.timing,
+        keyframes: descriptor.keyframes,
+        performance: descriptor.performance,
+        active: Boolean(animation?.effect),
+        playState: animation?.playState ?? 'idle',
+        currentTime: Math.max(0, Number(animation?.currentTime ?? 0)),
+        playbackRate: animation?.playbackRate ?? 1,
+        looping: Boolean(animation && previewLoopIterations.has(animation)),
+        reducedMotionProtected: descriptor.timing.duration <= 300 || hasReducedMotionRule(element),
+        curve,
+        path,
+        comparison: {
+          changed,
+          before: {
+            timing: beforeTiming,
+            keyframes: beforeKeyframes,
+            curve: beforeCurve,
+            path: beforePath,
+          },
+          after: {
+            timing: descriptor.timing,
+            keyframes: descriptor.keyframes,
+            curve,
+            path,
+          },
+          diagnostics: {
+            durationDelta: descriptor.timing.duration - beforeTiming.duration,
+            distanceDelta: path.distance - beforePath.distance,
+            pointDelta: path.points.length - beforePath.points.length,
+          },
+        },
+      };
+    });
+  }
+
+  function applyMotionEasingValue(effect: KeyframeEffect, value: string | number): void {
+    const sourceValue = String(value);
+    const snapshot = motionCurveSnapshot(parseMotionCurve(sourceValue));
+    effect.updateTiming({ easing: snapshot.previewValue });
+  }
+
+  async function applyMotionCurve(motion: DiscoveredMotion, requested: MotionCurve): Promise<void> {
+    const animation = motion.animation;
+    const effect = animation?.effect as KeyframeEffect | null;
+    if (!animation || !effect) return;
+    ensureMotionComparisonBaseline(motion);
+    const current = previewMotionCurves.get(animation);
+    const before = current?.sourceValue ?? String(effect.getTiming().easing ?? 'linear');
+    const snapshot = motionCurveSnapshot(requested);
+    if (before === snapshot.sourceValue) return;
+    effect.updateTiming({ easing: snapshot.previewValue });
+    previewMotionCurves.set(animation, snapshot);
+    const applyValue = (value: string | number): void => {
+      const next = motionCurveSnapshot(parseMotionCurve(String(value)));
+      effect.updateTiming({ easing: next.previewValue });
+      previewMotionCurves.set(animation, next);
+    };
+    await record(
+      {
+        category: 'motion',
+        property: `motion.${motion.descriptor.id}.easing`,
+        label: requested.kind === 'spring' ? 'Spring easing' : 'Cubic Bezier easing',
+        kind: 'text',
+        value: before,
+        read: () =>
+          previewMotionCurves.get(animation)?.sourceValue ??
+          String(effect.getTiming().easing ?? 'linear'),
+        apply: applyValue,
+      },
+      before,
+      snapshot.sourceValue,
+      selected,
+      requested.kind === 'spring'
+        ? `Tune ${motion.descriptor.label} spring`
+        : `Tune ${motion.descriptor.label} curve`,
+      [
+        'rendered timing function',
+        requested.kind === 'spring' ? 'physical spring parameters' : 'cubic Bezier handles',
+        `browser source: ${snapshot.sourceValue}`,
+        ...motionSourceEvidence(
+          selected,
+          motion,
+          requested.kind === 'spring' ? 'spring' : 'easing',
+        ),
+      ],
+    );
   }
 
   async function applyMotionTiming(
@@ -7638,8 +9169,10 @@ export function installFoundryInspector(
   ): Promise<void> {
     const effect = motion.animation?.effect as KeyframeEffect | null;
     if (!effect) return;
+    ensureMotionComparisonBaseline(motion);
     const before = effect.getTiming()[property] as string | number;
-    effect.updateTiming({ [property]: after });
+    if (property === 'easing') applyMotionEasingValue(effect, after);
+    else effect.updateTiming({ [property]: after });
     await record(
       {
         category: 'motion',
@@ -7649,10 +9182,16 @@ export function installFoundryInspector(
         value: before,
         unit: ['duration', 'delay'].includes(property) ? 'ms' : undefined,
         read: () => effect.getTiming()[property] as string | number,
-        apply: (value) => effect.updateTiming({ [property]: value }),
+        apply: (value) => {
+          if (property === 'easing') applyMotionEasingValue(effect, value);
+          else effect.updateTiming({ [property]: value });
+        },
       },
       before,
       after,
+      selected,
+      `Adjust ${motion.descriptor.label} ${property}`,
+      motionSourceEvidence(selected, motion, property),
     );
   }
 
@@ -7664,6 +9203,7 @@ export function installFoundryInspector(
   ): Promise<void> {
     const effect = motion.animation?.effect as KeyframeEffect | null;
     if (!effect) return;
+    ensureMotionComparisonBaseline(motion);
     const frames = motionKeyframes(effect);
     const before = motionKeyframeValue(frames, index, property);
     if (before == null || String(before) === String(after)) return;
@@ -7689,7 +9229,12 @@ export function installFoundryInspector(
       after,
       selected,
       `Edit ${motion.descriptor.label} keyframe ${index + 1}`,
-      ['rendered keyframe track', `keyframe ${index + 1}`, property],
+      [
+        'rendered keyframe track',
+        `keyframe ${index + 1}`,
+        property,
+        ...motionSourceEvidence(selected, motion, 'keyframes'),
+      ],
     );
   }
 
@@ -7983,7 +9528,9 @@ export function installFoundryInspector(
       .querySelector<HTMLButtonElement>('[data-eyedropper]')
       ?.addEventListener('click', async () => {
         const EyeDropper = (
-          window as unknown as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } }
+          window as unknown as {
+            EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> };
+          }
         ).EyeDropper;
         if (!EyeDropper) {
           showToast('Eyedropper is not available in this browser');
@@ -8921,6 +10468,12 @@ export function installFoundryInspector(
         `data-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
       );
     }
+    if (String(change.property).startsWith('component.variant.create.')) {
+      const key = String(change.property).slice('component.variant.create.'.length);
+      return element.getAttribute(
+        `data-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
+      );
+    }
     return (
       (element.ownerDocument.defaultView?.getComputedStyle(element) as any)?.[change.property] ??
       null
@@ -9430,7 +10983,9 @@ export function installFoundryInspector(
   componentWorkshopPanel
     .querySelector('[data-workshop-review]')
     ?.addEventListener('click', () => void openReview());
-  libraryPanel.querySelector('[data-save-recipe]')?.addEventListener('click', saveSelectedRecipe);
+  libraryPanel
+    .querySelector('[data-save-recipe]')
+    ?.addEventListener('click', () => saveSelectedRecipe());
   libraryPanel
     .querySelector('[data-capture-baseline]')
     ?.addEventListener('click', saveManualBaseline);
@@ -9635,7 +11190,10 @@ export function installFoundryInspector(
       if (!componentWorkshopPanel.hidden) renderComponentWorkshop();
     });
   });
-  layerMutationObserver.observe(document.body, { childList: true, subtree: true });
+  layerMutationObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
   const persistedSelector = sessionStorage.getItem('__foundry_selected_selector');
   if (persistedSelector) {
     try {

@@ -68,3 +68,23 @@ test('tolerates a transient heartbeat failure and stops after the retry budget',
   await keeper.pulse(claim.runId);
   assert.equal(keeper.has(claim.runId), false);
 });
+
+test('keeps a visual conversation claim alive while the agent reasons', async () => {
+  const requests: string[] = [];
+  const client: ClaimLeaseRequestClient = {
+    async request(path) {
+      requests.push(path);
+      return {
+        visualAgentRequests: [
+          { id: 'ask', status: 'thinking', claimAttemptId: claim.claimAttemptId },
+        ],
+      };
+    },
+  };
+  const keeper = new ClaimLeaseKeeper(client, 60_000);
+  keeper.start({ ...claim, runId: 'ask', kind: 'visual' });
+  await keeper.pulse('ask');
+  assert.equal(keeper.has('ask'), true);
+  assert.deepEqual(requests, ['/v1/sessions/session/visual-agent-requests/ask/heartbeat']);
+  keeper.stop('ask');
+});

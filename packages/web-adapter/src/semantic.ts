@@ -16,7 +16,9 @@ export interface BrowserMappingCandidate {
     | 'style'
     | 'content'
     | 'motion'
-    | 'state';
+    | 'state'
+    | 'component-variant'
+    | 'token-refactor';
   property: string;
   targetId?: string;
   value: string | number;
@@ -68,6 +70,14 @@ function candidate(
 
 export function semanticCandidates(context: LayoutContext): BrowserMappingCandidate[] {
   const property = context.property;
+  if (property.startsWith('component.variant.')) {
+    return [
+      candidate(context, property, 'Create source-backed component variant', 'component-variant', [
+        'indexed component variant axis',
+        'explicit source authoring location',
+      ]),
+    ];
+  }
   if (property.startsWith('animation.') || property.startsWith('motion.')) {
     return [
       candidate(context, property, `Set ${property.split('.').at(-1)}`, 'motion', [
@@ -158,6 +168,11 @@ export interface BrowserDesignToken {
   value: string;
   category: string;
   cssVariable?: string;
+  aliasOfTokenId?: string;
+  aliasOfTokenName?: string;
+  resolvedValue?: string;
+  aliasChain?: string[];
+  aliasStatus?: 'direct' | 'resolved' | 'broken' | 'circular';
 }
 
 function comparable(value: string | number): string {

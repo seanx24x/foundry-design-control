@@ -108,6 +108,71 @@ test('protects and serves the apply-run lifecycle over loopback HTTP', async () 
     assert.equal(heartbeatPayload.presence.agent.name, 'codex');
     assert.ok(Date.parse(heartbeatPayload.presence.expiresAt) > Date.now());
 
+    const visualCreated = await fetch(
+      `http://127.0.0.1:${port}/v1/sessions/${id}/visual-agent-requests`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-foundry-token': session.token,
+        },
+        body: JSON.stringify({
+          prompt: 'Improve the hierarchy in this region.',
+          context: {
+            targets: [],
+            region: { id: 'region-1', x: 20, y: 30, width: 480, height: 320 },
+            comments: [],
+            viewport: { width: 1440, height: 900 },
+            breakpoint: 'desktop',
+            theme: 'light',
+            state: 'default',
+            tokens: [],
+          },
+        }),
+      },
+    );
+    assert.equal(visualCreated.status, 201);
+    const visualPayload = (await visualCreated.json()) as {
+      visualAgentRequests: Array<{ id: string; status: string }>;
+    };
+    const visualRequestId = visualPayload.visualAgentRequests[0]!.id;
+    assert.equal(visualPayload.visualAgentRequests[0]?.status, 'queued');
+    const visualClaimed = await fetch(
+      `http://127.0.0.1:${port}/v1/sessions/${id}/visual-agent-requests/${visualRequestId}/claim`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-foundry-token': session.token,
+        },
+        body: JSON.stringify({ agent: { name: 'codex', taskId: 'task-1' } }),
+      },
+    );
+    const visualClaimPayload = (await visualClaimed.json()) as {
+      visualAgentRequests: Array<{ id: string; status: string; claimAttemptId: string }>;
+    };
+    assert.equal(visualClaimPayload.visualAgentRequests[0]?.status, 'thinking');
+    const visualResponded = await fetch(
+      `http://127.0.0.1:${port}/v1/sessions/${id}/visual-agent-requests/${visualRequestId}/respond`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-foundry-token': session.token,
+        },
+        body: JSON.stringify({
+          claimAttemptId: visualClaimPayload.visualAgentRequests[0]!.claimAttemptId,
+          message: 'The focal point is competing with secondary content.',
+          proposals: [],
+        }),
+      },
+    );
+    assert.equal(visualResponded.status, 200);
+    const visualRespondedPayload = (await visualResponded.json()) as {
+      visualAgentRequests: Array<{ status: string }>;
+    };
+    assert.equal(visualRespondedPayload.visualAgentRequests[0]?.status, 'ready');
+
     const changed = await store.addChange(id, {
       target: {
         id: 'button',

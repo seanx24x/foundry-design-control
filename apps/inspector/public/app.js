@@ -21,6 +21,7 @@ import interactIcon from '@iconify-icons/keyline-icons/cursor-click';
 import layersIcon from '@iconify-icons/keyline-icons/grid-squares';
 import layoutIcon from '@iconify-icons/keyline-icons/layout-dashboard';
 import menuIcon from '@iconify-icons/keyline-icons/menu';
+import messageIcon from '@iconify-icons/keyline-icons/message';
 import minusIcon from '@iconify-icons/keyline-icons/minus';
 import panelIcon from '@iconify-icons/keyline-icons/panel-right';
 import playIcon from '@iconify-icons/keyline-icons/play';
@@ -56,6 +57,7 @@ const ICONS = {
   layers: layersIcon,
   layout: layoutIcon,
   menu: menuIcon,
+  message: messageIcon,
   minus: minusIcon,
   panel: panelIcon,
   play: playIcon,
@@ -106,13 +108,19 @@ let workshopComponentId = '';
 let workshopVariantId = '';
 let workshopStateId = 'current';
 let responsiveCustomWidth = 1280;
+let responsiveContainerWidth = 480;
+let responsiveScrubTarget = 'viewport';
 let responsiveStressMode = 'none';
 let responsiveEditScope = 'breakpoint';
 let responsiveActiveViewport = 'current';
 let designSystemTokenId = '';
 let designSystemCategory = 'all';
+let designSystemView = 'tokens';
+let designSystemPromotionId = '';
 let motionStudioId = '';
 let motionStudioInteracting = false;
+let motionComparisonFrame = 0;
+let motionComparisonStartedAt = 0;
 let typographySource = 'project';
 let typographyGoogleFonts = [];
 let typographyGoogleStatus = 'idle';
@@ -123,10 +131,25 @@ let typographyGoogleSelection = null;
 let typographySearchTimer = null;
 let branchCompareLeft = 'main';
 let branchCompareRight = '';
+let stressScope = 'selection';
+let stressSeverity = 'all';
+let stressGroupBy = 'severity';
+let stressSelectionInitialized = false;
+let visualRecipeId = '';
+let visualRecipeSearch = '';
+let decisionMemoryId = '';
+let decisionMemorySearch = '';
+let decisionMemoryFilter = 'all';
+let decisionMemoryOutcome = 'approved';
+let visualAgentRequestId = '';
+let visualAgentRegionPending = false;
+const selectedStressConditions = new Set();
 const branchDecisionSelection = new Set();
 const designBranchFrames = new Map();
 const responsiveFrames = new Map();
 const responsiveSnapshots = new Map();
+let responsiveComparisonBefore = null;
+let responsiveComparisonAfter = null;
 const pendingCommandRequests = new Map();
 const changedControls = new Set();
 const effectCommitTimers = new Map();
@@ -220,8 +243,16 @@ function openSelectMenu(select, trigger) {
   trigger.setAttribute('aria-expanded', 'true');
   positionCustomSelect(trigger, portal);
   const selected = portal.querySelector('[aria-selected="true"]');
-  (selected ?? portal.querySelector('button:not(:disabled)'))?.focus({ preventScroll: true });
-  openCustomSelect = { select, trigger, portal, typeahead: '', typeaheadTimer: 0 };
+  (selected ?? portal.querySelector('button:not(:disabled)'))?.focus({
+    preventScroll: true,
+  });
+  openCustomSelect = {
+    select,
+    trigger,
+    portal,
+    typeahead: '',
+    typeaheadTimer: 0,
+  };
   portal.addEventListener('click', (event) => {
     const optionButton = event.target.closest('[data-option-index]');
     if (!optionButton || optionButton.disabled) return;
@@ -381,7 +412,13 @@ function requestCommand(command, payload = {}) {
     }, 5000);
     pendingCommandRequests.set(requestId, { resolve, reject, timeout });
     preview.contentWindow.postMessage(
-      { type: 'foundry:workspace-command', sessionId, command, payload, requestId },
+      {
+        type: 'foundry:workspace-command',
+        sessionId,
+        command,
+        payload,
+        requestId,
+      },
       previewOrigin,
     );
   });
@@ -390,6 +427,16 @@ function requestCommand(command, payload = {}) {
 function setMode(mode, restoreFocus = true, returnFocus = null) {
   closeCustomSelect({ restoreFocus: false });
   const previousMode = activeMode;
+  if (previousMode === 'responsive' && mode !== 'responsive') {
+    responsiveStressMode = 'none';
+    $$('[data-responsive-stress]').forEach((button) =>
+      button.classList.toggle('is-active', button.dataset.responsiveStress === 'none'),
+    );
+    $$('[data-responsive-frame]').forEach((frame) => {
+      responsiveFrameCommand(frame, 'preview-responsive-stress', { mode: 'none' });
+      responsiveFrameCommand(frame, 'preview-responsive-container', { width: null });
+    });
+  }
   if (mode !== 'canvas' && previousMode === 'canvas') {
     lastModeFocus = returnFocus ?? document.activeElement;
   }
@@ -421,6 +468,8 @@ function setMode(mode, restoreFocus = true, returnFocus = null) {
     if (typographyGoogleStatus === 'idle') void loadTypographyGoogleFonts('');
   }
   if (mode === 'branches') renderDesignBranches();
+  if (mode === 'recipes') renderVisualRecipes();
+  if (mode === 'agent') renderVisualAgent();
   if (activeSession) renderChangeSummary();
   closeWorkspaceMenu();
 }
@@ -454,10 +503,12 @@ function projectDesign() {
     tokens: preferLive('tokens'),
     components: preferLive('components'),
     breakpoints: preferLive('breakpoints'),
+    containerQueries: preferLive('containerQueries'),
     themes: preferLive('themes'),
     states: preferLive('states'),
     tokenUsages: preferLive('tokenUsages'),
     designSystemFindings: preferLive('designSystemFindings'),
+    tokenPromotions: preferLive('tokenPromotions'),
   };
 }
 
@@ -465,6 +516,17 @@ function sourceText(source) {
   if (!source) return 'Source mapping unavailable';
   if (typeof source === 'string') return source;
   return `${source.file ?? 'Source mapping unavailable'}${source.line ? `:${source.line}` : ''}`;
+}
+
+function workshopVariantDrift(instances, variant) {
+  if (!variant) return [];
+  return instances.flatMap((instance) =>
+    Object.entries(variant.props ?? {}).flatMap(([property, expected]) => {
+      const actual = instance.variantProps?.[property];
+      if (actual == null || String(actual) === String(expected)) return [];
+      return [{ instance, property, expected, actual }];
+    }),
+  );
 }
 
 function normalizedWorkshopComponents() {
@@ -585,7 +647,10 @@ function renderComponentWorkshop() {
       workshopStateId = 'current';
       const next = currentWorkshopComponent();
       if (next?.elements.length)
-        sendCommand('select-component-instance', { componentId: next.key, index: 0 });
+        sendCommand('select-component-instance', {
+          componentId: next.key,
+          index: 0,
+        });
       renderComponentWorkshop();
     }),
   );
@@ -598,6 +663,8 @@ function renderComponentWorkshop() {
   if (workshopVariantId && !variants.some((variant) => variant.id === workshopVariantId))
     workshopVariantId = '';
   const selectedVariant = variants.find((variant) => variant.id === workshopVariantId);
+  const axes = component.variantAxes ?? [];
+  const drift = workshopVariantDrift(component.elements, selectedVariant);
   const scope = bridgeState?.context?.scope ?? 'instance';
   const scopes = [
     ['instance', component.elements.length > 0, 'Changes this rendered instance'],
@@ -617,6 +684,22 @@ function renderComponentWorkshop() {
     ],
   ];
   const activeScope = scopes.find((item) => item[0] === scope && item[1]) ?? scopes[0];
+  const authoring = axes.length
+    ? `<section class="workshop-card workshop-authoring"><header><strong>Create source variant</strong><span>Reviewed source operation</span></header><div class="workshop-authoring-form"><label>Variant property<select data-workshop-axis>${axes.map((axis) => `<option value="${escapeAttribute(axis.id)}">${escapeText(axis.label)} · ${escapeText(axis.adapter)}</option>`).join('')}</select></label><label>Variant name<input data-workshop-variant-label placeholder="Danger" /></label><label>Source value<input data-workshop-variant-value placeholder="danger" /></label><label>Start from<select data-workshop-base><option value="">Current preview</option>${variants.map((variant) => `<option value="${escapeAttribute(variant.id)}">${escapeText(variant.name)}</option>`).join('')}</select></label><button class="primary-button" data-workshop-create-variant ${component.elements.length && axes.some((axis) => axis.canCreate) ? '' : 'disabled'}>Stage source variant</button></div><span class="workshop-help">Foundry records the exact authoring location. The coding agent creates the option only after Review.</span></section>`
+    : '<section class="workshop-card workshop-authoring"><header><strong>Create source variant</strong><span>Read-only</span></header><span class="workshop-help">No writable Storybook, CVA, or TypeScript variant axis was found.</span></section>';
+  const driftCard = `<section class="workshop-card workshop-drift" data-drift-count="${drift.length}"><header><strong>Cross-instance drift</strong><span>${selectedVariant ? `${drift.length} ${drift.length === 1 ? 'difference' : 'differences'}` : 'Choose a variant'}</span></header>${
+    drift.length
+      ? `<div class="workshop-drift-list">${drift
+          .slice(0, 6)
+          .map(
+            (item) =>
+              `<div><span>${escapeText(item.instance.label)}</span><code>${escapeText(item.property)} ${escapeText(item.actual)} → ${escapeText(item.expected)}</code></div>`,
+          )
+          .join(
+            '',
+          )}</div><button class="secondary-button" data-workshop-repair-drift>Repair ${drift.length} ${drift.length === 1 ? 'value' : 'values'}</button>`
+      : `<span class="workshop-help">${selectedVariant ? 'Every explicitly instrumented instance matches this variant.' : 'Select a source variant to compare its rendered instances.'}</span>`
+  }</section>`;
   detail.innerHTML = `<div class="workshop-detail-head"><div><span class="eyebrow">${component.elements.length ? 'Live component' : 'Indexed definition'}</span><h2>${escapeText(component.name)}</h2><p>${escapeText(sourceText(selectedVariant?.source ?? component.source))}</p></div><div class="workshop-metrics"><div class="workshop-metric"><strong>${component.elements.length}</strong><span>Live instances</span></div><div class="workshop-metric"><strong>${variants.length}</strong><span>Mapped variants</span></div></div></div><div class="workshop-grid"><section class="workshop-card"><header><strong>Change scope</strong><span>${escapeText(activeScope[2])}</span></header><div class="workshop-scope">${scopes
     .map(
       ([id, enabled, reason]) =>
@@ -646,7 +729,7 @@ function renderComponentWorkshop() {
           )
           .join('')
       : '<span class="workshop-help">No Storybook or project variants were discovered.</span>'
-  }</div></section><section class="workshop-card"><header><strong>Visual states</strong><span>Preview only</span></header><div class="workshop-state-grid">${workshopStates()
+  }</div></section>${authoring}${driftCard}<section class="workshop-card"><header><strong>Visual states</strong><span>Preview only</span></header><div class="workshop-state-grid">${workshopStates()
     .map(
       ([id, label, confidence]) =>
         `<button data-workshop-state="${escapeAttribute(id)}" data-confidence="${confidence}" class="${workshopStateId === id ? 'is-active' : ''}" ${component.elements.length ? '' : 'disabled'}><i class="workshop-state-dot"></i>${escapeText(label)}</button>`,
@@ -659,9 +742,13 @@ function renderComponentWorkshop() {
         `<article class="condition-card"><strong>${escapeText(viewport.label)}</strong><span>${viewport.width} × ${viewport.height ?? 900} · Open the state matrix to verify</span></article>`,
     )
     .join('')}</div></section></div>`;
+  upgradeSelects(detail);
   $$('[data-workshop-scope]', detail).forEach((button) =>
     button.addEventListener('click', () => {
-      sendCommand('set-context', { key: 'scope', value: button.dataset.workshopScope });
+      sendCommand('set-context', {
+        key: 'scope',
+        value: button.dataset.workshopScope,
+      });
       bridgeState.context.scope = button.dataset.workshopScope;
       renderComponentWorkshop();
     }),
@@ -691,6 +778,22 @@ function renderComponentWorkshop() {
       renderComponentWorkshop();
     }),
   );
+  $('[data-workshop-create-variant]', detail)?.addEventListener('click', () => {
+    sendCommand('stage-component-variant', {
+      componentId: component.key,
+      axisId: $('[data-workshop-axis]', detail).value,
+      label: $('[data-workshop-variant-label]', detail).value,
+      value: $('[data-workshop-variant-value]', detail).value,
+      baseVariantId: $('[data-workshop-base]', detail).value,
+    });
+  });
+  $('[data-workshop-repair-drift]', detail)?.addEventListener('click', () => {
+    if (!selectedVariant) return;
+    sendCommand('repair-component-variant-drift', {
+      componentId: component.key,
+      variantId: selectedVariant.id,
+    });
+  });
   $('#component-workshop-readiness').textContent = component.elements.length
     ? `${component.name} is ready · ${activeScope[2]}`
     : `${component.name} is indexed but not rendered on this canvas.`;
@@ -717,7 +820,12 @@ function selectedViewport() {
   );
   const fallback = desktop ?? project.breakpoints.at(-1);
   return fallback
-    ? { key: 'current', width: fallback.width, height: fallback.height ?? 900, label: 'Current' }
+    ? {
+        key: 'current',
+        width: fallback.width,
+        height: fallback.height ?? 900,
+        label: 'Current',
+      }
     : { key: 'current', width: 1440, height: 900, label: 'Current' };
 }
 
@@ -895,7 +1003,10 @@ function renderLayers() {
   if (structureTab === 'components') {
     const fallback = [
       ...new Set(layers.filter((item) => item.kind === 'component').map((item) => item.label)),
-    ].map((name) => ({ name, instances: layers.filter((item) => item.label === name).length }));
+    ].map((name) => ({
+      name,
+      instances: layers.filter((item) => item.label === name).length,
+    }));
     const components = (projectComponents.length ? projectComponents : fallback).filter(
       (component) => component.name.toLowerCase().includes(query),
     );
@@ -939,7 +1050,10 @@ function renderLayers() {
   renderIcons(root);
   $$('[data-layer-selector]', root).forEach((button) =>
     button.addEventListener('click', (event) =>
-      sendCommand('select', { selector: button.dataset.layerSelector, additive: event.shiftKey }),
+      sendCommand('select', {
+        selector: button.dataset.layerSelector,
+        additive: event.shiftKey,
+      }),
     ),
   );
 }
@@ -1196,9 +1310,11 @@ function renderInspector() {
       '<span class="selection-kind">No layer</span><strong>Nothing selected</strong><code>Click the canvas or choose a layer</code><p>Select mode stays active while you edit.</p>';
     $('#inspector-sections').innerHTML =
       '<div class="empty-inspector">Select a rendered element to reveal only the controls Foundry can measure safely.</div>';
+    $('#decision-guidance').hidden = true;
     return;
   }
   summary.innerHTML = `<span class="selection-kind">${escapeText(selection.kind)}</span><strong>${escapeText(selection.label)}</strong><code>${escapeText(sourceText(selection.source))}</code><p>${selection.width} × ${selection.height} px · ${escapeText(selection.confidence)}${selection.count > 1 ? ` · ${selection.count} selected` : ''}</p>`;
+  renderDecisionGuidance();
   const groups = new Map();
   for (const control of bridgeState.controls ?? []) {
     const group = controlGroup(control);
@@ -1476,13 +1592,21 @@ function renderInspector() {
       if (!action) return;
       if (action === 'scrub') {
         control.addEventListener('input', () =>
-          sendCommand('motion-action', { id, action, value: Number(control.value) }),
+          sendCommand('motion-action', {
+            id,
+            action,
+            value: Number(control.value),
+          }),
         );
         return;
       }
       if (action === 'speed') {
         control.addEventListener('change', () =>
-          sendCommand('motion-action', { id, action, value: Number(control.value) }),
+          sendCommand('motion-action', {
+            id,
+            action,
+            value: Number(control.value),
+          }),
         );
         return;
       }
@@ -1511,6 +1635,26 @@ function renderInspector() {
       }
       control.addEventListener('click', () => sendCommand('motion-action', { id, action }));
     });
+  });
+}
+
+function renderDecisionGuidance() {
+  const root = $('#decision-guidance');
+  const relevant = bridgeState?.decisionMemory?.relevant ?? [];
+  if (!relevant.length) {
+    root.hidden = true;
+    root.innerHTML = '';
+    return;
+  }
+  const conflicts = relevant.filter((item) => item.conflicts?.length);
+  const lead = conflicts[0] ?? relevant[0];
+  root.hidden = false;
+  root.dataset.status = conflicts.length ? 'conflict' : 'guidance';
+  root.innerHTML = `<button type="button" data-open-decision-memory><i data-icon="${conflicts.length ? 'activity' : 'bookmark'}"></i><span><strong>${conflicts.length ? 'Check remembered guidance' : 'Relevant project decision'}</strong><small>${escapeText(lead.decision.title)} · ${lead.score}% match</small></span><i data-icon="chevronRight"></i></button>`;
+  renderIcons(root);
+  $('[data-open-decision-memory]', root).addEventListener('click', () => {
+    decisionMemoryId = lead.decision.id;
+    setMode('memory');
   });
 }
 
@@ -1773,14 +1917,18 @@ function renderChangeSummary() {
 function renderStates() {
   const breakpoints = projectDesign().breakpoints;
   const cards = [
-    ...breakpoints
-      .slice(0, 3)
-      .map((item) => ({ title: item.label, detail: `${item.width} × ${item.height}px viewport` })),
+    ...breakpoints.slice(0, 3).map((item) => ({
+      title: item.label,
+      detail: `${item.width} × ${item.height}px viewport`,
+    })),
     {
       title: 'Hover and focus',
       detail: 'Inspect interactive states without leaving the workspace.',
     },
-    { title: 'Reduced motion', detail: 'Check motion decisions against the user preference.' },
+    {
+      title: 'Reduced motion',
+      detail: 'Check motion decisions against the user preference.',
+    },
     {
       title: 'Theme context',
       detail: 'Compare project light and dark states independently of the Foundry UI.',
@@ -1835,7 +1983,78 @@ function responsiveFrameCommand(frame, command, payload = {}) {
 function syncResponsiveFrame(frame) {
   const selector = bridgeState?.selection?.selector;
   if (selector) responsiveFrameCommand(frame, 'select', { selector });
-  responsiveFrameCommand(frame, 'preview-responsive-stress', { mode: responsiveStressMode });
+  responsiveFrameCommand(frame, 'preview-responsive-stress', {
+    mode: responsiveStressMode,
+  });
+  responsiveFrameCommand(frame, 'preview-responsive-container', {
+    width:
+      responsiveScrubTarget === 'container' && frame.dataset.responsiveFrame === 'custom'
+        ? responsiveContainerWidth
+        : null,
+  });
+}
+
+function responsiveComparisonSnapshot(snapshot) {
+  if (!snapshot) return null;
+  const selection = snapshot.selection ?? {};
+  return {
+    target: responsiveScrubTarget,
+    viewportWidth: Number(snapshot.viewportWidth ?? 0),
+    containerWidth: Number(snapshot.container?.width ?? 0),
+    containerName: snapshot.container?.name ?? 'Anonymous container',
+    elementWidth: Number(selection.width ?? selection.clientWidth ?? 0),
+    elementHeight: Number(selection.height ?? selection.clientHeight ?? 0),
+    lineCount: Number(selection.lineCount ?? 0),
+    overflow: Math.max(0, Number(selection.scrollWidth ?? 0) - Number(selection.clientWidth ?? 0)),
+  };
+}
+
+function responsiveDelta(before, after) {
+  if (!before || !after) return null;
+  return {
+    viewport: after.viewportWidth - before.viewportWidth,
+    container: after.containerWidth - before.containerWidth,
+    width: after.elementWidth - before.elementWidth,
+    height: after.elementHeight - before.elementHeight,
+    lines: after.lineCount - before.lineCount,
+    overflow: after.overflow - before.overflow,
+  };
+}
+
+function signedResponsiveValue(value, suffix = 'px') {
+  if (!Number.isFinite(value)) return '—';
+  return `${value > 0 ? '+' : ''}${Math.round(value * 100) / 100}${suffix}`;
+}
+
+function renderResponsiveComparison() {
+  const root = $('#responsive-comparison-grid');
+  if (!root) return;
+  const card = (label, snapshot) =>
+    `<article class="responsive-comparison-card ${snapshot ? 'is-captured' : ''}"><span>${label}</span>${
+      snapshot
+        ? `<strong>${snapshot.target === 'container' ? `${Math.round(snapshot.containerWidth)}px container` : `${Math.round(snapshot.viewportWidth)}px viewport`}</strong><code>${Math.round(snapshot.elementWidth)} × ${Math.round(snapshot.elementHeight)} · ${snapshot.lineCount || '—'} lines · ${Math.round(snapshot.overflow)}px overflow</code>`
+        : '<strong>Not captured</strong><code>Scrub to a useful state, then capture it.</code>'
+    }</article>`;
+  const delta = responsiveDelta(responsiveComparisonBefore, responsiveComparisonAfter);
+  root.innerHTML = `${card('BEFORE', responsiveComparisonBefore)}${card('AFTER', responsiveComparisonAfter)}<article class="responsive-comparison-card responsive-comparison-delta ${delta ? 'is-captured' : ''}"><span>CHANGE</span>${
+    delta
+      ? `<strong>${signedResponsiveValue(responsiveComparisonBefore.target === 'container' ? delta.container : delta.viewport)} ${responsiveComparisonBefore.target}</strong><code>Element ${signedResponsiveValue(delta.width)} wide · ${signedResponsiveValue(delta.height)} high · ${signedResponsiveValue(delta.lines, ' lines')} · ${signedResponsiveValue(delta.overflow)} overflow</code>`
+      : '<strong>Waiting for both states</strong><code>Comparison remains presentation-only.</code>'
+  }</article>`;
+}
+
+function captureResponsiveComparison(position) {
+  const snapshot =
+    responsiveSnapshots.get('custom') ?? responsiveSnapshots.get(responsiveActiveViewport);
+  const captured = responsiveComparisonSnapshot(snapshot);
+  if (!captured) {
+    toast('Wait for the live responsive preview before capturing.');
+    return;
+  }
+  if (position === 'before') responsiveComparisonBefore = captured;
+  else responsiveComparisonAfter = captured;
+  renderResponsiveComparison();
+  toast(`${position === 'before' ? 'Before' : 'After'} state captured`);
 }
 
 function responsiveFindingSummary(snapshot) {
@@ -1869,20 +2088,25 @@ function scrubResponsiveCustomFrame() {
     width: 1440,
     height: 900,
   };
-  const height = Math.max(
-    480,
-    Math.round((responsiveCustomWidth * sessionViewport.height) / sessionViewport.width),
-  );
-  const scale = Math.min(1, 320 / responsiveCustomWidth, 220 / height);
-  frame.width = responsiveCustomWidth;
-  frame.height = height;
-  shell.style.setProperty('--preview-width', `${responsiveCustomWidth}px`);
-  shell.style.setProperty('--preview-height', `${height}px`);
-  shell.style.setProperty('--preview-scale', scale);
-  const dimensions = $('header span', card);
-  if (dimensions) dimensions.textContent = `${responsiveCustomWidth} × ${height}`;
+  if (responsiveScrubTarget === 'viewport') {
+    const height = Math.max(
+      480,
+      Math.round((responsiveCustomWidth * sessionViewport.height) / sessionViewport.width),
+    );
+    const scale = Math.min(1, 320 / responsiveCustomWidth, 220 / height);
+    frame.width = responsiveCustomWidth;
+    frame.height = height;
+    shell.style.setProperty('--preview-width', `${responsiveCustomWidth}px`);
+    shell.style.setProperty('--preview-height', `${height}px`);
+    shell.style.setProperty('--preview-scale', scale);
+    const dimensions = $('header span', card);
+    if (dimensions) dimensions.textContent = `${responsiveCustomWidth} × ${height}`;
+  }
   window.clearTimeout(scrubResponsiveCustomFrame.timer);
-  scrubResponsiveCustomFrame.timer = window.setTimeout(() => syncResponsiveFrame(frame), 120);
+  scrubResponsiveCustomFrame.timer = window.setTimeout(() => {
+    syncResponsiveFrame(frame);
+    responsiveSnapshots.delete('custom');
+  }, 120);
 }
 
 function renderResponsiveLab() {
@@ -1891,17 +2115,39 @@ function renderResponsiveLab() {
   const contexts = responsiveViewportContexts();
   const minWidth = contexts[0]?.width ?? 320;
   const maxWidth = contexts.at(-1)?.width ?? 1920;
-  $('#responsive-width').min = String(Math.min(320, minWidth));
-  $('#responsive-width').max = String(Math.max(3840, maxWidth));
-  $('#responsive-width').value = String(responsiveCustomWidth);
-  $('#responsive-width-output').textContent = `${responsiveCustomWidth}px`;
-  $('#responsive-boundaries').innerHTML = contexts
-    .filter((item) => item.id !== 'custom')
-    .map(
-      (item) =>
-        `<button data-responsive-boundary="${escapeAttribute(item.id)}"><strong>${escapeText(item.label)}</strong><span>${item.width}px</span></button>`,
-    )
-    .join('');
+  const queries = projectDesign().containerQueries ?? [];
+  const queryWidths = queries
+    .flatMap((query) => [query.minWidth, query.maxWidth])
+    .filter((width) => Number.isFinite(width));
+  const range = $('#responsive-width');
+  if (responsiveScrubTarget === 'container') {
+    range.min = String(Math.max(64, Math.min(...queryWidths, 320) - 160));
+    range.max = String(Math.max(responsiveContainerWidth, ...queryWidths, 1120) + 160);
+    range.value = String(responsiveContainerWidth);
+    $('#responsive-width-label').textContent = 'Container width';
+    $('#responsive-width-output').textContent = `${responsiveContainerWidth}px`;
+    $('#responsive-boundaries').innerHTML = queries.length
+      ? queries
+          .map((query) => {
+            const width = query.minWidth ?? query.maxWidth;
+            return `<button data-responsive-container-boundary="${width}" title="${escapeAttribute(sourceText(query.source))}"><strong>${escapeText(query.name || 'Container')}</strong><span>${escapeText(query.condition)}</span></button>`;
+          })
+          .join('')
+      : '<span class="responsive-boundary-empty">No authored container queries were indexed.</span>';
+  } else {
+    range.min = String(Math.min(320, minWidth));
+    range.max = String(Math.max(3840, maxWidth));
+    range.value = String(responsiveCustomWidth);
+    $('#responsive-width-label').textContent = 'Viewport width';
+    $('#responsive-width-output').textContent = `${responsiveCustomWidth}px`;
+    $('#responsive-boundaries').innerHTML = contexts
+      .filter((item) => item.id !== 'custom')
+      .map(
+        (item) =>
+          `<button data-responsive-boundary="${escapeAttribute(item.id)}"><strong>${escapeText(item.label)}</strong><span>${item.width}px</span></button>`,
+      )
+      .join('');
+  }
   root.innerHTML = contexts
     .map((item) => {
       const scale = Math.min(1, 320 / item.width, 220 / item.height);
@@ -1942,6 +2188,14 @@ function renderResponsiveLab() {
       renderResponsiveLab();
     }),
   );
+  $$('[data-responsive-container-boundary]', $('#responsive-boundaries')).forEach((button) =>
+    button.addEventListener('click', () => {
+      responsiveContainerWidth = Number(button.dataset.responsiveContainerBoundary);
+      range.value = String(responsiveContainerWidth);
+      $('#responsive-width-output').textContent = `${responsiveContainerWidth}px`;
+      scrubResponsiveCustomFrame();
+    }),
+  );
   const issueCount = [...responsiveSnapshots.values()].reduce(
     (total, snapshot) =>
       total +
@@ -1955,43 +2209,553 @@ function renderResponsiveLab() {
   $('#responsive-lab-status').textContent = bridgeState?.selection
     ? `${bridgeState.selection.label} linked across ${contexts.length} live viewports${issueCount ? ` · ${issueCount} findings` : ''}`
     : 'Select an element on the canvas to link it across every viewport.';
+  renderResponsiveComparison();
 }
 
 function renderHealth() {
-  const root = $('[data-mode-surface="health"] .empty-mode');
   const issues = bridgeState?.health ?? [];
-  if (!issues.length) return;
-  root.innerHTML = issues
+  const stress = bridgeState?.stressTesting ?? {};
+  const profiles = stress.profiles ?? [];
+  if (!stressSelectionInitialized) {
+    (stress.active ?? []).forEach((id) => selectedStressConditions.add(id));
+    stressScope = stress.scope === 'canvas' ? 'canvas' : 'selection';
+    stressSelectionInitialized = true;
+  }
+  const active = stress.active ?? [];
+  const high = issues.filter((issue) => issue.severity === 'high').length;
+  const accessibility = issues.filter((issue) => issue.kind === 'accessibility').length;
+  const temporary = active.length;
+  $('#stress-lab-status').textContent = temporary
+    ? `${temporary} ${temporary === 1 ? 'condition' : 'conditions'} active`
+    : 'No temporary conditions';
+  $('#stress-summary-grid').innerHTML = [
+    [issues.length, 'Findings', active.length ? 'Under active stress' : 'Current rendered state'],
+    [high, 'High severity', high ? 'Review first' : 'No critical failures'],
+    [accessibility, 'Accessibility', 'Keyboard, naming, focus, and contrast'],
+    [temporary, 'Temporary tests', stress.target ?? 'No preview applied'],
+  ]
     .map(
-      (issue) =>
-        `<article class="condition-card"><strong>${escapeText(issue.title ?? issue.kind)}</strong><span>${escapeText(issue.detail ?? issue.message)}</span></article>`,
+      ([value, label, detail]) =>
+        `<article><strong>${value}</strong><span>${escapeText(label)}</span><small>${escapeText(detail)}</small></article>`,
     )
     .join('');
+
+  const categories = [
+    ['content', 'Content'],
+    ['state', 'Product states'],
+    ['accessibility', 'Accessibility'],
+  ];
+  $('#stress-profile-list').innerHTML = categories
+    .map(([category, label]) => {
+      const categoryProfiles = profiles.filter((profile) => profile.category === category);
+      return `<section class="stress-profile-group"><header><strong>${label}</strong><span>${categoryProfiles.length}</span></header>${categoryProfiles
+        .map(
+          (profile) =>
+            `<button class="stress-profile ${selectedStressConditions.has(profile.id) ? 'is-active' : ''}" data-stress-condition="${escapeAttribute(profile.id)}" aria-pressed="${String(selectedStressConditions.has(profile.id))}"><span><strong>${escapeText(profile.label)}</strong><small>${escapeText(profile.description)}</small></span><i data-icon="check"></i></button>`,
+        )
+        .join('')}</section>`;
+    })
+    .join('');
+
+  $$('[data-stress-scope]').forEach((button) => {
+    const selected = button.dataset.stressScope === stressScope;
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+  $('#apply-stress').disabled = selectedStressConditions.size === 0;
+  $('#clear-stress').disabled = selectedStressConditions.size === 0 && active.length === 0;
+
+  const filters = ['all', 'high', 'medium', 'low'];
+  $('#stress-severity-filters').innerHTML = filters
+    .map((filter) => {
+      const count =
+        filter === 'all'
+          ? issues.length
+          : issues.filter((issue) => issue.severity === filter).length;
+      return `<button class="${stressSeverity === filter ? 'is-active' : ''}" data-stress-severity="${filter}" aria-pressed="${String(stressSeverity === filter)}">${filter === 'all' ? 'All' : `${filter[0].toUpperCase()}${filter.slice(1)}`} <span>${count}</span></button>`;
+    })
+    .join('');
+  $$('[data-stress-group]').forEach((button) => {
+    const selected = button.dataset.stressGroup === stressGroupBy;
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+
+  const visibleIssues = issues.filter(
+    (issue) => stressSeverity === 'all' || issue.severity === stressSeverity,
+  );
+  const order = ['high', 'medium', 'low'];
+  const grouped = new Map();
+  visibleIssues.forEach((issue) => {
+    const key = stressGroupBy === 'source' ? issue.source || 'unmapped' : issue.severity;
+    grouped.set(key, [...(grouped.get(key) ?? []), issue]);
+  });
+  const groups = [...grouped.entries()].sort(([first], [second]) =>
+    stressGroupBy === 'severity'
+      ? order.indexOf(first) - order.indexOf(second)
+      : first.localeCompare(second),
+  );
+  $('#stress-finding-groups').innerHTML = groups.length
+    ? groups
+        .map(([key, findings]) => {
+          const label =
+            stressGroupBy === 'severity'
+              ? `${key[0].toUpperCase()}${key.slice(1)} severity`
+              : key === 'unmapped'
+                ? 'Source mapping unavailable'
+                : key;
+          return `<section class="stress-finding-group"><header><strong>${escapeText(label)}</strong><span>${findings.length}</span></header>${findings
+            .map(
+              (issue) =>
+                `<article class="stress-finding-card"><div class="stress-finding-title"><i data-severity="${escapeAttribute(issue.severity)}"></i><span><strong>${escapeText(issue.title ?? issue.kind)}</strong><small>${escapeText(issue.detail ?? issue.description ?? '')}</small></span><span class="stress-kind">${escapeText(issue.kind)}</span></div><div class="stress-finding-evidence"><span>${escapeText(issue.viewport ?? 'Current viewport')}</span><p>${escapeText(issue.evidence ?? '')}</p>${issue.source ? `<code>${escapeText(issue.source)}</code>` : ''}</div>${issue.stressConditions?.length ? `<div class="stress-context">Found under ${issue.stressConditions.map((condition) => `<span>${escapeText(condition.replaceAll('-', ' '))}</span>`).join('')}</div>` : ''}<footer><button class="secondary-button compact" data-stress-select="${escapeAttribute(issue.id)}">Select layer</button>${issue.canFix ? `<button class="primary-button compact" data-stress-fix="${escapeAttribute(issue.id)}" ${issue.previewed ? 'disabled' : ''}>${issue.previewed ? 'Added to review' : 'Preview correction'}</button>` : ''}</footer></article>`,
+            )
+            .join('')}</section>`;
+        })
+        .join('')
+    : `<div class="stress-empty"><i data-icon="${issues.length ? 'search' : 'check'}"></i><strong>${issues.length ? 'No findings match this filter' : 'No issues found'}</strong><p>${issues.length ? 'Choose another severity to continue reviewing.' : active.length ? 'The rendered product passed under the active stress conditions.' : 'Apply temporary conditions or scan the current state.'}</p></div>`;
+  $('#stress-lab-footnote').textContent = active.length
+    ? `${active.length} temporary ${active.length === 1 ? 'condition is' : 'conditions are'} active on ${stress.target ?? 'the canvas'}. Clearing them restores the original rendered state.`
+    : 'Temporary conditions remain outside the design change history.';
+  $('#stress-review').disabled = !(activeSession?.changeSet?.changes ?? []).length;
+
+  $$('[data-stress-condition]').forEach((button) =>
+    button.addEventListener('click', () => {
+      const id = button.dataset.stressCondition;
+      const profile = profiles.find((candidate) => candidate.id === id);
+      if (selectedStressConditions.has(id)) selectedStressConditions.delete(id);
+      else {
+        if (profile?.combination === 'state') {
+          profiles
+            .filter((candidate) => candidate.combination === 'state')
+            .forEach((candidate) => selectedStressConditions.delete(candidate.id));
+        }
+        selectedStressConditions.add(id);
+      }
+      renderHealth();
+    }),
+  );
+  $$('[data-stress-severity]').forEach((button) =>
+    button.addEventListener('click', () => {
+      stressSeverity = button.dataset.stressSeverity;
+      renderHealth();
+    }),
+  );
+  $$('[data-stress-select]').forEach((button) =>
+    button.addEventListener('click', () => {
+      sendCommand('select-health-issue', {
+        issueId: button.dataset.stressSelect,
+      });
+      setMode('canvas');
+    }),
+  );
+  $$('[data-stress-fix]').forEach((button) =>
+    button.addEventListener('click', () =>
+      sendCommand('preview-health-fix', { issueId: button.dataset.stressFix }),
+    ),
+  );
+  renderIcons($('[data-mode-surface="health"]'));
 }
 
 function renderMemory() {
-  const tokens = projectDesign().tokens;
-  const memory = bridgeState?.memory ?? {};
-  const cards = [
-    {
-      title: `${tokens.length} project tokens`,
-      detail: 'Native color, type, spacing, radius, and motion values.',
-    },
-    {
-      title: `${memory.recipes?.length ?? 0} saved treatments`,
-      detail: 'Reusable decisions that remain local to this project.',
-    },
-    {
-      title: `${memory.baselines?.length ?? 0} verified baselines`,
-      detail: 'Rendered values that passed after source application.',
-    },
-  ];
-  $('#memory-grid').innerHTML = cards
-    .map(
-      (card) =>
-        `<article class="memory-card"><strong>${card.title}</strong><p>${card.detail}</p></article>`,
-    )
-    .join('');
+  const memory = bridgeState?.decisionMemory ?? {};
+  const decisions = memory.decisions ?? bridgeState?.memory?.decisions ?? [];
+  const relevant = new Map(
+    (memory.relevant ?? []).map((assessment) => [assessment.decision.id, assessment]),
+  );
+  const filtered = decisions.filter((decision) => {
+    const matchesQuery = `${decision.title} ${decision.summary} ${decision.rationale ?? ''}`
+      .toLowerCase()
+      .includes(decisionMemorySearch.toLowerCase());
+    const matchesFilter =
+      decisionMemoryFilter === 'all' ||
+      (decisionMemoryFilter === 'disabled'
+        ? !decision.enabled
+        : decision.enabled && decision.outcome === decisionMemoryFilter);
+    return matchesQuery && matchesFilter;
+  });
+  if (!decisions.some((decision) => decision.id === decisionMemoryId))
+    decisionMemoryId = decisions[0]?.id ?? '';
+  const decision = decisions.find((candidate) => candidate.id === decisionMemoryId);
+  const assessment = decision ? relevant.get(decision.id) : null;
+  const enabled = decisions.filter((item) => item.enabled).length;
+  $('#decision-memory-status').textContent = decisions.length
+    ? `${enabled} active · ${decisions.length} saved`
+    : 'No decisions saved';
+  $('#decision-memory-save').disabled = !memory.canCapture;
+  const context = memory.context ?? {};
+  $('#decision-memory-context').innerHTML = bridgeState?.selection
+    ? `<strong>${escapeText(bridgeState.selection.label)}</strong><code>${escapeText(sourceText(bridgeState.selection.source) || bridgeState.selection.kind)}</code><span>${memory.hasEditedValues ? 'Edited values will become explicit preference or avoidance rules.' : 'This decision will be connected to the selected component and source.'}</span>`
+    : '<span>Select a layer before capturing contextual guidance.</span>';
+  $('#decision-memory-list').innerHTML = filtered.length
+    ? filtered
+        .map((item) => {
+          const match = relevant.get(item.id);
+          return `<button class="decision-memory-row ${item.id === decisionMemoryId ? 'is-active' : ''}" data-design-decision="${escapeAttribute(item.id)}" data-outcome="${escapeAttribute(item.outcome)}" data-enabled="${item.enabled}"><i data-icon="${item.outcome === 'rejected' ? 'close' : item.outcome === 'rule' ? 'bookmark' : 'check'}"></i><span><strong>${escapeText(item.title)}</strong><small>${escapeText(item.summary)}</small></span>${match ? `<code>${match.score}%</code>` : ''}</button>`;
+        })
+        .join('')
+    : `<div class="decision-memory-empty"><i data-icon="bookmark"></i><strong>${decisions.length ? 'No decisions match' : 'Build useful project memory'}</strong><p>${decisions.length ? 'Try another search or filter.' : 'Capture an approved direction, rejected experiment, or explicit project rule.'}</p></div>`;
+
+  if (!decision) {
+    $('#decision-memory-stage').innerHTML =
+      '<div class="decision-memory-empty is-stage"><i data-icon="bookmark"></i><strong>Context before conflict</strong><p>Foundry connects remembered guidance to components, properties, source locations, responsive context, and themes before an edited value reaches Review.</p></div>';
+  } else {
+    const conditions = [
+      ...(decision.conditions.components ?? []),
+      ...(decision.conditions.elementKinds ?? []),
+      ...(decision.conditions.properties ?? []),
+      ...(decision.conditions.breakpoints ?? []),
+      ...(decision.conditions.themes ?? []),
+      ...(decision.conditions.states ?? []),
+    ];
+    const rules = decision.rules?.length
+      ? decision.rules
+          .map(
+            (rule) =>
+              `<article><span data-operator="${escapeAttribute(rule.operator)}">${escapeText(rule.operator)}</span><strong>${escapeText(rule.property ?? rule.category ?? 'Project guidance')}</strong><code>${escapeText(rule.value ?? rule.guidance ?? decision.summary)}</code></article>`,
+          )
+          .join('')
+      : '<p>No property rule was captured.</p>';
+    const evidence = decision.evidence?.length
+      ? decision.evidence
+          .map(
+            (item) =>
+              `<article><i data-icon="${item.kind === 'branch' ? 'branch' : item.kind === 'baseline' ? 'check' : 'bookmark'}"></i><span><strong>${escapeText(item.label)}</strong><small>${escapeText(item.kind)}${item.refId ? ` · ${escapeText(item.refId)}` : ''}</small></span></article>`,
+          )
+          .join('')
+      : '<p>Captured directly in Foundry.</p>';
+    $('#decision-memory-stage').innerHTML =
+      `<section class="decision-memory-overview" data-outcome="${escapeAttribute(decision.outcome)}"><header><div><span class="eyebrow">${escapeText(decision.outcome)} decision</span><h2>${escapeText(decision.title)}</h2><p>${escapeText(decision.summary)}</p></div><span class="decision-state">${decision.enabled ? 'Active' : 'Disabled'}</span></header><div class="decision-memory-pills">${(decision.categories ?? []).map((category) => `<span>${escapeText(category)}</span>`).join('')}${conditions
+        .slice(0, 6)
+        .map((condition) => `<span>${escapeText(condition)}</span>`)
+        .join(
+          '',
+        )}</div>${assessment ? `<div class="decision-relevance" data-conflict="${Boolean(assessment.conflicts?.length)}"><strong>${assessment.conflicts?.length ? 'Potential conflict' : 'Relevant to the current selection'}</strong><span>${assessment.score}% match · ${escapeText(assessment.reasons.join(' · ') || 'Project-wide guidance')}</span></div>` : ''}</section><section class="decision-memory-rules"><header><span class="eyebrow">Remembered guidance</span><strong>Explicit rules</strong></header><div>${rules}</div></section><section class="decision-memory-evidence"><header><span class="eyebrow">Why this exists</span><strong>Evidence and source</strong></header><div>${evidence}</div>${decision.sourceLocations?.length ? `<code>${decision.sourceLocations.map(escapeText).join('\n')}</code>` : ''}${decision.rationale ? `<p>${escapeText(decision.rationale)}</p>` : ''}</section><section class="decision-memory-edit"><label><span>Correct guidance</span><textarea data-decision-summary rows="3">${escapeText(decision.summary)}</textarea></label><label><span>Why</span><textarea data-decision-rationale rows="3">${escapeText(decision.rationale ?? '')}</textarea></label><footer><button class="secondary-button" data-toggle-decision="${escapeAttribute(decision.id)}">${decision.enabled ? 'Disable guidance' : 'Enable guidance'}</button><button class="quiet-button" data-remove-decision="${escapeAttribute(decision.id)}"><i data-icon="bin"></i>Remove</button><button class="primary-button" data-save-decision-correction="${escapeAttribute(decision.id)}">Save correction</button></footer></section>`;
+  }
+  $$('[data-design-decision]').forEach((button) =>
+    button.addEventListener('click', () => {
+      decisionMemoryId = button.dataset.designDecision;
+      renderMemory();
+    }),
+  );
+  $('[data-toggle-decision]')?.addEventListener('click', (event) => {
+    const current = decisions.find(
+      (item) => item.id === event.currentTarget.dataset.toggleDecision,
+    );
+    sendCommand('update-design-decision', {
+      decisionId: current?.id,
+      enabled: !current?.enabled,
+    });
+  });
+  $('[data-remove-decision]')?.addEventListener('click', (event) => {
+    sendCommand('remove-design-decision', {
+      decisionId: event.currentTarget.dataset.removeDecision,
+    });
+    decisionMemoryId = '';
+  });
+  $('[data-save-decision-correction]')?.addEventListener('click', (event) => {
+    sendCommand('update-design-decision', {
+      decisionId: event.currentTarget.dataset.saveDecisionCorrection,
+      summary: $('[data-decision-summary]').value,
+      rationale: $('[data-decision-rationale]').value,
+    });
+    toast('Remembered guidance corrected');
+  });
+  renderIcons($('[data-mode-surface="memory"]'));
+}
+
+function visualAgentRequests() {
+  return activeSession?.visualAgentRequests ?? [];
+}
+
+function activeVisualAgentRequest() {
+  const requests = visualAgentRequests();
+  if (!requests.some((request) => request.id === visualAgentRequestId)) {
+    visualAgentRequestId = requests.at(-1)?.id ?? '';
+  }
+  return requests.find((request) => request.id === visualAgentRequestId) ?? null;
+}
+
+function visualAgentContextSnapshot(comment) {
+  const viewport = activeSession?.changeSet?.context?.viewport ?? selectedViewport();
+  const selection = bridgeState?.selection;
+  const targets = selection?.targets?.length
+    ? selection.targets
+    : selection
+      ? [
+          {
+            id: selection.id,
+            selector: selection.selector,
+            label: selection.label,
+            kind: selection.kind,
+            component: selection.component,
+            source: selection.source,
+            confidence: selection.confidence,
+            geometry: {
+              x: 0,
+              y: 0,
+              width: selection.width,
+              height: selection.height,
+              scale: 1,
+            },
+            measurements: Object.fromEntries(
+              (bridgeState?.controls ?? []).map((control) => [control.property, control.value]),
+            ),
+          },
+        ]
+      : [];
+  const region = bridgeState?.visualAgent?.region
+    ? { ...bridgeState.visualAgent.region, label: 'Drawn canvas region' }
+    : undefined;
+  const comments = comment
+    ? [
+        {
+          id: `comment_${Date.now()}`,
+          body: comment,
+          ...(targets[0] ? { targetId: targets[0].id } : region ? { regionId: region.id } : {}),
+          createdAt: new Date().toISOString(),
+        },
+      ]
+    : [];
+  return {
+    targets,
+    ...(region ? { region } : {}),
+    comments,
+    viewport: { width: viewport.width, height: viewport.height },
+    breakpoint: bridgeState?.context?.breakpoint ?? 'current',
+    theme: bridgeState?.context?.theme ?? 'current',
+    state: bridgeState?.context?.state ?? 'current',
+    tokens: bridgeState?.project?.tokens ?? [],
+    designGraphRevision: activeSession?.changeSet?.designGraphRevision,
+  };
+}
+
+function renderVisualAgent() {
+  const root = $('[data-mode-surface="agent"]');
+  if (!root) return;
+  const requests = visualAgentRequests();
+  const request = activeVisualAgentRequest();
+  const selection = bridgeState?.selection;
+  const targets = selection?.targets ?? (selection ? [selection] : []);
+  const region = bridgeState?.visualAgent?.region;
+  const contextCount = targets.length + (region ? 1 : 0);
+  $('#visual-agent-status').textContent = request
+    ? request.status === 'ready'
+      ? `${request.proposals.length} ${request.proposals.length === 1 ? 'direction' : 'directions'} ready`
+      : request.status.replace('_', ' ')
+    : contextCount
+      ? `${contextCount} context ${contextCount === 1 ? 'item' : 'items'}`
+      : 'Attach live context';
+  $('#visual-agent-thread-list').innerHTML = requests.length
+    ? [...requests]
+        .reverse()
+        .map(
+          (item) =>
+            `<button class="visual-agent-thread ${item.id === request?.id ? 'is-active' : ''}" data-visual-agent-thread="${escapeAttribute(item.id)}"><i data-icon="${item.status === 'ready' ? 'check' : item.status === 'needs_attention' ? 'activity' : 'message'}"></i><span><strong>${escapeText(item.title)}</strong><small>${escapeText(item.status.replace('_', ' '))} · ${item.context.targets.length} layers${item.context.region ? ' + region' : ''}</small></span></button>`,
+        )
+        .join('')
+    : '<div class="visual-agent-empty"><i data-icon="message"></i><strong>Start with the pixels</strong><p>Select several layers or draw a region, then ask about hierarchy, consistency, or layout.</p></div>';
+
+  $('#visual-agent-context').innerHTML = contextCount
+    ? `${targets
+        .map(
+          (target) =>
+            `<article><i data-icon="component"></i><span><strong>${escapeText(target.label)}</strong><code>${escapeText(sourceText(target.source) || target.kind)}</code></span><small>${Math.round(target.geometry?.width ?? target.width)} × ${Math.round(target.geometry?.height ?? target.height)}</small></article>`,
+        )
+        .join(
+          '',
+        )}${region ? `<article><i data-icon="cursor"></i><span><strong>Drawn canvas region</strong><code>${Math.round(region.x)}, ${Math.round(region.y)}</code></span><small>${Math.round(region.width)} × ${Math.round(region.height)}</small></article>` : ''}<footer><span>${escapeText(bridgeState?.context?.breakpoint ?? 'current')}</span><span>${escapeText(bridgeState?.context?.theme ?? 'current')}</span><span>${escapeText(bridgeState?.context?.state ?? 'current')}</span></footer>`
+    : '<div class="visual-agent-empty"><i data-icon="cursor"></i><strong>No rendered context</strong><p>Select layers on Canvas or draw a region here.</p></div>';
+  $('#visual-agent-clear-region').disabled = !region;
+
+  if (!request) {
+    $('#visual-agent-conversation').innerHTML =
+      '<div class="visual-agent-empty is-stage"><i data-icon="message"></i><strong>Ask a visual question in context</strong><p>Foundry sends the exact selected pixels, source locations, measurements, responsive context, project tokens, and your attached comments to the active coding agent.</p></div>';
+  } else {
+    const messages = request.messages
+      .map(
+        (message) =>
+          `<article class="visual-agent-message" data-role="${message.role}"><span>${escapeText(message.role)}</span><p>${escapeText(message.body)}</p><time>${new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></article>`,
+      )
+      .join('');
+    const proposals = request.proposals.length
+      ? `<section class="visual-agent-proposals"><header><span class="eyebrow">Concrete directions</span><strong>Compare before approval</strong></header>${request.proposals
+          .map(
+            (proposal) =>
+              `<article class="visual-agent-proposal" data-status="${proposal.status}"><header><div><strong>${escapeText(proposal.name)}</strong><span>${escapeText(proposal.status)}</span></div><p>${escapeText(proposal.summary)}</p></header><div class="visual-agent-proposal-grid"><section><span>Why</span>${proposal.reasoning.map((item) => `<p>${escapeText(item)}</p>`).join('') || '<p>Grounded in the attached context.</p>'}</section><section><span>Exact values</span>${proposal.exactValues.map((item) => `<code>${escapeText(item)}</code>`).join('') || '<code>No value changes proposed</code>'}</section><section><span>Responsive impact</span><p>${escapeText(proposal.responsiveImpact)}</p></section><section><span>Affected source</span>${proposal.sourceLocations.map((item) => `<code>${escapeText(item)}</code>`).join('') || '<code>No mapped source</code>'}</section><section><span>Verification</span>${proposal.verificationPlan.map((item) => `<p>${escapeText(item)}</p>`).join('') || '<p>Rebuild and measure the selected targets.</p>'}</section></div><footer><span>${proposal.changes.length} reviewable ${proposal.changes.length === 1 ? 'change' : 'changes'}</span><button class="quiet-button compact" data-agent-proposal-action="reject" data-agent-request="${request.id}" data-agent-proposal="${proposal.id}" ${proposal.status === 'rejected' ? 'disabled' : ''}>Reject</button><button class="secondary-button compact" data-agent-proposal-action="preview" data-agent-request="${request.id}" data-agent-proposal="${proposal.id}" ${!proposal.changes.length || proposal.status === 'promoted' ? 'disabled' : ''}>${proposal.branchId ? 'Preview again' : 'Preview direction'}</button><button class="primary-button compact" data-agent-proposal-action="promote" data-agent-request="${request.id}" data-agent-proposal="${proposal.id}" ${!proposal.branchId || proposal.status === 'promoted' ? 'disabled' : ''}>Move to Review</button></footer></article>`,
+          )
+          .join('')}</section>`
+      : request.status === 'needs_attention'
+        ? `<div class="visual-agent-recovery"><i data-icon="activity"></i><div><strong>Agent response interrupted</strong><p>${escapeText(request.error ?? 'The request needs attention before retrying.')}</p></div><button class="primary-button compact" data-agent-retry="${request.id}">Retry request</button></div>`
+        : '<div class="visual-agent-thinking"><i data-icon="sparkles"></i><span><strong>The active agent is inspecting context</strong><small>Source-safe directions will appear here without entering Review.</small></span></div>';
+    $('#visual-agent-conversation').innerHTML =
+      `<div class="visual-agent-messages">${messages}</div>${proposals}`;
+  }
+  $$('[data-visual-agent-thread]', root).forEach((button) =>
+    button.addEventListener('click', () => {
+      visualAgentRequestId = button.dataset.visualAgentThread;
+      renderVisualAgent();
+    }),
+  );
+  $$('[data-agent-proposal-action]', root).forEach((button) =>
+    button.addEventListener('click', () => void handleVisualAgentProposal(button)),
+  );
+  $('[data-agent-retry]', root)?.addEventListener('click', async (event) => {
+    try {
+      renderSession(
+        await api(
+          `/v1/sessions/${sessionId}/visual-agent-requests/${event.currentTarget.dataset.agentRetry}/retry`,
+          { method: 'POST', body: '{}' },
+        ),
+      );
+      toast('Visual request returned to the active agent');
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+  renderIcons(root);
+}
+
+async function handleVisualAgentProposal(button) {
+  const action = button.dataset.agentProposalAction;
+  const current = activeDesignDirection();
+  try {
+    const updated = await api(
+      `/v1/sessions/${sessionId}/visual-agent-requests/${button.dataset.agentRequest}/proposals/${button.dataset.agentProposal}`,
+      { method: 'POST', body: JSON.stringify({ action }) },
+    );
+    const request = updated.visualAgentRequests.find(
+      (item) => item.id === button.dataset.agentRequest,
+    );
+    const proposal = request?.proposals.find((item) => item.id === button.dataset.agentProposal);
+    if (action === 'preview') {
+      const branch = updated.designBranches.find((item) => item.id === proposal?.branchId);
+      if (bridgeConnected && branch) {
+        await requestCommand('switch-design-branch', {
+          previousChanges: current.changes ?? [],
+          nextChanges: branch.changes ?? [],
+        });
+      }
+      toast(`${proposal?.name ?? 'Direction'} is live on the canvas`);
+    }
+    if (action === 'promote') {
+      if (bridgeConnected) {
+        await requestCommand('switch-design-branch', {
+          previousChanges: current.changes ?? [],
+          nextChanges: updated.changeSet.changes ?? [],
+        });
+        sendCommand('save-design-decision', {
+          title: `${proposal?.name ?? 'Visual proposal'} approved`,
+          summary: proposal?.summary ?? 'Approved through Visual agent.',
+          rationale: proposal?.reasoning?.join(' ') ?? '',
+          outcome: 'approved',
+          evidenceKind: 'branch',
+          evidenceLabel: proposal?.name ?? 'Visual agent proposal',
+          refId: proposal?.branchId,
+          changes: proposal?.changes ?? [],
+        });
+      }
+      renderSession(updated);
+      setMode('review');
+      toast('Chosen direction moved to Review');
+      return;
+    }
+    renderSession(updated);
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+function visualRecipeTargetSuggestions(recipe) {
+  const layers = bridgeState?.layers ?? [];
+  const components =
+    recipe?.conditions?.components ?? (recipe?.component ? [recipe.component] : []);
+  const kinds = recipe?.conditions?.elementKinds ?? [];
+  return layers
+    .map((layer) => {
+      const componentMatch = components.includes(layer.component);
+      const kindMatch = kinds.includes(layer.kind);
+      return {
+        ...layer,
+        compatibility: componentMatch ? 'exact' : kindMatch ? 'compatible' : 'possible',
+        score: componentMatch ? 100 : kindMatch ? 84 : 48,
+      };
+    })
+    .filter((layer) => layer.score > 48 || (!components.length && !kinds.length))
+    .sort((a, b) => b.score - a.score || a.depth - b.depth)
+    .slice(0, 8);
+}
+
+function renderVisualRecipes() {
+  const visual = bridgeState?.visualRecipes ?? {};
+  const recipes = visual.recipes ?? bridgeState?.memory?.recipes ?? [];
+  const filtered = recipes.filter((recipe) =>
+    `${recipe.name} ${recipe.intent ?? ''} ${recipe.sourceLabel ?? ''}`
+      .toLowerCase()
+      .includes(visualRecipeSearch.toLowerCase()),
+  );
+  if (!recipes.some((recipe) => recipe.id === visualRecipeId))
+    visualRecipeId = recipes[0]?.id ?? '';
+  const recipe = recipes.find((candidate) => candidate.id === visualRecipeId);
+  const assessment = recipe ? visual.assessment?.[recipe.id] : null;
+  const selection = bridgeState?.selection;
+  $('#visual-recipe-status').textContent = recipes.length
+    ? `${recipes.length} saved ${recipes.length === 1 ? 'recipe' : 'recipes'}`
+    : 'No saved recipes';
+  $('#visual-recipe-save').disabled = !visual.canSave;
+  $('#visual-recipe-selection').innerHTML = selection
+    ? `<strong>${escapeText(selection.label)}</strong><code>${escapeText(selection.component ?? selection.kind)}</code><span>${visual.canSave ? 'Edited values are ready to capture.' : 'Refine this layer before saving a recipe.'}</span>`
+    : '<span>Select and refine a layer on the canvas first.</span>';
+  $('#visual-recipe-list').innerHTML = filtered.length
+    ? filtered
+        .map((item) => {
+          const categories = item.categories ?? [
+            ...new Set(item.values.map((value) => value.category)),
+          ];
+          return `<button class="visual-recipe-row ${item.id === visualRecipeId ? 'is-active' : ''}" data-visual-recipe="${escapeAttribute(item.id)}"><span><strong>${escapeText(item.name)}</strong><small>${escapeText(item.intent ?? item.sourceLabel)}</small></span><code>${categories.length}</code></button>`;
+        })
+        .join('')
+    : `<div class="visual-recipe-empty"><i data-icon="bookmark"></i><strong>${recipes.length ? 'No recipes match' : 'No recipes saved yet'}</strong><p>${recipes.length ? 'Try another search.' : 'Refine a layer, then save its treatment with a clear intent.'}</p></div>`;
+
+  if (!recipe) {
+    $('#visual-recipe-stage').innerHTML =
+      `<div class="visual-recipe-empty is-stage"><i data-icon="sparkles"></i><strong>Reusable, not copied</strong><p>A recipe carries visual intent and conditions. Foundry resolves its values through each destination project and shows the exact mapping before Review.</p></div>`;
+  } else {
+    const categories = recipe.categories ?? [
+      ...new Set(recipe.values.map((value) => value.category)),
+    ];
+    const suggestions = visualRecipeTargetSuggestions(recipe);
+    const mappingRows = assessment?.mappings ?? [];
+    $('#visual-recipe-stage').innerHTML =
+      `<section class="visual-recipe-overview"><header><div><span class="eyebrow">${escapeText(recipe.sourceLabel)}</span><h2>${escapeText(recipe.name)}</h2><p>${escapeText(recipe.intent ?? 'Reusable project treatment')}</p></div><button class="icon-button" data-remove-visual-recipe="${escapeAttribute(recipe.id)}" aria-label="Remove ${escapeAttribute(recipe.name)}"><i data-icon="bin"></i></button></header><div class="visual-recipe-pills">${categories.map((category) => `<span>${escapeText(category)}</span>`).join('')}</div></section><section class="visual-recipe-mapping"><header><div><span class="eyebrow">Exact mapping</span><strong>${selection ? escapeText(selection.label) : 'Select a compatible target'}</strong></div>${assessment ? `<span class="recipe-compatibility" data-compatibility="${assessment.compatibility}">${assessment.score}% ${assessment.compatibility}</span>` : ''}</header>${selection ? `<div class="visual-recipe-map-list">${mappingRows.map((mapping) => `<article data-status="${mapping.status}" title="${escapeAttribute(mapping.detail)}"><span><strong>${escapeText(mapping.property)}</strong><small>${escapeText(mapping.category)}</small></span><code>${escapeText(mapping.currentValue ?? 'Unavailable')}</code><i>→</i><span><code>${escapeText(mapping.resolvedValue ?? mapping.sourceValue)}</code><small>${mapping.token ? escapeText(mapping.token.name) : mapping.status === 'unsupported' ? 'Unsupported on target' : 'Destination literal'}</small></span></article>`).join('')}</div><footer><span>${assessment?.ambiguous ? `${assessment.ambiguous} token choice requires explicit review.` : 'Every supported value is shown before it enters Review.'}</span><button class="primary-button" data-apply-visual-recipe="${escapeAttribute(recipe.id)}" ${assessment?.matched ? '' : 'disabled'}>Add mapped values to Review</button></footer>` : '<div class="visual-recipe-empty"><p>Choose one of the compatible targets below to inspect the destination mapping.</p></div>'}</section><section class="visual-recipe-targets"><header><span class="eyebrow">Compatible targets</span><strong>Suggested, never automatic</strong></header><div>${suggestions.map((target) => `<button data-visual-recipe-target="${escapeAttribute(target.selector)}"><span><strong>${escapeText(target.label)}</strong><small>${escapeText(target.component ?? target.kind)}</small></span><code>${target.score}%</code></button>`).join('') || '<p>No component or element conditions match the current project.</p>'}</div></section>`;
+  }
+  $$('[data-visual-recipe]').forEach((button) =>
+    button.addEventListener('click', () => {
+      visualRecipeId = button.dataset.visualRecipe;
+      renderVisualRecipes();
+    }),
+  );
+  $$('[data-visual-recipe-target]').forEach((button) =>
+    button.addEventListener('click', () =>
+      sendCommand('select', { selector: button.dataset.visualRecipeTarget }),
+    ),
+  );
+  $$('[data-apply-visual-recipe]').forEach((button) =>
+    button.addEventListener('click', () => {
+      sendCommand('apply-visual-recipe', {
+        recipeId: button.dataset.applyVisualRecipe,
+      });
+      toast('Mapped values added as previews for Review');
+    }),
+  );
+  $$('[data-remove-visual-recipe]').forEach((button) =>
+    button.addEventListener('click', () => {
+      sendCommand('remove-visual-recipe', {
+        recipeId: button.dataset.removeVisualRecipe,
+      });
+      visualRecipeId = '';
+    }),
+  );
+  renderIcons($('[data-mode-surface="recipes"]'));
 }
 
 const DESIGN_SYSTEM_CATEGORY_LABELS = {
@@ -2010,15 +2774,16 @@ function renderDesignSystem() {
   const tokens = project.tokens ?? [];
   const usages = project.tokenUsages ?? [];
   const findings = project.designSystemFindings ?? [];
+  const promotions = project.tokenPromotions ?? [];
   const warnings = findings.filter((finding) => finding.severity === 'warning');
   const literals = usages.filter((usage) => usage.kind === 'literal');
   const mappedComponents = new Set(usages.map((usage) => usage.componentId).filter(Boolean));
   $('#design-system-status').textContent =
-    `${tokens.length} ${tokens.length === 1 ? 'token' : 'tokens'} · ${warnings.length} ${warnings.length === 1 ? 'warning' : 'warnings'}`;
+    `${tokens.length} ${tokens.length === 1 ? 'token' : 'tokens'} · ${promotions.length} ${promotions.length === 1 ? 'promotion' : 'promotions'}`;
   $('#design-system-summary').innerHTML = [
     [tokens.length, 'Native tokens', 'Indexed from project source'],
     [usages.length, 'Mapped usages', `${literals.length} literals to review`],
-    [mappedComponents.size, 'Components reached', 'Source-aware impact'],
+    [promotions.length, 'Promotion plans', `${mappedComponents.size} components reached`],
     [warnings.length, 'Drift warnings', 'No automatic changes'],
   ]
     .map(
@@ -2027,8 +2792,22 @@ function renderDesignSystem() {
     )
     .join('');
 
-  const categoryCounts = tokens.reduce((counts, token) => {
-    counts[token.category] = (counts[token.category] ?? 0) + 1;
+  $$('[data-system-view]').forEach((button) => {
+    const active = button.dataset.systemView === designSystemView;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  const search = $('#design-system-search');
+  search.placeholder =
+    designSystemView === 'promotions' ? 'Search promotion plans' : 'Search tokens';
+  search.setAttribute(
+    'aria-label',
+    designSystemView === 'promotions' ? 'Search token promotion plans' : 'Search project tokens',
+  );
+
+  const collection = designSystemView === 'promotions' ? promotions : tokens;
+  const categoryCounts = collection.reduce((counts, item) => {
+    counts[item.category] = (counts[item.category] ?? 0) + 1;
     return counts;
   }, {});
   const categories = [
@@ -2038,74 +2817,134 @@ function renderDesignSystem() {
   $('#design-system-categories').innerHTML = categories
     .map(
       (category) =>
-        `<button class="chip-button ${designSystemCategory === category ? 'is-active' : ''}" data-system-category="${category}"><span>${category === 'all' ? 'All' : DESIGN_SYSTEM_CATEGORY_LABELS[category]}</span><code>${category === 'all' ? tokens.length : categoryCounts[category]}</code></button>`,
+        `<button class="chip-button ${designSystemCategory === category ? 'is-active' : ''}" data-system-category="${category}"><span>${category === 'all' ? 'All' : DESIGN_SYSTEM_CATEGORY_LABELS[category]}</span><code>${category === 'all' ? collection.length : categoryCounts[category]}</code></button>`,
     )
     .join('');
 
-  const query = $('#design-system-search').value.trim().toLowerCase();
-  const visible = tokens.filter(
-    (token) =>
-      (designSystemCategory === 'all' || token.category === designSystemCategory) &&
-      `${token.name} ${token.value} ${token.category}`.toLowerCase().includes(query),
-  );
-  if (!tokens.some((token) => token.id === designSystemTokenId)) {
-    designSystemTokenId = visible[0]?.id ?? tokens[0]?.id ?? '';
-  }
-  $('#design-system-token-list').innerHTML = visible.length
-    ? visible
-        .map((token) => {
-          const tokenUsages = usages.filter((usage) => usage.tokenId === token.id);
-          const tokenFindings = findings.filter((finding) => finding.tokenIds?.includes(token.id));
-          const sample =
-            token.category === 'color'
-              ? `<i class="design-token-swatch" style="--token-color:${escapeAttribute(token.value)}"></i>`
-              : '<i class="design-token-glyph"></i>';
-          return `<button class="design-token-row ${token.id === designSystemTokenId ? 'is-active' : ''}" data-system-token="${escapeAttribute(token.id)}">${sample}<span><strong>${escapeText(token.name)}</strong><code>${escapeText(token.value)}</code></span><span class="design-token-count ${tokenFindings.some((finding) => finding.severity === 'warning') ? 'has-warning' : ''}">${tokenUsages.length}</span></button>`;
-        })
-        .join('')
-    : '<div class="empty-inspector">No project tokens match this search.</div>';
-
-  const token = tokens.find((candidate) => candidate.id === designSystemTokenId);
+  const query = search.value.trim().toLowerCase();
   const detail = $('#design-system-detail');
-  if (!token) {
-    detail.innerHTML =
-      '<div class="workshop-empty">Index project tokens to map the design system.</div>';
+  if (designSystemView === 'promotions') {
+    const visible = promotions.filter(
+      (candidate) =>
+        (designSystemCategory === 'all' || candidate.category === designSystemCategory) &&
+        `${candidate.value} ${candidate.property} ${candidate.suggestedTokenName} ${candidate.category}`
+          .toLowerCase()
+          .includes(query),
+    );
+    if (!promotions.some((candidate) => candidate.id === designSystemPromotionId)) {
+      designSystemPromotionId = visible[0]?.id ?? promotions[0]?.id ?? '';
+    }
+    $('#design-system-token-list').innerHTML = visible.length
+      ? visible
+          .map(
+            (candidate) =>
+              `<button class="design-token-row is-promotion ${candidate.id === designSystemPromotionId ? 'is-active' : ''}" data-system-promotion="${escapeAttribute(candidate.id)}"><i class="design-token-glyph"></i><span><strong>${escapeText(candidate.value)}</strong><code>${escapeText(candidate.suggestedTokenName)}</code></span><span class="design-token-count ${candidate.relation === 'near' ? 'has-warning' : ''}">${candidate.occurrenceCount}</span></button>`,
+          )
+          .join('')
+      : '<div class="empty-inspector">No recurring values match this search.</div>';
+    const candidate = promotions.find((item) => item.id === designSystemPromotionId);
+    if (!candidate) {
+      detail.innerHTML =
+        '<div class="workshop-empty">No recurring authored values are ready for promotion.</div>';
+    } else {
+      const action =
+        candidate.recommendation === 'use-existing'
+          ? `Replace with var(${candidate.suggestedTokenName})`
+          : `Create ${candidate.suggestedTokenName}`;
+      const chain = candidate.aliasChain?.length
+        ? candidate.aliasChain
+            .map((name, index) => `${index ? '<i>→</i>' : ''}<code>${escapeText(name)}</code>`)
+            .join('')
+        : `<code>${escapeText(candidate.suggestedTokenName)}</code><i>→</i><code>${escapeText(candidate.value)}</code>`;
+      const sources = candidate.sources
+        .map(
+          (source) =>
+            `<article><span class="usage-kind" data-kind="literal">literal</span><span><strong>${escapeText(candidate.property)}</strong><code>${escapeText(sourceText(source))}</code></span><code>${escapeText(candidate.value)}</code></article>`,
+        )
+        .join('');
+      detail.innerHTML = `<div class="design-system-detail-head"><div><span class="eyebrow">${escapeText(candidate.recommendation === 'use-existing' ? 'Existing token' : 'New project token')}</span><h2>${escapeText(candidate.value)}</h2><code>${escapeText(`${candidate.occurrenceCount} authored occurrences · ${candidate.relation} match`)}</code></div></div><div class="design-system-grid"><section class="design-system-card"><header><strong>Recommended plan</strong><span>${escapeText(candidate.relation)}</span></header><div class="design-system-source"><code>${escapeText(action)}</code><p>${escapeText(candidate.evidence?.join(' · ') || 'Recurring project value')}</p></div></section><section class="design-system-card"><header><strong>Source impact</strong><span>Review first</span></header><p>This plan touches <strong>${candidate.occurrenceCount}</strong> exact authored locations across <strong>${new Set(candidate.sources.map((source) => source.file)).size}</strong> files and preserves the current rendered value.</p></section><section class="design-system-card is-wide"><header><strong>Alias resolution</strong><span class="alias-health" data-status="${escapeAttribute(candidate.relation)}">${escapeText(candidate.relation === 'new' ? 'New semantic token' : 'Preserve chain')}</span></header><div class="alias-chain">${chain}</div></section><section class="design-system-card is-wide"><header><strong>Authored occurrences</strong><span>${candidate.sources.length} mapped</span></header><div class="design-usage-list">${sources}</div></section><section class="design-system-card is-action"><footer><p>Nothing changes until this exact source plan is reviewed, applied by the active coding agent, rebuilt, and verified.</p><button class="primary-button" data-stage-token-promotion="${escapeAttribute(candidate.id)}" ${candidate.canStage ? '' : 'disabled'}>Add plan to Review</button></footer></section></div>`;
+    }
   } else {
-    const tokenUsages = usages.filter((usage) => usage.tokenId === token.id);
-    const tokenFindings = findings.filter((finding) => finding.tokenIds?.includes(token.id));
-    const files = new Set(tokenUsages.map((usage) => usage.source?.file).filter(Boolean));
-    const components = new Set(tokenUsages.map((usage) => usage.componentId).filter(Boolean));
-    const references = tokenUsages.filter((usage) => usage.kind !== 'literal');
-    const aliases = tokenUsages.filter((usage) => usage.kind === 'alias');
-    const literalUsages = tokenUsages.filter((usage) => usage.kind === 'literal');
-    const colorPreview =
-      token.category === 'color'
-        ? `<span class="design-system-color-preview" style="--token-color:${escapeAttribute(token.value)}"></span>`
-        : '';
-    const usageMarkup = tokenUsages.length
-      ? tokenUsages
-          .slice(0, 40)
-          .map(
-            (usage) =>
-              `<article><span class="usage-kind" data-kind="${escapeAttribute(usage.kind)}">${escapeText(usage.kind)}</span><span><strong>${escapeText(usage.property ?? token.name)}</strong><code>${escapeText(sourceText(usage.source))}</code></span><code>${escapeText(usage.value)}</code></article>`,
-          )
+    const visible = tokens.filter(
+      (item) =>
+        (designSystemCategory === 'all' || item.category === designSystemCategory) &&
+        `${item.name} ${item.value} ${item.resolvedValue ?? ''} ${item.category}`
+          .toLowerCase()
+          .includes(query),
+    );
+    if (!tokens.some((item) => item.id === designSystemTokenId)) {
+      designSystemTokenId = visible[0]?.id ?? tokens[0]?.id ?? '';
+    }
+    $('#design-system-token-list').innerHTML = visible.length
+      ? visible
+          .map((item) => {
+            const tokenUsages = usages.filter((usage) => usage.tokenId === item.id);
+            const tokenFindings = findings.filter((finding) => finding.tokenIds?.includes(item.id));
+            const previewValue = item.resolvedValue ?? item.value;
+            const sample =
+              item.category === 'color'
+                ? `<i class="design-token-swatch" style="--token-color:${escapeAttribute(previewValue)}"></i>`
+                : '<i class="design-token-glyph"></i>';
+            return `<button class="design-token-row ${item.id === designSystemTokenId ? 'is-active' : ''}" data-system-token="${escapeAttribute(item.id)}">${sample}<span><strong>${escapeText(item.name)}</strong><code>${escapeText(item.value)}</code></span><span class="design-token-count ${tokenFindings.some((finding) => finding.severity === 'warning') || ['broken', 'circular'].includes(item.aliasStatus) ? 'has-warning' : ''}">${tokenUsages.length}</span></button>`;
+          })
           .join('')
-      : '<p class="design-system-empty">No indexed references. This token may be reserved or loaded dynamically.</p>';
-    const findingMarkup = tokenFindings.length
-      ? tokenFindings
-          .map(
-            (finding) =>
-              `<article data-severity="${escapeAttribute(finding.severity)}"><i></i><span><strong>${escapeText(finding.title)}</strong><p>${escapeText(finding.detail)}</p><small>${escapeText(finding.evidence?.join(' · ') || 'Project source analysis')}</small></span>${finding.componentIds?.length ? `<button class="secondary-button" data-system-component="${escapeAttribute(finding.componentIds[0])}">Inspect component</button>` : ''}</article>`,
-          )
-          .join('')
-      : '<p class="design-system-empty">This token follows the indexed project system.</p>';
-    detail.innerHTML = `<div class="design-system-detail-head"><div><span class="eyebrow">${escapeText(DESIGN_SYSTEM_CATEGORY_LABELS[token.category] ?? 'Project token')}</span><h2>${escapeText(token.name)}</h2><code>${escapeText(token.value)}</code></div>${colorPreview}</div><div class="design-system-grid"><section class="design-system-card"><header><strong>Source of truth</strong><span>${escapeText(token.confidence ?? 'inferred')}</span></header><div class="design-system-source"><code>${escapeText(sourceText(token.source))}</code><p>${escapeText(token.evidence?.join(' · ') || 'Indexed project value')}</p></div></section><section class="design-system-card"><header><strong>Impact preview</strong><span>Read only</span></header><p>Changing this token can affect <strong>${references.length}</strong> indexed references across <strong>${files.size}</strong> files and <strong>${components.size}</strong> mapped components.</p><div class="design-impact-pills"><span>${literalUsages.length} literals</span><span>${aliases.length} aliases</span><span>${tokenFindings.length} findings</span></div></section><section class="design-system-card is-wide"><header><strong>Usage trace</strong><span>${tokenUsages.length} indexed</span></header><div class="design-usage-list">${usageMarkup}</div></section><section class="design-system-card is-wide"><header><strong>System guidance</strong><span>${tokenFindings.length ? 'Review suggested' : 'Aligned'}</span></header><div class="design-finding-list">${findingMarkup}</div></section></div>`;
+      : '<div class="empty-inspector">No project tokens match this search.</div>';
+
+    const token = tokens.find((item) => item.id === designSystemTokenId);
+    if (!token) {
+      detail.innerHTML =
+        '<div class="workshop-empty">Index project tokens to map the design system.</div>';
+    } else {
+      const tokenUsages = usages.filter((usage) => usage.tokenId === token.id);
+      const tokenFindings = findings.filter((finding) => finding.tokenIds?.includes(token.id));
+      const files = new Set(tokenUsages.map((usage) => usage.source?.file).filter(Boolean));
+      const components = new Set(tokenUsages.map((usage) => usage.componentId).filter(Boolean));
+      const references = tokenUsages.filter((usage) => usage.kind !== 'literal');
+      const aliases = tokenUsages.filter((usage) => usage.kind === 'alias');
+      const literalUsages = tokenUsages.filter((usage) => usage.kind === 'literal');
+      const previewValue = token.resolvedValue ?? token.value;
+      const colorPreview =
+        token.category === 'color'
+          ? `<span class="design-system-color-preview" style="--token-color:${escapeAttribute(previewValue)}"></span>`
+          : '';
+      const chain = (token.aliasChain?.length ? token.aliasChain : [token.name])
+        .map((name, index) => `${index ? '<i>→</i>' : ''}<code>${escapeText(name)}</code>`)
+        .join('');
+      const usageMarkup = tokenUsages.length
+        ? tokenUsages
+            .slice(0, 40)
+            .map(
+              (usage) =>
+                `<article><span class="usage-kind" data-kind="${escapeAttribute(usage.kind)}">${escapeText(usage.kind)}</span><span><strong>${escapeText(usage.property ?? token.name)}</strong><code>${escapeText(sourceText(usage.source))}</code></span><code>${escapeText(usage.value)}</code></article>`,
+            )
+            .join('')
+        : '<p class="design-system-empty">No indexed references. This token may be reserved or loaded dynamically.</p>';
+      const findingMarkup = tokenFindings.length
+        ? tokenFindings
+            .map(
+              (finding) =>
+                `<article data-severity="${escapeAttribute(finding.severity)}"><i></i><span><strong>${escapeText(finding.title)}</strong><p>${escapeText(finding.detail)}</p><small>${escapeText(finding.evidence?.join(' · ') || 'Project source analysis')}</small></span>${finding.componentIds?.length ? `<button class="secondary-button" data-system-component="${escapeAttribute(finding.componentIds[0])}">Inspect component</button>` : ''}</article>`,
+            )
+            .join('')
+        : '<p class="design-system-empty">This token follows the indexed project system.</p>';
+      detail.innerHTML = `<div class="design-system-detail-head"><div><span class="eyebrow">${escapeText(DESIGN_SYSTEM_CATEGORY_LABELS[token.category] ?? 'Project token')}</span><h2>${escapeText(token.name)}</h2><code>${escapeText(token.value)}</code></div>${colorPreview}</div><div class="design-system-grid"><section class="design-system-card"><header><strong>Source of truth</strong><span>${escapeText(token.confidence ?? 'inferred')}</span></header><div class="design-system-source"><code>${escapeText(sourceText(token.source))}</code><p>${escapeText(token.evidence?.join(' · ') || 'Indexed project value')}</p></div></section><section class="design-system-card"><header><strong>Impact preview</strong><span>Read only</span></header><p>Changing this token can affect <strong>${references.length}</strong> indexed references across <strong>${files.size}</strong> files and <strong>${components.size}</strong> mapped components.</p><div class="design-impact-pills"><span>${literalUsages.length} literals</span><span>${aliases.length} aliases</span><span>${tokenFindings.length} findings</span></div></section><section class="design-system-card is-wide"><header><strong>Alias chain</strong><span class="alias-health" data-status="${escapeAttribute(token.aliasStatus ?? 'direct')}">${escapeText(token.aliasStatus ?? 'direct')}</span></header><div class="alias-chain">${chain}${token.resolvedValue ? `<i>=</i><code>${escapeText(token.resolvedValue)}</code>` : ''}</div></section><section class="design-system-card is-wide"><header><strong>Usage trace</strong><span>${tokenUsages.length} indexed</span></header><div class="design-usage-list">${usageMarkup}</div></section><section class="design-system-card is-wide"><header><strong>System guidance</strong><span>${tokenFindings.length ? 'Review suggested' : 'Aligned'}</span></header><div class="design-finding-list">${findingMarkup}</div></section></div>`;
+    }
   }
 
+  $$('[data-system-view]').forEach((button) =>
+    button.addEventListener('click', () => {
+      designSystemView = button.dataset.systemView;
+      designSystemCategory = 'all';
+      designSystemTokenId = '';
+      designSystemPromotionId = '';
+      renderDesignSystem();
+    }),
+  );
   $$('[data-system-category]').forEach((button) =>
     button.addEventListener('click', () => {
       designSystemCategory = button.dataset.systemCategory;
       designSystemTokenId = '';
+      designSystemPromotionId = '';
       renderDesignSystem();
     }),
   );
@@ -2115,6 +2954,17 @@ function renderDesignSystem() {
       renderDesignSystem();
     }),
   );
+  $$('[data-system-promotion]').forEach((button) =>
+    button.addEventListener('click', () => {
+      designSystemPromotionId = button.dataset.systemPromotion;
+      renderDesignSystem();
+    }),
+  );
+  $('[data-stage-token-promotion]')?.addEventListener('click', (event) => {
+    sendCommand('stage-token-promotion', {
+      candidateId: event.currentTarget.dataset.stageTokenPromotion,
+    });
+  });
   $$('[data-system-component]').forEach((button) =>
     button.addEventListener('click', () => {
       workshopComponentId = button.dataset.systemComponent;
@@ -2267,7 +3117,10 @@ function renderTypographyStudio() {
       const fonts = await window.queryLocalFonts();
       const grouped = new Map();
       for (const font of fonts) {
-        const record = grouped.get(font.family) ?? { family: font.family, styles: [] };
+        const record = grouped.get(font.family) ?? {
+          family: font.family,
+          styles: [],
+        };
         if (font.style && !record.styles.includes(font.style)) record.styles.push(font.style);
         grouped.set(font.family, record);
       }
@@ -2312,7 +3165,10 @@ function renderTypographyStudio() {
       ?.replaceChildren(`${typographyScale.base}px`);
   });
   $('[data-preview-scale]', stage)?.addEventListener('click', () =>
-    sendCommand('typography-action', { action: 'preview-scale', ...typographyScale }),
+    sendCommand('typography-action', {
+      action: 'preview-scale',
+      ...typographyScale,
+    }),
   );
   $$('[data-typography-control]', properties).forEach((field) => {
     let previous = field.value;
@@ -2365,7 +3221,26 @@ function renderTypographyStudio() {
 function motionSourceLabel(kind) {
   if (kind === 'css-animation') return 'CSS animation';
   if (kind === 'css-transition') return 'CSS transition';
+  if (kind === 'motion-react' || kind === 'motion') return 'Motion for React';
+  if (kind === 'gsap') return 'GSAP';
+  if (kind === 'react-spring') return 'React Spring';
   return 'Web animation';
+}
+
+function renderNativeMotionSource(motion) {
+  const authoring = motion.authoring;
+  if (!authoring?.adapter) return '';
+  const properties = Object.entries(authoring.sourceProperties ?? {})
+    .filter(([, value]) => value)
+    .map(
+      ([property, value]) =>
+        `<span><small>${escapeText(property)}</small><code>${escapeText(value)}</code></span>`,
+    )
+    .join('');
+  const source = authoring.source
+    ? `${authoring.source.file}:${authoring.source.line ?? 1}`
+    : 'Runtime registration';
+  return `<section class="motion-native-source" data-native-adapter="${escapeAttribute(authoring.adapter)}"><header><span><span class="eyebrow">Source adapter</span><strong>${escapeText(authoring.label ?? motionSourceLabel(motion.kind))}</strong></span><span class="motion-source-chip">Project native</span></header><code class="motion-native-location" title="${escapeAttribute(source)}">${escapeText(source)}</code><div class="motion-native-properties">${properties}</div><footer><i data-icon="check"></i><span>Edits retain the library's source-property semantics for review and Apply with agent.</span></footer></section>`;
 }
 
 function motionStudioChanged(selection, motion, property) {
@@ -2374,7 +3249,252 @@ function motionStudioChanged(selection, motion, property) {
     : '';
 }
 
+function motionCurvePath(points = []) {
+  if (!points.length) return '';
+  const width = 240;
+  const height = 156;
+  const padding = 16;
+  const x = (value) => padding + Number(value) * (width - padding * 2);
+  const y = (value) =>
+    padding +
+    (1 - (Math.max(-0.25, Math.min(1.25, Number(value))) + 0.25) / 1.5) * (height - padding * 2);
+  return points
+    .map((point, index) => `${index ? 'L' : 'M'} ${x(point.x).toFixed(2)} ${y(point.y).toFixed(2)}`)
+    .join(' ');
+}
+
+function motionCurvePoint(value, axis) {
+  const padding = 16;
+  if (axis === 'x') return padding + Number(value) * 208;
+  return padding + (1 - (Math.max(-0.25, Math.min(1.25, Number(value))) + 0.25) / 1.5) * 124;
+}
+
+function motionBezierPoints(curve) {
+  return Array.from({ length: 61 }, (_, index) => {
+    const t = index / 60;
+    const inverse = 1 - t;
+    return {
+      x: 3 * inverse * inverse * t * curve.x1 + 3 * inverse * t * t * curve.x2 + t * t * t,
+      y: 3 * inverse * inverse * t * curve.y1 + 3 * inverse * t * t * curve.y2 + t * t * t,
+    };
+  });
+}
+
+function motionCurvePayload(editor) {
+  const values = Object.fromEntries(
+    $$('[data-curve-field]', editor).map((field) => [
+      field.dataset.curveField,
+      Number(field.value),
+    ]),
+  );
+  return {
+    kind: editor.dataset.curveKind === 'spring' ? 'spring' : 'cubic-bezier',
+    ...values,
+  };
+}
+
+function commitMotionCurve(editor) {
+  const payload = motionCurvePayload(editor);
+  sendCommand('motion-action', {
+    id: editor.dataset.motionId,
+    action: 'curve',
+    ...payload,
+  });
+}
+
+function updateBezierEditorPreview(editor) {
+  const curve = motionCurvePayload(editor);
+  if (curve.kind !== 'cubic-bezier') return;
+  const path = $('.motion-curve-line', editor);
+  if (path) path.setAttribute('d', motionCurvePath(motionBezierPoints(curve)));
+  [1, 2].forEach((index) => {
+    const x = curve[`x${index}`];
+    const y = curve[`y${index}`];
+    const handle = $(`[data-curve-handle="${index}"]`, editor);
+    const line = $(`.motion-curve-handle-line:nth-of-type(${index})`, editor);
+    handle?.setAttribute('cx', motionCurvePoint(x, 'x'));
+    handle?.setAttribute('cy', motionCurvePoint(y, 'y'));
+    handle?.setAttribute('aria-valuetext', `${Number(x).toFixed(2)}, ${Number(y).toFixed(2)}`);
+    line?.setAttribute('x2', motionCurvePoint(x, 'x'));
+    line?.setAttribute('y2', motionCurvePoint(y, 'y'));
+  });
+}
+
+function motionPathGeometry(paths = []) {
+  const all = paths.flatMap((path) => path?.points ?? []);
+  const minX = Math.min(0, ...all.map((point) => Number(point.x) || 0));
+  const maxX = Math.max(0, ...all.map((point) => Number(point.x) || 0));
+  const minY = Math.min(0, ...all.map((point) => Number(point.y) || 0));
+  const maxY = Math.max(0, ...all.map((point) => Number(point.y) || 0));
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const spanX = Math.max(24, width);
+  const spanY = Math.max(24, height);
+  const scale = Math.min(400 / spanX, 180 / spanY, 6);
+  const originX = 40 + (400 - width * scale) / 2;
+  const originY = 220 - (180 - height * scale) / 2;
+  return {
+    minX,
+    minY,
+    scale,
+    originX,
+    originY,
+    x: (value) => originX + (Number(value) - minX) * scale,
+    y: (value) => originY - (Number(value) - minY) * scale,
+    sourceX: (value) => minX + (Number(value) - originX) / scale,
+    sourceY: (value) => minY + (originY - Number(value)) / scale,
+  };
+}
+
+function motionPathSvg(path, geometry) {
+  return (path?.points ?? [])
+    .map(
+      (point, index) =>
+        `${index ? 'L' : 'M'} ${geometry.x(point.x).toFixed(2)} ${geometry.y(point.y).toFixed(2)}`,
+    )
+    .join(' ');
+}
+
+function motionPathSample(path, progress) {
+  const points = path?.points ?? [];
+  if (!points.length) return { x: 0, y: 0 };
+  const clamped = Math.max(0, Math.min(1, Number(progress) || 0));
+  const following = points.find((point) => Number(point.offset) >= clamped) ?? points.at(-1);
+  const followingIndex = points.indexOf(following);
+  const previous = points[Math.max(0, followingIndex - 1)] ?? following;
+  const range = Math.max(0.0001, Number(following.offset) - Number(previous.offset));
+  const local = Math.max(0, Math.min(1, (clamped - Number(previous.offset)) / range));
+  return {
+    x: Number(previous.x) + (Number(following.x) - Number(previous.x)) * local,
+    y: Number(previous.y) + (Number(following.y) - Number(previous.y)) * local,
+  };
+}
+
+function motionCurveSample(curve, progress) {
+  const points = curve?.points ?? [];
+  if (!points.length) return progress;
+  const clamped = Math.max(0, Math.min(1, Number(progress) || 0));
+  const following = points.find((point) => Number(point.x) >= clamped) ?? points.at(-1);
+  const followingIndex = points.indexOf(following);
+  const previous = points[Math.max(0, followingIndex - 1)] ?? following;
+  const range = Math.max(0.0001, Number(following.x) - Number(previous.x));
+  const local = Math.max(0, Math.min(1, (clamped - Number(previous.x)) / range));
+  return Number(previous.y) + (Number(following.y) - Number(previous.y)) * local;
+}
+
+function renderMotionPathEditor(selection, motion, disabled) {
+  const path = motion.path;
+  if (!path?.supported) {
+    return `<section class="motion-path-editor is-unavailable"><header><span><strong>Motion path</strong><code>Transform keyframes</code></span></header><p>${escapeText(path?.reason ?? 'This motion does not expose an editable pixel path.')}</p></section>`;
+  }
+  const geometry = motionPathGeometry([path]);
+  const handles = path.points
+    .map(
+      (point) =>
+        `<circle class="motion-path-handle" data-path-point="${point.index}" tabindex="0" role="slider" aria-label="Motion path keyframe ${point.index + 1}" aria-valuetext="${point.x}px, ${point.y}px" cx="${geometry.x(point.x)}" cy="${geometry.y(point.y)}" r="7"></circle>`,
+    )
+    .join('');
+  const fields = path.points
+    .map(
+      (point) =>
+        `<div class="motion-path-row" data-path-row="${point.index}" data-path-offset="${point.offset}"><span><strong>${Math.round(Number(point.offset) * 100)}%</strong><code>Keyframe ${point.index + 1}</code></span><label>X<input data-path-field="x" type="number" step="1" value="${point.x}" ${disabled}></label><label>Y<input data-path-field="y" type="number" step="1" value="${point.y}" ${disabled}></label></div>`,
+    )
+    .join('');
+  return `<section class="motion-path-editor${motionStudioChanged(selection, motion, 'path')}"><header><span><strong>Motion path</strong><code>${path.points.length} transform points · ${Math.round(Number(path.distance))} px travel</code></span><span class="motion-path-size">${Math.round(Number(path.bounds.width))} × ${Math.round(Number(path.bounds.height))} px</span></header><div class="motion-path-graph" data-min-x="${geometry.minX}" data-min-y="${geometry.minY}" data-scale="${geometry.scale}" data-origin-x="${geometry.originX}" data-origin-y="${geometry.originY}"><svg viewBox="0 0 480 260" role="img" aria-label="Editable transform motion path"><path class="motion-path-grid" d="M40 40V220M140 40V220M240 40V220M340 40V220M440 40V220M40 40H440M40 100H440M40 160H440M40 220H440"></path><path class="motion-path-line" d="${motionPathSvg(path, geometry)}"></path>${handles}</svg></div><div class="motion-path-fields">${fields}</div><footer><span>Drag points or enter exact coordinates</span><code>transform</code></footer></section>`;
+}
+
+function renderMotionComparison(motion) {
+  const comparison = motion.comparison;
+  const before = comparison?.before;
+  const after = comparison?.after;
+  if (!before?.path?.supported || !after?.path?.supported) return '';
+  const geometry = motionPathGeometry([before.path, after.path]);
+  const beforeStart = motionPathSample(before.path, 0);
+  const afterStart = motionPathSample(after.path, 0);
+  const changed = Boolean(comparison.changed);
+  return `<section class="motion-comparison${changed ? ' is-changed' : ''}" data-comparison-motion="${escapeAttribute(motion.id)}"><header><span><span class="eyebrow">Synchronized comparison</span><strong>Before and after</strong></span><span class="motion-comparison-state">${changed ? 'Preview differs' : 'No preview changes'}</span></header><div class="motion-comparison-stage"><svg viewBox="0 0 480 260" role="img" aria-label="Before and after motion paths"><path class="motion-path-grid" d="M40 40V220M140 40V220M240 40V220M340 40V220M440 40V220M40 40H440M40 100H440M40 160H440M40 220H440"></path><path class="motion-comparison-path is-before" d="${motionPathSvg(before.path, geometry)}"></path><path class="motion-comparison-path is-after" d="${motionPathSvg(after.path, geometry)}"></path><circle class="motion-comparison-dot is-before" data-comparison-dot="before" cx="${geometry.x(beforeStart.x)}" cy="${geometry.y(beforeStart.y)}" r="7"></circle><circle class="motion-comparison-dot is-after" data-comparison-dot="after" cx="${geometry.x(afterStart.x)}" cy="${geometry.y(afterStart.y)}" r="7"></circle></svg><div class="motion-comparison-legend"><span><i class="is-before"></i>Before</span><span><i class="is-after"></i>After</span></div></div><div class="motion-comparison-controls"><button class="icon-button" data-comparison-action="replay" aria-label="Replay synchronized comparison"><i data-icon="undo"></i></button><button class="primary-button compact" data-comparison-action="play">Play together</button><input data-comparison-scrub type="range" min="0" max="1000" step="1" value="0" aria-label="Scrub synchronized comparison"><output>0%</output></div><div class="motion-comparison-diagnostics"><span><small>Duration</small><strong>${Math.round(Number(comparison.diagnostics?.durationDelta) || 0) >= 0 ? '+' : ''}${Math.round(Number(comparison.diagnostics?.durationDelta) || 0)} ms</strong></span><span><small>Travel</small><strong>${Math.round(Number(comparison.diagnostics?.distanceDelta) || 0) >= 0 ? '+' : ''}${Math.round(Number(comparison.diagnostics?.distanceDelta) || 0)} px</strong></span><span><small>Keyframes</small><strong>${Number(comparison.diagnostics?.pointDelta) >= 0 ? '+' : ''}${Number(comparison.diagnostics?.pointDelta) || 0}</strong></span></div></section>`;
+}
+
+function renderMotionCurveEditor(selection, motion, disabled) {
+  const curve = motion.curve ?? {
+    kind: 'custom',
+    sourceValue: motion.timing?.easing ?? 'linear',
+    points: [],
+    diagnostics: {},
+  };
+  const isSpring = curve.kind === 'spring';
+  const isBezier = curve.kind === 'cubic-bezier';
+  const cubic = curve.cubicBezier ?? { x1: 0.2, y1: 0.8, x2: 0.2, y2: 1 };
+  const spring = curve.spring ?? {
+    mass: 1,
+    stiffness: 170,
+    damping: 26,
+    velocity: 0,
+  };
+  const fields = isSpring
+    ? [
+        ['mass', 'Mass', spring.mass, 0.1, 20, 0.1],
+        ['stiffness', 'Stiffness', spring.stiffness, 1, 2000, 1],
+        ['damping', 'Damping', spring.damping, 0.1, 200, 0.1],
+        ['velocity', 'Velocity', spring.velocity, -20, 20, 0.1],
+      ]
+        .map(
+          ([property, label, value, min, max, step]) =>
+            `<label><span>${label}</span><input data-curve-field="${property}" type="number" min="${min}" max="${max}" step="${step}" value="${value}" ${disabled}></label>`,
+        )
+        .join('')
+    : [
+        ['x1', 'X1', cubic.x1, 0, 1],
+        ['y1', 'Y1', cubic.y1, -2, 3],
+        ['x2', 'X2', cubic.x2, 0, 1],
+        ['y2', 'Y2', cubic.y2, -2, 3],
+      ]
+        .map(
+          ([property, label, value, min, max]) =>
+            `<label><span>${label}</span><input data-curve-field="${property}" type="number" min="${min}" max="${max}" step="0.01" value="${value}" ${disabled}></label>`,
+        )
+        .join('');
+  const presets = isSpring
+    ? [
+        ['gentle', 'Gentle', 1, 120, 20, 0],
+        ['responsive', 'Responsive', 1, 210, 24, 0],
+        ['expressive', 'Expressive', 0.8, 260, 18, 0],
+      ]
+        .map(
+          ([id, label, mass, stiffness, damping, velocity]) =>
+            `<button type="button" class="motion-curve-preset" data-curve-preset="${id}" data-mass="${mass}" data-stiffness="${stiffness}" data-damping="${damping}" data-velocity="${velocity}" ${disabled}>${label}</button>`,
+        )
+        .join('')
+    : [
+        ['linear', 'Linear', 0, 0, 1, 1],
+        ['ease-out', 'Ease out', 0.16, 1, 0.3, 1],
+        ['ease-in-out', 'Ease in out', 0.65, 0, 0.35, 1],
+      ]
+        .map(
+          ([id, label, x1, y1, x2, y2]) =>
+            `<button type="button" class="motion-curve-preset" data-curve-preset="${id}" data-x1="${x1}" data-y1="${y1}" data-x2="${x2}" data-y2="${y2}" ${disabled}>${label}</button>`,
+        )
+        .join('');
+  const handles = isBezier
+    ? `<line class="motion-curve-handle-line" x1="16" y1="${motionCurvePoint(0, 'y')}" x2="${motionCurvePoint(cubic.x1, 'x')}" y2="${motionCurvePoint(cubic.y1, 'y')}"></line><line class="motion-curve-handle-line" x1="224" y1="${motionCurvePoint(1, 'y')}" x2="${motionCurvePoint(cubic.x2, 'x')}" y2="${motionCurvePoint(cubic.y2, 'y')}"></line><circle class="motion-curve-handle" data-curve-handle="1" tabindex="0" role="slider" aria-label="First cubic Bezier handle" aria-valuetext="${cubic.x1}, ${cubic.y1}" cx="${motionCurvePoint(cubic.x1, 'x')}" cy="${motionCurvePoint(cubic.y1, 'y')}" r="7"></circle><circle class="motion-curve-handle" data-curve-handle="2" tabindex="0" role="slider" aria-label="Second cubic Bezier handle" aria-valuetext="${cubic.x2}, ${cubic.y2}" cx="${motionCurvePoint(cubic.x2, 'x')}" cy="${motionCurvePoint(cubic.y2, 'y')}" r="7"></circle>`
+    : '';
+  const duration = Math.max(
+    120,
+    Number(curve.diagnostics?.duration) || Number(motion.timing?.duration) || 480,
+  );
+  const sourceLabel = isSpring
+    ? `CSS linear() · ${curve.diagnostics?.sampleCount ?? 31} stops`
+    : isBezier
+      ? 'CSS cubic-bezier()'
+      : 'Authored easing';
+  return `<section class="motion-curve-editor${motionStudioChanged(selection, motion, 'easing')}" data-curve-kind="${escapeAttribute(curve.kind)}" data-motion-id="${escapeAttribute(motion.id)}"><header><span><strong>Timing curve</strong><code>${sourceLabel}</code></span><div class="motion-curve-tabs" role="tablist" aria-label="Timing curve type"><button type="button" role="tab" aria-selected="${!isSpring}" class="${!isSpring ? 'is-active' : ''}" data-curve-kind-select="cubic-bezier" ${disabled}>Bézier</button><button type="button" role="tab" aria-selected="${isSpring}" class="${isSpring ? 'is-active' : ''}" data-curve-kind-select="spring" ${disabled}>Spring</button></div></header><div class="motion-curve-graph"><svg viewBox="0 0 240 156" role="img" aria-label="${isSpring ? 'Spring response curve' : 'Cubic Bezier timing curve'}"><path class="motion-curve-grid" d="M16 16V140M68 16V140M120 16V140M172 16V140M224 16V140M16 37H224M16 78H224M16 119H224M16 140H224"></path><path class="motion-curve-line" d="${motionCurvePath(curve.points)}"></path>${handles}</svg><div class="motion-curve-preview"><span class="motion-curve-preview-dot" style="--curve-duration:${duration}ms;--curve-easing:${escapeAttribute(curve.previewValue ?? curve.sourceValue)}"></span></div></div><div class="motion-curve-presets" aria-label="Curve presets">${presets}</div><div class="motion-curve-fields">${fields}</div><div class="motion-curve-diagnostics"><span><small>${isSpring ? 'Settle' : 'Duration'}</small><strong>${isSpring ? `${Math.round(duration)} ms` : `${Math.round(Number(motion.timing?.duration) || 0)} ms`}</strong></span><span><small>Overshoot</small><strong>${Number(curve.diagnostics?.overshoot ?? 0).toFixed(1)}%</strong></span><button type="button" class="chip-button" data-curve-preview ${disabled}>Preview curve</button></div><div class="motion-curve-source"><span>Source value</span><code title="${escapeAttribute(curve.sourceValue)}">${escapeText(curve.sourceValue)}</code></div></section>`;
+}
+
 function renderMotionStudio() {
+  if (motionComparisonFrame) {
+    cancelAnimationFrame(motionComparisonFrame);
+    motionComparisonFrame = 0;
+  }
   const selection = bridgeState?.selection;
   const motions = bridgeState?.motions ?? [];
   const summary = $('#motion-selection-summary');
@@ -2390,7 +3510,7 @@ function renderMotionStudio() {
       '<span class="eyebrow">Selection</span><strong>No layer selected</strong><p>Choose a rendered layer on the canvas first.</p>';
     list.innerHTML = '';
     stage.innerHTML =
-      '<div class="motion-studio-empty"><i data-icon="play"></i><strong>Select a moving layer</strong><p>Foundry will reveal its live CSS transitions, CSS animations, and Web Animations.</p></div>';
+      '<div class="motion-studio-empty"><i data-icon="play"></i><strong>Select a moving layer</strong><p>Foundry will reveal CSS, Web Animations, Motion for React, GSAP, and React Spring motion.</p></div>';
     properties.innerHTML =
       '<div class="motion-studio-empty"><strong>No motion properties</strong></div>';
     renderIcons(stage);
@@ -2467,7 +3587,7 @@ function renderMotionStudio() {
     )
     .join('');
   const disabled = motion.active ? '' : 'disabled';
-  stage.innerHTML = `<div class="motion-studio-canvas" data-motion-id="${escapeAttribute(motion.id)}"><header class="motion-studio-canvas-head"><div><span class="eyebrow">Timeline</span><h2>${escapeText(motion.label)}</h2><p>${escapeText(motion.properties?.join(', ') || 'Properties appear when the transition runs')}</p></div><span class="motion-source-chip">${escapeText(motionSourceLabel(motion.kind))}</span></header><div class="motion-studio-transport"><button class="icon-button" data-studio-action="replay" aria-label="Replay motion" ${disabled}><i data-icon="undo"></i></button><button class="primary-button compact" data-studio-action="toggle" ${disabled}>${motion.playState === 'paused' ? 'Play' : 'Pause'}</button><button class="chip-button ${motion.looping ? 'is-active' : ''}" data-studio-action="loop" ${disabled}>Loop</button><select data-studio-action="speed" aria-label="Preview speed" ${disabled}>${speedOptions}</select><output>${Math.round(currentTime)} / ${Math.round(duration)} ms</output></div><div class="motion-studio-scrubber"><input data-studio-action="scrub" type="range" min="0" max="${duration}" step="1" value="${currentTime}" aria-label="Scrub ${escapeAttribute(motion.label)}" ${disabled}><div class="motion-studio-ruler"><span>0</span><span>25%</span><span>50%</span><span>75%</span><span>${Math.round(duration)} ms</span></div></div><div class="motion-studio-tracks">${tracks}</div></div>`;
+  stage.innerHTML = `<div class="motion-studio-canvas" data-motion-id="${escapeAttribute(motion.id)}"><header class="motion-studio-canvas-head"><div><span class="eyebrow">Timeline</span><h2>${escapeText(motion.label)}</h2><p>${escapeText(motion.properties?.join(', ') || 'Properties appear when the transition runs')}</p></div><span class="motion-source-chip">${escapeText(motionSourceLabel(motion.kind))}</span></header><div class="motion-studio-transport"><button class="icon-button" data-studio-action="replay" aria-label="Replay motion" ${disabled}><i data-icon="undo"></i></button><button class="primary-button compact" data-studio-action="toggle" ${disabled}>${motion.playState === 'paused' ? 'Play' : 'Pause'}</button><button class="chip-button ${motion.looping ? 'is-active' : ''}" data-studio-action="loop" ${disabled}>Loop</button><select data-studio-action="speed" aria-label="Preview speed" ${disabled}>${speedOptions}</select><output>${Math.round(currentTime)} / ${Math.round(duration)} ms</output></div><div class="motion-studio-scrubber"><input data-studio-action="scrub" type="range" min="0" max="${duration}" step="1" value="${currentTime}" aria-label="Scrub ${escapeAttribute(motion.label)}" ${disabled}><div class="motion-studio-ruler"><span>0</span><span>25%</span><span>50%</span><span>75%</span><span>${Math.round(duration)} ms</span></div></div><div class="motion-studio-tracks">${tracks}</div>${renderMotionComparison(motion)}</div>`;
   renderIcons(stage);
   upgradeSelects(stage);
 
@@ -2475,7 +3595,15 @@ function renderMotionStudio() {
   const keyframePath = selectedFrame ? `keyframe.${selectedFrame.index}` : '';
   const directionOptions = ['normal', 'reverse', 'alternate', 'alternate-reverse'];
   const fillOptions = ['none', 'forwards', 'backwards', 'both', 'auto'];
-  properties.innerHTML = `<div class="motion-properties-head"><span class="eyebrow">Timing</span><strong>Animation properties</strong><code>${escapeText(motion.performance?.detail ?? 'Performance not classified')}</code></div><div class="motion-studio-fields" data-motion-id="${escapeAttribute(motion.id)}"><label class="${motionStudioChanged(selection, motion, 'duration')}"><span>Duration</span><span class="motion-field-with-unit"><input data-studio-property="duration" type="number" min="0" step="10" value="${Math.round(Number(timing.duration) || 0)}" ${disabled}><i>ms</i></span></label><label class="${motionStudioChanged(selection, motion, 'delay')}"><span>Delay</span><span class="motion-field-with-unit"><input data-studio-property="delay" type="number" step="10" value="${Math.round(Number(timing.delay) || 0)}" ${disabled}><i>ms</i></span></label><label class="is-wide${motionStudioChanged(selection, motion, 'easing')}"><span>Easing</span><input data-studio-property="easing" type="text" value="${escapeAttribute(timing.easing ?? 'linear')}" ${disabled}></label><label class="${motionStudioChanged(selection, motion, 'iterations')}"><span>Iterations</span><input data-studio-property="iterations" type="number" min="0" step="1" value="${Number.isFinite(Number(timing.iterations)) ? Number(timing.iterations) : 1}" ${disabled}></label><label class="${motionStudioChanged(selection, motion, 'direction')}"><span>Direction</span><select data-studio-property="direction" ${disabled}>${directionOptions.map((value) => `<option value="${value}" ${timing.direction === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label class="is-wide${motionStudioChanged(selection, motion, 'fill')}"><span>Fill</span><select data-studio-property="fill" ${disabled}>${fillOptions.map((value) => `<option value="${value}" ${timing.fill === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></div><section class="motion-studio-audit"><header><strong>Motion health</strong><span class="motion-cost" data-tier="${escapeAttribute(motion.performance?.tier ?? 'unknown')}">${escapeText(motion.performance?.label ?? 'Unresolved')}</span></header><div><i class="motion-audit-dot ${motion.reducedMotionProtected ? 'is-clear' : 'has-warning'}"></i><span><strong>${motion.reducedMotionProtected ? 'Reduced motion covered' : 'Reduced motion needs review'}</strong><p>${motion.reducedMotionProtected ? 'A matching preference rule or short duration protects this motion.' : 'No matching reduced-motion rule was found for this element.'}</p></span></div></section>${selectedFrame && selectedProperty ? `<section class="motion-studio-keyframe" data-motion-id="${escapeAttribute(motion.id)}"><header><strong>Keyframe ${selectedFrame.index + 1}</strong><code>${escapeText(selectedProperty)}</code></header><div class="motion-studio-fields"><label class="${motionStudioChanged(selection, motion, `${keyframePath}.offset`)}"><span>Position</span><span class="motion-field-with-unit"><input data-studio-keyframe-property="offset" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="number" min="0" max="100" step="1" value="${Math.round(Number(selectedFrame.offset) * 100)}"><i>%</i></span></label><label class="is-wide${motionStudioChanged(selection, motion, `${keyframePath}.${selectedProperty}`)}"><span>Value</span><input data-studio-keyframe-property="value" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="text" value="${escapeAttribute(selectedValue)}"></label><label class="is-wide${motionStudioChanged(selection, motion, `${keyframePath}.easing`)}"><span>Segment easing</span><input data-studio-keyframe-property="easing" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="text" value="${escapeAttribute(selectedFrame.easing ?? 'linear')}"></label></div></section>` : ''}`;
+  properties.innerHTML = `<div class="motion-properties-head"><span class="eyebrow">Timing</span><strong>Animation properties</strong><code>${escapeText(motion.performance?.detail ?? 'Performance not classified')}</code></div>${renderNativeMotionSource(motion)}<div class="motion-studio-fields" data-motion-id="${escapeAttribute(motion.id)}"><label class="${motionStudioChanged(selection, motion, 'duration')}"><span>Duration</span><span class="motion-field-with-unit"><input data-studio-property="duration" type="number" min="0" step="10" value="${Math.round(Number(timing.duration) || 0)}" ${disabled}><i>ms</i></span></label><label class="${motionStudioChanged(selection, motion, 'delay')}"><span>Delay</span><span class="motion-field-with-unit"><input data-studio-property="delay" type="number" step="10" value="${Math.round(Number(timing.delay) || 0)}" ${disabled}><i>ms</i></span></label><label class="is-wide${motionStudioChanged(selection, motion, 'easing')}"><span>Easing</span><input data-studio-property="easing" type="text" value="${escapeAttribute(timing.easing ?? 'linear')}" ${disabled}></label><label class="${motionStudioChanged(selection, motion, 'iterations')}"><span>Iterations</span><input data-studio-property="iterations" type="number" min="0" step="1" value="${Number.isFinite(Number(timing.iterations)) ? Number(timing.iterations) : 1}" ${disabled}></label><label class="${motionStudioChanged(selection, motion, 'direction')}"><span>Direction</span><select data-studio-property="direction" ${disabled}>${directionOptions.map((value) => `<option value="${value}" ${timing.direction === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label class="is-wide${motionStudioChanged(selection, motion, 'fill')}"><span>Fill</span><select data-studio-property="fill" ${disabled}>${fillOptions.map((value) => `<option value="${value}" ${timing.fill === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></div><section class="motion-studio-audit"><header><strong>Motion health</strong><span class="motion-cost" data-tier="${escapeAttribute(motion.performance?.tier ?? 'unknown')}">${escapeText(motion.performance?.label ?? 'Unresolved')}</span></header><div><i class="motion-audit-dot ${motion.reducedMotionProtected ? 'is-clear' : 'has-warning'}"></i><span><strong>${motion.reducedMotionProtected ? 'Reduced motion covered' : 'Reduced motion needs review'}</strong><p>${motion.reducedMotionProtected ? 'A matching preference rule or short duration protects this motion.' : 'No matching reduced-motion rule was found for this element.'}</p></span></div></section>${selectedFrame && selectedProperty ? `<section class="motion-studio-keyframe" data-motion-id="${escapeAttribute(motion.id)}"><header><strong>Keyframe ${selectedFrame.index + 1}</strong><code>${escapeText(selectedProperty)}</code></header><div class="motion-studio-fields"><label class="${motionStudioChanged(selection, motion, `${keyframePath}.offset`)}"><span>Position</span><span class="motion-field-with-unit"><input data-studio-keyframe-property="offset" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="number" min="0" max="100" step="1" value="${Math.round(Number(selectedFrame.offset) * 100)}"><i>%</i></span></label><label class="is-wide${motionStudioChanged(selection, motion, `${keyframePath}.${selectedProperty}`)}"><span>Value</span><input data-studio-keyframe-property="value" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="text" value="${escapeAttribute(selectedValue)}"></label><label class="is-wide${motionStudioChanged(selection, motion, `${keyframePath}.easing`)}"><span>Segment easing</span><input data-studio-keyframe-property="easing" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="text" value="${escapeAttribute(selectedFrame.easing ?? 'linear')}"></label></div></section>` : ''}`;
+  $('.motion-studio-audit', properties)?.insertAdjacentHTML(
+    'beforebegin',
+    renderMotionCurveEditor(selection, motion, disabled),
+  );
+  $('.motion-curve-editor', properties)?.insertAdjacentHTML(
+    'beforebegin',
+    renderMotionPathEditor(selection, motion, disabled),
+  );
   upgradeSelects(properties);
 
   $$('[data-motion-studio-select]', list).forEach((button) =>
@@ -2500,11 +3628,19 @@ function renderMotionStudio() {
       control.addEventListener('input', () => {
         $('output', stage).textContent =
           `${Math.round(Number(control.value))} / ${Math.round(duration)} ms`;
-        sendCommand('motion-action', { id: motion.id, action, value: Number(control.value) });
+        sendCommand('motion-action', {
+          id: motion.id,
+          action,
+          value: Number(control.value),
+        });
       });
     } else if (action === 'speed') {
       control.addEventListener('change', () =>
-        sendCommand('motion-action', { id: motion.id, action, value: Number(control.value) }),
+        sendCommand('motion-action', {
+          id: motion.id,
+          action,
+          value: Number(control.value),
+        }),
       );
     } else {
       control.addEventListener('click', () =>
@@ -2512,6 +3648,72 @@ function renderMotionStudio() {
       );
     }
   });
+  const comparison = $('.motion-comparison', stage);
+  if (comparison) {
+    const before = motion.comparison.before;
+    const after = motion.comparison.after;
+    const geometry = motionPathGeometry([before.path, after.path]);
+    const scrub = $('[data-comparison-scrub]', comparison);
+    const output = $('output', comparison);
+    const play = $('[data-comparison-action="play"]', comparison);
+    const setComparisonProgress = (progress) => {
+      const clamped = Math.max(0, Math.min(1, Number(progress) || 0));
+      [
+        ['before', before],
+        ['after', after],
+      ].forEach(([name, snapshot]) => {
+        const eased = motionCurveSample(snapshot.curve, clamped);
+        const point = motionPathSample(snapshot.path, eased);
+        const dot = $(`[data-comparison-dot="${name}"]`, comparison);
+        dot?.setAttribute('cx', geometry.x(point.x));
+        dot?.setAttribute('cy', geometry.y(point.y));
+      });
+      scrub.value = String(Math.round(clamped * 1000));
+      output.textContent = `${Math.round(clamped * 100)}%`;
+    };
+    const stopComparison = () => {
+      if (motionComparisonFrame) cancelAnimationFrame(motionComparisonFrame);
+      motionComparisonFrame = 0;
+      if (play) play.textContent = 'Play together';
+    };
+    const startComparison = (from = Number(scrub.value) / 1000) => {
+      stopComparison();
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        setComparisonProgress(1);
+        return;
+      }
+      const comparisonDuration = Math.max(
+        1,
+        Number(before.timing?.duration) || 0,
+        Number(after.timing?.duration) || 0,
+      );
+      const rate = Math.max(0.1, Number(motion.playbackRate) || 1);
+      motionComparisonStartedAt = performance.now() - (from * comparisonDuration) / rate;
+      if (play) play.textContent = 'Pause';
+      const tick = (now) => {
+        const progress = Math.min(
+          1,
+          ((now - motionComparisonStartedAt) * rate) / comparisonDuration,
+        );
+        setComparisonProgress(progress);
+        if (progress < 1) motionComparisonFrame = requestAnimationFrame(tick);
+        else stopComparison();
+      };
+      motionComparisonFrame = requestAnimationFrame(tick);
+    };
+    scrub?.addEventListener('input', () => {
+      stopComparison();
+      setComparisonProgress(Number(scrub.value) / 1000);
+    });
+    $('[data-comparison-action="replay"]', comparison)?.addEventListener('click', () => {
+      setComparisonProgress(0);
+      startComparison(0);
+    });
+    play?.addEventListener('click', () => {
+      if (motionComparisonFrame) stopComparison();
+      else startComparison(Number(scrub.value) >= 1000 ? 0 : Number(scrub.value) / 1000);
+    });
+  }
   $$('[data-studio-property]', properties).forEach((field) => {
     let previous = String(field.value);
     const commit = () => {
@@ -2531,6 +3733,229 @@ function renderMotionStudio() {
     field.addEventListener('change', commit);
     field.addEventListener('blur', commit);
   });
+  const curveEditor = $('.motion-curve-editor', properties);
+  if (curveEditor) {
+    $$('[data-curve-kind-select]', curveEditor).forEach((button) =>
+      button.addEventListener('click', () => {
+        sendCommand('motion-action', {
+          id: motion.id,
+          action: 'curve',
+          ...(button.dataset.curveKindSelect === 'spring'
+            ? {
+                kind: 'spring',
+                mass: 1,
+                stiffness: 170,
+                damping: 26,
+                velocity: 0,
+              }
+            : { kind: 'cubic-bezier', x1: 0.2, y1: 0.8, x2: 0.2, y2: 1 }),
+        });
+      }),
+    );
+    $$('[data-curve-preset]', curveEditor).forEach((button) =>
+      button.addEventListener('click', () => {
+        $$('[data-curve-field]', curveEditor).forEach((field) => {
+          const value = button.dataset[field.dataset.curveField];
+          if (value != null) field.value = value;
+        });
+        updateBezierEditorPreview(curveEditor);
+        commitMotionCurve(curveEditor);
+      }),
+    );
+    $$('[data-curve-field]', curveEditor).forEach((field) => {
+      let previous = String(field.value);
+      const commit = () => {
+        if (String(field.value) === previous) return;
+        previous = String(field.value);
+        updateBezierEditorPreview(curveEditor);
+        commitMotionCurve(curveEditor);
+      };
+      field.addEventListener('input', () => updateBezierEditorPreview(curveEditor));
+      field.addEventListener('change', commit);
+      field.addEventListener('blur', commit);
+    });
+    $('[data-curve-preview]', curveEditor)?.addEventListener('click', () => {
+      const dot = $('.motion-curve-preview-dot', curveEditor);
+      dot?.classList.remove('is-playing');
+      requestAnimationFrame(() => dot?.classList.add('is-playing'));
+    });
+    $$('[data-curve-handle]', curveEditor).forEach((handle) => {
+      const index = Number(handle.dataset.curveHandle);
+      const setFromPoint = (clientX, clientY) => {
+        const svg = handle.ownerSVGElement;
+        if (!svg) return;
+        const rect = svg.getBoundingClientRect();
+        const x = Math.max(
+          0,
+          Math.min(1, (clientX - rect.left - (16 / 240) * rect.width) / ((208 / 240) * rect.width)),
+        );
+        const normalizedY =
+          (clientY - rect.top - (16 / 156) * rect.height) / ((124 / 156) * rect.height);
+        const y = Math.max(-2, Math.min(3, 1.25 - normalizedY * 1.5));
+        const xField = $(`[data-curve-field="x${index}"]`, curveEditor);
+        const yField = $(`[data-curve-field="y${index}"]`, curveEditor);
+        if (xField) xField.value = x.toFixed(2);
+        if (yField) yField.value = y.toFixed(2);
+        updateBezierEditorPreview(curveEditor);
+      };
+      handle.addEventListener('pointerdown', (event) => {
+        motionStudioInteracting = true;
+        handle.setPointerCapture(event.pointerId);
+        setFromPoint(event.clientX, event.clientY);
+      });
+      handle.addEventListener('pointermove', (event) => {
+        if (!handle.hasPointerCapture(event.pointerId)) return;
+        setFromPoint(event.clientX, event.clientY);
+      });
+      handle.addEventListener('pointerup', (event) => {
+        if (handle.hasPointerCapture(event.pointerId))
+          handle.releasePointerCapture(event.pointerId);
+        commitMotionCurve(curveEditor);
+        motionStudioInteracting = false;
+      });
+      handle.addEventListener('keydown', (event) => {
+        const directions = {
+          ArrowLeft: [-1, 0],
+          ArrowRight: [1, 0],
+          ArrowUp: [0, 1],
+          ArrowDown: [0, -1],
+        };
+        const direction = directions[event.key];
+        if (!direction) return;
+        event.preventDefault();
+        const step = event.shiftKey ? 0.1 : 0.01;
+        const xField = $(`[data-curve-field="x${index}"]`, curveEditor);
+        const yField = $(`[data-curve-field="y${index}"]`, curveEditor);
+        if (xField)
+          xField.value = Math.max(
+            0,
+            Math.min(1, Number(xField.value) + direction[0] * step),
+          ).toFixed(2);
+        if (yField)
+          yField.value = Math.max(
+            -2,
+            Math.min(3, Number(yField.value) + direction[1] * step),
+          ).toFixed(2);
+        updateBezierEditorPreview(curveEditor);
+        commitMotionCurve(curveEditor);
+      });
+    });
+  }
+  const pathEditor = $('.motion-path-editor:not(.is-unavailable)', properties);
+  if (pathEditor) {
+    const graph = $('.motion-path-graph', pathEditor);
+    const geometry = {
+      minX: Number(graph.dataset.minX),
+      minY: Number(graph.dataset.minY),
+      scale: Number(graph.dataset.scale),
+      originX: Number(graph.dataset.originX),
+      originY: Number(graph.dataset.originY),
+      x(value) {
+        return this.originX + (Number(value) - this.minX) * this.scale;
+      },
+      y(value) {
+        return this.originY - (Number(value) - this.minY) * this.scale;
+      },
+      sourceX(value) {
+        return this.minX + (Number(value) - this.originX) / this.scale;
+      },
+      sourceY(value) {
+        return this.minY + (this.originY - Number(value)) / this.scale;
+      },
+    };
+    const previewPath = () => {
+      const points = $$('[data-path-row]', pathEditor).map((row) => ({
+        x: Number($('[data-path-field="x"]', row).value),
+        y: Number($('[data-path-field="y"]', row).value),
+      }));
+      $('.motion-path-line', pathEditor)?.setAttribute(
+        'd',
+        points
+          .map(
+            (point, index) =>
+              `${index ? 'L' : 'M'} ${geometry.x(point.x).toFixed(2)} ${geometry.y(point.y).toFixed(2)}`,
+          )
+          .join(' '),
+      );
+      $$('[data-path-row]', pathEditor).forEach((row) => {
+        const handle = $(`[data-path-point="${row.dataset.pathRow}"]`, pathEditor);
+        const x = Number($('[data-path-field="x"]', row).value);
+        const y = Number($('[data-path-field="y"]', row).value);
+        handle?.setAttribute('cx', geometry.x(x));
+        handle?.setAttribute('cy', geometry.y(y));
+        handle?.setAttribute('aria-valuetext', `${x}px, ${y}px`);
+      });
+    };
+    const commitPathRow = (row) => {
+      const index = Number(row.dataset.pathRow);
+      changedControls.add(`${selection.id}:motion.${motion.id}.path`);
+      changedControls.add(`${selection.id}:motion.${motion.id}.keyframe.${index}.transform`);
+      pathEditor.classList.add('is-changed');
+      sendCommand('motion-action', {
+        id: motion.id,
+        action: 'path-point',
+        index,
+        x: Number($('[data-path-field="x"]', row).value),
+        y: Number($('[data-path-field="y"]', row).value),
+      });
+    };
+    $$('[data-path-field]', pathEditor).forEach((field) => {
+      let previous = field.value;
+      const commit = () => {
+        if (field.value === previous) return;
+        previous = field.value;
+        previewPath();
+        commitPathRow(field.closest('[data-path-row]'));
+      };
+      field.addEventListener('input', previewPath);
+      field.addEventListener('change', commit);
+      field.addEventListener('blur', commit);
+    });
+    $$('[data-path-point]', pathEditor).forEach((handle) => {
+      const row = $(`[data-path-row="${handle.dataset.pathPoint}"]`, pathEditor);
+      const setFromPointer = (clientX, clientY) => {
+        const svg = handle.ownerSVGElement;
+        const rect = svg?.getBoundingClientRect();
+        if (!rect) return;
+        const viewX = ((clientX - rect.left) / rect.width) * 480;
+        const viewY = ((clientY - rect.top) / rect.height) * 260;
+        $('[data-path-field="x"]', row).value = geometry.sourceX(viewX).toFixed(1);
+        $('[data-path-field="y"]', row).value = geometry.sourceY(viewY).toFixed(1);
+        previewPath();
+      };
+      handle.addEventListener('pointerdown', (event) => {
+        motionStudioInteracting = true;
+        handle.setPointerCapture(event.pointerId);
+        setFromPointer(event.clientX, event.clientY);
+      });
+      handle.addEventListener('pointermove', (event) => {
+        if (handle.hasPointerCapture(event.pointerId)) setFromPointer(event.clientX, event.clientY);
+      });
+      handle.addEventListener('pointerup', (event) => {
+        if (handle.hasPointerCapture(event.pointerId))
+          handle.releasePointerCapture(event.pointerId);
+        motionStudioInteracting = false;
+        commitPathRow(row);
+      });
+      handle.addEventListener('keydown', (event) => {
+        const direction = {
+          ArrowLeft: [-1, 0],
+          ArrowRight: [1, 0],
+          ArrowUp: [0, -1],
+          ArrowDown: [0, 1],
+        }[event.key];
+        if (!direction) return;
+        event.preventDefault();
+        const step = event.shiftKey ? 8 : 1;
+        const xField = $('[data-path-field="x"]', row);
+        const yField = $('[data-path-field="y"]', row);
+        xField.value = String(Number(xField.value) + direction[0] * step);
+        yField.value = String(Number(yField.value) + direction[1] * step);
+        previewPath();
+        commitPathRow(row);
+      });
+    });
+  }
   $$('[data-studio-keyframe-property]', properties).forEach((field) => {
     let previous = String(field.value);
     const commit = () => {
@@ -2602,6 +4027,7 @@ function renderBridgeState() {
   $('#undo').disabled = !bridgeState.history?.canUndo;
   $('#redo').disabled = !bridgeState.history?.canRedo;
   if (activeMode === 'components') renderComponentWorkshop();
+  if (activeMode === 'health') renderHealth();
   if (activeMode === 'responsive') {
     responsiveSnapshots.clear();
     renderResponsiveLab();
@@ -2610,6 +4036,9 @@ function renderBridgeState() {
   if (activeMode === 'motion' && !motionStudioInteracting) renderMotionStudio();
   if (activeMode === 'typography') renderTypographyStudio();
   if (activeMode === 'branches') renderDesignBranches();
+  if (activeMode === 'recipes') renderVisualRecipes();
+  if (activeMode === 'memory') renderMemory();
+  if (activeMode === 'agent') renderVisualAgent();
 }
 
 function renderSession(payload) {
@@ -2620,10 +4049,14 @@ function renderSession(payload) {
   renderApplyRun(payload.applyRuns ?? []);
   if (activeMode === 'review') renderReview();
   if (activeMode === 'components') renderComponentWorkshop();
+  if (activeMode === 'health') renderHealth();
   if (activeMode === 'system') renderDesignSystem();
   if (activeMode === 'motion') renderMotionStudio();
   if (activeMode === 'typography') renderTypographyStudio();
   if (activeMode === 'branches') renderDesignBranches();
+  if (activeMode === 'recipes') renderVisualRecipes();
+  if (activeMode === 'memory') renderMemory();
+  if (activeMode === 'agent') renderVisualAgent();
   updateCanvasViewport();
 }
 
@@ -2767,7 +4200,9 @@ async function activateDesignDirection(branchId) {
   const previous = activeDesignDirection();
   const updated = await api(`/v1/sessions/${sessionId}/design-branches/activate`, {
     method: 'POST',
-    body: JSON.stringify({ branchId: branchId === 'main' ? undefined : branchId }),
+    body: JSON.stringify({
+      branchId: branchId === 'main' ? undefined : branchId,
+    }),
   });
   const next =
     branchId === 'main'
@@ -2824,6 +4259,93 @@ function renderDesignBranchDetail() {
   );
 }
 
+function branchRecordStatusLabel(record) {
+  if (record.compatibility.status === 'current') return 'Ready';
+  if (record.compatibility.status === 'stale') return 'Review';
+  return 'Missing source';
+}
+
+function renderDesignBranchRecords() {
+  const root = $('#design-branch-record-list');
+  if (!root) return;
+  const records = activeSession?.designBranchRecords ?? [];
+  root.innerHTML = records.length
+    ? records
+        .map(
+          (record) =>
+            `<article class="design-branch-record" data-compatibility="${escapeAttribute(record.compatibility.status)}"><header><span><strong>${escapeText(record.name)}</strong><small>${escapeText(record.outcome)} · ${record.changes.length} ${record.changes.length === 1 ? 'decision' : 'decisions'}</small></span><span class="branch-record-status">${escapeText(branchRecordStatusLabel(record))}</span></header>${record.rationale ? `<p>${escapeText(record.rationale)}</p>` : ''}<div class="branch-record-evidence"><span>${record.compatibility.matchedSources}/${record.compatibility.totalSources} sources matched</span>${record.importedAt ? '<span>Imported</span>' : '<span>Local</span>'}</div>${record.compatibility.warnings?.length ? `<small class="branch-record-warning">${escapeText(record.compatibility.warnings[0])}</small>` : ''}<footer><button class="quiet-button compact" data-remove-branch-record="${escapeAttribute(record.id)}"><i data-icon="bin"></i>Remove</button><button class="secondary-button compact" data-memory-branch-record="${escapeAttribute(record.id)}">Add to Memory</button><button class="primary-button compact" data-restore-branch-record="${escapeAttribute(record.id)}" ${record.compatibility.status === 'current' ? '' : 'disabled'}>Restore direction</button></footer></article>`,
+        )
+        .join('')
+    : '<div class="branch-records-empty"><strong>No saved decisions yet</strong><span>Choosing or rejecting a direction creates a portable record.</span></div>';
+  $$('[data-restore-branch-record]', root).forEach((button) =>
+    button.addEventListener('click', async () => {
+      const previous = activeDesignDirection();
+      try {
+        const updated = await api(
+          `/v1/sessions/${sessionId}/design-branch-records/${encodeURIComponent(button.dataset.restoreBranchRecord)}/restore`,
+          { method: 'POST', body: '{}' },
+        );
+        const restored = updated.designBranches.find(
+          (branch) => branch.id === updated.activeDesignBranchId,
+        );
+        branchCompareRight = restored?.id ?? branchCompareRight;
+        renderSession(updated);
+        if (bridgeConnected && restored) {
+          try {
+            await requestCommand('switch-design-branch', {
+              previousChanges: previous.changes ?? [],
+              nextChanges: restored.changes ?? [],
+            });
+          } catch (error) {
+            toast(`${restored.name} restored. ${error.message}`);
+            return;
+          }
+        }
+        toast(`${restored?.name ?? 'Direction'} restored for exploration`);
+      } catch (error) {
+        toast(error.message);
+      }
+    }),
+  );
+  $$('[data-memory-branch-record]', root).forEach((button) =>
+    button.addEventListener('click', () => {
+      const record = records.find((item) => item.id === button.dataset.memoryBranchRecord);
+      if (!record) return;
+      sendCommand('save-design-decision', {
+        title: `${record.name} ${record.outcome}`,
+        summary:
+          record.rationale?.trim() ||
+          (record.outcome === 'chosen'
+            ? 'Chosen direction promoted to Review.'
+            : 'Do not repeat this direction without new evidence.'),
+        rationale: record.rationale?.trim() || '',
+        outcome: record.outcome === 'chosen' ? 'approved' : 'rejected',
+        evidenceKind: 'branch',
+        evidenceLabel: record.name,
+        refId: record.id,
+        changes: record.changes ?? [],
+      });
+      toast(`${record.name} added to Design Memory`);
+    }),
+  );
+  $$('[data-remove-branch-record]', root).forEach((button) =>
+    button.addEventListener('click', async () => {
+      try {
+        renderSession(
+          await api(
+            `/v1/sessions/${sessionId}/design-branch-records/${encodeURIComponent(button.dataset.removeBranchRecord)}`,
+            { method: 'DELETE' },
+          ),
+        );
+        toast('Portable record removed');
+      } catch (error) {
+        toast(error.message);
+      }
+    }),
+  );
+  renderIcons(root);
+}
+
 function renderDesignBranches() {
   if (!activeSession || !$('#design-branch-list')) return;
   const directions = designBranchDirections();
@@ -2870,6 +4392,7 @@ function renderDesignBranches() {
   renderDesignBranchPreviews();
   renderDesignBranchDecisions();
   renderDesignBranchDetail();
+  renderDesignBranchRecords();
   $('#design-branch-promote').disabled = activeId === 'main';
 }
 
@@ -2922,7 +4445,10 @@ $('#design-branch-compose').addEventListener('click', async () => {
       method: 'POST',
       body: JSON.stringify({
         name: 'Combined direction',
-        selections: [...grouped].map(([branchId, changeIds]) => ({ branchId, changeIds })),
+        selections: [...grouped].map(([branchId, changeIds]) => ({
+          branchId,
+          changeIds,
+        })),
       }),
     });
     const next = updated.designBranches.find(
@@ -2951,18 +4477,69 @@ $('#design-branch-promote').addEventListener('click', async () => {
       `/v1/sessions/${sessionId}/design-branches/${encodeURIComponent(chosen.id)}/promote`,
       { method: 'POST', body: '{}' },
     );
-    if (bridgeConnected) {
-      await requestCommand('switch-design-branch', {
-        previousChanges: chosen.changes ?? [],
-        nextChanges: updated.changeSet.changes ?? [],
-      });
-    }
     renderSession(updated);
     setMode('review');
+    if (bridgeConnected) {
+      try {
+        await requestCommand('switch-design-branch', {
+          previousChanges: chosen.changes ?? [],
+          nextChanges: updated.changeSet.changes ?? [],
+        });
+      } catch (error) {
+        toast(`Direction moved to Review. ${error.message}`);
+        return;
+      }
+    }
     toast(`${chosen.name} moved to Review and apply`);
   } catch (error) {
     toast(error.message);
   }
+});
+
+$('#design-branch-record-import').addEventListener('click', () =>
+  $('#design-branch-record-file').click(),
+);
+$('#design-branch-record-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const bundle = JSON.parse(await file.text());
+    const updated = await api(`/v1/sessions/${sessionId}/design-branch-records`, {
+      method: 'POST',
+      body: JSON.stringify(bundle),
+    });
+    renderSession(updated);
+    toast(`${bundle.records?.length ?? 0} portable branch records imported`);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    event.target.value = '';
+  }
+});
+$('#design-branch-record-export').addEventListener('click', () => {
+  const records = activeSession?.designBranchRecords ?? [];
+  const blob = new Blob(
+    [
+      JSON.stringify(
+        {
+          format: 'foundry.design-branch-records',
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          records,
+        },
+        null,
+        2,
+      ),
+    ],
+    { type: 'application/json' },
+  );
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = href;
+  anchor.download = 'foundry-branch-decisions.json';
+  anchor.click();
+  URL.revokeObjectURL(href);
+  toast(`${records.length} portable ${records.length === 1 ? 'record' : 'records'} exported`);
 });
 
 async function loadSession() {
@@ -3059,6 +4636,11 @@ window.addEventListener('message', (event) => {
   if (event.data?.type !== 'foundry:workspace-state') return;
   bridgeConnected = true;
   bridgeState = event.data.payload;
+  if (visualAgentRegionPending && bridgeState?.visualAgent?.region) {
+    visualAgentRegionPending = false;
+    setMode('agent', false);
+    requestAnimationFrame(() => $('#visual-agent-prompt')?.focus());
+  }
   if (!bridgeBranchSynced) {
     bridgeBranchSynced = true;
     const branch = activeDesignDirection();
@@ -3129,9 +4711,35 @@ $('#typography-search').addEventListener('input', (event) => {
   }
 });
 $('#responsive-width').addEventListener('input', (event) => {
-  responsiveCustomWidth = Number(event.target.value);
-  $('#responsive-width-output').textContent = `${responsiveCustomWidth}px`;
+  if (responsiveScrubTarget === 'container') responsiveContainerWidth = Number(event.target.value);
+  else responsiveCustomWidth = Number(event.target.value);
+  $('#responsive-width-output').textContent = `${event.target.value}px`;
   scrubResponsiveCustomFrame();
+});
+$$('[data-responsive-target]').forEach((button) =>
+  button.addEventListener('click', () => {
+    responsiveScrubTarget = button.dataset.responsiveTarget;
+    $$('[data-responsive-target]').forEach((candidate) =>
+      candidate.classList.toggle('is-active', candidate === button),
+    );
+    if (responsiveScrubTarget === 'viewport')
+      $$('[data-responsive-frame]').forEach((frame) =>
+        responsiveFrameCommand(frame, 'preview-responsive-container', { width: null }),
+      );
+    renderResponsiveLab();
+    scrubResponsiveCustomFrame();
+  }),
+);
+$('#responsive-capture-before').addEventListener('click', () =>
+  captureResponsiveComparison('before'),
+);
+$('#responsive-capture-after').addEventListener('click', () =>
+  captureResponsiveComparison('after'),
+);
+$('#responsive-clear-comparison').addEventListener('click', () => {
+  responsiveComparisonBefore = null;
+  responsiveComparisonAfter = null;
+  renderResponsiveComparison();
 });
 $$('[data-responsive-stress]').forEach((button) =>
   button.addEventListener('click', () => {
@@ -3140,7 +4748,9 @@ $$('[data-responsive-stress]').forEach((button) =>
       candidate.classList.toggle('is-active', candidate === button),
     );
     $$('[data-responsive-frame]').forEach((frame) =>
-      responsiveFrameCommand(frame, 'preview-responsive-stress', { mode: responsiveStressMode }),
+      responsiveFrameCommand(frame, 'preview-responsive-stress', {
+        mode: responsiveStressMode,
+      }),
     );
     toast(
       responsiveStressMode === 'none'
@@ -3192,13 +4802,19 @@ $('#review-compare').addEventListener('click', () => {
 });
 $$('[data-context]').forEach((select) =>
   select.addEventListener('change', () =>
-    sendCommand('set-context', { key: select.dataset.context, value: select.value }),
+    sendCommand('set-context', {
+      key: select.dataset.context,
+      value: select.value,
+    }),
   ),
 );
 $('#canvas-viewport').addEventListener(
   'change',
   (event) => (
-    sendCommand('set-context', { key: 'breakpoint', value: event.target.value }),
+    sendCommand('set-context', {
+      key: 'breakpoint',
+      value: event.target.value,
+    }),
     updateCanvasViewport()
   ),
 );
@@ -3223,7 +4839,10 @@ $('#apply-agent').addEventListener('click', async () => {
     dismissedApplyRunId = null;
     await api(`/v1/sessions/${sessionId}/apply-runs`, {
       method: 'POST',
-      body: JSON.stringify({ reviews, revision: activeSession.changeSet.context.revision }),
+      body: JSON.stringify({
+        reviews,
+        revision: activeSession.changeSet.context.revision,
+      }),
     });
     await loadSession();
   } catch (error) {
@@ -3234,6 +4853,171 @@ $('#run-health').addEventListener('click', () => {
   sendCommand('scan-health');
   toast('Scanning the rendered canvas');
 });
+$$('[data-stress-scope]').forEach((button) =>
+  button.addEventListener('click', () => {
+    stressScope = button.dataset.stressScope === 'canvas' ? 'canvas' : 'selection';
+    renderHealth();
+  }),
+);
+$$('[data-stress-group]').forEach((button) =>
+  button.addEventListener('click', () => {
+    stressGroupBy = button.dataset.stressGroup === 'source' ? 'source' : 'severity';
+    renderHealth();
+  }),
+);
+$('#apply-stress').addEventListener('click', () => {
+  if (stressScope === 'selection' && !bridgeState?.selection) {
+    toast('Select a layer before applying selection stress tests');
+    return;
+  }
+  sendCommand('apply-health-stress', {
+    conditions: [...selectedStressConditions],
+    scope: stressScope,
+  });
+  toast('Temporary conditions applied. Scanning the rendered state.');
+});
+$('#clear-stress').addEventListener('click', () => {
+  selectedStressConditions.clear();
+  sendCommand('clear-health-stress');
+  renderHealth();
+  toast('Temporary conditions cleared');
+});
+$('#stress-review').addEventListener('click', () => setMode('review'));
+$('#visual-recipe-search').addEventListener('input', (event) => {
+  visualRecipeSearch = event.target.value;
+  renderVisualRecipes();
+});
+$('#visual-recipe-save').addEventListener('click', () => {
+  const name = $('#visual-recipe-name').value.trim();
+  const intent = $('#visual-recipe-intent').value.trim();
+  sendCommand('save-visual-recipe', { name, intent });
+  $('#visual-recipe-name').value = '';
+  $('#visual-recipe-intent').value = '';
+  toast('Treatment saved to this project');
+});
+$('#visual-recipe-review').addEventListener('click', () => setMode('review'));
+$('#visual-recipe-import').addEventListener('click', () => $('#visual-recipe-file').click());
+$('#visual-recipe-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  sendCommand('import-visual-recipes', { json: await file.text() });
+  event.target.value = '';
+});
+$('#visual-recipe-export').addEventListener('click', () => {
+  const recipes = bridgeState?.visualRecipes?.recipes ?? [];
+  const blob = new Blob(
+    [JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), recipes }, null, 2)],
+    { type: 'application/json' },
+  );
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = href;
+  anchor.download = 'foundry-visual-recipes.json';
+  anchor.click();
+  URL.revokeObjectURL(href);
+  toast(`${recipes.length} visual ${recipes.length === 1 ? 'recipe' : 'recipes'} exported`);
+});
+$('#decision-memory-search').addEventListener('input', (event) => {
+  decisionMemorySearch = event.target.value;
+  renderMemory();
+});
+$$('[data-decision-filter]').forEach((button) =>
+  button.addEventListener('click', () => {
+    decisionMemoryFilter = button.dataset.decisionFilter;
+    $$('[data-decision-filter]').forEach((candidate) =>
+      candidate.classList.toggle('is-active', candidate === button),
+    );
+    renderMemory();
+  }),
+);
+$$('[data-decision-outcome]').forEach((button) =>
+  button.addEventListener('click', () => {
+    decisionMemoryOutcome = button.dataset.decisionOutcome;
+    $$('[data-decision-outcome]').forEach((candidate) =>
+      candidate.classList.toggle('is-active', candidate === button),
+    );
+  }),
+);
+$('#decision-memory-save').addEventListener('click', () => {
+  const title = $('#decision-memory-title').value.trim();
+  const summary = $('#decision-memory-summary').value.trim();
+  const rationale = $('#decision-memory-rationale').value.trim();
+  if (!title || !summary) {
+    toast('Add a title and clear guidance first');
+    return;
+  }
+  sendCommand('save-design-decision', {
+    title,
+    summary,
+    rationale,
+    outcome: decisionMemoryOutcome,
+    evidenceKind: 'manual',
+    evidenceLabel: 'Captured in Design decision memory',
+  });
+  $('#decision-memory-title').value = '';
+  $('#decision-memory-summary').value = '';
+  $('#decision-memory-rationale').value = '';
+  toast('Decision saved to this project');
+});
+$('#decision-memory-review').addEventListener('click', () => setMode('review'));
+$('#decision-memory-import').addEventListener('click', () => $('#decision-memory-file').click());
+$('#decision-memory-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  sendCommand('import-design-decisions', { json: await file.text() });
+  event.target.value = '';
+});
+$('#decision-memory-export').addEventListener('click', () => {
+  const decisions = bridgeState?.decisionMemory?.decisions ?? [];
+  const blob = new Blob(
+    [JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), decisions }, null, 2)],
+    { type: 'application/json' },
+  );
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = href;
+  anchor.download = 'foundry-design-decisions.json';
+  anchor.click();
+  URL.revokeObjectURL(href);
+  toast(`${decisions.length} design ${decisions.length === 1 ? 'decision' : 'decisions'} exported`);
+});
+$('#visual-agent-region').addEventListener('click', () => {
+  visualAgentRegionPending = true;
+  sendCommand('capture-agent-region');
+  setMode('canvas', false);
+  toast('Drag a region on the rendered product');
+});
+$('#visual-agent-clear-region').addEventListener('click', () => {
+  visualAgentRegionPending = false;
+  sendCommand('clear-agent-region');
+});
+$('#visual-agent-ask').addEventListener('click', async () => {
+  const prompt = $('#visual-agent-prompt').value.trim();
+  const comment = $('#visual-agent-comment').value.trim();
+  if (!prompt) {
+    toast('Describe the visual question first');
+    return;
+  }
+  const context = visualAgentContextSnapshot(comment);
+  if (!context.targets.length && !context.region) {
+    toast('Select rendered layers or draw a canvas region first');
+    return;
+  }
+  try {
+    const updated = await api(`/v1/sessions/${sessionId}/visual-agent-requests`, {
+      method: 'POST',
+      body: JSON.stringify({ prompt, context }),
+    });
+    visualAgentRequestId = updated.visualAgentRequests.at(-1)?.id ?? '';
+    $('#visual-agent-prompt').value = '';
+    $('#visual-agent-comment').value = '';
+    renderSession(updated);
+    toast('Visual question sent to the active agent');
+  } catch (error) {
+    toast(error.message);
+  }
+});
+$('#visual-agent-review').addEventListener('click', () => setMode('review'));
 $$('[data-close-mode]').forEach((button) =>
   button.addEventListener('click', () => setMode('canvas')),
 );
@@ -3266,7 +5050,7 @@ const commands = [
   ['canvas', 'Canvas', '1', 'cursor'],
   ['review', 'Review changes', '2', 'file'],
   ['states', 'State workbench', '3', 'play'],
-  ['health', 'Design health', '4', 'activity'],
+  ['health', 'Content stress lab', '4', 'activity'],
   ['memory', 'Design memory', '5', 'bookmark'],
   ['components', 'Component workshop', '6', 'component'],
   ['responsive', 'Responsive design lab', '7', 'layout'],
@@ -3274,6 +5058,8 @@ const commands = [
   ['motion', 'Motion studio', '9', 'play'],
   ['typography', 'Typography studio', '0', 'typography'],
   ['branches', 'Design branches', 'b', 'branch'],
+  ['recipes', 'Visual recipes', 'r', 'bookmark'],
+  ['agent', 'Visual agent', 'a', 'message'],
 ];
 function renderCommands(query = '') {
   const root = $('#command-list');

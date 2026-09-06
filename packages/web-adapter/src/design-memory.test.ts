@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   addRecipe,
+  addDesignDecision,
   addVerifiedBaseline,
   baselineForContext,
   emptyDesignMemory,
   projectMemoryKey,
   readDesignMemory,
+  removeDesignDecision,
   removeRecipe,
+  updateDesignDecision,
   writeDesignMemory,
 } from './design-memory.js';
 
@@ -67,5 +70,40 @@ describe('project design memory', () => {
     const store = storage();
     store.setItem(projectMemoryKey('/project'), '{broken');
     assert.deepEqual(readDesignMemory(store, '/project'), emptyDesignMemory());
+  });
+
+  it('migrates older project memory and manages explicit decisions', () => {
+    const store = storage();
+    store.setItem(
+      projectMemoryKey('/project'),
+      JSON.stringify({ version: 2, recipes: [], baselines: [] }),
+    );
+    const migrated = readDesignMemory(store, '/project');
+    assert.equal(migrated.version, 3);
+    assert.deepEqual(migrated.decisions, []);
+    const decision = {
+      id: 'decision-1',
+      title: 'Restrained motion',
+      summary: 'Keep product transitions quiet.',
+      outcome: 'rule' as const,
+      categories: ['motion'],
+      conditions: {},
+      rules: [
+        { category: 'motion', operator: 'require' as const, guidance: 'Use restrained motion.' },
+      ],
+      evidence: [{ kind: 'manual' as const, label: 'Project rule' }],
+      sourceLocations: [],
+      enabled: true,
+      createdAt: '2026-09-05T00:00:00.000Z',
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    };
+    const added = addDesignDecision(migrated, decision);
+    assert.equal(added.decisions.length, 1);
+    assert.equal(
+      updateDesignDecision(added, decision.id, { enabled: false }, '2026-09-05T01:00:00.000Z')
+        .decisions[0]?.enabled,
+      false,
+    );
+    assert.deepEqual(removeDesignDecision(added, decision.id).decisions, []);
   });
 });

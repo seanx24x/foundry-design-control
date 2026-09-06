@@ -161,6 +161,109 @@ test('isolates, composes, and promotes design branches into review', async () =>
   assert.equal(stored.designBranches.at(-1)?.status, 'chosen');
 });
 
+test('captures, imports, assesses, restores, and removes portable branch records', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'foundry-branch-records-'));
+  const store = new SessionStore(root);
+  const session = await store.create({
+    projectRoot: '/project',
+    revision: 'rev-1',
+    platform: 'web',
+    targetName: 'Fixture',
+    viewport: { width: 1440, height: 900 },
+    theme: 'light',
+    breakpoint: 'desktop',
+    state: 'default',
+  });
+  const id = session.changeSet.sessionId;
+  await store.setDesignGraph(id, {
+    protocolVersion: '1.2.0',
+    projectRoot: '/project',
+    revision: 'graph-1',
+    tokens: [],
+    components: [
+      {
+        id: 'hero',
+        name: 'Hero',
+        source: { file: 'src/Hero.tsx', line: 1 },
+        instances: 1,
+        variants: [],
+        variantAxes: [],
+        evidence: [],
+      },
+    ],
+    breakpoints: [],
+    themes: [],
+    states: [],
+    motionPresets: [],
+    tokenUsages: [],
+    designSystemFindings: [],
+    indexedAt: '2026-09-06T00:00:00.000Z',
+  });
+  let stored = await store.createDesignBranch(id, { name: 'Editorial hierarchy' });
+  const branch = stored.activeDesignBranchId!;
+  stored = await store.addChange(id, {
+    target: {
+      id: 'hero',
+      platform: 'web',
+      semanticRole: 'heading',
+      label: 'Hero heading',
+      componentPath: ['LandingPage', 'Hero'],
+      source: { file: 'src/Hero.tsx', line: 18 },
+      geometry: { x: 0, y: 0, width: 600, height: 120, scale: 1 },
+      locator: { selector: 'h1' },
+      confidence: 'instrumented',
+      evidence: ['source mapping'],
+    },
+    category: 'typography',
+    property: 'fontSize',
+    before: '56px',
+    after: '64px',
+    scope: 'component',
+    context: { breakpoint: 'desktop', theme: 'light', state: 'default' },
+    confidence: 'instrumented',
+    evidence: ['computed style'],
+    status: 'draft',
+  });
+  stored = await store.updateDesignBranch(id, branch, {
+    status: 'rejected',
+    rejectionReason: 'The larger headline overwhelms the form.',
+  });
+  assert.equal(stored.designBranchRecords.length, 1);
+  assert.equal(stored.designBranchRecords[0]?.outcome, 'rejected');
+  assert.equal(stored.designBranchRecords[0]?.compatibility.status, 'current');
+
+  const importedSession = await store.create({
+    projectRoot: '/another-machine/project',
+    revision: 'rev-1',
+    platform: 'web',
+    targetName: 'Fixture',
+    viewport: { width: 1440, height: 900 },
+    theme: 'light',
+    breakpoint: 'desktop',
+    state: 'default',
+  });
+  const importedId = importedSession.changeSet.sessionId;
+  await store.setDesignGraph(importedId, {
+    ...stored.designGraph!,
+    projectRoot: '/another-machine/project',
+  });
+  let imported = await store.importDesignBranchRecords(importedId, {
+    format: 'foundry.design-branch-records',
+    version: 1,
+    exportedAt: '2026-09-06T01:00:00.000Z',
+    records: stored.designBranchRecords,
+  });
+  assert.equal(imported.designBranchRecords[0]?.compatibility.status, 'current');
+  assert.ok(imported.designBranchRecords[0]?.importedAt);
+
+  const recordId = imported.designBranchRecords[0]!.id;
+  imported = await store.restoreDesignBranchRecord(importedId, recordId);
+  assert.equal(imported.designBranches.at(-1)?.name, 'Editorial hierarchy (restored)');
+  assert.equal(imported.designBranches.at(-1)?.changes.length, 1);
+  imported = await store.removeDesignBranchRecord(importedId, recordId);
+  assert.equal(imported.designBranchRecords.length, 0);
+});
+
 test('deletes an unapplied change and removes its orphaned operation', async () => {
   const root = await mkdtemp(join(tmpdir(), 'foundry-delete-change-'));
   const store = new SessionStore(root);
@@ -667,4 +770,168 @@ test('migrates stored protocol 1.1 sessions with semantic defaults', async () =>
   assert.equal(migrated.changeSet.protocolVersion, '1.2.0');
   assert.deepEqual(migrated.changeSet.operations, []);
   assert.equal(migrated.changeSet.designGraphRevision, undefined);
+});
+
+test('persists, claims, and resolves a grounded visual agent request', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'foundry-visual-agent-'));
+  const store = new SessionStore(root);
+  const session = await store.create({
+    projectRoot: '/project',
+    platform: 'web',
+    viewport: { width: 1440, height: 900 },
+    theme: 'dark',
+    breakpoint: 'desktop',
+    state: 'default',
+  });
+  const id = session.changeSet.sessionId;
+  const created = await store.createVisualAgentRequest(id, {
+    prompt: 'Why do these labels feel inconsistent?',
+    context: {
+      targets: [
+        {
+          id: 'label-1',
+          selector: '[data-foundry-id="label-1"]',
+          label: 'Field label',
+          kind: 'label',
+          source: 'src/Form.tsx:20',
+          confidence: 'instrumented',
+          geometry: { x: 20, y: 40, width: 120, height: 20, scale: 2 },
+          measurements: { fontSize: '12px' },
+        },
+      ],
+      comments: [],
+      viewport: { width: 1440, height: 900 },
+      breakpoint: 'desktop',
+      theme: 'dark',
+      state: 'default',
+      tokens: [],
+    },
+  });
+  const requestId = created.visualAgentRequests[0]!.id;
+  const claimed = await store.claimVisualAgentRequest(id, requestId, {
+    agent: { name: 'codex', taskId: 'task-1' },
+  });
+  const claimAttemptId = claimed.visualAgentRequests[0]!.claimAttemptId!;
+  assert.equal(claimed.visualAgentRequests[0]?.status, 'thinking');
+  const responded = await store.respondToVisualAgentRequest(id, requestId, {
+    claimAttemptId,
+    message: 'The labels use two different type scales.',
+    proposals: [
+      {
+        name: 'Shared label token',
+        summary: 'Use one label size and weight.',
+        reasoning: ['The rendered values differ.'],
+        exactValues: ['font-size: 12px'],
+        sourceLocations: ['src/Form.tsx:20'],
+        responsiveImpact: 'No breakpoint change.',
+        verificationPlan: ['Measure both labels after rebuild.'],
+        changes: [],
+      },
+    ],
+  });
+  assert.equal(responded.visualAgentRequests[0]?.status, 'ready');
+  assert.equal(responded.visualAgentRequests[0]?.proposals[0]?.status, 'proposed');
+  assert.equal((await store.read(id)).visualAgentRequests.length, 1);
+});
+
+test('previews one reusable proposal branch and promotes it without dropping main changes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'foundry-visual-agent-proposal-'));
+  const store = new SessionStore(root);
+  const session = await store.create({
+    projectRoot: '/project',
+    platform: 'web',
+    theme: 'light',
+    breakpoint: 'desktop',
+    state: 'default',
+  });
+  const id = session.changeSet.sessionId;
+  const changed = await store.addChange(id, {
+    target: {
+      id: 'card',
+      platform: 'web',
+      semanticRole: 'article',
+      label: 'Card',
+      componentPath: [],
+      geometry: { x: 0, y: 0, width: 320, height: 180, scale: 1 },
+      locator: { selector: '[data-card]' },
+      confidence: 'instrumented',
+      evidence: ['live geometry'],
+    },
+    category: 'layout',
+    property: 'padding',
+    before: 16,
+    after: 20,
+    unit: 'px',
+    scope: 'instance',
+    context: { breakpoint: 'desktop', theme: 'light', state: 'default' },
+    confidence: 'instrumented',
+    evidence: ['computed style'],
+    status: 'draft',
+  });
+  const created = await store.createVisualAgentRequest(id, {
+    prompt: 'Make this card hierarchy clearer.',
+    context: {
+      targets: [
+        {
+          id: 'card',
+          selector: '[data-card]',
+          label: 'Card',
+          kind: 'article',
+          source: 'src/Card.tsx:12',
+          confidence: 'instrumented',
+          geometry: { x: 0, y: 0, width: 320, height: 180, scale: 1 },
+          measurements: { padding: '20px' },
+        },
+      ],
+      comments: [],
+      viewport: { width: 1440, height: 900 },
+      breakpoint: 'desktop',
+      theme: 'light',
+      state: 'default',
+      tokens: [],
+    },
+  });
+  const requestId = created.visualAgentRequests[0]!.id;
+  const claimed = await store.claimVisualAgentRequest(id, requestId, {
+    agent: { name: 'codex', taskId: 'task-2' },
+  });
+  const claimAttemptId = claimed.visualAgentRequests[0]!.claimAttemptId!;
+  const proposalChange = {
+    ...changed.changeSet.changes[0]!,
+    id: 'proposal-change',
+    property: 'gap',
+    before: 12,
+    after: 16,
+  };
+  const responded = await store.respondToVisualAgentRequest(id, requestId, {
+    claimAttemptId,
+    message: 'Use a consistent spacing step.',
+    proposals: [
+      {
+        name: 'Clearer spacing rhythm',
+        summary: 'Increase the internal gap.',
+        reasoning: ['The card mixes adjacent spacing values.'],
+        exactValues: ['gap: 16px'],
+        sourceLocations: ['src/Card.tsx:12'],
+        responsiveImpact: 'Applies at desktop only.',
+        verificationPlan: ['Measure the rebuilt card.'],
+        changes: [proposalChange],
+      },
+    ],
+  });
+  const proposalId = responded.visualAgentRequests[0]!.proposals[0]!.id;
+  const previewed = await store.updateVisualAgentProposal(id, requestId, proposalId, 'preview');
+  const branchId = previewed.visualAgentRequests[0]!.proposals[0]!.branchId!;
+  assert.equal(previewed.designBranches.find((item) => item.id === branchId)?.changes.length, 2);
+  const previewedAgain = await store.updateVisualAgentProposal(
+    id,
+    requestId,
+    proposalId,
+    'preview',
+  );
+  assert.equal(previewedAgain.designBranches.filter((item) => item.id === branchId).length, 1);
+  const promoted = await store.updateVisualAgentProposal(id, requestId, proposalId, 'promote');
+  assert.equal(promoted.changeSet.changes.length, 2);
+  assert.equal(promoted.designBranches.find((item) => item.id === branchId)?.status, 'chosen');
+  assert.equal(promoted.visualAgentRequests[0]!.proposals[0]!.status, 'promoted');
 });

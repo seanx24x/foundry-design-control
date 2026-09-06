@@ -15,3 +15,15 @@ test('the MCP apply workflow carries a leased claim through every progress updat
   assert.match(source, /update\.state === 'failed'/);
   assert.match(source, /packageJson\.version/);
 });
+
+test('the MCP visual conversation workflow preserves context and isolated proposals', () => {
+  const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  assert.match(source, /foundry_design_wait_for_visual_request/);
+  assert.match(source, /foundry_design_get_visual_request/);
+  assert.match(source, /foundry_design_respond_to_visual_request/);
+  assert.match(source, /visual-agent-requests\?status=queued/);
+  assert.match(source, /claimAttemptId: z\.string\(\)\.min\(1\)/);
+  assert.match(source, /exactValues/);
+  assert.match(source, /responsiveImpact/);
+  assert.match(source, /verificationPlan/);
+});

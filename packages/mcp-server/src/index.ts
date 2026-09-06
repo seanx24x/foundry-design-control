@@ -91,6 +91,131 @@ serveStdio(() => {
   );
 
   server.registerTool(
+    'foundry_design_wait_for_work',
+    {
+      description:
+        'Keep one Foundry session listener active and atomically claim the next reviewed Apply run or grounded Visual Agent conversation request.',
+      inputSchema: z.object({
+        sessionId: z.string().optional(),
+        token: z.string().optional(),
+        agent: z.object({
+          name: z.string().min(1),
+          version: z.string().optional(),
+          taskId: z.string().optional(),
+        }),
+        revision: z.string().optional(),
+        designGraphRevision: z.string().optional(),
+        waitMs: z.number().int().min(0).max(60_000).default(30_000),
+      }),
+    },
+    async ({ sessionId, token, agent, revision, designGraphRevision, waitMs }) => {
+      const id = client.sessionId(sessionId);
+      const resolvedAgent = { ...agent, taskId: agent.taskId ?? listenerTaskId };
+      const deadline = Date.now() + waitMs;
+      let nextPresenceAt = 0;
+      do {
+        if (Date.now() >= nextPresenceAt) {
+          await client.request(
+            `/v1/sessions/${id}/agent-presence`,
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                agent: resolvedAgent,
+                listening: true,
+                ttlMs: Math.min(Math.max(waitMs + 10_000, 15_000), 70_000),
+              }),
+            },
+            token,
+          );
+          nextPresenceAt = Date.now() + 5_000;
+        }
+        const visual = (await client.request(
+          `/v1/sessions/${id}/visual-agent-requests?status=queued`,
+          {},
+          token,
+        )) as { requests?: Array<{ id: string }> };
+        const visualRequest = visual.requests?.[0];
+        if (visualRequest) {
+          const claimed = (await client.request(
+            `/v1/sessions/${id}/visual-agent-requests/${visualRequest.id}/claim`,
+            {
+              method: 'POST',
+              body: JSON.stringify({ agent: resolvedAgent, ttlMs: 10 * 60_000 }),
+            },
+            token,
+          )) as {
+            visualAgentRequests?: Array<{
+              id: string;
+              status: string;
+              agent?: { name: string; taskId?: string };
+              claimAttemptId?: string;
+            }>;
+          };
+          const request = claimed.visualAgentRequests?.find(
+            (candidate) => candidate.id === visualRequest.id,
+          );
+          if (
+            request?.status === 'thinking' &&
+            request.agent?.name === resolvedAgent.name &&
+            request.agent.taskId === resolvedAgent.taskId &&
+            request.claimAttemptId
+          ) {
+            claimLeases.start({
+              sessionId: id,
+              token,
+              runId: visualRequest.id,
+              claimAttemptId: request.claimAttemptId,
+              kind: 'visual',
+            });
+            return result({ kind: 'visual_request', request, session: claimed });
+          }
+        }
+        const applies = (await client.request(
+          `/v1/sessions/${id}/apply-runs?state=queued`,
+          {},
+          token,
+        )) as { runs?: Array<{ id: string }> };
+        const apply = applies.runs?.[0];
+        if (apply) {
+          const claimed = (await client.request(
+            `/v1/sessions/${id}/apply-runs/${apply.id}/claim`,
+            {
+              method: 'POST',
+              body: JSON.stringify({ agent: resolvedAgent, revision, designGraphRevision }),
+            },
+            token,
+          )) as {
+            applyRuns?: Array<{
+              id: string;
+              state: string;
+              agent?: { name: string; taskId?: string };
+              claimAttemptId?: string;
+            }>;
+          };
+          const run = claimed.applyRuns?.find((candidate) => candidate.id === apply.id);
+          if (
+            run?.state === 'claimed' &&
+            run.agent?.name === resolvedAgent.name &&
+            run.agent.taskId === resolvedAgent.taskId &&
+            run.claimAttemptId
+          ) {
+            claimLeases.start({
+              sessionId: id,
+              token,
+              runId: apply.id,
+              claimAttemptId: run.claimAttemptId,
+            });
+            return result({ kind: 'apply_run', run, session: claimed });
+          }
+        }
+        if (Date.now() >= deadline) break;
+        await new Promise((resolveWait) => setTimeout(resolveWait, 500));
+      } while (true);
+      return result({ status: 'waiting', sessionId: id, waitedMs: waitMs });
+    },
+  );
+
+  server.registerTool(
     'foundry_design_wait_for_apply',
     {
       description:
@@ -174,6 +299,148 @@ serveStdio(() => {
         await new Promise((resolveWait) => setTimeout(resolveWait, 500));
       } while (true);
       return result({ status: 'waiting', sessionId: id, waitedMs: waitMs });
+    },
+  );
+
+  server.registerTool(
+    'foundry_design_wait_for_visual_request',
+    {
+      description:
+        'Wait for a Foundry user to ask about selected pixels or a canvas region, then claim the durable visual conversation request with its source, viewport, theme, state, measurements, comments, tokens, and design memory context.',
+      inputSchema: z.object({
+        sessionId: z.string().optional(),
+        token: z.string().optional(),
+        agent: z.object({
+          name: z.string().min(1),
+          version: z.string().optional(),
+          taskId: z.string().optional(),
+        }),
+        waitMs: z.number().int().min(0).max(60_000).default(30_000),
+      }),
+    },
+    async ({ sessionId, token, agent, waitMs }) => {
+      const id = client.sessionId(sessionId);
+      const resolvedAgent = { ...agent, taskId: agent.taskId ?? listenerTaskId };
+      const deadline = Date.now() + waitMs;
+      let nextPresenceAt = 0;
+      do {
+        if (Date.now() >= nextPresenceAt) {
+          await client.request(
+            `/v1/sessions/${id}/agent-presence`,
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                agent: resolvedAgent,
+                listening: true,
+                ttlMs: Math.min(Math.max(waitMs + 10_000, 15_000), 70_000),
+              }),
+            },
+            token,
+          );
+          nextPresenceAt = Date.now() + 5_000;
+        }
+        const payload = (await client.request(
+          `/v1/sessions/${id}/visual-agent-requests?status=queued`,
+          {},
+          token,
+        )) as { requests?: Array<{ id: string }> };
+        const request = payload.requests?.[0];
+        if (request) {
+          const claimed = (await client.request(
+            `/v1/sessions/${id}/visual-agent-requests/${request.id}/claim`,
+            {
+              method: 'POST',
+              body: JSON.stringify({ agent: resolvedAgent, ttlMs: 10 * 60_000 }),
+            },
+            token,
+          )) as {
+            visualAgentRequests?: Array<{
+              id: string;
+              status: string;
+              agent?: { name: string; taskId?: string };
+              claimAttemptId?: string;
+            }>;
+          };
+          const claimedRequest = claimed.visualAgentRequests?.find(
+            (candidate) => candidate.id === request.id,
+          );
+          if (
+            claimedRequest?.status === 'thinking' &&
+            claimedRequest.agent?.name === resolvedAgent.name &&
+            claimedRequest.agent.taskId === resolvedAgent.taskId &&
+            claimedRequest.claimAttemptId
+          ) {
+            claimLeases.start({
+              sessionId: id,
+              token,
+              runId: request.id,
+              claimAttemptId: claimedRequest.claimAttemptId,
+              kind: 'visual',
+            });
+            return result(claimed);
+          }
+        }
+        if (Date.now() >= deadline) break;
+        await new Promise((resolveWait) => setTimeout(resolveWait, 500));
+      } while (true);
+      return result({ status: 'waiting', sessionId: id, waitedMs: waitMs });
+    },
+  );
+
+  server.registerTool(
+    'foundry_design_get_visual_request',
+    {
+      description:
+        'Read one persistent visual conversation request and its grounded context, messages, proposals, and status.',
+      inputSchema: z.object({
+        sessionId: z.string().optional(),
+        token: z.string().optional(),
+        requestId: z.string().min(1),
+      }),
+    },
+    async ({ sessionId, token, requestId }) =>
+      result(
+        await client.request(
+          `/v1/sessions/${client.sessionId(sessionId)}/visual-agent-requests/${requestId}`,
+          {},
+          token,
+        ),
+      ),
+  );
+
+  server.registerTool(
+    'foundry_design_respond_to_visual_request',
+    {
+      description:
+        'Return grounded visual reasoning and one or more exact, independently previewable design proposals. Proposals remain separate from Review until the user previews and promotes one.',
+      inputSchema: z.object({
+        sessionId: z.string().optional(),
+        token: z.string().optional(),
+        requestId: z.string().min(1),
+        claimAttemptId: z.string().min(1),
+        message: z.string().min(1),
+        proposals: z.array(
+          z.object({
+            name: z.string().min(1).max(80),
+            summary: z.string().min(1),
+            reasoning: z.array(z.string().min(1)).default([]),
+            exactValues: z.array(z.string().min(1)).default([]),
+            sourceLocations: z.array(z.string().min(1)).default([]),
+            responsiveImpact: z.string().min(1),
+            verificationPlan: z.array(z.string().min(1)).default([]),
+            changes: z.array(z.unknown()).default([]),
+          }),
+        ),
+      }),
+    },
+    async ({ sessionId, token, requestId, ...input }) => {
+      const payload = await client.request(
+        `/v1/sessions/${client.sessionId(sessionId)}/visual-agent-requests/${requestId}/respond`,
+        { method: 'POST', body: JSON.stringify(input) },
+        token,
+      );
+      claimLeases.stop(requestId);
+      return result(payload);
     },
   );
 

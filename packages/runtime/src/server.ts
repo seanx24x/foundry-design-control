@@ -16,6 +16,8 @@ import {
   type SessionContext,
   type SurfaceSnapshot,
   type VerificationResult,
+  type VisualAgentContext,
+  type VisualAgentProposal,
 } from 'foundry-design-protocol';
 import { SessionStore, type StoredSession } from './store.js';
 import { GoogleFontsCatalog } from './google-fonts.js';
@@ -93,7 +95,9 @@ function publicSession(stored: StoredSession): Omit<StoredSession, 'token'> {
     applyRuns: stored.applyRuns,
     designGraph: stored.designGraph,
     designBranches: stored.designBranches,
+    designBranchRecords: stored.designBranchRecords,
     activeDesignBranchId: stored.activeDesignBranchId,
+    visualAgentRequests: stored.visualAgentRequests,
   };
 }
 
@@ -248,6 +252,83 @@ export class FoundryRuntime {
           sendJson(response, 201, publicSession(updated));
           return;
         }
+        if (parts[3] === 'visual-agent-requests') {
+          if (request.method === 'GET' && parts.length === 4) {
+            const status = url.searchParams.get('status');
+            sendJson(response, 200, {
+              requests: status
+                ? stored.visualAgentRequests.filter((item) => item.status === status)
+                : stored.visualAgentRequests,
+            });
+            return;
+          }
+          if (request.method === 'POST' && parts.length === 4) {
+            const input = (await body(request)) as {
+              title?: string;
+              prompt: string;
+              context: VisualAgentContext;
+            };
+            const updated = await this.store.createVisualAgentRequest(id, input);
+            sendJson(response, 201, publicSession(updated));
+            return;
+          }
+          const requestId = parts[4];
+          if (requestId && request.method === 'GET' && parts.length === 5) {
+            const visualRequest = stored.visualAgentRequests.find((item) => item.id === requestId);
+            if (!visualRequest) throw new Error(`Unknown visual agent request: ${requestId}`);
+            sendJson(response, 200, { request: visualRequest });
+            return;
+          }
+          if (requestId && request.method === 'POST' && parts[5] === 'claim') {
+            const input = (await body(request)) as {
+              agent: { name: string; version?: string; taskId?: string };
+              ttlMs?: number;
+            };
+            const updated = await this.store.claimVisualAgentRequest(id, requestId, input);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+          if (requestId && request.method === 'POST' && parts[5] === 'respond') {
+            const input = (await body(request)) as {
+              claimAttemptId: string;
+              message: string;
+              proposals: Array<
+                Omit<VisualAgentProposal, 'id' | 'createdAt' | 'updatedAt' | 'status'>
+              >;
+            };
+            const updated = await this.store.respondToVisualAgentRequest(id, requestId, input);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+          if (requestId && request.method === 'POST' && parts[5] === 'heartbeat') {
+            const input = (await body(request)) as { claimAttemptId: string };
+            const updated = await this.store.heartbeatVisualAgentRequest(
+              id,
+              requestId,
+              input.claimAttemptId,
+            );
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+          if (requestId && request.method === 'POST' && parts[5] === 'retry') {
+            const updated = await this.store.retryVisualAgentRequest(id, requestId);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+          if (requestId && parts[5] === 'proposals' && parts[6] && request.method === 'POST') {
+            const input = (await body(request)) as {
+              action: 'preview' | 'promote' | 'reject';
+            };
+            const updated = await this.store.updateVisualAgentProposal(
+              id,
+              requestId,
+              parts[6],
+              input.action,
+            );
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+        }
         if (parts[3] === 'design-branches') {
           if (request.method === 'POST' && parts.length === 4) {
             const input = (await body(request)) as {
@@ -285,6 +366,23 @@ export class FoundryRuntime {
               rejectionReason?: string;
             };
             const updated = await this.store.updateDesignBranch(id, parts[4], input);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+        }
+        if (parts[3] === 'design-branch-records') {
+          if (request.method === 'POST' && parts.length === 4) {
+            const updated = await this.store.importDesignBranchRecords(id, await body(request));
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+          if (request.method === 'POST' && parts[4] && parts[5] === 'restore') {
+            const updated = await this.store.restoreDesignBranchRecord(id, parts[4]);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+          if (request.method === 'DELETE' && parts[4]) {
+            const updated = await this.store.removeDesignBranchRecord(id, parts[4]);
             sendJson(response, 200, publicSession(updated));
             return;
           }

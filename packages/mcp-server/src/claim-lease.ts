@@ -7,6 +7,7 @@ export interface ClaimLease {
   token?: string;
   runId: string;
   claimAttemptId: string;
+  kind?: 'apply' | 'visual';
 }
 
 interface ActiveClaimLease extends ClaimLease {
@@ -57,7 +58,9 @@ export class ClaimLeaseKeeper {
     active.renewing = true;
     try {
       const payload = (await this.client.request(
-        `/v1/sessions/${encodeURIComponent(active.sessionId)}/apply-runs/${encodeURIComponent(active.runId)}/heartbeat`,
+        active.kind === 'visual'
+          ? `/v1/sessions/${encodeURIComponent(active.sessionId)}/visual-agent-requests/${encodeURIComponent(active.runId)}/heartbeat`
+          : `/v1/sessions/${encodeURIComponent(active.sessionId)}/apply-runs/${encodeURIComponent(active.runId)}/heartbeat`,
         {
           method: 'POST',
           body: JSON.stringify({ claimAttemptId: active.claimAttemptId }),
@@ -69,12 +72,23 @@ export class ClaimLeaseKeeper {
           state: string;
           claimAttemptId?: string;
         }>;
+        visualAgentRequests?: Array<{
+          id: string;
+          status: string;
+          claimAttemptId?: string;
+        }>;
       };
-      const run = payload.applyRuns?.find((candidate) => candidate.id === active.runId);
+      const run:
+        { id: string; state?: string; status?: string; claimAttemptId?: string } | undefined =
+        active.kind === 'visual'
+          ? payload.visualAgentRequests?.find((candidate) => candidate.id === active.runId)
+          : payload.applyRuns?.find((candidate) => candidate.id === active.runId);
       active.failedPulses = 0;
       if (
         !run ||
-        !['claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state) ||
+        !(active.kind === 'visual'
+          ? ['thinking'].includes(run.status ?? '')
+          : ['claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state ?? '')) ||
         !run.claimAttemptId ||
         run.claimAttemptId !== active.claimAttemptId
       ) {

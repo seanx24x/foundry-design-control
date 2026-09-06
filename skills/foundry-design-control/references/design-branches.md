@@ -30,6 +30,12 @@ Choosing a direction is an explicit boundary:
 
 Never merge a direction directly into project files and never automatically retry or promote a rejected direction.
 
+## Preserve the outcome
+
+Choosing or rejecting a direction creates a portable branch decision record. Read [portable-branch-records.md](portable-branch-records.md) before exporting, importing, restoring, or linking one of these records to Design Memory.
+
+The record preserves evidence without becoming a permanent rule. Adding it to Design Memory is always a separate, explicit user action.
+
 ## Verification
 
 - Confirm edits recorded in one branch never appear in another branch or Main.
@@ -37,4 +43,5 @@ Never merge a direction directly into project files and never automatically retr
 - Compare at the recorded viewport and theme.
 - Combine decisions from at least two branches and verify only selected changes appear in the new direction.
 - Promote the combined direction and confirm Review and apply contains the expected draft changes.
+- Export and re-import chosen and rejected records, verify compatibility evidence, and restore only a current record into a new isolated direction.
 - Verify Light and Dark Foundry interface themes without altering the product theme.

@@ -48,7 +48,11 @@ test('starts over stdio and exposes the complete Foundry handoff toolset', async
     (tool) => tool.name,
   );
   for (const name of [
+    'foundry_design_wait_for_work',
     'foundry_design_wait_for_apply',
+    'foundry_design_wait_for_visual_request',
+    'foundry_design_get_visual_request',
+    'foundry_design_respond_to_visual_request',
     'foundry_design_heartbeat_apply_run',
     'foundry_design_get_apply_run',
     'foundry_design_update_apply_run',

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   responsiveEditScopes,
+  responsiveComparison,
+  responsiveContainerRange,
   responsiveFindings,
   responsiveScale,
   responsiveViewports,
@@ -26,6 +28,58 @@ test('preserves configured native viewport dimensions and adds current', () => {
   );
   assert.equal(viewportForWidth(viewports, 800)?.id, 'mobile');
   assert.equal(viewportForWidth(viewports, 1400)?.id, 'current');
+});
+
+test('builds a useful scrub range from authored container query boundaries', () => {
+  assert.deepEqual(
+    responsiveContainerRange(
+      [
+        { id: 'compact', label: 'Compact', condition: 'min-width: 320px', minWidth: 320 },
+        { id: 'wide', label: 'Wide', condition: 'min-width: 720px', minWidth: 720 },
+      ],
+      560,
+    ),
+    { min: 160, max: 880, boundaries: [320, 720] },
+  );
+});
+
+test('compares responsive snapshots without turning comparison into a design change', () => {
+  const comparison = responsiveComparison(
+    {
+      viewportId: 'before',
+      viewportWidth: 1280,
+      viewportHeight: 900,
+      containerWidth: 360,
+      elementWidth: 328,
+      elementHeight: 72,
+      scrollWidth: 328,
+      scrollHeight: 72,
+      clientWidth: 328,
+      clientHeight: 72,
+      lineCount: 2,
+      left: 16,
+      top: 16,
+    },
+    {
+      viewportId: 'after',
+      viewportWidth: 1280,
+      viewportHeight: 900,
+      containerWidth: 640,
+      elementWidth: 608,
+      elementHeight: 48,
+      scrollWidth: 608,
+      scrollHeight: 48,
+      clientWidth: 608,
+      clientHeight: 48,
+      lineCount: 1,
+      left: 16,
+      top: 16,
+    },
+  );
+  assert.equal(comparison.changed, true);
+  assert.equal(comparison.viewportWidthDelta, 0);
+  assert.equal(comparison.containerWidthDelta, 280);
+  assert.equal(comparison.lineCountDelta, -1);
 });
 
 test('scales only the outer presentation while retaining native dimensions', () => {

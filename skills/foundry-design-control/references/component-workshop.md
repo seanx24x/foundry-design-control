@@ -10,6 +10,20 @@ Use Component Workshop to inspect a project-native component as a connected syst
 4. Use the state controls to preview default, hover, focus, pressed, disabled, loading, empty, and error behavior.
 5. Use variants only when the project design graph provides variant properties. Storybook stories are indexed as variant properties.
 
+## Create a source-backed variant
+
+1. Use **Create source variant** only when Component Workshop exposes a writable Storybook, CVA, configured, or TypeScript union axis.
+2. Enter both the human label and the exact source value. Choose a mapped base variant when the new option should preserve its visual treatment.
+3. Stage the operation, then inspect its exact authoring file, adapter, source property, base variant, and preservation evidence in Review.
+4. During Apply, follow the recorded adapter rather than inventing a parallel API: create a named Storybook export, add the option to the existing CVA variant map, or extend the recorded TypeScript union and its existing implementation mapping.
+5. Re-index after the source edit. The new option must return as a mapped variant on the same axis before verification can pass.
+
+`component.variant.create.<property>` is a source-authoring operation, not a CSS property. Never satisfy it with a preview attribute or generated stylesheet.
+
+## Repair cross-instance drift
+
+After selecting a mapped variant, use **Cross-instance drift** to compare only explicitly instrumented instance properties. Missing properties are unknown, not mismatches. A repair stages one exact `variant.<property>` change for each differing instance and retains that instance's source reference. Apply each repair at the narrowest recorded call site, then verify every repaired instance against the selected variant.
+
 State previews are presentation state. They must never create a design change or enter the review ledger. Return to Default before measuring or applying unrelated changes.
 
 ## Choose scope safely
@@ -28,3 +42,5 @@ Do not promote an instance edit to variant or component scope by inference. If t
 4. For variant scope, verify every rendered instance of the selected variant that is available in the session.
 5. For component scope, verify every rendered instance of that component that is available in the session.
 6. Keep unavailable combinations explicit. Never claim coverage for a state, theme, or viewport that was not rendered and measured.
+7. For a newly created variant, confirm the indexed axis includes the exact new value and that the chosen base treatment was preserved.
+8. For drift repair, confirm the mismatch count returns to zero without changing instances that did not expose that property.

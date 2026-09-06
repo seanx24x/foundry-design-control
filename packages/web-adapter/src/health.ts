@@ -29,6 +29,12 @@ export interface HealthSnapshot {
   interactive: boolean;
   targetSizeEligible: boolean;
   accessibleName: string;
+  keyboardCandidate?: boolean;
+  keyboardReachable?: boolean;
+  positiveTabIndex?: boolean;
+  focusIndicatorVisible?: boolean;
+  imageElement?: boolean;
+  imageHasAlternative?: boolean;
   width: number;
   height: number;
   left: number;
@@ -137,6 +143,56 @@ export function auditHealthSnapshot(snapshot: HealthSnapshot): HealthFinding[] {
       title: 'Interactive element has no name',
       description: 'Add a concise accessible name that explains the action or destination.',
       evidence: 'No text, aria-label, aria-labelledby, alt text, or title was found',
+    });
+  }
+
+  if (snapshot.imageElement && !snapshot.imageHasAlternative) {
+    findings.push({
+      ruleId: 'image-alternative',
+      category: 'accessibility',
+      severity: 'high',
+      title: 'Image has no text alternative',
+      description: 'Add useful alt text, or mark the image decorative when it conveys no content.',
+      evidence: 'No alt text, accessible label, or explicit decorative treatment was found',
+    });
+  }
+
+  if (snapshot.keyboardCandidate && !snapshot.keyboardReachable) {
+    findings.push({
+      ruleId: 'keyboard-unreachable',
+      category: 'accessibility',
+      severity: 'high',
+      title: 'Control cannot be reached by keyboard',
+      description:
+        'Keep interactive controls in the natural tab order unless an equivalent path exists.',
+      evidence:
+        'The rendered control is interactive but is excluded from sequential keyboard focus',
+    });
+  } else if (snapshot.positiveTabIndex) {
+    findings.push({
+      ruleId: 'focus-order',
+      category: 'accessibility',
+      severity: 'medium',
+      title: 'Focus order overrides document order',
+      description:
+        'Use the natural document sequence so keyboard navigation follows the visual structure.',
+      evidence: 'A positive tabindex changes the expected keyboard focus order',
+    });
+  }
+
+  if (
+    snapshot.keyboardCandidate &&
+    snapshot.keyboardReachable &&
+    snapshot.focusIndicatorVisible === false
+  ) {
+    findings.push({
+      ruleId: 'focus-visible',
+      category: 'accessibility',
+      severity: 'medium',
+      title: 'Keyboard focus is not visible',
+      description:
+        'Add a persistent focus treatment that remains visible against the surrounding surface.',
+      evidence: 'No outline, shadow, border, or visible background change appeared while focused',
     });
   }
 
