@@ -12,7 +12,9 @@
       <header class="app-bar">
         <div class="app-identity">
           <strong>Foundry</strong>
-          <span class="live-status"><i></i><span>Live</span></span>
+          <span class="live-status" id="live-status" data-status="connecting" aria-live="polite"
+            ><i></i><span>Connecting</span></span
+          >
           <span class="project-name" id="project-name">Design workspace</span>
         </div>
         <nav class="app-actions" aria-label="Workspace controls">
@@ -63,10 +65,13 @@
             <i data-icon="branch"></i><span>Design branches</span><kbd>B</kbd>
           </button>
           <button data-workspace-mode="recipes">
-            <i data-icon="file"></i><span>Visual recipes</span><kbd>R</kbd>
+            <i data-icon="copy"></i><span>Visual recipes</span><kbd>R</kbd>
           </button>
           <button data-workspace-mode="agent">
             <i data-icon="message"></i><span>Visual agent</span><kbd>A</kbd>
+          </button>
+          <button data-workspace-mode="delivery">
+            <i data-icon="fileCheck"></i><span>Delivery</span><kbd>D</kbd>
           </button>
           <span class="menu-rule"></span>
           <button data-theme-choice="system">
@@ -128,10 +133,13 @@
             <i data-icon="branch"></i>
           </button>
           <button class="rail-button" data-workspace-mode="recipes" aria-label="Visual recipes">
-            <i data-icon="file"></i>
+            <i data-icon="copy"></i>
           </button>
           <button class="rail-button" data-workspace-mode="agent" aria-label="Visual agent">
             <i data-icon="message"></i>
+          </button>
+          <button class="rail-button" data-workspace-mode="delivery" aria-label="Delivery">
+            <i data-icon="fileCheck"></i>
           </button>
         </nav>
         <aside class="dock layers-dock" id="layers-dock" aria-label="Layers and components">
@@ -283,7 +291,7 @@
                 <div class="review-summary-content" id="review-summary-content"></div>
                 <footer class="review-footer">
                   <button class="primary-button" id="apply-agent">Apply with agent</button>
-                  <button class="secondary-button" data-workspace-mode="canvas">
+                  <button class="secondary-button" id="review-return" data-workspace-mode="canvas">
                     Back to canvas
                   </button>
                 </footer>
@@ -298,8 +306,8 @@
                 <p>Compare interaction states across viewport, theme, and motion preferences.</p>
               </div>
               <div class="mode-actions">
-                <button class="secondary-button" id="state-save-matrix">Save matrix</button>
-                <button class="primary-button" id="state-run-verification">Run verification</button>
+                <button class="secondary-button" id="state-save-matrix">Export matrix</button>
+                <button class="primary-button" id="state-run-verification">Refresh preview</button>
               </div>
             </header>
             <div class="workbench-grid" id="state-grid"></div>
@@ -362,7 +370,7 @@
               </div>
               <div class="mode-actions">
                 <button class="secondary-button" data-studio-action="responsive-fit">
-                  Fit all
+                  Reset view
                 </button>
                 <button class="primary-button" data-studio-action="responsive-audit">
                   Run responsive audit
@@ -376,10 +384,16 @@
                 aria-label="Responsive scrub target"
               >
                 <span>Scrub</span>
-                <button class="chip-button is-active" data-responsive-target="viewport">
+                <button
+                  class="chip-button is-active"
+                  data-responsive-target="viewport"
+                  aria-pressed="true"
+                >
                   Viewport
                 </button>
-                <button class="chip-button" data-responsive-target="container">Container</button>
+                <button class="chip-button" data-responsive-target="container" aria-pressed="false">
+                  Container
+                </button>
               </div>
               <div class="responsive-control-group">
                 <span id="responsive-width-label">Viewport width</span>
@@ -396,25 +410,55 @@
               </div>
               <div
                 class="responsive-control-group responsive-stress-group"
+                role="group"
                 aria-label="Temporary stress tests"
               >
                 <span>Stress test</span>
-                <button class="chip-button is-active" data-responsive-stress="none">None</button>
-                <button class="chip-button" data-responsive-stress="browser-zoom">Zoom 200%</button>
-                <button class="chip-button" data-responsive-stress="dynamic-type">Text 150%</button>
-                <button class="chip-button" data-responsive-stress="long-content">
+                <button
+                  class="chip-button is-active"
+                  data-responsive-stress="none"
+                  aria-pressed="true"
+                >
+                  None
+                </button>
+                <button
+                  class="chip-button"
+                  data-responsive-stress="browser-zoom"
+                  aria-pressed="false"
+                >
+                  Zoom 200%
+                </button>
+                <button
+                  class="chip-button"
+                  data-responsive-stress="dynamic-type"
+                  aria-pressed="false"
+                >
+                  Text 150%
+                </button>
+                <button
+                  class="chip-button"
+                  data-responsive-stress="long-content"
+                  aria-pressed="false"
+                >
                   Long content
                 </button>
               </div>
               <div
                 class="responsive-control-group responsive-scope-group"
+                role="group"
                 aria-label="Responsive edit scope"
               >
                 <span>Edit scope</span>
-                <button class="chip-button is-active" data-responsive-scope="breakpoint">
+                <button
+                  class="chip-button is-active"
+                  data-responsive-scope="breakpoint"
+                  aria-pressed="true"
+                >
                   This breakpoint
                 </button>
-                <button class="chip-button" data-responsive-scope="all">All breakpoints</button>
+                <button class="chip-button" data-responsive-scope="all" aria-pressed="false">
+                  All breakpoints
+                </button>
               </div>
             </div>
             <div
@@ -462,7 +506,7 @@
           >
             <header class="mode-head">
               <div>
-                <h1>System</h1>
+                <h1>Design System</h1>
                 <p>See foundations, components, coverage, and source drift as one living system.</p>
               </div>
               <div class="mode-actions">
@@ -472,7 +516,9 @@
                 <button class="secondary-button" data-studio-action="system-export">
                   Export tokens
                 </button>
-                <button class="primary-button" data-studio-action="system-sync">Sync system</button>
+                <button class="primary-button" data-studio-action="system-sync">
+                  Refresh view
+                </button>
               </div>
             </header>
             <div class="design-system-summary" id="design-system-summary"></div>
@@ -575,7 +621,7 @@
                   Compare fonts
                 </button>
                 <button class="primary-button" data-studio-action="typography-apply">
-                  Apply typography
+                  Review typography
                 </button>
               </div>
             </header>
@@ -583,11 +629,20 @@
               <aside class="typography-studio-browser">
                 <div class="typography-selection-summary" id="typography-selection-summary"></div>
                 <div class="typography-source-tabs" role="tablist" aria-label="Font sources">
-                  <button class="is-active" data-typography-source="project" role="tab">
+                  <button
+                    class="is-active"
+                    data-typography-source="project"
+                    role="tab"
+                    aria-selected="true"
+                  >
                     Project
                   </button>
-                  <button data-typography-source="google" role="tab">Google</button>
-                  <button data-typography-source="local" role="tab">Local</button>
+                  <button data-typography-source="google" role="tab" aria-selected="false">
+                    Google
+                  </button>
+                  <button data-typography-source="local" role="tab" aria-selected="false">
+                    Local
+                  </button>
                 </div>
                 <label class="search-field"
                   ><i data-icon="search"></i
@@ -686,7 +741,7 @@
                   </button>
                 </section>
               </aside>
-              <main class="design-branch-stage">
+              <section class="design-branch-stage">
                 <div class="design-branch-compare-head">
                   <div>
                     <span class="eyebrow">Compare directions</span>
@@ -714,7 +769,7 @@
                   </header>
                   <div id="design-branch-decision-list"></div>
                 </section>
-              </main>
+              </section>
               <aside class="design-branch-detail" id="design-branch-detail"></aside>
             </div>
           </section>
@@ -753,7 +808,7 @@
                   </div>
                   <span>Combine compatible tests</span>
                 </header>
-                <div class="stress-scope" role="group" aria-label="Stress test scope">
+                <div class="segmented stress-scope" role="group" aria-label="Stress test scope">
                   <button class="is-active" data-stress-scope="selection">Selection</button>
                   <button data-stress-scope="canvas">Canvas</button>
                 </div>
@@ -763,7 +818,7 @@
                   <button class="primary-button" id="apply-stress">Apply and scan</button>
                 </footer>
               </aside>
-              <main class="stress-lab-results">
+              <section class="stress-lab-results">
                 <div class="stress-summary-grid" id="stress-summary-grid"></div>
                 <div class="stress-result-toolbar">
                   <div class="stress-filter-group" id="stress-severity-filters"></div>
@@ -774,7 +829,7 @@
                   </div>
                 </div>
                 <div class="stress-finding-groups" id="stress-finding-groups"></div>
-              </main>
+              </section>
             </div>
             <footer class="stress-lab-footer">
               <span id="stress-lab-footnote"
@@ -828,14 +883,18 @@
                 </div>
                 <label class="search-field"
                   ><i data-icon="search"></i
-                  ><input id="visual-recipe-search" type="search" placeholder="Search recipes"
+                  ><input
+                    id="visual-recipe-search"
+                    type="search"
+                    placeholder="Search recipes"
+                    aria-label="Search visual recipes"
                 /></label>
                 <div class="visual-recipe-list" id="visual-recipe-list"></div>
                 <footer>
                   <button class="secondary-button" id="visual-recipe-export">Export library</button>
                 </footer>
               </aside>
-              <main class="visual-recipe-stage" id="visual-recipe-stage"></main>
+              <section class="visual-recipe-stage" id="visual-recipe-stage"></section>
               <aside class="visual-recipe-create">
                 <header class="visual-recipe-create-head">
                   <span class="eyebrow">Current selection</span>
@@ -906,14 +965,20 @@
                 </header>
                 <label class="search-field"
                   ><i data-icon="search"></i
-                  ><input id="decision-memory-search" type="search" placeholder="Search decisions"
+                  ><input
+                    id="decision-memory-search"
+                    type="search"
+                    placeholder="Search decisions"
+                    aria-label="Search design memory"
                 /></label>
                 <div class="decision-memory-filters" role="group" aria-label="Filter decisions">
-                  <button class="is-active" data-decision-filter="all">All</button>
-                  <button data-decision-filter="approved">Approved</button>
-                  <button data-decision-filter="rejected">Rejected</button>
-                  <button data-decision-filter="rule">Rules</button>
-                  <button data-decision-filter="disabled">Disabled</button>
+                  <button class="is-active" data-decision-filter="all" aria-pressed="true">
+                    All
+                  </button>
+                  <button data-decision-filter="approved" aria-pressed="false">Approved</button>
+                  <button data-decision-filter="rejected" aria-pressed="false">Rejected</button>
+                  <button data-decision-filter="rule" aria-pressed="false">Rules</button>
+                  <button data-decision-filter="disabled" aria-pressed="false">Disabled</button>
                 </div>
                 <div class="decision-memory-list" id="decision-memory-list"></div>
                 <footer>
@@ -926,7 +991,7 @@
                   </button>
                 </footer>
               </aside>
-              <main class="decision-memory-stage" id="decision-memory-stage"></main>
+              <section class="decision-memory-stage" id="decision-memory-stage"></section>
               <aside class="decision-memory-capture">
                 <header>
                   <span class="eyebrow">Current context</span>
@@ -934,9 +999,11 @@
                   <p>Connect guidance to the selected component and edited properties.</p>
                 </header>
                 <div class="decision-outcome-picker" role="group" aria-label="Decision outcome">
-                  <button class="is-active" data-decision-outcome="approved">Approved</button>
-                  <button data-decision-outcome="rejected">Rejected</button>
-                  <button data-decision-outcome="rule">Rule</button>
+                  <button class="is-active" data-decision-outcome="approved" aria-pressed="true">
+                    Approved
+                  </button>
+                  <button data-decision-outcome="rejected" aria-pressed="false">Rejected</button>
+                  <button data-decision-outcome="rule" aria-pressed="false">Rule</button>
                 </div>
                 <label
                   ><span>Title</span
@@ -1006,11 +1073,11 @@
                 </header>
                 <div class="visual-agent-thread-list" id="visual-agent-thread-list"></div>
               </aside>
-              <main
+              <section
                 class="visual-agent-conversation"
                 id="visual-agent-conversation"
                 aria-live="polite"
-              ></main>
+              ></section>
               <aside class="visual-agent-compose">
                 <header>
                   <span class="eyebrow">Rendered context</span>
@@ -1054,6 +1121,49 @@
                   <span>Proposals stay isolated until you preview or move one to Review.</span>
                 </div>
               </aside>
+            </div>
+          </section>
+
+          <section
+            class="mode-surface centered-mode delivery-mode"
+            data-mode-surface="delivery"
+            hidden
+          >
+            <header class="mode-head">
+              <div>
+                <h1>Delivery</h1>
+                <p>
+                  Verified design intent, living documentation, and an immutable record of what
+                  shipped.
+                </p>
+              </div>
+              <div class="mode-actions">
+                <button class="secondary-button" id="delivery-generate-docs">
+                  <i data-icon="refresh"></i>Refresh documentation
+                </button>
+                <button class="primary-button" id="delivery-export">
+                  <i data-icon="copy"></i>Copy export command
+                </button>
+              </div>
+            </header>
+            <div class="delivery-shell">
+              <nav class="delivery-tabs" role="tablist" aria-label="Delivery views">
+                <button
+                  class="is-active"
+                  data-delivery-tab="handoff"
+                  role="tab"
+                  aria-selected="true"
+                >
+                  Handoff
+                </button>
+                <button data-delivery-tab="documentation" role="tab" aria-selected="false">
+                  Documentation
+                </button>
+                <button data-delivery-tab="history" role="tab" aria-selected="false">
+                  History
+                </button>
+              </nav>
+              <section class="delivery-content" id="delivery-content" aria-live="polite"></section>
             </div>
           </section>
 
@@ -1114,7 +1224,17 @@
             </section>
             <div class="inspector-sections" id="inspector-sections"></div>
           </div>
-          <button class="dock-resizer" id="dock-resizer" aria-label="Resize panels"></button>
+          <button
+            class="dock-resizer"
+            id="dock-resizer"
+            aria-label="Resize panels"
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuemin="320"
+            aria-valuemax="520"
+            aria-valuenow="320"
+            tabindex="0"
+          ></button>
         </aside>
       </main>
     </div>
@@ -1131,6 +1251,47 @@
         </button>
       </div>
       <div id="command-list" class="command-list"></div>
+    </dialog>
+    <dialog
+      class="command-dialog milestone-dialog"
+      id="delivery-milestone-dialog"
+      aria-labelledby="delivery-milestone-title"
+    >
+      <form id="delivery-milestone-form">
+        <header>
+          <div>
+            <span class="eyebrow">Verified history</span>
+            <strong id="delivery-milestone-title">Create milestone</strong>
+          </div>
+          <button
+            class="icon-button"
+            id="delivery-milestone-close"
+            type="button"
+            aria-label="Cancel milestone"
+          >
+            <i data-icon="close"></i>
+          </button>
+        </header>
+        <label
+          ><span>Milestone name</span
+          ><input
+            id="delivery-milestone-name"
+            name="milestone-name"
+            autocomplete="off"
+            maxlength="80"
+            required
+            placeholder="For example, Interaction refinement"
+        /></label>
+        <p>
+          Groups every currently verified history entry without changing source or review state.
+        </p>
+        <footer>
+          <button class="secondary-button" id="delivery-milestone-cancel" type="button">
+            Cancel
+          </button>
+          <button class="primary-button" type="submit">Create milestone</button>
+        </footer>
+      </form>
     </dialog>
     <div class="toast" id="toast" role="status"></div>
     <script type="module" src="/app.js"></script>

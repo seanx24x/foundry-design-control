@@ -301,6 +301,126 @@ try {
   await page.goto(url.href, { waitUntil: 'networkidle' });
   const artifactDirectory = join(root, 'artifacts', 'e2e');
   await mkdir(artifactDirectory, { recursive: true });
+  const settleBeforeScreenshot = async ({ waitForToasts = true } = {}) => {
+    await page.mouse.move(Math.min(640, page.viewportSize()?.width ?? 640), 24);
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    });
+    if (waitForToasts) {
+      await page
+        .waitForFunction(
+          () =>
+            [...document.querySelectorAll('.toast, [role="status"]')].every((element) => {
+              if (!(element instanceof HTMLElement)) return true;
+              const style = getComputedStyle(element);
+              return (
+                !element.classList.contains('is-visible') ||
+                style.display === 'none' ||
+                style.visibility === 'hidden' ||
+                Number(style.opacity) === 0
+              );
+            }),
+          null,
+          { timeout: 2_500 },
+        )
+        .catch(() => undefined);
+    }
+    await page.waitForTimeout(120);
+  };
+  const captureWorkspace = async (name, options = {}) => {
+    await settleBeforeScreenshot(options);
+    await page.screenshot({
+      path: join(artifactDirectory, name),
+      fullPage: false,
+    });
+  };
+  const assertSearchFieldThemeSurface = async (selector) => {
+    await page.waitForTimeout(160);
+    const fields = page.locator(selector);
+    const count = await fields.count();
+    assert.ok(count > 0, `${selector} must expose a search field`);
+    for (let index = 0; index < count; index += 1) {
+      const geometry = await fields.nth(index).evaluate((field) => {
+        const input = field.querySelector('input[type="search"]');
+        const probe = document.createElement('span');
+        probe.style.cssText =
+          'position:fixed;pointer-events:none;background:var(--surface);color:var(--ink)';
+        document.body.append(probe);
+        const fieldStyle = getComputedStyle(field);
+        const inputStyle = getComputedStyle(input);
+        const probeStyle = getComputedStyle(probe);
+        const fieldRect = field.getBoundingClientRect();
+        const inputRect = input.getBoundingClientRect();
+        const result = {
+          fieldBackground: fieldStyle.backgroundColor,
+          surfaceBackground: probeStyle.backgroundColor,
+          inputBackground: inputStyle.backgroundColor,
+          inputColor: inputStyle.color,
+          inkColor: probeStyle.color,
+          inputFits: inputRect.left >= fieldRect.left && inputRect.right <= fieldRect.right + 1,
+        };
+        probe.remove();
+        return result;
+      });
+      assert.equal(
+        geometry.fieldBackground,
+        geometry.surfaceBackground,
+        `${selector} must inherit the current theme surface`,
+      );
+      assert.ok(
+        ['transparent', 'rgba(0, 0, 0, 0)'].includes(geometry.inputBackground),
+        `${selector} input must not introduce a second surface`,
+      );
+      assert.equal(geometry.inputColor, geometry.inkColor, `${selector} text must use theme ink`);
+      assert.equal(geometry.inputFits, true, `${selector} input must remain inside its field`);
+    }
+  };
+  const assertFullWidthSelectValues = async (selector) => {
+    const selects = page.locator(selector);
+    const count = await selects.count();
+    assert.ok(count > 0, `${selector} must expose a custom select`);
+    for (let index = 0; index < count; index += 1) {
+      const geometry = await selects.nth(index).evaluate((select) => {
+        const wrapper = select.closest('.foundry-select');
+        const value = select.querySelector('.foundry-select-value');
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const selectRect = select.getBoundingClientRect();
+        const valueRect = value.getBoundingClientRect();
+        return {
+          widthDelta: Math.abs(wrapperRect.width - selectRect.width),
+          valueWidth: valueRect.width,
+          valueClipped: value.scrollWidth > value.clientWidth + 1,
+          valueFits: valueRect.left >= selectRect.left && valueRect.right <= selectRect.right + 1,
+        };
+      });
+      assert.ok(geometry.widthDelta <= 1, `${selector} trigger must fill its field`);
+      assert.ok(geometry.valueWidth >= 40, `${selector} value must receive the available width`);
+      assert.equal(geometry.valueClipped, false, `${selector} value must not be clipped`);
+      assert.equal(geometry.valueFits, true, `${selector} value must stay inside the trigger`);
+    }
+  };
+  const assertNoInternalHorizontalOverflow = async (label, selectors) => {
+    const overflow = await page.evaluate((queries) => {
+      const visible = (element) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none';
+      };
+      return queries.flatMap((selector) =>
+        [...document.querySelectorAll(selector)].filter(visible).map((element) => ({
+          selector,
+          overflow: Math.round((element.scrollWidth - element.clientWidth) * 100) / 100,
+        })),
+      );
+    }, selectors);
+    assert.ok(overflow.length > 0, `${label} must expose measurable workspace regions`);
+    for (const result of overflow) {
+      assert.ok(
+        result.overflow <= 1,
+        `${label} ${result.selector} must not overflow horizontally (${result.overflow}px)`,
+      );
+    }
+  };
   const assertAccessibleWorkspaceSurface = async () => {
     const audit = await page.evaluate(() => {
       const visible = (element) => {
@@ -335,11 +455,31 @@ try {
     assert.equal(audit.unlabeledButtons, 0, 'every visible icon button needs an accessible name');
     assert.equal(audit.oversizedIcons, 0, 'button icons must remain at or below 24px');
   };
+  const assertPersistentApplicationBar = async () => {
+    const geometry = await page.evaluate(() => {
+      const appBar = document.querySelector('.app-bar')?.getBoundingClientRect();
+      const workspace = document.querySelector('.workspace')?.getBoundingClientRect();
+      return {
+        appBarHeight: appBar?.height ?? 0,
+        appBarTop: appBar?.top ?? -1,
+        appBarBottom: appBar?.bottom ?? -1,
+        workspaceTop: workspace?.top ?? -1,
+      };
+    });
+    assert.equal(geometry.appBarHeight, 48, 'every workspace must retain the 48px app bar');
+    assert.equal(geometry.appBarTop, 0, 'the app bar must stay pinned to the top of the shell');
+    assert.equal(
+      geometry.workspaceTop,
+      geometry.appBarBottom,
+      'workspace content must begin directly below the app bar',
+    );
+  };
   const assertConnectedWorkspaceBrowser = async (selector) => {
     const geometry = await page.locator(selector).evaluate((element) => {
       const panel = element.getBoundingClientRect();
       const surface = element.closest('[data-mode-surface]');
       const header = surface?.querySelector(':scope > .mode-head');
+      const canvasHeader = document.querySelector('.canvas-context');
       const surfaceRect = surface?.getBoundingClientRect();
       const headerRect = header?.getBoundingClientRect();
       const search = element.querySelector('input[type="search"]')?.getBoundingClientRect();
@@ -347,6 +487,7 @@ try {
         leftDelta: surfaceRect ? Math.abs(panel.left - surfaceRect.left) : Number.POSITIVE_INFINITY,
         topDelta: headerRect ? Math.abs(panel.top - headerRect.bottom) : Number.POSITIVE_INFINITY,
         headerHeight: headerRect?.height ?? 0,
+        canvasHeaderHeight: canvasHeader?.getBoundingClientRect().height ?? 0,
         borderRadius: getComputedStyle(element).borderRadius,
         overflowsHorizontally: element.scrollWidth > element.clientWidth + 1,
         searchFits: search ? search.left >= panel.left && search.right <= panel.right + 1 : true,
@@ -354,7 +495,11 @@ try {
     });
     assert.ok(geometry.leftDelta <= 1, `${selector} must align to the workspace edge`);
     assert.ok(geometry.topDelta <= 1, `${selector} must begin directly below the workspace header`);
-    assert.equal(geometry.headerHeight, 80, `${selector} must share the 80px workspace header`);
+    assert.equal(
+      geometry.headerHeight,
+      geometry.canvasHeaderHeight,
+      `${selector} must match the Canvas header height`,
+    );
     assert.equal(geometry.borderRadius, '0px', `${selector} must not render as an inset card`);
     assert.equal(
       geometry.overflowsHorizontally,
@@ -362,9 +507,77 @@ try {
       `${selector} must not overflow horizontally`,
     );
     assert.equal(geometry.searchFits, true, `${selector} search must fit inside the panel`);
+    await assertPersistentApplicationBar();
     await assertAccessibleWorkspaceSurface();
   };
+  const assertCanvasFrameParity = async ({ surfaceSelector, shellSelector, regionSelectors }) => {
+    const geometry = await page.locator(surfaceSelector).evaluate(
+      (surface, { shellSelector: shellQuery, regionSelectors: regionQueries }) => {
+        const header = surface.querySelector(':scope > .mode-head');
+        const canvasHeader = document.querySelector('.canvas-context');
+        const shell = surface.querySelector(shellQuery);
+        const regions = regionQueries.map((query) => surface.querySelector(query));
+        const regionGeometry = regions.map((region) => {
+          const rect = region.getBoundingClientRect();
+          const style = getComputedStyle(region);
+          const directHeader = region.querySelector(':scope > header');
+          const headerRect = directHeader?.getBoundingClientRect();
+          return {
+            left: Math.round(rect.left),
+            right: Math.round(rect.right),
+            top: Math.round(rect.top),
+            borderLeft: Number.parseFloat(style.borderLeftWidth),
+            borderRight: Number.parseFloat(style.borderRightWidth),
+            borderRadius: style.borderRadius,
+            headerTop: headerRect ? Math.round(headerRect.top) : null,
+            headerBottom: headerRect ? Math.round(headerRect.bottom) : null,
+          };
+        });
+        return {
+          headerHeight: header.getBoundingClientRect().height,
+          canvasHeaderHeight: canvasHeader.getBoundingClientRect().height,
+          headerBorderBottom: Number.parseFloat(getComputedStyle(header).borderBottomWidth),
+          shellBorderTop: Number.parseFloat(getComputedStyle(shell).borderTopWidth),
+          regions: regionGeometry,
+        };
+      },
+      { shellSelector, regionSelectors },
+    );
+    assert.equal(geometry.headerHeight, geometry.canvasHeaderHeight);
+    assert.equal(geometry.headerBorderBottom, 1);
+    assert.equal(geometry.shellBorderTop, 0);
+    geometry.regions.forEach((region) => assert.equal(region.borderRadius, '0px'));
+    assert.equal(
+      new Set(geometry.regions.map((region) => region.top)).size,
+      1,
+      'workspace panes must share the same top boundary',
+    );
+    const paneHeaders = geometry.regions.filter((region) => region.headerTop !== null);
+    if (paneHeaders.length > 1) {
+      const headerTops = paneHeaders.map((region) => region.headerTop);
+      const headerBottoms = paneHeaders.map((region) => region.headerBottom);
+      assert.ok(
+        Math.max(...headerTops) - Math.min(...headerTops) <= 1,
+        `pane headers must share the same top boundary (${headerTops.join(', ')})`,
+      );
+      assert.ok(
+        Math.max(...headerBottoms) - Math.min(...headerBottoms) <= 1,
+        `pane header dividers must share the same baseline (${headerBottoms.join(', ')})`,
+      );
+    }
+    for (let index = 0; index < geometry.regions.length - 1; index += 1) {
+      const current = geometry.regions[index];
+      const next = geometry.regions[index + 1];
+      assert.equal(next.left - current.right, 0, 'workspace columns must connect without a gap');
+      assert.equal(
+        current.borderRight + next.borderLeft,
+        1,
+        'workspace columns must share exactly one divider',
+      );
+    }
+  };
   const assertSharedRailSelection = async (mode) => {
+    await page.waitForTimeout(160);
     const selection = await page.evaluate((activeMode) => {
       const active = [...document.querySelectorAll('.workspace-rail .rail-button.is-active')];
       const selected = active[0];
@@ -411,18 +624,19 @@ try {
   );
   const frame = page.locator('#preview-frame');
   assert.equal(await frame.getAttribute('data-viewport'), '1440 × 900');
+  await assertPersistentApplicationBar();
 
-  await page.screenshot({
-    path: join(artifactDirectory, 'canvas-light.png'),
-    fullPage: false,
-  });
+  await assertNoInternalHorizontalOverflow('Canvas at 1920px', [
+    '[data-mode-surface="canvas"]',
+    '#layers-dock',
+    '.canvas-wrap',
+    '#inspector-dock',
+  ]);
+  await captureWorkspace('canvas-light.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
-  await page.screenshot({
-    path: join(artifactDirectory, 'canvas-dark.png'),
-    fullPage: false,
-  });
+  await captureWorkspace('canvas-dark.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
@@ -430,18 +644,25 @@ try {
   await page.locator('.workspace-rail [data-workspace-mode="states"]').click();
   await page.getByRole('heading', { name: 'State Workbench' }).waitFor();
   await assertSharedRailSelection('states');
-  await assertConnectedWorkspaceBrowser('.state-matrix-panel');
-  await page.screenshot({
-    path: join(artifactDirectory, 'state-workbench-light.png'),
-    fullPage: false,
+  await assertConnectedWorkspaceBrowser('.state-matrix-panel', { matchesCanvasHeader: true });
+  await assertCanvasFrameParity({
+    surfaceSelector: '[data-mode-surface="states"]',
+    shellSelector: '.workbench-grid',
+    regionSelectors: ['.state-matrix-panel', '.state-preview-panel', '.state-verification-panel'],
   });
+  await assertFullWidthSelectValues('.state-matrix-panel .foundry-select-trigger');
+  await assertNoInternalHorizontalOverflow('State Workbench at 1920px', [
+    '[data-mode-surface="states"]',
+    '.state-matrix-panel',
+    '.state-preview-panel',
+    '.state-verification-panel',
+  ]);
+  await captureWorkspace('state-workbench-light.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
-  await page.screenshot({
-    path: join(artifactDirectory, 'state-workbench-dark.png'),
-    fullPage: false,
-  });
+  await assertFullWidthSelectValues('.state-matrix-panel .foundry-select-trigger');
+  await captureWorkspace('state-workbench-dark.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
@@ -450,7 +671,18 @@ try {
   await page.locator('#workspace-menu-trigger').click();
   await page.locator('#workspace-menu [data-workspace-mode="components"]').click();
   await page.getByRole('heading', { name: 'Component workshop' }).waitFor();
-  await assertConnectedWorkspaceBrowser('.component-workshop-browser');
+  await assertConnectedWorkspaceBrowser('.component-workshop-browser', {
+    matchesCanvasHeader: true,
+  });
+  await assertCanvasFrameParity({
+    surfaceSelector: '.component-workshop-mode',
+    shellSelector: '.component-workshop-shell',
+    regionSelectors: [
+      '.component-workshop-browser',
+      '.component-workshop-detail',
+      '.component-workshop-contract',
+    ],
+  });
   await page.getByRole('heading', { name: 'PrimaryAction' }).waitFor();
   assert.equal(await page.locator('.workshop-instance-row').count(), 2);
   assert.equal(await page.locator('.workshop-variant-row').count(), 2);
@@ -482,6 +714,13 @@ try {
     'responsive verification must use the component grid, not the outer workspace grid',
   );
   assert.equal(workshopGeometry.responsiveColumns, 3);
+  await assertSearchFieldThemeSurface('.component-workshop-browser > .search-field');
+  await assertNoInternalHorizontalOverflow('Component Workshop at 1920px', [
+    '.component-workshop-mode',
+    '.component-workshop-browser',
+    '.component-workshop-detail',
+    '.component-workshop-contract',
+  ]);
   await page.locator('.workshop-variant-row').filter({ hasText: 'Primary' }).click();
   assert.equal(await page.locator('.workshop-drift').getAttribute('data-drift-count'), '1');
   assert.match((await page.locator('.workshop-drift-list').textContent()) ?? '', /Save draft/);
@@ -495,17 +734,12 @@ try {
   await page.getByRole('button', { name: 'Repair 1 value' }).click();
   await page.locator('.workshop-drift[data-drift-count="0"]').waitFor();
 
-  await page.screenshot({
-    path: join(artifactDirectory, 'component-workshop-light.png'),
-    fullPage: false,
-  });
+  await captureWorkspace('component-workshop-light.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
-  await page.screenshot({
-    path: join(artifactDirectory, 'component-workshop-dark.png'),
-    fullPage: false,
-  });
+  await assertSearchFieldThemeSurface('.component-workshop-browser > .search-field');
+  await captureWorkspace('component-workshop-dark.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
@@ -526,14 +760,26 @@ try {
   assert.ok(compactWorkshopGeometry.detailOverflow <= 1);
   assert.equal(compactWorkshopGeometry.responsiveColumns, 1);
   assert.equal(compactWorkshopGeometry.footerBottom, compactWorkshopGeometry.surfaceBottom);
-  await page.screenshot({
-    path: join(artifactDirectory, 'component-workshop-compact-light.png'),
-    fullPage: false,
-  });
+  await assertNoInternalHorizontalOverflow('Component Workshop at 1280px', [
+    '.component-workshop-mode',
+    '.component-workshop-browser',
+    '.component-workshop-detail',
+    '.component-workshop-contract',
+  ]);
+  await captureWorkspace('component-workshop-compact-light.png');
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.locator('.workspace-rail [data-workspace-mode="memory"]').click();
   await page.getByRole('heading', { name: 'Design Memory' }).waitFor();
-  await assertConnectedWorkspaceBrowser('.decision-memory-browser');
+  await assertConnectedWorkspaceBrowser('.decision-memory-browser', { matchesCanvasHeader: true });
+  await assertCanvasFrameParity({
+    surfaceSelector: '.decision-memory-mode',
+    shellSelector: '.decision-memory-shell',
+    regionSelectors: [
+      '.decision-memory-browser',
+      '.decision-memory-stage',
+      '.decision-memory-capture',
+    ],
+  });
   assert.equal(await page.locator('.decision-memory-row').count(), 1);
   assert.match(
     (await page.locator('.decision-relevance').textContent()) ?? '',
@@ -549,18 +795,19 @@ try {
     .frameLocator('#product-preview')
     .locator('html[data-foundry-decision="approved"]')
     .waitFor();
-  await page.waitForTimeout(1900);
-  await page.screenshot({
-    path: join(artifactDirectory, 'design-decision-memory-light.png'),
-    fullPage: false,
-  });
+  await assertSearchFieldThemeSurface('.decision-memory-browser > .search-field');
+  await assertNoInternalHorizontalOverflow('Design Memory at 1920px', [
+    '.decision-memory-mode',
+    '.decision-memory-browser',
+    '.decision-memory-stage',
+    '.decision-memory-capture',
+  ]);
+  await captureWorkspace('design-decision-memory-light.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
-  await page.screenshot({
-    path: join(artifactDirectory, 'design-decision-memory-dark.png'),
-    fullPage: false,
-  });
+  await assertSearchFieldThemeSurface('.decision-memory-browser > .search-field');
+  await captureWorkspace('design-decision-memory-dark.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
@@ -597,27 +844,28 @@ try {
   assert.equal(recipeGeometry.createRadius, '0px');
   assert.ok(recipeGeometry.stageOverflow <= 1);
   assert.ok(recipeGeometry.createOverflow <= 1);
+  await assertSearchFieldThemeSurface('.visual-recipe-browser > .search-field');
+  await assertNoInternalHorizontalOverflow('Visual Recipes at 1920px', [
+    '.visual-recipes-mode',
+    '.visual-recipe-browser',
+    '.visual-recipe-stage',
+    '.visual-recipe-create',
+  ]);
   await page.getByRole('button', { name: 'Add mapped values to Review' }).click();
   await page
     .frameLocator('#product-preview')
     .locator('html[data-foundry-recipe="recipe-focus"]')
     .waitFor();
-  await page.waitForTimeout(1900);
   assert.equal(
     await page.frameLocator('#product-preview').locator('html').getAttribute('data-foundry-recipe'),
     'recipe-focus',
   );
-  await page.screenshot({
-    path: join(artifactDirectory, 'visual-recipes-light.png'),
-    fullPage: false,
-  });
+  await captureWorkspace('visual-recipes-light.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
-  await page.screenshot({
-    path: join(artifactDirectory, 'visual-recipes-dark.png'),
-    fullPage: false,
-  });
+  await assertSearchFieldThemeSurface('.visual-recipe-browser > .search-field');
+  await captureWorkspace('visual-recipes-dark.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
@@ -649,10 +897,13 @@ try {
   assert.ok(compactRecipeGeometry.createOverflow <= 1);
   assert.equal(compactRecipeGeometry.mappingColumns, 4);
   assert.equal(compactRecipeGeometry.reviewVisible, true);
-  await page.screenshot({
-    path: join(artifactDirectory, 'visual-recipes-compact-light.png'),
-    fullPage: false,
-  });
+  await assertNoInternalHorizontalOverflow('Visual Recipes at 1280px', [
+    '.visual-recipes-mode',
+    '.visual-recipe-browser',
+    '.visual-recipe-stage',
+    '.visual-recipe-create',
+  ]);
+  await captureWorkspace('visual-recipes-compact-light.png');
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.locator('.workspace-rail [data-workspace-mode="agent"]').click();
   await page.getByRole('heading', { name: 'Visual agent' }).waitFor();
@@ -746,17 +997,17 @@ try {
     Math.abs(visualAgentGeometry.verificationWidth - visualAgentGeometry.proposalGridWidth) <= 2,
   );
   assert.equal(visualAgentGeometry.reviewVisible, true);
-  await page.screenshot({
-    path: join(artifactDirectory, 'visual-agent-light.png'),
-    fullPage: false,
-  });
+  await assertNoInternalHorizontalOverflow('Visual Agent at 1920px', [
+    '.visual-agent-mode',
+    '.visual-agent-threads',
+    '.visual-agent-conversation',
+    '.visual-agent-compose',
+  ]);
+  await captureWorkspace('visual-agent-light.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
-  await page.screenshot({
-    path: join(artifactDirectory, 'visual-agent-dark.png'),
-    fullPage: false,
-  });
+  await captureWorkspace('visual-agent-dark.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
@@ -785,17 +1036,28 @@ try {
   assert.equal(compactVisualAgentGeometry.conversationComposeGap, 0);
   assert.ok(compactVisualAgentGeometry.conversationOverflow <= 1);
   assert.equal(compactVisualAgentGeometry.reviewVisible, true);
-  await page.screenshot({
-    path: join(artifactDirectory, 'visual-agent-compact-light.png'),
-    fullPage: false,
+  await assertNoInternalHorizontalOverflow('Visual Agent at 1280px', [
+    '.visual-agent-mode',
+    '.visual-agent-threads',
+    '.visual-agent-conversation',
+    '.visual-agent-compose',
+  ]);
+  await captureWorkspace('visual-agent-compact-light.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await captureWorkspace('visual-agent-compact-dark.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
   });
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.locator('.workspace-rail [data-workspace-mode="system"]').click();
-  await page.getByRole('heading', { name: 'System', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Design System', exact: true }).waitFor();
   await assertConnectedWorkspaceBrowser('.design-system-browser');
   assert.match((await page.locator('#design-system-status').textContent()) ?? '', /1 token/);
   assert.match((await page.locator('#design-system-status').textContent()) ?? '', /1 promotion/);
   assert.equal(await page.locator('.design-token-row').count(), 1);
+  await page.locator('.design-token-row').waitFor({ state: 'visible' });
   assert.equal(await page.getByText('--preview-width', { exact: true }).count(), 0);
   assert.equal(
     await page
@@ -844,16 +1106,33 @@ try {
     .frameLocator('#product-preview')
     .locator('html[data-staged-token-promotion="promotion-color-signal"]')
     .waitFor();
-  await page.screenshot({
-    path: join(artifactDirectory, 'design-system-light.png'),
-    fullPage: false,
-  });
+  await assertSearchFieldThemeSurface('.design-system-browser > .search-field');
+  await assertNoInternalHorizontalOverflow('Design System at 1920px', [
+    '.design-system-mode',
+    '.design-system-browser',
+    '.design-system-detail',
+  ]);
+  await captureWorkspace('design-system-light.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
-  await page.screenshot({
-    path: join(artifactDirectory, 'design-system-dark.png'),
-    fullPage: false,
+  await assertSearchFieldThemeSurface('.design-system-browser > .search-field');
+  await captureWorkspace('design-system-dark.png');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await assertNoInternalHorizontalOverflow('Design System at 1280px', [
+    '.design-system-mode',
+    '.design-system-browser',
+    '.design-system-detail',
+  ]);
+  await captureWorkspace('design-system-compact-dark.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+  await assertSearchFieldThemeSurface('.design-system-browser > .search-field');
+  await captureWorkspace('design-system-compact-light.png');
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
   });
   await page.locator('.workspace-rail [data-workspace-mode="responsive"]').click();
   await page.getByRole('heading', { name: 'Responsive design lab' }).waitFor();
@@ -950,20 +1229,43 @@ try {
     responsiveDarkSelection.selection,
     'dark responsive selection must use the orange system accent',
   );
-  await page.screenshot({
-    path: join(artifactDirectory, 'responsive-design-lab-dark.png'),
-    fullPage: false,
-  });
+  await assertNoInternalHorizontalOverflow('Responsive Design Lab at 1920px', [
+    '.responsive-lab-mode',
+    '.responsive-lab-controls',
+    '.responsive-boundaries',
+    '.responsive-comparison',
+    '.responsive-viewport-grid',
+  ]);
+  await captureWorkspace('responsive-design-lab-dark.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
-  await page.screenshot({
-    path: join(artifactDirectory, 'responsive-design-lab-light.png'),
-    fullPage: false,
+  await captureWorkspace('responsive-design-lab-light.png');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await assertNoInternalHorizontalOverflow('Responsive Design Lab at 1280px', [
+    '.responsive-lab-mode',
+    '.responsive-lab-controls',
+    '.responsive-boundaries',
+    '.responsive-comparison',
+    '.responsive-viewport-grid',
+  ]);
+  await captureWorkspace('responsive-design-lab-compact-light.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await captureWorkspace('responsive-design-lab-compact-dark.png');
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
   });
   await page.locator('.workspace-rail [data-workspace-mode="health"]').click();
   await page.getByRole('heading', { name: 'Content Stress Lab' }).waitFor();
-  await assertConnectedWorkspaceBrowser('.stress-lab-browser');
+  await assertConnectedWorkspaceBrowser('.stress-lab-browser', { matchesCanvasHeader: true });
+  await assertCanvasFrameParity({
+    surfaceSelector: '.stress-lab-mode',
+    shellSelector: '.stress-lab-shell',
+    regionSelectors: ['.stress-lab-browser', '.stress-result-toolbar', '.stress-summary-grid'],
+  });
   await page
     .frameLocator('[data-responsive-frame="custom"]')
     .locator('main')
@@ -980,6 +1282,41 @@ try {
         }),
     );
   assert.equal(await page.locator('.stress-profile').count(), 3);
+  const stressScopeGeometry = await page.evaluate(() => {
+    const scope = document.querySelector('.stress-scope');
+    const structureTabs = document.querySelector('.layers-dock .segmented');
+    const firstProfile = document.querySelector('.stress-profile');
+    if (
+      !(scope instanceof HTMLElement) ||
+      !(structureTabs instanceof HTMLElement) ||
+      !(firstProfile instanceof HTMLElement)
+    )
+      return null;
+    const scopeRect = scope.getBoundingClientRect();
+    const profileRect = firstProfile.getBoundingClientRect();
+    const scopeStyle = getComputedStyle(scope);
+    const structureStyle = getComputedStyle(structureTabs);
+    return {
+      height: scopeRect.height,
+      scopeBottom: scopeRect.bottom,
+      profileTop: profileRect.top,
+      columns: scopeStyle.gridTemplateColumns.split(' ').length,
+      referenceHeight: structureTabs.getBoundingClientRect().height,
+      padding: scopeStyle.padding,
+      referencePadding: structureStyle.padding,
+      background: scopeStyle.backgroundColor,
+      referenceBackground: structureStyle.backgroundColor,
+    };
+  });
+  assert.ok(stressScopeGeometry, 'stress scope and profile geometry must be measurable');
+  assert.equal(stressScopeGeometry.height, stressScopeGeometry.referenceHeight);
+  assert.equal(stressScopeGeometry.padding, stressScopeGeometry.referencePadding);
+  assert.equal(stressScopeGeometry.background, stressScopeGeometry.referenceBackground);
+  assert.equal(stressScopeGeometry.columns, 2);
+  assert.ok(
+    stressScopeGeometry.profileTop >= stressScopeGeometry.scopeBottom,
+    'stress scope must not overlap the content rows below it',
+  );
   await page.getByRole('button', { name: /Long content/ }).click();
   await page.getByRole('button', { name: /Keyboard only/ }).click();
   await page.locator('#apply-stress').click();
@@ -995,10 +1332,13 @@ try {
     (await page.locator('.stress-finding-card').first().textContent()) ?? '',
     /PrimaryAction\.tsx:1/,
   );
-  await page.screenshot({
-    path: join(artifactDirectory, 'content-accessibility-lab-light.png'),
-    fullPage: false,
-  });
+  await assertNoInternalHorizontalOverflow('Content Stress Lab at 1920px', [
+    '.stress-lab-mode',
+    '.stress-lab-browser',
+    '.stress-result-toolbar',
+    '.stress-summary-grid',
+  ]);
+  await captureWorkspace('content-accessibility-lab-light.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
@@ -1027,10 +1367,7 @@ try {
   assert.equal(stressDarkSelection.border, stressDarkSelection.selection);
   assert.equal(stressDarkSelection.background, stressDarkSelection.selectionSoft);
   assert.equal(stressDarkSelection.iconColor, stressDarkSelection.selection);
-  await page.screenshot({
-    path: join(artifactDirectory, 'content-accessibility-lab-dark.png'),
-    fullPage: false,
-  });
+  await captureWorkspace('content-accessibility-lab-dark.png');
   await page.getByRole('button', { name: 'Source' }).click();
   assert.match(
     (await page.locator('.stress-finding-group > header').first().textContent()) ?? '',
@@ -1050,12 +1387,22 @@ try {
   await page.locator('.workspace-rail [data-workspace-mode="motion"]').click();
   await page.getByRole('heading', { name: 'Motion studio' }).waitFor();
   await assertConnectedWorkspaceBrowser('.motion-studio-browser');
+  assert.equal(
+    await page.locator('#motion-studio-properties').evaluate((element) => element.scrollTop),
+    0,
+    'Motion properties must open at the beginning of the editing flow',
+  );
   assert.equal(await page.locator('.motion-studio-row').count(), 1);
   assert.equal(await page.locator('.motion-studio-track').count(), 2);
   assert.equal(await page.locator('.motion-curve-editor').count(), 1);
   assert.equal(await page.locator('[data-curve-handle]').count(), 2);
   assert.equal(await page.locator('.motion-path-editor').count(), 1);
   assert.equal(await page.locator('[data-path-point]').count(), 2);
+  assert.equal(await page.locator('.motion-path-graph svg').getAttribute('role'), 'group');
+  assert.equal(await page.locator('.motion-curve-graph svg').getAttribute('role'), 'group');
+  for (const handle of await page.locator('[data-curve-handle], [data-path-point]').all()) {
+    assert.notEqual(await handle.getAttribute('aria-valuenow'), null);
+  }
   assert.equal(await page.locator('.motion-comparison').count(), 1);
   assert.equal(await page.locator('[data-comparison-dot]').count(), 2);
   assert.equal(await page.locator('[data-native-adapter="motion"]').count(), 1);
@@ -1099,6 +1446,12 @@ try {
   assert.equal(motionGeometry.stageRadius, '0px');
   assert.equal(motionGeometry.canvasRadius, '0px');
   assert.ok(motionGeometry.sectionRadii.every((radius) => radius === '0px'));
+  await assertNoInternalHorizontalOverflow('Motion Studio at 1920px', [
+    '.motion-studio-mode',
+    '.motion-studio-browser',
+    '.motion-studio-stage',
+    '.motion-studio-properties',
+  ]);
   assert.match(
     (await page.locator('.motion-native-source').textContent()) ?? '',
     /Motion for React.*transition\.duration.*animate \/ variants/s,
@@ -1139,17 +1492,11 @@ try {
       .locator('.motion-curve-preview-dot')
       .evaluate((node) => node.classList.contains('is-playing')),
   );
-  await page.screenshot({
-    path: join(artifactDirectory, 'motion-studio-light.png'),
-    fullPage: false,
-  });
+  await captureWorkspace('motion-studio-light.png', { waitForToasts: false });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
-  await page.screenshot({
-    path: join(artifactDirectory, 'motion-studio-dark.png'),
-    fullPage: false,
-  });
+  await captureWorkspace('motion-studio-dark.png', { waitForToasts: false });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
@@ -1177,14 +1524,18 @@ try {
   assert.equal(compactMotionGeometry.stagePropertiesGap, 0);
   assert.ok(compactMotionGeometry.stageOverflow <= 1);
   assert.ok(compactMotionGeometry.propertiesOverflow <= 1);
-  await page.screenshot({
-    path: join(artifactDirectory, 'motion-studio-compact-light.png'),
-    fullPage: false,
-  });
-  await page.setViewportSize({ width: 1920, height: 1080 });
+  await assertNoInternalHorizontalOverflow('Motion Studio at 1280px', [
+    '.motion-studio-mode',
+    '.motion-studio-browser',
+    '.motion-studio-stage',
+    '.motion-studio-properties',
+  ]);
+  await captureWorkspace('motion-studio-compact-light.png', { waitForToasts: false });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
+  await captureWorkspace('motion-studio-compact-dark.png', { waitForToasts: false });
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await page.locator('.workspace-rail [data-workspace-mode="typography"]').click();
   await page.getByRole('heading', { name: 'Typography studio' }).waitFor();
   await assertConnectedWorkspaceBrowser('.typography-studio-browser');
@@ -1247,22 +1598,24 @@ try {
   assert.equal(typographyGeometry.specimenJustify, 'center');
   assert.equal(typographyGeometry.specimenTextAlign, 'center');
   assert.ok(typographyGeometry.sectionRadii.every((radius) => radius === '0px'));
+  await assertSearchFieldThemeSurface('.typography-studio-browser > .search-field');
+  await assertNoInternalHorizontalOverflow('Typography Studio at 1920px', [
+    '.typography-studio-mode',
+    '.typography-studio-browser',
+    '.typography-studio-stage',
+    '.typography-studio-properties',
+  ]);
   assert.match(
     (await page.locator('#typography-studio-properties').textContent()) ?? '',
     /Rendered type is stable/,
   );
   await page.locator('[data-treatment-id="balanced"]').click();
-  await page.screenshot({
-    path: join(artifactDirectory, 'typography-studio-dark.png'),
-    fullPage: false,
-  });
+  await captureWorkspace('typography-studio-dark.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
-  await page.screenshot({
-    path: join(artifactDirectory, 'typography-studio-light.png'),
-    fullPage: false,
-  });
+  await assertSearchFieldThemeSurface('.typography-studio-browser > .search-field');
+  await captureWorkspace('typography-studio-light.png');
   await page.setViewportSize({ width: 1280, height: 800 });
   const compactTypographyGeometry = await page
     .locator('.typography-studio-mode')
@@ -1297,9 +1650,19 @@ try {
   assert.ok(compactTypographyGeometry.propertiesOverflow <= 1);
   assert.equal(compactTypographyGeometry.specimenHeight, 240);
   assert.equal(compactTypographyGeometry.treatmentColumns, 3);
-  await page.screenshot({
-    path: join(artifactDirectory, 'typography-studio-compact-light.png'),
-    fullPage: false,
+  await assertNoInternalHorizontalOverflow('Typography Studio at 1280px', [
+    '.typography-studio-mode',
+    '.typography-studio-browser',
+    '.typography-studio-stage',
+    '.typography-studio-properties',
+  ]);
+  await captureWorkspace('typography-studio-compact-light.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await captureWorkspace('typography-studio-compact-dark.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
   });
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.locator('.workspace-rail [data-workspace-mode="branches"]').click();
@@ -1371,17 +1734,17 @@ try {
   assert.equal(branchGeometry.footerCount, 0);
   assert.equal(await page.locator('#design-branch-compose').isVisible(), true);
   assert.equal(await page.getByRole('button', { name: 'Return to main' }).isVisible(), true);
-  await page.screenshot({
-    path: join(artifactDirectory, 'design-branches-light.png'),
-    fullPage: false,
-  });
+  await assertNoInternalHorizontalOverflow('Design Branches at 1920px', [
+    '.design-branches-mode',
+    '.design-branch-browser',
+    '.design-branch-stage',
+    '.design-branch-detail',
+  ]);
+  await captureWorkspace('design-branches-light.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
-  await page.screenshot({
-    path: join(artifactDirectory, 'design-branches-dark.png'),
-    fullPage: false,
-  });
+  await captureWorkspace('design-branches-dark.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
@@ -1413,9 +1776,19 @@ try {
   assert.ok(compactBranchGeometry.detailOverflow <= 1);
   assert.equal(compactBranchGeometry.previewCount, 2);
   assert.equal(compactBranchGeometry.decisionActionsVisible, true);
-  await page.screenshot({
-    path: join(artifactDirectory, 'design-branches-compact-light.png'),
-    fullPage: false,
+  await assertNoInternalHorizontalOverflow('Design Branches at 1280px', [
+    '.design-branches-mode',
+    '.design-branch-browser',
+    '.design-branch-stage',
+    '.design-branch-detail',
+  ]);
+  await captureWorkspace('design-branches-compact-light.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await captureWorkspace('design-branches-compact-dark.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
   });
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.getByRole('button', { name: 'Return to main' }).click();
@@ -1436,14 +1809,29 @@ try {
   assert.deepEqual(pageErrors, []);
   await assertAccessibleWorkspaceSurface();
 
-  await page.screenshot({ path: join(artifactDirectory, 'review-light.png'), fullPage: false });
+  await captureWorkspace('review-light.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
-  await page.screenshot({ path: join(artifactDirectory, 'review-dark.png'), fullPage: false });
+  await captureWorkspace('review-dark.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
+  await page.setViewportSize({ width: 1024, height: 900 });
+  const compactReviewGeometry = await page.locator('.review-workspace').evaluate((workspace) => ({
+    columns: getComputedStyle(workspace).gridTemplateColumns.split(' ').length,
+    overflow: workspace.scrollWidth - workspace.clientWidth,
+  }));
+  assert.equal(compactReviewGeometry.columns, 1, 'compact Review must collapse to one column');
+  assert.ok(compactReviewGeometry.overflow <= 1, 'compact Review must not clip controls');
+  await assertNoInternalHorizontalOverflow('Review at 1024px', [
+    '[data-mode-surface="review"]',
+    '.review-workspace',
+    '.review-list',
+    '.review-summary',
+  ]);
+  await captureWorkspace('review-compact-light.png');
+  await page.setViewportSize({ width: 1920, height: 1080 });
 
   const reviewSession = await store.read(sessionId);
   const applyChanges = reviewSession.changeSet.changes.filter(
@@ -1456,13 +1844,106 @@ try {
   await page.locator('#apply-run:not([hidden])').waitFor();
   await page.getByRole('heading', { name: 'Apply and verify', exact: true }).first().waitFor();
   await assertAccessibleWorkspaceSurface();
-  await page.screenshot({ path: join(artifactDirectory, 'apply-light.png'), fullPage: false });
+  await captureWorkspace('apply-light.png');
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
-  await page.screenshot({ path: join(artifactDirectory, 'apply-dark.png'), fullPage: false });
+  await captureWorkspace('apply-dark.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+  await page.setViewportSize({ width: 1024, height: 900 });
+  const compactApplyGeometry = await page.locator('.apply-workspace').evaluate((workspace) => ({
+    columns: getComputedStyle(workspace).gridTemplateColumns.split(' ').length,
+    overflow: workspace.scrollWidth - workspace.clientWidth,
+  }));
+  assert.equal(compactApplyGeometry.columns, 1, 'compact Apply must collapse to one column');
+  assert.ok(compactApplyGeometry.overflow <= 1, 'compact Apply must not clip controls');
+  await assertNoInternalHorizontalOverflow('Apply at 1024px', [
+    '#apply-run',
+    '.apply-workspace',
+    '.apply-status-group',
+    '.apply-evidence',
+  ]);
+  await captureWorkspace('apply-compact-light.png');
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  let deliverySession = await store.read(sessionId);
+  const deliveryRun = deliverySession.applyRuns.at(-1);
+  deliverySession = await store.claimApplyRun(sessionId, deliveryRun.id, {
+    agent: { name: 'codex', version: 'e2e' },
+    revision: 'workspace-e2e',
+    designGraphRevision: 'workspace-e2e',
+  });
+  const deliveryClaim = deliverySession.applyRuns.at(-1).claimAttemptId;
+  await store.updateApplyRun(sessionId, deliveryRun.id, {
+    state: 'applying',
+    message: 'Applying the reviewed delivery batch.',
+    claimAttemptId: deliveryClaim,
+  });
+  await store.updateApplyRun(sessionId, deliveryRun.id, {
+    state: 'rebuilding',
+    changedFiles: ['PrimaryAction.tsx'],
+    validationResults: [{ name: 'workspace build', passed: true }],
+    claimAttemptId: deliveryClaim,
+  });
+  await store.updateApplyRun(sessionId, deliveryRun.id, {
+    state: 'verifying',
+    claimAttemptId: deliveryClaim,
+  });
+  deliverySession = await store.addVerifications(
+    sessionId,
+    applyChanges.map((change) => ({
+      changeId: change.id,
+      property: change.property,
+      requested: change.after,
+      rendered: change.after,
+      passed: true,
+      reason: 'Rendered value matches the reviewed value.',
+      verifiedAt: new Date().toISOString(),
+    })),
+    deliveryRun.id,
+  );
+  await store.createDeliveryMilestone(sessionId, {
+    name: 'Workspace refinement',
+    summary: 'Verified interaction and presentation refinements.',
+    entryIds: deliverySession.designHistory.map((entry) => entry.id),
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('.workspace-rail [data-workspace-mode="delivery"]').click();
+  await page.getByRole('heading', { name: 'Delivery', exact: true }).waitFor();
+  assert.equal(await page.locator('.delivery-record-row').count(), 1);
+  assert.equal(await page.locator('.delivery-record-detail').isVisible(), true);
+  await assertAccessibleWorkspaceSurface();
+  await captureWorkspace('delivery-handoff-light.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await captureWorkspace('delivery-handoff-dark.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+  await page.getByRole('button', { name: 'Refresh documentation' }).click();
+  await page.getByRole('tab', { name: 'Documentation' }).waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('.delivery-document-row').length >= 2);
+  assert.ok((await page.locator('.delivery-document-row').count()) >= 2);
+  await captureWorkspace('delivery-documentation-light.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await captureWorkspace('delivery-documentation-dark.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+  await page.getByRole('tab', { name: 'History' }).click();
+  await page.getByText('Workspace refinement').waitFor();
+  assert.equal(await page.locator('.delivery-timeline article').count(), 1);
+  await captureWorkspace('delivery-history-light.png');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await captureWorkspace('delivery-history-dark.png');
   console.log(
-    'Workspace Playwright flow passed: session, native viewport, Canvas, State Workbench, Component Workshop, System, Responsive Lab, Content and Accessibility Lab, Motion Studio, Typography Studio, Design Branches, change summary, Review, and Apply.',
+    'Workspace Playwright flow passed: session, native viewport, Canvas, State Workbench, Component Workshop, Design System, Responsive Lab, Content and Accessibility Lab, Motion Studio, Typography Studio, Design Branches, change summary, Review, Apply, and Delivery.',
   );
 } finally {
   await browser?.close();

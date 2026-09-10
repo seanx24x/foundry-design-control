@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0-beta.20 - 2026-09-10
+
+- Added Foundry Delivery with versioned handoff records, editable engineering intent, deterministic evidence, acceptance criteria, risks, and questions created at the reviewed Apply boundary.
+- Added source-backed documentation generation, freshness tracking, immutable verified design history, delivery milestones, and conflict-safe repository, Markdown, and JSON exports.
+- Unified every workspace around the persistent 48px application bar, connected panel geometry, shared dividers, compact controls, consistent search fields, and aligned empty states.
+- Refined all studios, Review, Apply, and Delivery across light, dark, 1920px, and compact layouts with stable scroll geometry and no clipped or duplicated controls.
+- Preserved drafts, focus, selection, scroll, motion editing, and canvas interaction across live session polling while separating runtime, preview, and agent-listener readiness.
+- Improved keyboard safety, landmark structure, motion control semantics, contrast, reduced-motion behavior, and automated visual and overflow regression coverage.
+
 ## 0.2.0-beta.17 - 2026-09-05
 
 - Added Component Workshop for inspecting live instances, variants, interaction states, and source-safe edit scopes.

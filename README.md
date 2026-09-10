@@ -10,7 +10,7 @@ Design Branches keeps parallel visual directions isolated inside one local sessi
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
-> **Current public beta:** `0.2.0-beta.19`. Both npm `latest` and `beta` resolve to this release.
+> **Current public beta:** `0.2.0-beta.20`. Both npm `latest` and `beta` resolve to this release.
 
 Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 
@@ -141,7 +141,7 @@ If an npm mirror or existing `npx` cache reports an old tag, bypass it with a te
 
 ```bash
 FOUNDRY_NPX_CACHE="$(mktemp -d)"
-npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.19 foundry-design
+npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.20 foundry-design
 ```
 
 The beta supports Node.js 20 or newer. Read the [local-first safety model](https://withfoundry.ai/#safety) before using it with sensitive work.
@@ -187,10 +187,34 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 - Local MCP bridge for agent access
 - Debug adapters for web, SwiftUI, and React Native on iOS Simulator
 - Verification records that compare requested and rendered values
+- A full-screen Delivery workspace with Handoff, Documentation, and History views
+- Versioned Delivery Records created at the reviewed Apply boundary and promoted to verified only after every rendered check passes
+- Source-backed component, system, and screen documentation with explicit current, stale, and conflicted freshness states
+- Immutable verified design history and milestone grouping that excludes failed, cancelled, and interrupted Apply runs
+- Conflict-safe repository export with Markdown, JSON, a pull-request brief, local evidence manifests, and no overwrite of human-edited generated documentation
 
 The review surface explains the blast radius of every proposed change, including component instance count, token versus literal use, responsive and theme scope, and unresolved mapping risk. It never applies a source change merely because a preview override looks correct.
 
 Foundry protocol `1.2.0` reads existing `1.0.0` and `1.1.0` sessions with migration defaults. All graph, operation, run, and verification data remains local and is available through `foundry-design export --format full`.
+
+### Delivery export
+
+Every reviewed Apply batch creates a local Delivery Record. Its deterministic evidence remains read-only while its intent, risks, questions, and engineering summary can be refined. The record moves through `draft`, `ready`, `implementing`, `verified`, and `superseded`; only verified records enter Design History.
+
+From the Delivery workspace, **Export** copies the explicit repository command for the selected record:
+
+```bash
+npx foundry-design delivery export <DELIVERY_ID> --format repo --output /path/to/project
+```
+
+Repository export writes only below `docs/foundry/`: a managed manifest, handoff Markdown and JSON, a pull-request brief, component and feature documentation, internal history, milestones, and a local evidence manifest. Foundry never replaces the project root `CHANGELOG.md`. If a previously generated file was edited outside Foundry, export stops before writing anything and reports the conflict.
+
+Portable single-record exports are also available:
+
+```bash
+npx foundry-design delivery export <DELIVERY_ID> --format markdown --output handoff.md
+npx foundry-design delivery export <DELIVERY_ID> --format json --output handoff.json
+```
 
 ## Local development
 

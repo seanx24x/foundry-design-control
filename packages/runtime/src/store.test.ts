@@ -461,6 +461,13 @@ test('reviews, claims, applies, and verifies one idempotent apply run', async ()
   );
   assert.equal(stored.applyRuns[0]?.state, 'passed');
   assert.equal(stored.changeSet.changes[0]?.status, 'applied');
+  assert.equal(stored.deliveryRecords.length, 1);
+  assert.equal(stored.deliveryRecords[0]?.status, 'verified');
+  assert.equal(stored.deliveryRecords[0]?.acceptanceCriteria[0]?.status, 'passed');
+  assert.equal(stored.designHistory.length, 1);
+  assert.equal(stored.designHistory[0]?.applyRunId, runId);
+  stored = await store.addVerifications(session.changeSet.sessionId, []);
+  assert.equal(stored.designHistory.length, 1);
 });
 
 test('blocks a stale revision and allows an explicit retry', async () => {
@@ -475,6 +482,8 @@ test('blocks a stale revision and allows an explicit retry', async () => {
     revision: 'rev-2',
   });
   assert.equal(stored.applyRuns[0]?.state, 'needs_attention');
+  assert.equal(stored.designHistory.length, 0);
+  assert.notEqual(stored.deliveryRecords[0]?.status, 'verified');
   stored = await store.retryApplyRun(session.changeSet.sessionId, first.id);
   const retry = stored.applyRuns[1]!;
   assert.equal(retry.attempts, 2);

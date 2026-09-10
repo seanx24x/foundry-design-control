@@ -98,6 +98,10 @@ function publicSession(stored: StoredSession): Omit<StoredSession, 'token'> {
     designBranchRecords: stored.designBranchRecords,
     activeDesignBranchId: stored.activeDesignBranchId,
     visualAgentRequests: stored.visualAgentRequests,
+    deliveryRecords: stored.deliveryRecords,
+    documentationPages: stored.documentationPages,
+    designHistory: stored.designHistory,
+    deliveryMilestones: stored.deliveryMilestones,
   };
 }
 
@@ -440,6 +444,67 @@ export class FoundryRuntime {
           const updated = await this.store.addVerifications(id, input.results, input.runId);
           sendJson(response, 200, publicSession(updated));
           return;
+        }
+        if (parts[3] === 'delivery-records') {
+          if (request.method === 'GET' && parts.length === 4) {
+            sendJson(response, 200, { records: stored.deliveryRecords });
+            return;
+          }
+          if (request.method === 'PATCH' && parts[4]) {
+            const updated = await this.store.updateDeliveryRecord(
+              id,
+              parts[4],
+              (await body(request)) as Parameters<SessionStore['updateDeliveryRecord']>[2],
+            );
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+        }
+        if (parts[3] === 'documentation') {
+          if (request.method === 'GET') {
+            sendJson(response, 200, { pages: stored.documentationPages });
+            return;
+          }
+          if (request.method === 'POST' && parts[4] === 'generate') {
+            const updated = await this.store.generateDocumentation(id);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+          if (request.method === 'POST' && parts[4] === 'drift') {
+            const input = (await body(request)) as { changedFiles?: string[] };
+            const updated = await this.store.markDocumentationDrift(id, input.changedFiles ?? []);
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
+        }
+        if (parts[3] === 'design-history' && request.method === 'GET') {
+          sendJson(response, 200, { entries: stored.designHistory });
+          return;
+        }
+        if (parts[3] === 'delivery-milestones') {
+          if (request.method === 'GET' && parts.length === 4) {
+            sendJson(response, 200, { milestones: stored.deliveryMilestones });
+            return;
+          }
+          if (request.method === 'POST' && parts.length === 4) {
+            const input = (await body(request)) as {
+              name: string;
+              summary?: string;
+              entryIds?: string[];
+            };
+            const updated = await this.store.createDeliveryMilestone(id, input);
+            sendJson(response, 201, publicSession(updated));
+            return;
+          }
+          if (request.method === 'PATCH' && parts[4]) {
+            const updated = await this.store.updateDeliveryMilestone(
+              id,
+              parts[4],
+              (await body(request)) as Parameters<SessionStore['updateDeliveryMilestone']>[2],
+            );
+            sendJson(response, 200, publicSession(updated));
+            return;
+          }
         }
         if (parts[3] === 'apply-runs') {
           if (request.method === 'GET' && parts.length === 4) {

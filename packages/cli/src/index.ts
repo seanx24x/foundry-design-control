@@ -7,7 +7,7 @@ import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { renderChangePrompt, type Platform, type SessionContext } from 'foundry-design-protocol';
-import { FoundryRuntime, SessionStore } from 'foundry-design-runtime';
+import { FoundryRuntime, SessionStore, renderDeliveryMarkdown } from 'foundry-design-runtime';
 import {
   createSetupPlan,
   createUpdatePlan,
@@ -31,6 +31,11 @@ import { startBasicPreviewProxy, type BasicPreviewProxy } from './proxy.js';
 import { FOUNDRY_VERSION, releasePreflight } from './release.js';
 import { collectDoctorReport } from './doctor.js';
 import { CompanionStore } from './companion.js';
+import {
+  DeliveryExportConflictError,
+  renderPortableDeliveryJson,
+  writeRepositoryDeliveryExport,
+} from './delivery-export.js';
 
 const args = process.argv.slice(2);
 const command = args[0]?.startsWith('-') ? 'launch' : (args[0] ?? 'launch');
@@ -73,6 +78,7 @@ Usage:
   foundry-design index [--project PATH] [--output FILE]
   foundry-design uninstall [--project PATH] [--global] [--agent codex,cursor,claude] [--yes]
   foundry-design export <SESSION_ID> [--format json|prompt|full] [--output FILE]
+  foundry-design delivery export <DELIVERY_ID> --format repo|markdown|json --output PATH [--yes]
   foundry-design install-agent <cursor|claude|codex> [--project-agent --project PATH]
 
 Foundry is local-only and never edits product source from inspector controls.`);
@@ -683,6 +689,59 @@ async function exportSession(): Promise<void> {
   } else console.log(content);
 }
 
+async function exportDelivery(): Promise<void> {
+  if (args[1] !== 'export') throw new Error('delivery requires the export subcommand');
+  const recordId = args[2];
+  if (!recordId) throw new Error('delivery export requires a delivery record id');
+  const output = flag('--output');
+  if (!output) throw new Error('delivery export requires --output PATH');
+  const format = flag('--format') ?? 'repo';
+  if (!['repo', 'markdown', 'json'].includes(format)) {
+    throw new Error('delivery export format must be repo, markdown, or json');
+  }
+  const store = new SessionStore();
+  const summary = (await store.list()).find((session) =>
+    session.deliveryRecords.some((record) => record.id === recordId),
+  );
+  if (!summary) throw new Error(`Unknown delivery record: ${recordId}`);
+  const session = await store.read(summary.changeSet.sessionId);
+  const record = session.deliveryRecords.find((candidate) => candidate.id === recordId)!;
+  if (format === 'repo') {
+    if (!(await confirm(`Export ${record.title} into ${resolve(output)}?`))) {
+      console.log('Delivery export cancelled.');
+      return;
+    }
+    let manifest;
+    try {
+      manifest = await writeRepositoryDeliveryExport(output, session, record);
+    } catch (error) {
+      if (error instanceof DeliveryExportConflictError && error.documentationPageIds.length) {
+        await store.markDocumentationConflicted(
+          session.changeSet.sessionId,
+          error.documentationPageIds,
+        );
+      }
+      throw error;
+    }
+    await store.recordDocumentationExports(
+      session.changeSet.sessionId,
+      manifest.documentationPages,
+    );
+    console.log(`Exported ${manifest.files.length} managed delivery files to ${resolve(output)}.`);
+    console.log(
+      'Foundry preserved the project root changelog and will refuse to overwrite edited generated docs.',
+    );
+    return;
+  }
+  const content =
+    format === 'markdown'
+      ? renderDeliveryMarkdown(record, session.changeSet.context.projectRoot)
+      : renderPortableDeliveryJson(record, session.changeSet.context.projectRoot);
+  await mkdir(dirname(resolve(output)), { recursive: true });
+  await writeFile(resolve(output), `${content}\n`);
+  console.log(`Exported ${format} delivery record to ${resolve(output)}.`);
+}
+
 async function installAgent(): Promise<void> {
   console.log(`${releasePreflight('install the coding-agent connection')}\n`);
   const agent = args[1];
@@ -798,6 +857,7 @@ try {
   else if (command === 'index') await indexDesign();
   else if (command === 'uninstall') await uninstall();
   else if (command === 'export') await exportSession();
+  else if (command === 'delivery') await exportDelivery();
   else if (command === 'install-agent') await installAgent();
   else printHelp();
 } catch (error) {

@@ -10,8 +10,12 @@ import {
   designBranchRecordBundleSchema,
   designBranchRecordSchema,
   designBranchSchema,
+  deliveryMilestoneSchema,
+  deliveryRecordSchema,
   designChangeSchema,
+  designHistoryEntrySchema,
   designOperationSchema,
+  documentationPageSchema,
   projectDesignGraphSchema,
   sessionContextSchema,
   verificationResultSchema,
@@ -26,6 +30,10 @@ import {
   type DesignBranch,
   type DesignBranchRecord,
   type DesignBranchRecordBundle,
+  type DeliveryMilestone,
+  type DeliveryRecord,
+  type DesignHistoryEntry,
+  type DocumentationPage,
   type DesignOperation,
   type DesignOperationInput,
   type ProjectDesignGraph,
@@ -36,6 +44,14 @@ import {
   type VisualAgentRequest,
 } from 'foundry-design-protocol';
 import { assessBranchRecord, createBranchRecord } from './branch-records.js';
+import {
+  createDeliveryRecord,
+  createHistoryEntry,
+  createMilestone,
+  generateDocumentation,
+  markDocumentationStale,
+  syncDeliveryRecord,
+} from './delivery.js';
 
 export interface StoredSession {
   token: string;
@@ -47,11 +63,21 @@ export interface StoredSession {
   designBranchRecords: DesignBranchRecord[];
   activeDesignBranchId?: string;
   visualAgentRequests: VisualAgentRequest[];
+  deliveryRecords: DeliveryRecord[];
+  documentationPages: DocumentationPage[];
+  designHistory: DesignHistoryEntry[];
+  deliveryMilestones: DeliveryMilestone[];
 }
 
 export interface SessionStoreOptions {
   claimLeaseMs?: number;
   now?: () => Date;
+}
+
+export interface DocumentationExportMetadata {
+  pageId: string;
+  path: string;
+  contentHash: string;
 }
 
 function defaultStoreRoot(): string {
@@ -202,6 +228,15 @@ export class SessionStore {
     }
   }
 
+  private syncDeliveryForRun(stored: StoredSession, run: ApplyRun, now: string): DeliveryRecord {
+    const existing = stored.deliveryRecords.find((record) => record.applyRunId === run.id);
+    const record = existing ?? createDeliveryRecord(stored.changeSet, run, now);
+    const synced = syncDeliveryRecord(record, run, stored.changeSet.context.projectRoot, now);
+    if (existing) stored.deliveryRecords[stored.deliveryRecords.indexOf(existing)] = synced;
+    else stored.deliveryRecords.unshift(synced);
+    return synced;
+  }
+
   private recoverExpiredClaims(stored: StoredSession): boolean {
     const now = this.now();
     const nowIso = now.toISOString();
@@ -283,6 +318,10 @@ export class SessionStore {
       designBranches: [],
       designBranchRecords: [],
       visualAgentRequests: [],
+      deliveryRecords: [],
+      documentationPages: [],
+      designHistory: [],
+      deliveryMilestones: [],
     };
     await this.write(stored);
     return stored;
@@ -304,6 +343,10 @@ export class SessionStore {
           designBranchRecords: stored.designBranchRecords,
           activeDesignBranchId: stored.activeDesignBranchId,
           visualAgentRequests: stored.visualAgentRequests,
+          deliveryRecords: stored.deliveryRecords,
+          documentationPages: stored.documentationPages,
+          designHistory: stored.designHistory,
+          deliveryMilestones: stored.deliveryMilestones,
         });
       } catch {
         // Ignore incomplete files from interrupted development sessions.
@@ -339,6 +382,18 @@ export class SessionStore {
       activeDesignBranchId: raw.activeDesignBranchId,
       visualAgentRequests: (raw.visualAgentRequests ?? []).map((request) =>
         visualAgentRequestSchema.parse(request),
+      ),
+      deliveryRecords: (raw.deliveryRecords ?? []).map((record) =>
+        deliveryRecordSchema.parse(record),
+      ),
+      documentationPages: (raw.documentationPages ?? []).map((page) =>
+        documentationPageSchema.parse(page),
+      ),
+      designHistory: (raw.designHistory ?? []).map((entry) =>
+        designHistoryEntrySchema.parse(entry),
+      ),
+      deliveryMilestones: (raw.deliveryMilestones ?? []).map((milestone) =>
+        deliveryMilestoneSchema.parse(milestone),
       ),
     };
     if (this.recoverExpiredClaims(stored)) await this.write(stored);
@@ -867,6 +922,7 @@ export class SessionStore {
       updatedAt: now,
     });
     stored.applyRuns.push(run);
+    this.syncDeliveryForRun(stored, run, now);
     stored.changeSet.updatedAt = now;
     await this.write(stored);
     return stored;
@@ -923,6 +979,7 @@ export class SessionStore {
         });
       }
       run.updatedAt = now;
+      this.syncDeliveryForRun(stored, run, now);
       await this.write(stored);
       return stored;
     });
@@ -1013,6 +1070,7 @@ export class SessionStore {
       if (['cancelled', 'failed', 'needs_attention'].includes(run.state)) run.completedAt = now;
       run.updatedAt = now;
       stored.changeSet.updatedAt = now;
+      this.syncDeliveryForRun(stored, run, now);
       await this.write(stored);
       return stored;
     });
@@ -1100,6 +1158,17 @@ export class SessionStore {
         run.completedAt = now;
       }
       run.updatedAt = now;
+      const record = this.syncDeliveryForRun(stored, run, now);
+      if (run.state === 'passed') {
+        if (!stored.designHistory.some((entry) => entry.applyRunId === run.id)) {
+          stored.designHistory.unshift(createHistoryEntry(record, now));
+        }
+        stored.documentationPages = markDocumentationStale(
+          stored.documentationPages,
+          record.affectedFiles,
+          now,
+        );
+      }
     }
     stored.changeSet.updatedAt = now;
     await this.write(stored);
@@ -1336,6 +1405,161 @@ export class SessionStore {
     });
   }
 
+  async updateDeliveryRecord(
+    id: string,
+    recordId: string,
+    input: Partial<
+      Pick<
+        DeliveryRecord,
+        | 'title'
+        | 'summary'
+        | 'intent'
+        | 'narrativeSource'
+        | 'risks'
+        | 'questions'
+        | 'acceptanceCriteria'
+      >
+    >,
+  ): Promise<StoredSession> {
+    const stored = await this.read(id);
+    const record = stored.deliveryRecords.find((candidate) => candidate.id === recordId);
+    if (!record) throw new Error(`Unknown delivery record: ${recordId}`);
+    const now = this.nowIso();
+    const next = deliveryRecordSchema.parse({ ...record, ...input, updatedAt: now });
+    const missing = 'Add at least one acceptance criterion';
+    next.blockers = [
+      ...next.blockers.filter((blocker) => blocker !== missing),
+      ...(next.acceptanceCriteria.length ? [] : [missing]),
+    ];
+    if (next.status === 'draft' && next.blockers.length === 0) next.status = 'ready';
+    if (next.status === 'ready' && next.blockers.length > 0) next.status = 'draft';
+    stored.deliveryRecords[stored.deliveryRecords.indexOf(record)] = next;
+    stored.changeSet.updatedAt = now;
+    await this.write(stored);
+    return stored;
+  }
+
+  async generateDocumentation(id: string): Promise<StoredSession> {
+    const stored = await this.read(id);
+    const now = this.nowIso();
+    stored.documentationPages = generateDocumentation(
+      stored.designGraph,
+      stored.deliveryRecords,
+      stored.changeSet.context,
+      stored.documentationPages,
+      now,
+    );
+    stored.changeSet.updatedAt = now;
+    await this.write(stored);
+    return stored;
+  }
+
+  async markDocumentationDrift(id: string, changedFiles: string[]): Promise<StoredSession> {
+    const stored = await this.read(id);
+    const now = this.nowIso();
+    stored.documentationPages = markDocumentationStale(
+      stored.documentationPages,
+      changedFiles.map((path) => path.replaceAll('\\', '/')),
+      now,
+    );
+    stored.changeSet.updatedAt = now;
+    await this.write(stored);
+    return stored;
+  }
+
+  async recordDocumentationExports(
+    id: string,
+    exports: DocumentationExportMetadata[],
+  ): Promise<StoredSession> {
+    const stored = await this.read(id);
+    const unknown = exports.filter(
+      (item) => !stored.documentationPages.some((page) => page.id === item.pageId),
+    );
+    if (unknown.length) {
+      throw new Error(
+        `Unknown documentation pages: ${unknown.map((item) => item.pageId).join(', ')}`,
+      );
+    }
+    const now = this.nowIso();
+    const exportedById = new Map(exports.map((item) => [item.pageId, item]));
+    stored.documentationPages = stored.documentationPages.map((page) => {
+      const exported = exportedById.get(page.id);
+      if (!exported) return page;
+      const matchesCurrentContent = exported.contentHash === page.contentHash;
+      return {
+        ...page,
+        exportedHash: exported.contentHash,
+        exportedPath: exported.path,
+        freshness:
+          page.freshness === 'conflicted' && matchesCurrentContent ? 'current' : page.freshness,
+        updatedAt: now,
+      };
+    });
+    stored.changeSet.updatedAt = now;
+    await this.write(stored);
+    return stored;
+  }
+
+  async markDocumentationConflicted(id: string, pageIds: string[]): Promise<StoredSession> {
+    const stored = await this.read(id);
+    const requested = new Set(pageIds);
+    const unknown = [...requested].filter(
+      (pageId) => !stored.documentationPages.some((page) => page.id === pageId),
+    );
+    if (unknown.length) throw new Error(`Unknown documentation pages: ${unknown.join(', ')}`);
+    const now = this.nowIso();
+    stored.documentationPages = stored.documentationPages.map((page) =>
+      requested.has(page.id) ? { ...page, freshness: 'conflicted', updatedAt: now } : page,
+    );
+    stored.changeSet.updatedAt = now;
+    await this.write(stored);
+    return stored;
+  }
+
+  async createDeliveryMilestone(
+    id: string,
+    input: { name: string; summary?: string; entryIds?: string[] },
+  ): Promise<StoredSession> {
+    const stored = await this.read(id);
+    const unknown = (input.entryIds ?? []).filter(
+      (entryId) => !stored.designHistory.some((entry) => entry.id === entryId),
+    );
+    if (unknown.length) throw new Error(`Unknown history entries: ${unknown.join(', ')}`);
+    const now = this.nowIso();
+    stored.deliveryMilestones.unshift(
+      createMilestone(input.name.trim(), input.summary?.trim() ?? '', input.entryIds ?? [], now),
+    );
+    stored.changeSet.updatedAt = now;
+    await this.write(stored);
+    return stored;
+  }
+
+  async updateDeliveryMilestone(
+    id: string,
+    milestoneId: string,
+    input: Partial<Pick<DeliveryMilestone, 'name' | 'summary' | 'entryIds' | 'status'>>,
+  ): Promise<StoredSession> {
+    const stored = await this.read(id);
+    const milestone = stored.deliveryMilestones.find((candidate) => candidate.id === milestoneId);
+    if (!milestone) throw new Error(`Unknown milestone: ${milestoneId}`);
+    const unknown = (input.entryIds ?? []).filter(
+      (entryId) => !stored.designHistory.some((entry) => entry.id === entryId),
+    );
+    if (unknown.length) throw new Error(`Unknown history entries: ${unknown.join(', ')}`);
+    const now = this.nowIso();
+    const next = deliveryMilestoneSchema.parse({
+      ...milestone,
+      ...input,
+      updatedAt: now,
+      publishedAt:
+        input.status === 'published' ? (milestone.publishedAt ?? now) : milestone.publishedAt,
+    });
+    stored.deliveryMilestones[stored.deliveryMilestones.indexOf(milestone)] = next;
+    stored.changeSet.updatedAt = now;
+    await this.write(stored);
+    return stored;
+  }
+
   async authenticate(id: string, token: string | undefined): Promise<StoredSession> {
     const stored = await this.read(id);
     if (!token || token !== stored.token) throw new Error('Invalid session token');
@@ -1357,6 +1581,14 @@ export class SessionStore {
       activeDesignBranchId: stored.activeDesignBranchId,
       visualAgentRequests: stored.visualAgentRequests.map((request) =>
         visualAgentRequestSchema.parse(request),
+      ),
+      deliveryRecords: stored.deliveryRecords.map((record) => deliveryRecordSchema.parse(record)),
+      documentationPages: stored.documentationPages.map((page) =>
+        documentationPageSchema.parse(page),
+      ),
+      designHistory: stored.designHistory.map((entry) => designHistoryEntrySchema.parse(entry)),
+      deliveryMilestones: stored.deliveryMilestones.map((milestone) =>
+        deliveryMilestoneSchema.parse(milestone),
       ),
     };
     const target = join(this.root, `${stored.changeSet.sessionId}.json`);

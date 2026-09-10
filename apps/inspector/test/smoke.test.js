@@ -51,14 +51,112 @@ test('review and project utilities are center workspace modes', async () => {
   );
   assert.match(
     html,
-    /data-workspace-mode="recipes">\s*<i data-icon="file"><\/i><span>Visual recipes<\/span>/,
+    /data-workspace-mode="recipes">\s*<i data-icon="copy"><\/i><span>Visual recipes<\/span>/,
   );
   assert.match(html, /data-studio-action="stress-run"/);
   assert.match(html, /data-studio-action="memory-record"/);
-  assert.match(
+  assert.match(css, /\.app-shell\s*\{[\s\S]*grid-template-rows:\s*48px minmax\(0, 1fr\)/);
+  assert.match(css, /\.app-bar\s*\{[\s\S]*height:\s*48px;[\s\S]*display:\s*flex/);
+  assert.doesNotMatch(
     css,
     /\.app-shell:not\(\[data-mode='canvas'\]\) \.app-bar\s*\{[\s\S]*display:\s*none/,
   );
+});
+
+test('workspace shortcuts never steal editable, composed, or modified keyboard input', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(source, /function editableTarget\(target\)/);
+  assert.match(source, /function interactiveShortcutTarget\(target\)/);
+  assert.match(
+    source,
+    /input, select, textarea, \[contenteditable\]:not\(\[contenteditable="false"\]\), \[role="textbox"\]/,
+  );
+  assert.match(source, /event\.isComposing \|\| event\.key === 'Process'/);
+  assert.match(
+    source,
+    /event\.metaKey \|\|[\s\S]*event\.ctrlKey \|\|[\s\S]*event\.altKey \|\|[\s\S]*event\.shiftKey/,
+  );
+  assert.match(source, /editableTarget\(event\.target\)/);
+  assert.match(source, /interactiveShortcutTarget\(event\.target\)/);
+});
+
+test('workspace tabs and panel resizing are fully keyboard operable', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(
+    html,
+    /id="dock-resizer"[\s\S]*role="separator"[\s\S]*aria-orientation="vertical"[\s\S]*aria-valuemin="320"[\s\S]*aria-valuemax="520"[\s\S]*tabindex="0"/,
+  );
+  assert.match(source, /function setDockWidth\(width/);
+  assert.match(source, /dockResizer\.addEventListener\('keydown'/);
+  assert.match(source, /ArrowLeft:[\s\S]*ArrowRight:[\s\S]*Home:\s*320,[\s\S]*End:\s*520/);
+  assert.match(source, /function syncTabStops\(root = document\)/);
+  assert.match(source, /\['ArrowLeft', 'ArrowRight', 'Home', 'End'\]/);
+});
+
+test('state workbench falls back to its first available state when canvas context is unmatched', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(source, /const requestedState = \$\('#canvas-state'\)\?\.value/);
+  assert.match(source, /states\.some\(\(item\) => item\.id === requestedState\)/);
+  assert.match(source, /: states\[0\]\?\.id \|\| 'current'/);
+  assert.match(source, /aria-pressed="\$\{String\(active\)\}"/);
+});
+
+test('session polling preserves active edits and scroll while coalescing connection failures', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(source, /let pendingSessionRender = null/);
+  assert.match(source, /function captureDirtyDrafts\(\)/);
+  assert.match(source, /function captureWorkspaceScroll\(\)/);
+  assert.match(source, /function flushPendingSessionRender\(\)/);
+  assert.match(source, /function sessionRenderBlocked\(\)/);
+  assert.match(source, /motionStudioInteracting \|\|[\s\S]*canvasPanning/);
+  assert.match(source, /version: agent\.version \?\? null/);
+  assert.doesNotMatch(source, /JSON\.stringify\(\{ payload, presence \}\)/);
+  assert.match(source, /document\.addEventListener\('focusout'/);
+  assert.match(source, /message !== lastSessionLoadError/);
+  assert.match(
+    source,
+    /setInterval\(\(\) => void loadSession\(\{ deferRender: true, isPoll: true \}\), 1500\)/,
+  );
+});
+
+test('review distinguishes the live preview from the active agent listener', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(source, /let activeAgentPresence = \{ connected: false, presence: null \}/);
+  assert.match(source, /\/v1\/sessions\/\$\{sessionId\}\/agent-presence/);
+  assert.match(source, /const listenerConnected = Boolean\(activeAgentPresence\.connected\)/);
+  assert.match(source, /Queue \$\{included\} for agent/);
+  assert.match(source, /Agent currently offline/);
+  assert.match(source, /Waiting for agent/);
+  assert.match(source, /Agent handoff/);
+  assert.match(source, /Queue resume for agent/);
+  assert.match(
+    source,
+    /Batch queued\. A Foundry agent will claim it when its listener reconnects\./,
+  );
+});
+
+test('the application bar reports runtime, preview, and listener status truthfully', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(html, /id="live-status"[\s\S]*data-status="connecting"[\s\S]*aria-live="polite"/);
+  assert.match(source, /function renderConnectionStatus\(\)/);
+  assert.match(source, /Runtime, preview, and Apply listener connected/);
+  assert.match(source, /Apply listener is not active/);
+  assert.match(source, /label: 'Reconnecting'/);
+});
+
+test('delivery milestones use an in-product, source-safe dialog', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(
+    html,
+    /id="delivery-milestone-dialog"[\s\S]*aria-labelledby="delivery-milestone-title"/,
+  );
+  assert.match(html, /id="delivery-milestone-name"[\s\S]*maxlength="80"[\s\S]*required/);
+  assert.match(source, /\$\('#delivery-milestone-dialog'\)[\s\S]*dialog\.showModal\(\)/);
+  assert.match(source, /\/delivery-milestones/);
+  assert.doesNotMatch(source, /window\.prompt\('Milestone name'/);
 });
 
 test('visual agent grounds conversation in rendered context and isolates proposals', async () => {
@@ -105,6 +203,10 @@ test('design decision memory keeps project guidance contextual, correctable, and
   assert.match(source, /foundry-design-decisions\.json/);
   assert.match(source, /Potential conflict/);
   assert.match(css, /\.decision-memory-shell/);
+  assert.match(
+    css,
+    /\.decision-memory-empty\s*\{[\s\S]*min-height:\s*320px;[\s\S]*place-content:\s*center;[\s\S]*justify-items:\s*center/,
+  );
   assert.match(css, /\.decision-relevance\[data-conflict='true'\]/);
   assert.match(css, /\.decision-guidance\[data-status='conflict'\]/);
 });
@@ -129,7 +231,7 @@ test('visual recipes preserve intent, inspect compatibility, and enter review ex
   assert.match(source, /apply-visual-recipe/);
   assert.match(source, /import-visual-recipes/);
   assert.match(source, /foundry-visual-recipes\.json/);
-  assert.match(source, /\['recipes', 'Visual recipes', 'r', 'file'\]/);
+  assert.match(source, /\['recipes', 'Visual recipes', 'r', 'copy'\]/);
   assert.match(css, /\.visual-recipes-shell/);
   assert.match(css, /\.visual-recipe-map-list/);
   assert.match(css, /\.recipe-compatibility/);
@@ -214,6 +316,13 @@ test('motion studio exposes native adapters, paths, synchronized comparison, tim
   assert.match(html, /id="motion-studio-stage"/);
   assert.match(html, /id="motion-studio-properties"/);
   assert.match(source, /function renderMotionStudio/);
+  assert.match(source, /mode === 'motion' && previousMode !== 'motion'/);
+  assert.match(source, /const resetPropertiesScroll = motionStudioResetPropertiesScroll/);
+  assert.match(source, /if \(resetPropertiesScroll\) properties\.scrollTop = 0/);
+  assert.match(
+    source,
+    /if \(nextMotionId !== motionStudioId\) motionStudioResetPropertiesScroll = true/,
+  );
   assert.match(source, /function renderNativeMotionSource/);
   assert.match(source, /Motion for React/);
   assert.match(source, /React Spring/);
@@ -246,6 +355,8 @@ test('motion studio exposes native adapters, paths, synchronized comparison, tim
   assert.match(css, /\.motion-curve-editor/);
   assert.match(css, /\.motion-path-editor/);
   assert.match(css, /\.motion-comparison/);
+  assert.match(css, /\.motion-selection-summary\s*\{[\s\S]*justify-content:\s*stretch/);
+  assert.match(css, /\.motion-studio-stage > \.motion-studio-empty\s*\{[\s\S]*width:\s*100%/);
   assert.match(css, /prefers-reduced-motion: reduce/);
 });
 
@@ -266,7 +377,14 @@ test('design system resolves aliases and stages recurring-value promotion throug
   assert.match(source, /Changing this token can affect/);
   assert.match(source, /No automatic changes/);
   assert.match(source, /\['system', 'Design system', '8', 'sparkles'\]/);
+  assert.match(source, /renderIcons\(\$\('\[data-mode-surface="system"\]'\)\)/);
+  assert.doesNotMatch(source, /renderIcons\(\$\('#design-system-mode'\)\)/);
   assert.match(css, /\.design-system-shell/);
+  assert.match(
+    css,
+    /\.design-system-detail\s*\{[\s\S]*overflow-x:\s*hidden;[\s\S]*overflow-y:\s*scroll;[\s\S]*scrollbar-gutter:\s*auto/,
+  );
+  assert.match(css, /\.design-system-detail-head\s*\{[\s\S]*box-shadow:\s*none/);
   assert.match(css, /\.design-finding-list/);
   assert.match(css, /\.alias-chain/);
 });
@@ -288,10 +406,29 @@ test('responsive lab keeps native iframe viewports and temporary stress state se
   assert.match(source, /projectDesign\(\)\.containerQueries/);
   assert.match(source, /function responsiveComparisonSnapshot/);
   assert.match(source, /documentScrollWidth > snapshot\.viewportWidth/);
+  assert.match(
+    source,
+    /const hasDistinctLabel = label\.toLowerCase\(\) !== widthLabel\.toLowerCase\(\)/,
+  );
+  assert.match(source, /hasDistinctLabel \? `<span>\$\{widthLabel\}<\/span>` : ''/);
   assert.match(source, /\['responsive', 'Responsive design lab', '7', 'layout'\]/);
   assert.match(css, /\.responsive-frame-viewport iframe/);
   assert.match(css, /\.responsive-comparison-grid/);
   assert.match(css, /transform-origin:\s*top center/);
+  assert.match(
+    css,
+    /\.responsive-boundaries\s*\{[\s\S]*overflow-x:\s*auto;[\s\S]*overflow-y:\s*hidden;[\s\S]*scrollbar-width:\s*none/,
+  );
+  assert.match(css, /\.responsive-boundaries::\-webkit-scrollbar\s*\{[\s\S]*display:\s*none/);
+  assert.match(
+    css,
+    /\.responsive-boundaries button\.is-single-label\s*\{[\s\S]*justify-content:\s*center/,
+  );
+  assert.match(
+    css,
+    /\.responsive-boundaries button\.has-secondary-label\s*\{[\s\S]*min-width:\s*144px/,
+  );
+  assert.match(css, /\.responsive-boundaries\s*\{[\s\S]*background:\s*var\(--surface\)/);
 });
 
 test('component workshop exposes source-backed variants, drift repair, safe scopes, and visual states', async () => {
@@ -396,6 +533,15 @@ test('workspace dropdowns use the Foundry listbox system', async () => {
   assert.match(css, /max-height/);
 });
 
+test('search fields focus without nested selection rings', async () => {
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /\.search-field:focus-within\s*\{[\s\S]*box-shadow:\s*none/);
+  assert.match(
+    css,
+    /\.search-field > input:focus,[\s\S]*\.search-field > input:focus-visible\s*\{[\s\S]*outline:\s*none;[\s\S]*box-shadow:\s*none/,
+  );
+});
+
 test('visual foundations use the Google Sans-led type stack and four-pixel system', async () => {
   const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
   const visualSystem = css.slice(css.indexOf('/* Foundry v3 visual system'));
@@ -415,11 +561,63 @@ test('visual foundations use the Google Sans-led type stack and four-pixel syste
   assert.match(darkTokens, /--selection:\s*#ff681f/);
   assert.match(darkTokens, /--blue:\s*var\(--selection\)/);
   assert.match(darkTokens, /--blue-soft:\s*var\(--selection-soft\)/);
+  assert.match(css, /\.state-preview-viewport\s*\{[\s\S]*background:\s*var\(--surface\)/);
+  assert.match(
+    css,
+    /\.danger-button\s*\{[\s\S]*color:\s*var\(--red\);[\s\S]*background:\s*var\(--red-soft\)/,
+  );
   assert.match(
     visualSystem,
     /\.workspace-rail \.rail-button\.is-active\s*\{[\s\S]*color:\s*var\(--selection\);[\s\S]*border-color:\s*var\(--selection\);[\s\S]*background:\s*var\(--selection-soft\);/,
   );
   assert.doesNotMatch(visualSystem, /\.rail-button\.is-active:not\(/);
+});
+
+test('every focused workspace inherits the compact Canvas frame contract', async () => {
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /--workspace-header-height:\s*48px/);
+  assert.match(
+    css,
+    /\.centered-mode:not\(\[hidden\]\),[\s\S]*\.apply-surface\s*\{[\s\S]*grid-template-rows:\s*var\(--workspace-header-height\) minmax\(0, 1fr\)/,
+  );
+  assert.match(
+    css,
+    /\.centered-mode > \.mode-head,[\s\S]*\.apply-surface > \.mode-head\s*\{[\s\S]*height:\s*var\(--workspace-header-height\);[\s\S]*border-bottom:\s*1px solid var\(--line\)/,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 1040px\)[\s\S]*\.review-workspace,[\s\S]*\.apply-workspace\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) !important/,
+  );
+});
+
+test('the workspace exposes one main landmark and valid nested regions', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.equal(html.match(/<main\b/g)?.length ?? 0, 1);
+  assert.equal(html.match(/<\/main>/g)?.length ?? 0, 1);
+  assert.match(html, /responsive-stress-group"\s*role="group"/);
+  assert.match(html, /responsive-scope-group"\s*role="group"/);
+});
+
+test('workspace empty states share one icon, title, and body composition', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(source, /stress-empty foundry-empty-state/);
+  assert.match(source, /decision-memory-empty foundry-empty-state/);
+  assert.match(source, /motion-studio-empty foundry-empty-state/);
+  assert.match(source, /typography-studio-empty foundry-empty-state/);
+  assert.match(source, /visual-recipe-empty foundry-empty-state/);
+  assert.match(source, /visual-agent-empty foundry-empty-state/);
+  assert.match(source, /delivery-empty foundry-empty-state/);
+  assert.match(source, /branch-decisions-empty foundry-empty-state/);
+  assert.match(
+    css,
+    /\.foundry-empty-state\s*,\s*\.delivery-empty\s*\{[\s\S]*grid-auto-rows:\s*max-content/,
+  );
+  assert.match(css, /\.foundry-empty-state > svg[\s\S]*width:\s*24px;[\s\S]*height:\s*24px/);
+  assert.match(
+    css,
+    /\.foundry-empty-state > p[\s\S]*max-width:\s*360px;[\s\S]*line-height:\s*18px/,
+  );
 });
 
 test('workspace uses real Keyline vectors and validates the embedded bridge', async () => {
@@ -446,6 +644,8 @@ test('workspace uses real Keyline vectors and validates the embedded bridge', as
   assert.match(source, /keyframe-\$\{action\}/);
   assert.match(source, /data-layer-selector="\$\{escapeAttribute\(layer\.selector\)\}"/);
   assert.match(source, /Keyframes/);
+  assert.match(source, /role="group" aria-label="Editable transform motion path"/);
+  assert.match(source, /role="slider"[\s\S]*aria-valuenow=/);
   assert.match(source, /Trigger this transition in Interact mode/);
   assert.match(css, /\.motion-card/);
   assert.match(css, /\.motion-timeline/);

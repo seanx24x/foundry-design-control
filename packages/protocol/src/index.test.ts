@@ -8,12 +8,30 @@ import {
   designChangeSchema,
   designBranchSchema,
   designOperationSchema,
+  deliveryRecordSchema,
   projectDesignGraphSchema,
   renderChangePrompt,
   stressTestSessionSchema,
   visualAgentRequestSchema,
   type ChangeSet,
 } from './index.js';
+
+test('parses a versioned delivery record with explicit readiness evidence', () => {
+  const record = deliveryRecordSchema.parse({
+    version: 1,
+    id: 'delivery_1',
+    sessionId: 'ses_1',
+    applyRunId: 'run_1',
+    title: 'Refine primary action',
+    status: 'ready',
+    changeIds: ['change_1'],
+    acceptanceCriteria: [{ id: 'criterion_1', label: 'Primary action renders at 48px' }],
+    createdAt: '2026-09-10T00:00:00.000Z',
+    updatedAt: '2026-09-10T00:00:00.000Z',
+  });
+  assert.equal(record.acceptanceCriteria[0]?.status, 'pending');
+  assert.equal(record.narrativeSource, 'deterministic');
+});
 
 test('parses portable branch records with source context and compatibility evidence', () => {
   const bundle = designBranchRecordBundleSchema.parse({

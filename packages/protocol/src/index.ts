@@ -497,6 +497,120 @@ export const applyRunSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const deliveryRecordStatusSchema = z.enum([
+  'draft',
+  'ready',
+  'implementing',
+  'verified',
+  'superseded',
+]);
+
+export const deliveryNarrativeSourceSchema = z.enum(['deterministic', 'agent', 'authored']);
+
+export const deliveryAcceptanceCriterionSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  status: z.enum(['pending', 'passed', 'failed']).default('pending'),
+  evidence: z.array(z.string()).default([]),
+});
+
+export const deliveryRecordSchema = z.object({
+  version: z.literal(1),
+  id: z.string().min(1),
+  sessionId: z.string().min(1),
+  applyRunId: z.string().min(1),
+  title: z.string().min(1).max(120),
+  summary: z.string().max(2000).default(''),
+  intent: z.string().max(4000).default(''),
+  narrativeSource: deliveryNarrativeSourceSchema.default('deterministic'),
+  status: deliveryRecordStatusSchema,
+  changeIds: z.array(z.string().min(1)).min(1),
+  operationIds: z.array(z.string().min(1)).default([]),
+  affectedFiles: z.array(z.string().min(1)).default([]),
+  affectedComponents: z.array(z.string().min(1)).default([]),
+  affectedTokens: z.array(z.string().min(1)).default([]),
+  contexts: z
+    .array(
+      z.object({
+        breakpoint: z.string(),
+        theme: z.string(),
+        state: z.string(),
+      }),
+    )
+    .default([]),
+  risks: z.array(z.string()).default([]),
+  questions: z.array(z.string()).default([]),
+  acceptanceCriteria: z.array(deliveryAcceptanceCriterionSchema).default([]),
+  blockers: z.array(z.string()).default([]),
+  validationResults: z.array(validationResultSchema).default([]),
+  verificationResults: z.array(verificationResultSchema).default([]),
+  evidence: z
+    .array(
+      z.object({
+        label: z.string().min(1),
+        path: z.string().min(1),
+        createdAt: z.string().datetime(),
+      }),
+    )
+    .default([]),
+  revision: z.string().optional(),
+  designGraphRevision: z.string().optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  verifiedAt: z.string().datetime().optional(),
+  supersededAt: z.string().datetime().optional(),
+});
+
+export const documentationPageSchema = z.object({
+  version: z.literal(1),
+  id: z.string().min(1),
+  kind: z.enum(['component', 'system', 'feature', 'screen']),
+  slug: z.string().min(1),
+  title: z.string().min(1),
+  summary: z.string().default(''),
+  body: z.string().default(''),
+  narrativeSource: deliveryNarrativeSourceSchema.default('deterministic'),
+  freshness: z.enum(['current', 'stale', 'conflicted']).default('current'),
+  sourceFiles: z.array(z.string()).default([]),
+  componentIds: z.array(z.string()).default([]),
+  deliveryRecordIds: z.array(z.string()).default([]),
+  revision: z.string().optional(),
+  designGraphRevision: z.string().optional(),
+  contentHash: z.string().min(1),
+  exportedHash: z.string().optional(),
+  exportedPath: z.string().optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const designHistoryEntrySchema = z.object({
+  version: z.literal(1),
+  id: z.string().min(1),
+  deliveryRecordId: z.string().min(1),
+  applyRunId: z.string().min(1),
+  title: z.string().min(1),
+  summary: z.string().default(''),
+  changeIds: z.array(z.string().min(1)).min(1),
+  affectedFiles: z.array(z.string()).default([]),
+  contexts: z.array(z.object({ breakpoint: z.string(), theme: z.string(), state: z.string() })),
+  validationResults: z.array(validationResultSchema).default([]),
+  verificationResults: z.array(verificationResultSchema).default([]),
+  revision: z.string().optional(),
+  createdAt: z.string().datetime(),
+});
+
+export const deliveryMilestoneSchema = z.object({
+  version: z.literal(1),
+  id: z.string().min(1),
+  name: z.string().min(1).max(120),
+  summary: z.string().max(2000).default(''),
+  entryIds: z.array(z.string().min(1)).default([]),
+  status: z.enum(['draft', 'published']).default('draft'),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  publishedAt: z.string().datetime().optional(),
+});
+
 export const visualAgentContextTargetSchema = z.object({
   id: z.string().min(1),
   selector: z.string().min(1),
@@ -661,6 +775,13 @@ export type ApplyRunState = z.infer<typeof applyRunStateSchema>;
 export type ApplyRunMessage = z.infer<typeof applyRunMessageSchema>;
 export type ValidationResult = z.infer<typeof validationResultSchema>;
 export type ApplyRun = z.infer<typeof applyRunSchema>;
+export type DeliveryRecordStatus = z.infer<typeof deliveryRecordStatusSchema>;
+export type DeliveryNarrativeSource = z.infer<typeof deliveryNarrativeSourceSchema>;
+export type DeliveryAcceptanceCriterion = z.infer<typeof deliveryAcceptanceCriterionSchema>;
+export type DeliveryRecord = z.infer<typeof deliveryRecordSchema>;
+export type DocumentationPage = z.infer<typeof documentationPageSchema>;
+export type DesignHistoryEntry = z.infer<typeof designHistoryEntrySchema>;
+export type DeliveryMilestone = z.infer<typeof deliveryMilestoneSchema>;
 export type VisualAgentContextTarget = z.infer<typeof visualAgentContextTargetSchema>;
 export type VisualAgentComment = z.infer<typeof visualAgentCommentSchema>;
 export type VisualAgentContext = z.infer<typeof visualAgentContextSchema>;
