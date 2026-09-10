@@ -95,6 +95,18 @@ try {
         aliasStatus: 'direct',
         source: { file: 'style.css', line: 1 },
       },
+      {
+        id: 'token-runtime-preview-width',
+        name: '--preview-width',
+        value: '${viewportWidth',
+        category: 'size',
+        confidence: 'inferred',
+        evidence: ['Source template placeholder'],
+        cssVariable: '--preview-width',
+        aliasChain: ['--preview-width'],
+        aliasStatus: 'direct',
+        source: { file: 'Preview.tsx', line: 1 },
+      },
     ],
     components: [
       {
@@ -279,7 +291,7 @@ try {
   await store.activateDesignBranch(sessionId);
 
   browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1728, height: 1117 } });
+  const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   const url = new URL(`http://127.0.0.1:${runtimePort}`);
@@ -287,6 +299,103 @@ try {
   url.searchParams.set('token', session.token);
   url.searchParams.set('preview', `http://127.0.0.1:${previewPort}`);
   await page.goto(url.href, { waitUntil: 'networkidle' });
+  const artifactDirectory = join(root, 'artifacts', 'e2e');
+  await mkdir(artifactDirectory, { recursive: true });
+  const assertAccessibleWorkspaceSurface = async () => {
+    const audit = await page.evaluate(() => {
+      const visible = (element) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          style.display !== 'none' &&
+          style.visibility !== 'hidden'
+        );
+      };
+      return {
+        pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        unlabeledButtons: [...document.querySelectorAll('button')].filter(
+          (button) =>
+            visible(button) &&
+            !(
+              button.innerText.trim() ||
+              button.getAttribute('aria-label') ||
+              button.getAttribute('title')
+            ),
+        ).length,
+        oversizedIcons: [...document.querySelectorAll('button svg')].filter((icon) => {
+          if (!visible(icon)) return false;
+          const rect = icon.getBoundingClientRect();
+          return rect.width > 24 || rect.height > 24;
+        }).length,
+      };
+    });
+    assert.ok(audit.pageOverflow <= 1, 'workspace must not overflow the page horizontally');
+    assert.equal(audit.unlabeledButtons, 0, 'every visible icon button needs an accessible name');
+    assert.equal(audit.oversizedIcons, 0, 'button icons must remain at or below 24px');
+  };
+  const assertConnectedWorkspaceBrowser = async (selector) => {
+    const geometry = await page.locator(selector).evaluate((element) => {
+      const panel = element.getBoundingClientRect();
+      const surface = element.closest('[data-mode-surface]');
+      const header = surface?.querySelector(':scope > .mode-head');
+      const surfaceRect = surface?.getBoundingClientRect();
+      const headerRect = header?.getBoundingClientRect();
+      const search = element.querySelector('input[type="search"]')?.getBoundingClientRect();
+      return {
+        leftDelta: surfaceRect ? Math.abs(panel.left - surfaceRect.left) : Number.POSITIVE_INFINITY,
+        topDelta: headerRect ? Math.abs(panel.top - headerRect.bottom) : Number.POSITIVE_INFINITY,
+        headerHeight: headerRect?.height ?? 0,
+        borderRadius: getComputedStyle(element).borderRadius,
+        overflowsHorizontally: element.scrollWidth > element.clientWidth + 1,
+        searchFits: search ? search.left >= panel.left && search.right <= panel.right + 1 : true,
+      };
+    });
+    assert.ok(geometry.leftDelta <= 1, `${selector} must align to the workspace edge`);
+    assert.ok(geometry.topDelta <= 1, `${selector} must begin directly below the workspace header`);
+    assert.equal(geometry.headerHeight, 80, `${selector} must share the 80px workspace header`);
+    assert.equal(geometry.borderRadius, '0px', `${selector} must not render as an inset card`);
+    assert.equal(
+      geometry.overflowsHorizontally,
+      false,
+      `${selector} must not overflow horizontally`,
+    );
+    assert.equal(geometry.searchFits, true, `${selector} search must fit inside the panel`);
+    await assertAccessibleWorkspaceSurface();
+  };
+  const assertSharedRailSelection = async (mode) => {
+    const selection = await page.evaluate((activeMode) => {
+      const active = [...document.querySelectorAll('.workspace-rail .rail-button.is-active')];
+      const selected = active[0];
+      const canvas = document.querySelector('.workspace-rail [data-workspace-mode="canvas"]');
+      const selectedStyle = selected ? getComputedStyle(selected) : null;
+      const canvasStyle = canvas ? getComputedStyle(canvas) : null;
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--selection)';
+      probe.style.backgroundColor = 'var(--selection-soft)';
+      document.body.append(probe);
+      const probeStyle = getComputedStyle(probe);
+      const result = {
+        activeCount: active.length,
+        activeMode: selected?.dataset.workspaceMode,
+        selection: probeStyle.color,
+        selectionSoft: probeStyle.backgroundColor,
+        selectedColor: selectedStyle?.color,
+        selectedBorder: selectedStyle?.borderColor,
+        selectedBackground: selectedStyle?.backgroundColor,
+        canvasColor: canvasStyle?.color,
+      };
+      probe.remove();
+      return result;
+    }, mode);
+    assert.equal(selection.activeCount, 1, 'the rail must expose one active destination');
+    assert.equal(selection.activeMode, mode);
+    assert.equal(selection.selectedColor, selection.selection);
+    assert.equal(selection.selectedBorder, selection.selection);
+    assert.equal(selection.selectedBackground, selection.selectionSoft);
+    if (mode !== 'canvas') assert.notEqual(selection.canvasColor, selection.selection);
+  };
 
   await page.locator('#layers-dock').waitFor();
   await page.locator('#inspector-dock').waitFor();
@@ -303,13 +412,76 @@ try {
   const frame = page.locator('#preview-frame');
   assert.equal(await frame.getAttribute('data-viewport'), '1440 × 900');
 
+  await page.screenshot({
+    path: join(artifactDirectory, 'canvas-light.png'),
+    fullPage: false,
+  });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await page.screenshot({
+    path: join(artifactDirectory, 'canvas-dark.png'),
+    fullPage: false,
+  });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+
+  await page.locator('.workspace-rail [data-workspace-mode="states"]').click();
+  await page.getByRole('heading', { name: 'State Workbench' }).waitFor();
+  await assertSharedRailSelection('states');
+  await assertConnectedWorkspaceBrowser('.state-matrix-panel');
+  await page.screenshot({
+    path: join(artifactDirectory, 'state-workbench-light.png'),
+    fullPage: false,
+  });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await page.screenshot({
+    path: join(artifactDirectory, 'state-workbench-dark.png'),
+    fullPage: false,
+  });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+  await page.locator('.workspace-rail [data-workspace-mode="canvas"]').click();
+
   await page.locator('#workspace-menu-trigger').click();
-  await page.getByRole('button', { name: /Component workshop/ }).click();
+  await page.locator('#workspace-menu [data-workspace-mode="components"]').click();
   await page.getByRole('heading', { name: 'Component workshop' }).waitFor();
+  await assertConnectedWorkspaceBrowser('.component-workshop-browser');
   await page.getByRole('heading', { name: 'PrimaryAction' }).waitFor();
   assert.equal(await page.locator('.workshop-instance-row').count(), 2);
   assert.equal(await page.locator('.workshop-variant-row').count(), 2);
   assert.equal(await page.locator('[data-workshop-state]').count(), 8);
+  const workshopGeometry = await page.locator('.component-workshop-mode').evaluate((surface) => {
+    const detail = surface.querySelector('.component-workshop-detail');
+    const contract = surface.querySelector('.component-workshop-contract');
+    const footer = surface.querySelector('.component-workshop-footer');
+    const responsiveGrid = surface.querySelector('.workshop-responsive-grid');
+    return {
+      detailOverflow: detail.scrollWidth - detail.clientWidth,
+      contractOverflow: contract.scrollWidth - contract.clientWidth,
+      footerHeight: footer.getBoundingClientRect().height,
+      footerBottom: Math.round(footer.getBoundingClientRect().bottom),
+      surfaceBottom: Math.round(surface.getBoundingClientRect().bottom),
+      responsiveOverflow: responsiveGrid.scrollWidth - responsiveGrid.clientWidth,
+      responsiveColumns: getComputedStyle(responsiveGrid).gridTemplateColumns.split(' ').length,
+    };
+  });
+  assert.ok(
+    workshopGeometry.detailOverflow <= 1,
+    'component canvas must not overflow horizontally',
+  );
+  assert.ok(workshopGeometry.contractOverflow <= 1, 'source contract must fit its rail');
+  assert.equal(workshopGeometry.footerHeight, 56, 'review readiness remains visible');
+  assert.equal(workshopGeometry.footerBottom, workshopGeometry.surfaceBottom);
+  assert.ok(
+    workshopGeometry.responsiveOverflow <= 1,
+    'responsive verification must use the component grid, not the outer workspace grid',
+  );
+  assert.equal(workshopGeometry.responsiveColumns, 3);
   await page.locator('.workshop-variant-row').filter({ hasText: 'Primary' }).click();
   assert.equal(await page.locator('.workshop-drift').getAttribute('data-drift-count'), '1');
   assert.match((await page.locator('.workshop-drift-list').textContent()) ?? '', /Save draft/);
@@ -323,25 +495,45 @@ try {
   await page.getByRole('button', { name: 'Repair 1 value' }).click();
   await page.locator('.workshop-drift[data-drift-count="0"]').waitFor();
 
-  const artifactDirectory = join(root, 'artifacts', 'e2e');
-  await mkdir(artifactDirectory, { recursive: true });
   await page.screenshot({
     path: join(artifactDirectory, 'component-workshop-light.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
   await page.screenshot({
     path: join(artifactDirectory, 'component-workshop-dark.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
-  await page.locator('#workspace-menu-trigger').click();
-  await page.getByRole('button', { name: /Design memory/ }).click();
-  await page.getByRole('heading', { name: 'Design decision memory' }).waitFor();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const compactWorkshopGeometry = await page
+    .locator('.component-workshop-mode')
+    .evaluate((surface) => {
+      const detail = surface.querySelector('.component-workshop-detail');
+      const responsiveGrid = surface.querySelector('.workshop-responsive-grid');
+      const footer = surface.querySelector('.component-workshop-footer');
+      return {
+        detailOverflow: detail.scrollWidth - detail.clientWidth,
+        responsiveColumns: getComputedStyle(responsiveGrid).gridTemplateColumns.split(' ').length,
+        footerBottom: Math.round(footer.getBoundingClientRect().bottom),
+        surfaceBottom: Math.round(surface.getBoundingClientRect().bottom),
+      };
+    });
+  assert.ok(compactWorkshopGeometry.detailOverflow <= 1);
+  assert.equal(compactWorkshopGeometry.responsiveColumns, 1);
+  assert.equal(compactWorkshopGeometry.footerBottom, compactWorkshopGeometry.surfaceBottom);
+  await page.screenshot({
+    path: join(artifactDirectory, 'component-workshop-compact-light.png'),
+    fullPage: false,
+  });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.locator('.workspace-rail [data-workspace-mode="memory"]').click();
+  await page.getByRole('heading', { name: 'Design Memory' }).waitFor();
+  await assertConnectedWorkspaceBrowser('.decision-memory-browser');
   assert.equal(await page.locator('.decision-memory-row').count(), 1);
   assert.match(
     (await page.locator('.decision-relevance').textContent()) ?? '',
@@ -360,24 +552,51 @@ try {
   await page.waitForTimeout(1900);
   await page.screenshot({
     path: join(artifactDirectory, 'design-decision-memory-light.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
   await page.screenshot({
     path: join(artifactDirectory, 'design-decision-memory-dark.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
-  await page.locator('#workspace-menu-trigger').click();
-  await page.getByRole('button', { name: /Visual recipes/ }).click();
+  await page.locator('.workspace-rail [data-workspace-mode="recipes"]').click();
   await page.getByRole('heading', { name: 'Visual recipes' }).waitFor();
+  await assertConnectedWorkspaceBrowser('.visual-recipe-browser');
   assert.equal(await page.locator('.visual-recipe-row').count(), 1);
   assert.match((await page.locator('.visual-recipe-mapping').textContent()) ?? '', /100% exact/);
   assert.match((await page.locator('.visual-recipe-mapping').textContent()) ?? '', /fontSize/);
+  assert.equal(await page.locator('.visual-recipe-map-columns').count(), 1);
+  const recipeGeometry = await page.locator('.visual-recipes-mode').evaluate((surface) => {
+    const browser = surface.querySelector('.visual-recipe-browser');
+    const stage = surface.querySelector('.visual-recipe-stage');
+    const create = surface.querySelector('.visual-recipe-create');
+    const browserRect = browser.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const createRect = create.getBoundingClientRect();
+    return {
+      browserWidth: Math.round(browserRect.width),
+      createWidth: Math.round(createRect.width),
+      browserStageGap: Math.round(stageRect.left - browserRect.right),
+      stageCreateGap: Math.round(createRect.left - stageRect.right),
+      stageRadius: getComputedStyle(stage).borderRadius,
+      createRadius: getComputedStyle(create).borderRadius,
+      stageOverflow: stage.scrollWidth - stage.clientWidth,
+      createOverflow: create.scrollWidth - create.clientWidth,
+    };
+  });
+  assert.equal(recipeGeometry.browserWidth, 320);
+  assert.equal(recipeGeometry.createWidth, 360);
+  assert.equal(recipeGeometry.browserStageGap, 0);
+  assert.equal(recipeGeometry.stageCreateGap, 0);
+  assert.equal(recipeGeometry.stageRadius, '0px');
+  assert.equal(recipeGeometry.createRadius, '0px');
+  assert.ok(recipeGeometry.stageOverflow <= 1);
+  assert.ok(recipeGeometry.createOverflow <= 1);
   await page.getByRole('button', { name: 'Add mapped values to Review' }).click();
   await page
     .frameLocator('#product-preview')
@@ -390,21 +609,54 @@ try {
   );
   await page.screenshot({
     path: join(artifactDirectory, 'visual-recipes-light.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
   await page.screenshot({
     path: join(artifactDirectory, 'visual-recipes-dark.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
-  await page.locator('#workspace-menu-trigger').click();
-  await page.getByRole('button', { name: /Visual agent/ }).click();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const compactRecipeGeometry = await page.locator('.visual-recipes-mode').evaluate((surface) => {
+    const browser = surface.querySelector('.visual-recipe-browser');
+    const stage = surface.querySelector('.visual-recipe-stage');
+    const create = surface.querySelector('.visual-recipe-create');
+    const browserRect = browser.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const createRect = create.getBoundingClientRect();
+    const columns = surface.querySelector('.visual-recipe-map-columns');
+    return {
+      browserWidth: Math.round(browserRect.width),
+      createWidth: Math.round(createRect.width),
+      browserStageGap: Math.round(stageRect.left - browserRect.right),
+      stageCreateGap: Math.round(createRect.left - stageRect.right),
+      stageOverflow: stage.scrollWidth - stage.clientWidth,
+      createOverflow: create.scrollWidth - create.clientWidth,
+      mappingColumns: getComputedStyle(columns).gridTemplateColumns.split(' ').length,
+      reviewVisible: Boolean(surface.querySelector('#visual-recipe-review')?.offsetParent),
+    };
+  });
+  assert.equal(compactRecipeGeometry.browserWidth, 280);
+  assert.equal(compactRecipeGeometry.createWidth, 300);
+  assert.equal(compactRecipeGeometry.browserStageGap, 0);
+  assert.equal(compactRecipeGeometry.stageCreateGap, 0);
+  assert.ok(compactRecipeGeometry.stageOverflow <= 1);
+  assert.ok(compactRecipeGeometry.createOverflow <= 1);
+  assert.equal(compactRecipeGeometry.mappingColumns, 4);
+  assert.equal(compactRecipeGeometry.reviewVisible, true);
+  await page.screenshot({
+    path: join(artifactDirectory, 'visual-recipes-compact-light.png'),
+    fullPage: false,
+  });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.locator('.workspace-rail [data-workspace-mode="agent"]').click();
   await page.getByRole('heading', { name: 'Visual agent' }).waitFor();
+  await assertConnectedWorkspaceBrowser('.visual-agent-threads');
   assert.match(
     (await page.locator('#visual-agent-context').textContent()) ?? '',
     /Create workspace/,
@@ -454,26 +706,103 @@ try {
     /border-radius: 8px/,
   );
   assert.equal(await page.getByRole('button', { name: 'Preview direction' }).isEnabled(), true);
+  const visualAgentGeometry = await page.evaluate(() => {
+    const shell = document.querySelector('.visual-agent-shell');
+    const threads = document.querySelector('.visual-agent-threads');
+    const conversation = document.querySelector('.visual-agent-conversation');
+    const compose = document.querySelector('.visual-agent-compose');
+    const proposalGrid = document.querySelector('.visual-agent-proposal-grid');
+    const verification = proposalGrid?.lastElementChild;
+    const review = document.querySelector('#visual-agent-review');
+    const shellStyle = getComputedStyle(shell);
+    const conversationStyle = getComputedStyle(conversation);
+    return {
+      threadWidth: Math.round(threads.getBoundingClientRect().width),
+      composeWidth: Math.round(compose.getBoundingClientRect().width),
+      threadConversationGap: Math.round(
+        conversation.getBoundingClientRect().left - threads.getBoundingClientRect().right,
+      ),
+      conversationComposeGap: Math.round(
+        compose.getBoundingClientRect().left - conversation.getBoundingClientRect().right,
+      ),
+      shellColumnGap: Number.parseFloat(shellStyle.columnGap),
+      conversationOverflow: conversation.scrollWidth - conversation.clientWidth,
+      conversationRadius: conversationStyle.borderRadius,
+      evidenceColumns: getComputedStyle(proposalGrid).gridTemplateColumns.split(' ').length,
+      verificationWidth: Math.round(verification.getBoundingClientRect().width),
+      proposalGridWidth: Math.round(proposalGrid.getBoundingClientRect().width),
+      reviewVisible: review.getBoundingClientRect().width > 0,
+    };
+  });
+  assert.equal(visualAgentGeometry.threadWidth, 320);
+  assert.equal(visualAgentGeometry.composeWidth, 360);
+  assert.equal(visualAgentGeometry.threadConversationGap, 0);
+  assert.equal(visualAgentGeometry.conversationComposeGap, 0);
+  assert.equal(visualAgentGeometry.shellColumnGap, 0);
+  assert.ok(visualAgentGeometry.conversationOverflow <= 1);
+  assert.equal(visualAgentGeometry.conversationRadius, '0px');
+  assert.equal(visualAgentGeometry.evidenceColumns, 2);
+  assert.ok(
+    Math.abs(visualAgentGeometry.verificationWidth - visualAgentGeometry.proposalGridWidth) <= 2,
+  );
+  assert.equal(visualAgentGeometry.reviewVisible, true);
   await page.screenshot({
     path: join(artifactDirectory, 'visual-agent-light.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
   await page.screenshot({
     path: join(artifactDirectory, 'visual-agent-dark.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
-  await page.locator('#workspace-menu-trigger').click();
-  await page.getByRole('button', { name: /Design system/ }).click();
-  await page.getByRole('heading', { name: 'Design System' }).waitFor();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const compactVisualAgentGeometry = await page.evaluate(() => {
+    const threads = document.querySelector('.visual-agent-threads');
+    const conversation = document.querySelector('.visual-agent-conversation');
+    const compose = document.querySelector('.visual-agent-compose');
+    const review = document.querySelector('#visual-agent-review');
+    return {
+      threadWidth: Math.round(threads.getBoundingClientRect().width),
+      composeWidth: Math.round(compose.getBoundingClientRect().width),
+      threadConversationGap: Math.round(
+        conversation.getBoundingClientRect().left - threads.getBoundingClientRect().right,
+      ),
+      conversationComposeGap: Math.round(
+        compose.getBoundingClientRect().left - conversation.getBoundingClientRect().right,
+      ),
+      conversationOverflow: conversation.scrollWidth - conversation.clientWidth,
+      reviewVisible: review.getBoundingClientRect().width > 0,
+    };
+  });
+  assert.equal(compactVisualAgentGeometry.threadWidth, 280);
+  assert.equal(compactVisualAgentGeometry.composeWidth, 300);
+  assert.equal(compactVisualAgentGeometry.threadConversationGap, 0);
+  assert.equal(compactVisualAgentGeometry.conversationComposeGap, 0);
+  assert.ok(compactVisualAgentGeometry.conversationOverflow <= 1);
+  assert.equal(compactVisualAgentGeometry.reviewVisible, true);
+  await page.screenshot({
+    path: join(artifactDirectory, 'visual-agent-compact-light.png'),
+    fullPage: false,
+  });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.locator('.workspace-rail [data-workspace-mode="system"]').click();
+  await page.getByRole('heading', { name: 'System', exact: true }).waitFor();
+  await assertConnectedWorkspaceBrowser('.design-system-browser');
   assert.match((await page.locator('#design-system-status').textContent()) ?? '', /1 token/);
   assert.match((await page.locator('#design-system-status').textContent()) ?? '', /1 promotion/);
   assert.equal(await page.locator('.design-token-row').count(), 1);
+  assert.equal(await page.getByText('--preview-width', { exact: true }).count(), 0);
+  assert.equal(
+    await page
+      .locator('.design-token-row')
+      .evaluate((element) => element.getBoundingClientRect().height),
+    48,
+  );
   assert.match((await page.locator('#design-system-detail').textContent()) ?? '', /--color-signal/);
   assert.match((await page.locator('#design-system-detail').textContent()) ?? '', /1 indexed/);
   assert.match(
@@ -481,6 +810,25 @@ try {
     /near-duplicate literal/,
   );
   assert.match((await page.locator('#design-system-detail').textContent()) ?? '', /Alias chain/);
+  const usageKindGeometry = await page
+    .locator('.usage-kind')
+    .first()
+    .evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        height: element.getBoundingClientRect().height,
+        width: element.getBoundingClientRect().width,
+        textTransform: style.textTransform,
+        backgroundColor: style.backgroundColor,
+      };
+    });
+  assert.equal(usageKindGeometry.height, 20, 'usage trace tags use the compact metadata height');
+  assert.ok(usageKindGeometry.width <= 72, 'usage trace tags hug their content');
+  assert.equal(usageKindGeometry.textTransform, 'uppercase');
+  assert.ok(
+    ['transparent', 'rgba(0, 0, 0, 0)'].includes(usageKindGeometry.backgroundColor),
+    'reference tags remain visually quiet',
+  );
   await page.locator('[data-system-view="promotions"]').click();
   assert.equal(await page.locator('[data-system-promotion]').count(), 1);
   assert.match(
@@ -498,18 +846,33 @@ try {
     .waitFor();
   await page.screenshot({
     path: join(artifactDirectory, 'design-system-light.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
   await page.screenshot({
     path: join(artifactDirectory, 'design-system-dark.png'),
-    fullPage: true,
+    fullPage: false,
   });
-  await page.locator('#workspace-menu-trigger').click();
-  await page.getByRole('button', { name: /Responsive design lab/ }).click();
+  await page.locator('.workspace-rail [data-workspace-mode="responsive"]').click();
   await page.getByRole('heading', { name: 'Responsive design lab' }).waitFor();
+  await assertConnectedWorkspaceBrowser('.responsive-lab-controls');
+  const responsiveControlGeometry = await page
+    .locator('.responsive-lab-controls')
+    .evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      firstGroupHeight: element.firstElementChild?.getBoundingClientRect().height ?? 0,
+    }));
+  assert.ok(
+    responsiveControlGeometry.scrollWidth <= responsiveControlGeometry.clientWidth,
+    'responsive controls must not overflow horizontally',
+  );
+  assert.ok(
+    responsiveControlGeometry.firstGroupHeight <= 48,
+    'responsive scrub controls must hug their content',
+  );
   await page.locator('[data-responsive-frame="mobile"]').waitFor();
   assert.equal(await page.locator('[data-responsive-frame="mobile"]').getAttribute('width'), '390');
   assert.equal(
@@ -569,20 +932,38 @@ try {
   await page.locator('.responsive-comparison-delta').getByText('+220px container').waitFor();
   await page.locator('[data-responsive-stress="dynamic-type"]').click();
   assert.equal(await page.locator('#change-count').textContent(), '1 change · Main direction');
+  const responsiveDarkSelection = await page
+    .locator('.responsive-viewport-card.is-active')
+    .evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--selection)';
+      document.body.append(probe);
+      const selection = getComputedStyle(probe).color;
+      probe.remove();
+      return {
+        selection,
+        border: getComputedStyle(element).borderColor,
+      };
+    });
+  assert.equal(
+    responsiveDarkSelection.border,
+    responsiveDarkSelection.selection,
+    'dark responsive selection must use the orange system accent',
+  );
   await page.screenshot({
     path: join(artifactDirectory, 'responsive-design-lab-dark.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
   await page.screenshot({
     path: join(artifactDirectory, 'responsive-design-lab-light.png'),
-    fullPage: true,
+    fullPage: false,
   });
-  await page.locator('#workspace-menu-trigger').click();
-  await page.getByRole('button', { name: /Content stress lab/ }).click();
-  await page.getByRole('heading', { name: 'Content and accessibility lab' }).waitFor();
+  await page.locator('.workspace-rail [data-workspace-mode="health"]').click();
+  await page.getByRole('heading', { name: 'Content Stress Lab' }).waitFor();
+  await assertConnectedWorkspaceBrowser('.stress-lab-browser');
   await page
     .frameLocator('[data-responsive-frame="custom"]')
     .locator('main')
@@ -602,7 +983,9 @@ try {
   await page.getByRole('button', { name: /Long content/ }).click();
   await page.getByRole('button', { name: /Keyboard only/ }).click();
   await page.locator('#apply-stress').click();
-  await page.locator('#stress-lab-status').getByText('2 conditions active').waitFor();
+  await page.waitForFunction(
+    () => document.querySelector('#stress-lab-status')?.textContent === '2 conditions active',
+  );
   assert.equal(
     await page.frameLocator('#product-preview').locator('html').getAttribute('data-foundry-stress'),
     'long-content keyboard-only',
@@ -614,14 +997,39 @@ try {
   );
   await page.screenshot({
     path: join(artifactDirectory, 'content-accessibility-lab-light.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
+  const stressDarkSelection = await page
+    .locator('.stress-profile.is-active')
+    .first()
+    .evaluate((element) => {
+      const colorProbe = document.createElement('span');
+      colorProbe.style.color = 'var(--selection)';
+      const backgroundProbe = document.createElement('span');
+      backgroundProbe.style.backgroundColor = 'var(--selection-soft)';
+      document.body.append(colorProbe, backgroundProbe);
+      const selection = getComputedStyle(colorProbe).color;
+      const selectionSoft = getComputedStyle(backgroundProbe).backgroundColor;
+      colorProbe.remove();
+      backgroundProbe.remove();
+      const style = getComputedStyle(element);
+      return {
+        selection,
+        selectionSoft,
+        border: style.borderColor,
+        background: style.backgroundColor,
+        iconColor: getComputedStyle(element.querySelector('svg')).color,
+      };
+    });
+  assert.equal(stressDarkSelection.border, stressDarkSelection.selection);
+  assert.equal(stressDarkSelection.background, stressDarkSelection.selectionSoft);
+  assert.equal(stressDarkSelection.iconColor, stressDarkSelection.selection);
   await page.screenshot({
     path: join(artifactDirectory, 'content-accessibility-lab-dark.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.getByRole('button', { name: 'Source' }).click();
   assert.match(
@@ -629,7 +1037,9 @@ try {
     /PrimaryAction\.tsx:1/,
   );
   await page.locator('#clear-stress').click();
-  await page.locator('#stress-lab-status').getByText('No temporary conditions').waitFor();
+  await page.waitForFunction(
+    () => document.querySelector('#stress-lab-status')?.textContent === 'No temporary conditions',
+  );
   assert.equal(
     await page.frameLocator('#product-preview').locator('html').getAttribute('data-foundry-stress'),
     null,
@@ -637,9 +1047,9 @@ try {
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
-  await page.locator('#workspace-menu-trigger').click();
-  await page.getByRole('button', { name: /Motion studio/ }).click();
+  await page.locator('.workspace-rail [data-workspace-mode="motion"]').click();
   await page.getByRole('heading', { name: 'Motion studio' }).waitFor();
+  await assertConnectedWorkspaceBrowser('.motion-studio-browser');
   assert.equal(await page.locator('.motion-studio-row').count(), 1);
   assert.equal(await page.locator('.motion-studio-track').count(), 2);
   assert.equal(await page.locator('.motion-curve-editor').count(), 1);
@@ -649,6 +1059,46 @@ try {
   assert.equal(await page.locator('.motion-comparison').count(), 1);
   assert.equal(await page.locator('[data-comparison-dot]').count(), 2);
   assert.equal(await page.locator('[data-native-adapter="motion"]').count(), 1);
+  const motionGeometry = await page.locator('.motion-studio-mode').evaluate((surface) => {
+    const shell = surface.querySelector('.motion-studio-shell');
+    const browserPanel = surface.querySelector('.motion-studio-browser');
+    const stage = surface.querySelector('.motion-studio-stage');
+    const canvas = surface.querySelector('.motion-studio-canvas');
+    const properties = surface.querySelector('.motion-studio-properties');
+    const comparison = surface.querySelector('.motion-comparison');
+    const sectionCards = [
+      ...surface.querySelectorAll(
+        '.motion-native-source, .motion-timing-section, .motion-path-editor, .motion-curve-editor, .motion-studio-audit, .motion-studio-keyframe',
+      ),
+    ];
+    const browserRect = browserPanel.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const propertiesRect = properties.getBoundingClientRect();
+    const shellRect = shell.getBoundingClientRect();
+    return {
+      browserWidth: Math.round(browserRect.width),
+      browserStageGap: Math.round(stageRect.left - browserRect.right),
+      stagePropertiesGap: Math.round(propertiesRect.left - stageRect.right),
+      shellBottom: Math.round(shellRect.bottom),
+      canvasBottom: Math.round(canvas.getBoundingClientRect().bottom),
+      comparisonMinHeight: comparison.getBoundingClientRect().height,
+      stageOverflow: stage.scrollWidth - stage.clientWidth,
+      propertiesOverflow: properties.scrollWidth - properties.clientWidth,
+      stageRadius: getComputedStyle(stage).borderRadius,
+      canvasRadius: getComputedStyle(canvas).borderRadius,
+      sectionRadii: sectionCards.map((section) => getComputedStyle(section).borderRadius),
+    };
+  });
+  assert.equal(motionGeometry.browserWidth, 320);
+  assert.equal(motionGeometry.browserStageGap, 0);
+  assert.equal(motionGeometry.stagePropertiesGap, 0);
+  assert.equal(motionGeometry.canvasBottom, motionGeometry.shellBottom);
+  assert.ok(motionGeometry.comparisonMinHeight >= 300);
+  assert.ok(motionGeometry.stageOverflow <= 1);
+  assert.ok(motionGeometry.propertiesOverflow <= 1);
+  assert.equal(motionGeometry.stageRadius, '0px');
+  assert.equal(motionGeometry.canvasRadius, '0px');
+  assert.ok(motionGeometry.sectionRadii.every((radius) => radius === '0px'));
   assert.match(
     (await page.locator('.motion-native-source').textContent()) ?? '',
     /Motion for React.*transition\.duration.*animate \/ variants/s,
@@ -691,20 +1141,112 @@ try {
   );
   await page.screenshot({
     path: join(artifactDirectory, 'motion-studio-light.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
   await page.screenshot({
     path: join(artifactDirectory, 'motion-studio-dark.png'),
-    fullPage: true,
+    fullPage: false,
   });
-  await page.locator('#workspace-menu-trigger').click();
-  await page.getByRole('button', { name: /Typography studio/ }).click();
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const compactMotionGeometry = await page.locator('.motion-studio-mode').evaluate((surface) => {
+    const shell = surface.querySelector('.motion-studio-shell');
+    const browserPanel = surface.querySelector('.motion-studio-browser');
+    const stage = surface.querySelector('.motion-studio-stage');
+    const properties = surface.querySelector('.motion-studio-properties');
+    const browserRect = browserPanel.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const propertiesRect = properties.getBoundingClientRect();
+    return {
+      shellDisplay: getComputedStyle(shell).display,
+      browserWidth: Math.round(browserRect.width),
+      browserStageGap: Math.round(stageRect.left - browserRect.right),
+      stagePropertiesGap: Math.round(propertiesRect.left - stageRect.right),
+      stageOverflow: stage.scrollWidth - stage.clientWidth,
+      propertiesOverflow: properties.scrollWidth - properties.clientWidth,
+    };
+  });
+  assert.equal(compactMotionGeometry.shellDisplay, 'grid');
+  assert.equal(compactMotionGeometry.browserWidth, 280);
+  assert.equal(compactMotionGeometry.browserStageGap, 0);
+  assert.equal(compactMotionGeometry.stagePropertiesGap, 0);
+  assert.ok(compactMotionGeometry.stageOverflow <= 1);
+  assert.ok(compactMotionGeometry.propertiesOverflow <= 1);
+  await page.screenshot({
+    path: join(artifactDirectory, 'motion-studio-compact-light.png'),
+    fullPage: false,
+  });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await page.locator('.workspace-rail [data-workspace-mode="typography"]').click();
   await page.getByRole('heading', { name: 'Typography studio' }).waitFor();
+  await assertConnectedWorkspaceBrowser('.typography-studio-browser');
   assert.equal(await page.locator('.typography-font-row').count(), 2);
+  assert.equal(await page.locator('.typography-font-row.is-active').count(), 1);
+  assert.equal(
+    await page.locator('.typography-font-row.is-active').getAttribute('aria-pressed'),
+    'true',
+  );
   assert.equal(await page.locator('.typography-treatment-grid button').count(), 3);
+  const typographyGeometry = await page.locator('.typography-studio-mode').evaluate((surface) => {
+    const shell = surface.querySelector('.typography-studio-shell');
+    const browserPanel = surface.querySelector('.typography-studio-browser');
+    const stage = surface.querySelector('.typography-studio-stage');
+    const properties = surface.querySelector('.typography-studio-properties');
+    const specimen = surface.querySelector('.typography-specimen');
+    const specimenText = surface.querySelector('.typography-specimen-text');
+    const selectionSummary = surface.querySelector('.typography-selection-summary');
+    const selectionLabel = selectionSummary.querySelector('strong');
+    const sectionCards = [
+      ...surface.querySelectorAll(
+        '.typography-specimen, .typography-treatment-panel, .typography-usage-panel, .typography-rendered-section, .typography-audit, .typography-google-review, .typography-saved-styles',
+      ),
+    ];
+    const browserRect = browserPanel.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const propertiesRect = properties.getBoundingClientRect();
+    const shellRect = shell.getBoundingClientRect();
+    return {
+      browserWidth: Math.round(browserRect.width),
+      browserStageGap: Math.round(stageRect.left - browserRect.right),
+      stagePropertiesGap: Math.round(propertiesRect.left - stageRect.right),
+      shellBottom: Math.round(shellRect.bottom),
+      stageBottom: Math.round(stageRect.bottom),
+      stageOverflow: stage.scrollWidth - stage.clientWidth,
+      propertiesOverflow: properties.scrollWidth - properties.clientWidth,
+      selectionInset: Math.round(selectionLabel.getBoundingClientRect().left - browserRect.left),
+      selectionLabelWidth: Math.round(selectionLabel.getBoundingClientRect().width),
+      stageRadius: getComputedStyle(stage).borderRadius,
+      specimenRadius: getComputedStyle(specimen).borderRadius,
+      specimenHeight: Math.round(specimen.getBoundingClientRect().height),
+      specimenAlign: getComputedStyle(specimenText).alignItems,
+      specimenJustify: getComputedStyle(specimenText).justifyContent,
+      specimenTextAlign: getComputedStyle(specimenText).textAlign,
+      sectionRadii: sectionCards.map((section) => getComputedStyle(section).borderRadius),
+    };
+  });
+  assert.equal(typographyGeometry.browserWidth, 320);
+  assert.equal(typographyGeometry.browserStageGap, 0);
+  assert.equal(typographyGeometry.stagePropertiesGap, 0);
+  assert.equal(typographyGeometry.stageBottom, typographyGeometry.shellBottom);
+  assert.ok(typographyGeometry.stageOverflow <= 1);
+  assert.ok(typographyGeometry.propertiesOverflow <= 1);
+  assert.equal(typographyGeometry.selectionInset, 16);
+  assert.ok(typographyGeometry.selectionLabelWidth > 200);
+  assert.equal(typographyGeometry.stageRadius, '0px');
+  assert.equal(typographyGeometry.specimenRadius, '0px');
+  assert.equal(typographyGeometry.specimenHeight, 280);
+  assert.equal(typographyGeometry.specimenAlign, 'center');
+  assert.equal(typographyGeometry.specimenJustify, 'center');
+  assert.equal(typographyGeometry.specimenTextAlign, 'center');
+  assert.ok(typographyGeometry.sectionRadii.every((radius) => radius === '0px'));
   assert.match(
     (await page.locator('#typography-studio-properties').textContent()) ?? '',
     /Rendered type is stable/,
@@ -712,29 +1254,69 @@ try {
   await page.locator('[data-treatment-id="balanced"]').click();
   await page.screenshot({
     path: join(artifactDirectory, 'typography-studio-dark.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
   await page.screenshot({
     path: join(artifactDirectory, 'typography-studio-light.png'),
-    fullPage: true,
+    fullPage: false,
   });
-  await page.locator('#workspace-menu-trigger').click();
-  await page.getByRole('button', { name: /Design branches/ }).click();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const compactTypographyGeometry = await page
+    .locator('.typography-studio-mode')
+    .evaluate((surface) => {
+      const shell = surface.querySelector('.typography-studio-shell');
+      const browserPanel = surface.querySelector('.typography-studio-browser');
+      const stage = surface.querySelector('.typography-studio-stage');
+      const properties = surface.querySelector('.typography-studio-properties');
+      const browserRect = browserPanel.getBoundingClientRect();
+      const stageRect = stage.getBoundingClientRect();
+      const propertiesRect = properties.getBoundingClientRect();
+      return {
+        shellDisplay: getComputedStyle(shell).display,
+        browserWidth: Math.round(browserRect.width),
+        browserStageGap: Math.round(stageRect.left - browserRect.right),
+        stagePropertiesGap: Math.round(propertiesRect.left - stageRect.right),
+        stageOverflow: stage.scrollWidth - stage.clientWidth,
+        propertiesOverflow: properties.scrollWidth - properties.clientWidth,
+        specimenHeight: Math.round(
+          surface.querySelector('.typography-specimen').getBoundingClientRect().height,
+        ),
+        treatmentColumns: getComputedStyle(
+          surface.querySelector('.typography-treatment-grid'),
+        ).gridTemplateColumns.split(' ').length,
+      };
+    });
+  assert.equal(compactTypographyGeometry.shellDisplay, 'grid');
+  assert.equal(compactTypographyGeometry.browserWidth, 280);
+  assert.equal(compactTypographyGeometry.browserStageGap, 0);
+  assert.equal(compactTypographyGeometry.stagePropertiesGap, 0);
+  assert.ok(compactTypographyGeometry.stageOverflow <= 1);
+  assert.ok(compactTypographyGeometry.propertiesOverflow <= 1);
+  assert.equal(compactTypographyGeometry.specimenHeight, 240);
+  assert.equal(compactTypographyGeometry.treatmentColumns, 3);
+  await page.screenshot({
+    path: join(artifactDirectory, 'typography-studio-compact-light.png'),
+    fullPage: false,
+  });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.locator('.workspace-rail [data-workspace-mode="branches"]').click();
   await page.getByRole('heading', { name: 'Design branches' }).waitFor();
+  await assertConnectedWorkspaceBrowser('.design-branch-browser');
   assert.equal(await page.locator('.design-branch-row').count(), 2);
   assert.equal(await page.locator('.design-branch-preview-card').count(), 2);
   assert.equal(await page.locator('.design-branch-decision-row').count(), 2);
   await page.locator('.design-branch-row').filter({ hasText: 'Editorial scale' }).click();
-  await page.locator('#design-branch-status').getByText('Editorial scale').waitFor();
+  await page.waitForFunction(
+    () => document.querySelector('#design-branch-status')?.textContent === 'Editorial scale',
+  );
   assert.equal(await page.locator('#design-branch-status').textContent(), 'Editorial scale');
   assert.equal(await page.locator('#change-count').textContent(), '2 changes · Editorial scale');
   await page.getByRole('button', { name: 'Choose direction' }).click();
   await page.getByRole('heading', { name: 'Review and apply' }).waitFor();
-  await page.locator('#workspace-menu-trigger').click();
-  await page.getByRole('button', { name: /Design branches/ }).click();
+  await page.locator('.workspace-rail [data-workspace-mode="branches"]').click();
   await page.getByRole('heading', { name: 'Design branches' }).waitFor();
   assert.equal(await page.locator('.design-branch-record').count(), 1);
   assert.match(
@@ -747,40 +1329,140 @@ try {
     .locator('html[data-foundry-decision="approved"]')
     .waitFor();
   await page.getByRole('button', { name: 'Restore direction' }).click();
-  await page
-    .locator('#design-branch-status')
-    .getByText(/Editorial scale \(restored\)/)
-    .waitFor();
+  await page.waitForFunction(() =>
+    document
+      .querySelector('#design-branch-status')
+      ?.textContent?.includes('Editorial scale (restored)'),
+  );
   assert.equal(await page.locator('.design-branch-row').count(), 3);
+  const branchGeometry = await page.locator('.design-branches-mode').evaluate((surface) => {
+    const shell = surface.querySelector('.design-branches-shell');
+    const browserPanel = surface.querySelector('.design-branch-browser');
+    const stage = surface.querySelector('.design-branch-stage');
+    const detail = surface.querySelector('.design-branch-detail');
+    const previews = [...surface.querySelectorAll('.design-branch-preview-card')];
+    const browserRect = browserPanel.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const detailRect = detail.getBoundingClientRect();
+    return {
+      shellDisplay: getComputedStyle(shell).display,
+      browserWidth: Math.round(browserRect.width),
+      detailWidth: Math.round(detailRect.width),
+      browserStageGap: Math.round(stageRect.left - browserRect.right),
+      stageDetailGap: Math.round(detailRect.left - stageRect.right),
+      stageOverflow: stage.scrollWidth - stage.clientWidth,
+      detailOverflow: detail.scrollWidth - detail.clientWidth,
+      previewWidths: previews.map((preview) => Math.round(preview.getBoundingClientRect().width)),
+      previewTops: previews.map((preview) => Math.round(preview.getBoundingClientRect().top)),
+      previewRadius: previews.map((preview) => getComputedStyle(preview).borderRadius),
+      footerCount: surface.querySelectorAll('.design-branch-footer').length,
+    };
+  });
+  assert.equal(branchGeometry.shellDisplay, 'grid');
+  assert.equal(branchGeometry.browserWidth, 320);
+  assert.equal(branchGeometry.detailWidth, 360);
+  assert.equal(branchGeometry.browserStageGap, 0);
+  assert.equal(branchGeometry.stageDetailGap, 0);
+  assert.ok(branchGeometry.stageOverflow <= 1);
+  assert.ok(branchGeometry.detailOverflow <= 1);
+  assert.ok(branchGeometry.previewWidths.every((width) => width >= 480));
+  assert.equal(new Set(branchGeometry.previewTops).size, 1);
+  assert.ok(branchGeometry.previewRadius.every((radius) => radius === '8px'));
+  assert.equal(branchGeometry.footerCount, 0);
+  assert.equal(await page.locator('#design-branch-compose').isVisible(), true);
+  assert.equal(await page.getByRole('button', { name: 'Return to main' }).isVisible(), true);
   await page.screenshot({
     path: join(artifactDirectory, 'design-branches-light.png'),
-    fullPage: true,
+    fullPage: false,
   });
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'dark';
   });
   await page.screenshot({
     path: join(artifactDirectory, 'design-branches-dark.png'),
-    fullPage: true,
+    fullPage: false,
   });
-  await page.locator('.design-branch-row').filter({ hasText: 'Main direction' }).click();
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const compactBranchGeometry = await page.locator('.design-branches-mode').evaluate((surface) => {
+    const browserPanel = surface.querySelector('.design-branch-browser');
+    const stage = surface.querySelector('.design-branch-stage');
+    const detail = surface.querySelector('.design-branch-detail');
+    const browserRect = browserPanel.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const detailRect = detail.getBoundingClientRect();
+    return {
+      browserWidth: Math.round(browserRect.width),
+      detailWidth: Math.round(detailRect.width),
+      browserStageGap: Math.round(stageRect.left - browserRect.right),
+      stageDetailGap: Math.round(detailRect.left - stageRect.right),
+      stageOverflow: stage.scrollWidth - stage.clientWidth,
+      detailOverflow: detail.scrollWidth - detail.clientWidth,
+      previewCount: surface.querySelectorAll('.design-branch-preview-card').length,
+      decisionActionsVisible:
+        surface.querySelector('#design-branch-compose').getBoundingClientRect().width > 0,
+    };
+  });
+  assert.equal(compactBranchGeometry.browserWidth, 280);
+  assert.equal(compactBranchGeometry.detailWidth, 300);
+  assert.equal(compactBranchGeometry.browserStageGap, 0);
+  assert.equal(compactBranchGeometry.stageDetailGap, 0);
+  assert.ok(compactBranchGeometry.stageOverflow <= 1);
+  assert.ok(compactBranchGeometry.detailOverflow <= 1);
+  assert.equal(compactBranchGeometry.previewCount, 2);
+  assert.equal(compactBranchGeometry.decisionActionsVisible, true);
+  await page.screenshot({
+    path: join(artifactDirectory, 'design-branches-compact-light.png'),
+    fullPage: false,
+  });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.getByRole('button', { name: 'Return to main' }).click();
+  await page.waitForFunction(
+    () => document.querySelector('#design-branch-status')?.textContent === 'Main direction',
+  );
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+  await page.locator('.workspace-rail [data-workspace-mode="canvas"]').click();
   await page.locator('#workspace-menu-trigger').click();
-  await page.getByRole('button', { name: /Review changes/ }).click();
+  await page.locator('#workspace-menu [data-workspace-mode="review"]').click();
 
   await page.getByRole('heading', { name: 'Review and apply' }).waitFor();
   assert.equal(await page.locator('#review-count').textContent(), '0 included');
   assert.equal(await page.locator('.change-row').count(), 2);
+  assert.doesNotMatch((await page.locator('#changes').textContent()) ?? '', /pxpx/);
   assert.deepEqual(pageErrors, []);
+  await assertAccessibleWorkspaceSurface();
 
-  await page.screenshot({
-    path: join(artifactDirectory, 'workspace-review-beta.12.png'),
-    fullPage: true,
+  await page.screenshot({ path: join(artifactDirectory, 'review-light.png'), fullPage: false });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
   });
+  await page.screenshot({ path: join(artifactDirectory, 'review-dark.png'), fullPage: false });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+  });
+
+  const reviewSession = await store.read(sessionId);
+  const applyChanges = reviewSession.changeSet.changes.filter(
+    (change) => change.confidence !== 'unresolved',
+  );
+  await store.createApplyRun(sessionId, {
+    reviews: applyChanges.map((change) => ({ changeId: change.id, approved: true })),
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('#apply-run:not([hidden])').waitFor();
+  await page.getByRole('heading', { name: 'Apply and verify', exact: true }).first().waitFor();
+  await assertAccessibleWorkspaceSurface();
+  await page.screenshot({ path: join(artifactDirectory, 'apply-light.png'), fullPage: false });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+  });
+  await page.screenshot({ path: join(artifactDirectory, 'apply-dark.png'), fullPage: false });
   console.log(
-    'Workspace Playwright flow passed: session, native viewport, Component Workshop, Design System, Responsive Lab, Content and Accessibility Lab, Motion Studio, Typography Studio, Design Branches, change summary, and review.',
+    'Workspace Playwright flow passed: session, native viewport, Canvas, State Workbench, Component Workshop, System, Responsive Lab, Content and Accessibility Lab, Motion Studio, Typography Studio, Design Branches, change summary, Review, and Apply.',
   );
 } finally {
   await browser?.close();

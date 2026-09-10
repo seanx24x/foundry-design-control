@@ -1,4 +1,4 @@
-export const FOUNDRY_VERSION = '0.2.0-beta.18';
+export const FOUNDRY_VERSION = '0.2.0-beta.19';
 export const FOUNDRY_PACKAGE_SPEC = `foundry-design@${FOUNDRY_VERSION}`;
 export const FOUNDRY_MCP_PACKAGE_SPEC = `foundry-design-mcp-server@${FOUNDRY_VERSION}`;
 

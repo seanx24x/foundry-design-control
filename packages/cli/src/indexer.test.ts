@@ -169,6 +169,35 @@ test('marks broken and circular token aliases without inventing resolved values'
   assert.equal(graph.tokens.find((token) => token.name === '--loop-a')?.resolvedValue, undefined);
 });
 
+test('indexes authored stylesheet tokens without treating source templates as tokens', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'foundry-index-stylesheets-'));
+  await writeFile(
+    join(root, 'theme.css'),
+    `:root { --surface: #ffffff; }
+.card { color: var(--surface); }`,
+  );
+  await writeFile(
+    join(root, 'Card.tsx'),
+    `const width = 320;
+const markup = '<div style="--preview-width:\${width}px"></div>';
+const assertion = /--surface:\\s*#ffffff/;
+const styles = css\`
+  :root { --card-gap: 12px; }
+  .card { gap: var(--card-gap); }
+\`;
+export function Card() { return markup; }`,
+  );
+
+  const graph = await indexProjectDesign(root, undefined);
+  assert.deepEqual(graph.tokens.map((token) => token.name).sort(), ['--card-gap', '--surface']);
+  assert.equal(
+    graph.tokens.some((token) => token.name === '--preview-width'),
+    false,
+  );
+  assert.equal(graph.tokens.find((token) => token.name === '--surface')?.value, '#ffffff');
+  assert.ok(graph.tokenUsages.some((usage) => usage.tokenName === '--card-gap'));
+});
+
 test('prefers configured viewport and state definitions', async () => {
   const root = await mkdtemp(join(tmpdir(), 'foundry-index-config-'));
   const graph = await indexProjectDesign(root, {

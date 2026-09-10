@@ -2998,6 +2998,23 @@ export function installFoundryInspector(
       saveSelectedRecipe(String(payload.name ?? ''), String(payload.intent ?? ''));
       publishWorkspaceState();
     }
+    if (message.command === 'duplicate-visual-recipe') {
+      const recipe = designMemory.recipes.find(
+        (item) => item.id === String(payload.recipeId ?? ''),
+      );
+      if (recipe) {
+        designMemory = addRecipe(designMemory, {
+          ...recipe,
+          id: `recipe_${Date.now().toString(36)}`,
+          name: `${recipe.name} copy`,
+          createdAt: new Date().toISOString(),
+        });
+        persistDesignMemory();
+        renderDesignMemory();
+        publishWorkspaceState();
+        showToast('Recipe duplicated');
+      }
+    }
     if (message.command === 'remove-visual-recipe') {
       designMemory = removeRecipe(designMemory, String(payload.recipeId ?? ''));
       persistDesignMemory();

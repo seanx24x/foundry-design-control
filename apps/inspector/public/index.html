@@ -16,22 +16,6 @@
           <span class="project-name" id="project-name">Design workspace</span>
         </div>
         <nav class="app-actions" aria-label="Workspace controls">
-          <button
-            class="icon-button is-active"
-            data-dock-toggle="layers"
-            aria-label="Toggle Layers"
-            aria-pressed="true"
-          >
-            <i data-icon="layers"></i>
-          </button>
-          <button
-            class="icon-button is-active"
-            data-dock-toggle="inspector"
-            aria-label="Toggle Inspector"
-            aria-pressed="true"
-          >
-            <i data-icon="panel"></i>
-          </button>
           <button class="icon-button" id="command-trigger" aria-label="Open commands">
             <i data-icon="command"></i>
           </button>
@@ -52,7 +36,7 @@
             <i data-icon="file"></i><span>Review changes</span><kbd>2</kbd>
           </button>
           <button data-workspace-mode="states">
-            <i data-icon="play"></i><span>State workbench</span><kbd>3</kbd>
+            <i data-icon="layers"></i><span>State workbench</span><kbd>3</kbd>
           </button>
           <button data-workspace-mode="health">
             <i data-icon="activity"></i><span>Content stress lab</span><kbd>4</kbd>
@@ -79,7 +63,7 @@
             <i data-icon="branch"></i><span>Design branches</span><kbd>B</kbd>
           </button>
           <button data-workspace-mode="recipes">
-            <i data-icon="bookmark"></i><span>Visual recipes</span><kbd>R</kbd>
+            <i data-icon="file"></i><span>Visual recipes</span><kbd>R</kbd>
           </button>
           <button data-workspace-mode="agent">
             <i data-icon="message"></i><span>Visual agent</span><kbd>A</kbd>
@@ -95,6 +79,61 @@
       </header>
 
       <main class="workspace">
+        <nav class="workspace-rail" aria-label="Foundry workspaces">
+          <button
+            class="rail-button is-active"
+            data-workspace-mode="canvas"
+            aria-label="Canvas"
+            aria-current="page"
+          >
+            <i data-icon="cursor"></i>
+          </button>
+          <button class="rail-button" data-workspace-mode="states" aria-label="State workbench">
+            <i data-icon="layers"></i>
+          </button>
+          <button class="rail-button" data-workspace-mode="health" aria-label="Content stress lab">
+            <i data-icon="activity"></i>
+          </button>
+          <button class="rail-button" data-workspace-mode="memory" aria-label="Design memory">
+            <i data-icon="bookmark"></i>
+          </button>
+          <button
+            class="rail-button"
+            data-workspace-mode="components"
+            aria-label="Component workshop"
+          >
+            <i data-icon="component"></i>
+          </button>
+          <button
+            class="rail-button"
+            data-workspace-mode="responsive"
+            aria-label="Responsive design lab"
+          >
+            <i data-icon="layout"></i>
+          </button>
+          <button class="rail-button" data-workspace-mode="system" aria-label="Design system">
+            <i data-icon="sparkles"></i>
+          </button>
+          <button class="rail-button" data-workspace-mode="motion" aria-label="Motion studio">
+            <i data-icon="play"></i>
+          </button>
+          <button
+            class="rail-button"
+            data-workspace-mode="typography"
+            aria-label="Typography studio"
+          >
+            <i data-icon="typography"></i>
+          </button>
+          <button class="rail-button" data-workspace-mode="branches" aria-label="Design branches">
+            <i data-icon="branch"></i>
+          </button>
+          <button class="rail-button" data-workspace-mode="recipes" aria-label="Visual recipes">
+            <i data-icon="file"></i>
+          </button>
+          <button class="rail-button" data-workspace-mode="agent" aria-label="Visual agent">
+            <i data-icon="message"></i>
+          </button>
+        </nav>
         <aside class="dock layers-dock" id="layers-dock" aria-label="Layers and components">
           <header class="dock-head">
             <strong>Structure</strong><span id="layer-total">0</span>
@@ -126,29 +165,45 @@
         <section class="center-workspace" aria-label="Foundry canvas">
           <section class="mode-surface canvas-mode" data-mode-surface="canvas">
             <header class="canvas-context">
-              <div>
+              <div class="canvas-title-group">
+                <button
+                  class="icon-button is-active"
+                  data-dock-toggle="layers"
+                  aria-label="Toggle Layers"
+                  aria-pressed="true"
+                >
+                  <i data-icon="panelLeft"></i>
+                </button>
                 <strong>Canvas</strong
                 ><span id="canvas-detail">Waiting for the product adapter</span>
               </div>
               <div class="context-fields">
                 <label
-                  ><span>Viewport</span
+                  ><span>Viewport:</span
                   ><select id="canvas-viewport">
                     <option value="current">Current</option>
                   </select></label
                 >
                 <label
-                  ><span>Theme</span
+                  ><span>Theme:</span
                   ><select id="canvas-theme">
                     <option value="current">Current</option>
                   </select></label
                 >
                 <label
-                  ><span>State</span
+                  ><span>State:</span
                   ><select id="canvas-state">
                     <option value="current">Current</option>
                   </select></label
                 >
+                <button
+                  class="icon-button is-active"
+                  data-dock-toggle="inspector"
+                  aria-label="Toggle Inspector"
+                  aria-pressed="true"
+                >
+                  <i data-icon="panel"></i>
+                </button>
               </div>
             </header>
             <div class="canvas-stage" id="canvas-stage">
@@ -210,28 +265,41 @@
           <section class="mode-surface centered-mode" data-mode-surface="review" hidden>
             <header class="mode-head">
               <div>
-                <span class="eyebrow">Change set</span>
                 <h1>Review and apply</h1>
-                <p>Approve exact changes before the active agent edits source.</p>
+                <p id="review-context">Current viewport</p>
               </div>
               <div class="mode-actions">
                 <button class="secondary-button" id="review-compare">Compare on canvas</button>
                 <span class="mode-count" id="review-count">0 included</span>
               </div>
             </header>
-            <div class="review-list" id="changes"></div>
-            <footer class="review-footer">
-              <button class="secondary-button" data-workspace-mode="canvas">Back to canvas</button
-              ><button class="primary-button" id="apply-agent">Apply with agent</button>
-            </footer>
+            <div class="review-workspace">
+              <div class="review-list" id="changes"></div>
+              <aside class="review-summary" id="review-summary" aria-label="Review summary">
+                <header>
+                  <strong>Review summary</strong>
+                  <p>Only included, exactly mapped changes are sent to the agent.</p>
+                </header>
+                <div class="review-summary-content" id="review-summary-content"></div>
+                <footer class="review-footer">
+                  <button class="primary-button" id="apply-agent">Apply with agent</button>
+                  <button class="secondary-button" data-workspace-mode="canvas">
+                    Back to canvas
+                  </button>
+                </footer>
+              </aside>
+            </div>
           </section>
 
           <section class="mode-surface centered-mode" data-mode-surface="states" hidden>
             <header class="mode-head">
               <div>
-                <span class="eyebrow">Conditions</span>
-                <h1>State workbench</h1>
-                <p>Inspect one surface across viewport, theme, interaction, and motion contexts.</p>
+                <h1>State Workbench</h1>
+                <p>Compare interaction states across viewport, theme, and motion preferences.</p>
+              </div>
+              <div class="mode-actions">
+                <button class="secondary-button" id="state-save-matrix">Save matrix</button>
+                <button class="primary-button" id="state-run-verification">Run verification</button>
               </div>
             </header>
             <div class="workbench-grid" id="state-grid"></div>
@@ -244,27 +312,22 @@
           >
             <header class="mode-head">
               <div>
-                <span class="eyebrow">Components</span>
-                <h1>Component workshop</h1>
-                <p>
-                  Explore every live instance, mapped variant, and visual state before changing
-                  source.
-                </p>
+                <h1>Component Workshop</h1>
+                <p>Create, compare, and source-back component variants in one focused workspace.</p>
               </div>
               <div class="mode-actions">
                 <button class="secondary-button" id="component-open-canvas">Open on canvas</button>
-                <button
-                  class="icon-button mode-close"
-                  data-close-mode="components"
-                  aria-label="Close Component workshop"
-                  data-tooltip="Close Component workshop"
-                >
-                  <i data-icon="close"></i>
+                <button class="primary-button" data-studio-action="component-create">
+                  Create variant
                 </button>
               </div>
             </header>
             <div class="component-workshop-shell">
               <aside class="component-workshop-browser">
+                <header class="workshop-browser-head">
+                  <strong>Components</strong>
+                  <span>Choose a source-backed component and the state you want to refine.</span>
+                </header>
                 <label class="search-field"
                   ><i data-icon="search"></i
                   ><input
@@ -276,6 +339,7 @@
                 <div id="component-workshop-list" class="component-workshop-list"></div>
               </aside>
               <div class="component-workshop-detail" id="component-workshop-detail"></div>
+              <aside class="component-workshop-contract" id="component-workshop-contract"></aside>
             </div>
             <footer class="component-workshop-footer">
               <span id="component-workshop-readiness">Choose a live component to begin.</span>
@@ -290,22 +354,18 @@
           >
             <header class="mode-head">
               <div>
-                <span class="eyebrow">Responsive</span>
-                <h1>Responsive design lab</h1>
+                <h1>Responsive Design Lab</h1>
                 <p>
-                  Select once, inspect the same live element across native viewports, and fix the
-                  failing context without hiding overflow.
+                  Scrub breakpoints, compare containers, and verify responsive behavior without
+                  changing source.
                 </p>
               </div>
               <div class="mode-actions">
-                <button class="secondary-button" id="responsive-open-canvas">Open on canvas</button>
-                <button
-                  class="icon-button mode-close"
-                  data-close-mode="responsive"
-                  aria-label="Close Responsive design lab"
-                  data-tooltip="Close Responsive design lab"
-                >
-                  <i data-icon="close"></i>
+                <button class="secondary-button" data-studio-action="responsive-fit">
+                  Fit all
+                </button>
+                <button class="primary-button" data-studio-action="responsive-audit">
+                  Run responsive audit
                 </button>
               </div>
             </header>
@@ -402,23 +462,17 @@
           >
             <header class="mode-head">
               <div>
-                <span class="eyebrow">Project language</span>
-                <h1>Design system</h1>
-                <p>
-                  Trace native tokens to source and usage, then resolve drift without weakening the
-                  product's existing conventions.
-                </p>
+                <h1>System</h1>
+                <p>See foundations, components, coverage, and source drift as one living system.</p>
               </div>
               <div class="mode-actions">
-                <span class="mode-count" id="design-system-status">Indexing project</span>
-                <button
-                  class="icon-button mode-close"
-                  data-close-mode="system"
-                  aria-label="Close Design system"
-                  data-tooltip="Close Design system"
+                <span class="mode-count studio-live-status" id="design-system-status"
+                  >Indexing project</span
                 >
-                  <i data-icon="close"></i>
+                <button class="secondary-button" data-studio-action="system-export">
+                  Export tokens
                 </button>
+                <button class="primary-button" data-studio-action="system-sync">Sync system</button>
               </div>
             </header>
             <div class="design-system-summary" id="design-system-summary"></div>
@@ -463,22 +517,21 @@
           >
             <header class="mode-head">
               <div>
-                <span class="eyebrow">Live motion</span>
-                <h1>Motion studio</h1>
+                <h1>Motion Studio</h1>
                 <p>
-                  Draw transform paths, compare motion in sync, shape timing curves, and review
-                  every source change before apply.
+                  Author springs, timing, paths, and synchronized comparisons with direct visual
+                  feedback.
                 </p>
               </div>
               <div class="mode-actions">
-                <span class="mode-count" id="motion-studio-status">Select a moving layer</span>
-                <button
-                  class="icon-button mode-close"
-                  data-close-mode="motion"
-                  aria-label="Close Motion studio"
-                  data-tooltip="Close Motion studio"
+                <span class="mode-count studio-live-status" id="motion-studio-status"
+                  >Select a moving layer</span
                 >
-                  <i data-icon="close"></i>
+                <button class="secondary-button" data-studio-action="motion-compare">
+                  Compare motion
+                </button>
+                <button class="primary-button" data-studio-action="motion-preview">
+                  Preview motion
                 </button>
               </div>
             </header>
@@ -508,22 +561,21 @@
           >
             <header class="mode-head">
               <div>
-                <span class="eyebrow">Live typography</span>
-                <h1>Typography studio</h1>
+                <h1>Typography Studio</h1>
                 <p>
-                  Audit rendered type, preview project and device fonts, and build source-safe type
-                  decisions before review.
+                  Choose, compare, and source fonts from Google Fonts, local installations, and
+                  project assets.
                 </p>
               </div>
               <div class="mode-actions">
-                <span class="mode-count" id="typography-studio-status">Select a text layer</span>
-                <button
-                  class="icon-button mode-close"
-                  data-close-mode="typography"
-                  aria-label="Close Typography studio"
-                  data-tooltip="Close Typography studio"
+                <span class="mode-count studio-live-status" id="typography-studio-status"
+                  >Select a text layer</span
                 >
-                  <i data-icon="close"></i>
+                <button class="secondary-button" data-studio-action="typography-compare">
+                  Compare fonts
+                </button>
+                <button class="primary-button" data-studio-action="typography-apply">
+                  Apply typography
                 </button>
               </div>
             </header>
@@ -565,22 +617,18 @@
           >
             <header class="mode-head">
               <div>
-                <span class="eyebrow">Exploration</span>
-                <h1>Design branches</h1>
+                <h1>Design Branches</h1>
                 <p>
-                  Explore parallel directions without mixing decisions into the source-ready change
-                  set.
+                  Explore competing design directions without losing evidence, authorship, or a path
+                  back.
                 </p>
               </div>
               <div class="mode-actions">
-                <span class="mode-count" id="design-branch-status">Main direction</span>
-                <button
-                  class="icon-button mode-close"
-                  data-close-mode="branches"
-                  aria-label="Close Design branches"
-                  data-tooltip="Close Design branches"
+                <span class="mode-count studio-live-status" id="design-branch-status"
+                  >Main direction</span
                 >
-                  <i data-icon="close"></i>
+                <button class="primary-button" id="design-branch-promote" disabled>
+                  Choose direction
                 </button>
               </div>
             </header>
@@ -603,6 +651,10 @@
                       <i data-icon="plus"></i>
                     </button>
                   </div>
+                </div>
+                <div class="design-branch-list-head">
+                  <strong>Directions</strong>
+                  <span id="design-branch-direction-count">0</span>
                 </div>
                 <div class="design-branch-list" id="design-branch-list"></div>
                 <section class="design-branch-records">
@@ -653,24 +705,18 @@
                       <span class="eyebrow">Decisions</span>
                       <strong>Compose the strongest direction</strong>
                     </div>
-                    <span id="design-branch-selection-count">0 selected</span>
+                    <div class="design-branch-decision-actions">
+                      <span id="design-branch-selection-count">0 selected</span>
+                      <button class="secondary-button compact" id="design-branch-compose" disabled>
+                        Combine selected
+                      </button>
+                    </div>
                   </header>
                   <div id="design-branch-decision-list"></div>
                 </section>
               </main>
               <aside class="design-branch-detail" id="design-branch-detail"></aside>
             </div>
-            <footer class="design-branch-footer">
-              <span>Only a chosen direction enters Review and apply.</span>
-              <div>
-                <button class="secondary-button" id="design-branch-compose" disabled>
-                  Combine selected
-                </button>
-                <button class="primary-button" id="design-branch-promote" disabled>
-                  Choose direction
-                </button>
-              </div>
-            </footer>
           </section>
 
           <section
@@ -680,22 +726,21 @@
           >
             <header class="mode-head">
               <div>
-                <span class="eyebrow">Stress testing</span>
-                <h1>Content and accessibility lab</h1>
+                <h1>Content Stress Lab</h1>
                 <p>
-                  Apply temporary edge cases, find the exact failure, and review safe corrections
-                  without turning test data into source changes.
+                  Pressure-test real layouts with longer copy, denser data, localization, and
+                  failure states.
                 </p>
               </div>
               <div class="mode-actions">
-                <span class="mode-count" id="stress-lab-status">No temporary conditions</span>
-                <button
-                  class="icon-button mode-close"
-                  data-close-mode="health"
-                  aria-label="Close Content and accessibility lab"
-                  data-tooltip="Close Content and accessibility lab"
+                <span class="mode-count studio-live-status" id="stress-lab-status"
+                  >No temporary conditions</span
                 >
-                  <i data-icon="close"></i>
+                <button class="secondary-button" data-studio-action="stress-reset">
+                  Reset scenario
+                </button>
+                <button class="primary-button" data-studio-action="stress-run">
+                  Run stress test
                 </button>
               </div>
             </header>
@@ -749,22 +794,15 @@
           >
             <header class="mode-head">
               <div>
-                <span class="eyebrow">Reusable visual judgment</span>
-                <h1>Visual recipes</h1>
+                <h1>Visual Recipes</h1>
                 <p>
-                  Save proven treatments, find compatible targets, and map every value through the
-                  destination project before Review.
+                  Save repeatable visual transformations as clear, inspectable, source-aware
+                  workflows.
                 </p>
               </div>
               <div class="mode-actions">
-                <span class="mode-count" id="visual-recipe-status">No saved recipes</span>
-                <button
-                  class="icon-button mode-close"
-                  data-close-mode="recipes"
-                  aria-label="Close Visual recipes"
-                  data-tooltip="Close Visual recipes"
-                >
-                  <i data-icon="close"></i>
+                <button class="primary-button" id="visual-recipe-review">
+                  Review mapped changes
                 </button>
               </div>
             </header>
@@ -774,11 +812,20 @@
                   <div>
                     <span class="eyebrow">Project library</span><strong>Saved recipes</strong>
                   </div>
-                  <button class="icon-button" id="visual-recipe-import" aria-label="Import recipes">
+                  <span class="mode-count" id="visual-recipe-status">No saved recipes</span>
+                </header>
+                <div class="visual-recipe-browser-actions">
+                  <span>Portable treatments</span>
+                  <button
+                    class="icon-button"
+                    id="visual-recipe-import"
+                    aria-label="Import recipes"
+                    data-tooltip="Import recipes"
+                  >
                     <i data-icon="plus"></i>
                   </button>
                   <input id="visual-recipe-file" type="file" accept="application/json" hidden />
-                </header>
+                </div>
                 <label class="search-field"
                   ><i data-icon="search"></i
                   ><input id="visual-recipe-search" type="search" placeholder="Search recipes"
@@ -790,36 +837,40 @@
               </aside>
               <main class="visual-recipe-stage" id="visual-recipe-stage"></main>
               <aside class="visual-recipe-create">
-                <div>
+                <header class="visual-recipe-create-head">
                   <span class="eyebrow">Current selection</span>
-                  <strong>Save this treatment</strong>
-                  <p>First refine the selected layer, then capture only those approved values.</p>
-                </div>
-                <label
-                  ><span>Name</span
-                  ><input id="visual-recipe-name" placeholder="Quiet elevated card"
-                /></label>
-                <label
-                  ><span>Intent</span
-                  ><textarea
-                    id="visual-recipe-intent"
-                    rows="5"
-                    placeholder="Separate supporting content without adding visual noise."
-                  ></textarea>
-                </label>
-                <button class="primary-button" id="visual-recipe-save">Save treatment</button>
+                  <strong>Capture treatment</strong>
+                  <p>Save only the values refined on the selected layer.</p>
+                </header>
                 <div class="visual-recipe-selection" id="visual-recipe-selection"></div>
+                <div class="visual-recipe-capture-form">
+                  <label
+                    ><span>Name</span
+                    ><input id="visual-recipe-name" placeholder="Quiet elevated card"
+                  /></label>
+                  <label
+                    ><span>Intent</span
+                    ><textarea
+                      id="visual-recipe-intent"
+                      rows="4"
+                      placeholder="Separate supporting content without adding visual noise."
+                    ></textarea>
+                  </label>
+                  <button class="primary-button" id="visual-recipe-save">Save recipe</button>
+                </div>
+                <section class="visual-recipe-review-gate">
+                  <span class="eyebrow">Selected recipe</span>
+                  <strong>Portable, source-aware</strong>
+                  <p>
+                    Duplicate an intent before adapting it. Running a recipe only creates previews
+                    for Review.
+                  </p>
+                  <button class="secondary-button" data-studio-action="recipe-duplicate">
+                    Duplicate selected recipe
+                  </button>
+                </section>
               </aside>
             </div>
-            <footer class="visual-recipes-footer">
-              <span
-                >Recipe applications are previews. Nothing reaches source until Review and
-                apply.</span
-              >
-              <button class="primary-button" id="visual-recipe-review">
-                Review mapped changes
-              </button>
-            </footer>
           </section>
 
           <section
@@ -829,22 +880,20 @@
           >
             <header class="mode-head">
               <div>
-                <span class="eyebrow">Project design context</span>
-                <h1>Design decision memory</h1>
+                <h1>Design Memory</h1>
                 <p>
-                  Keep approved directions, rejected experiments, and explicit project rules useful
-                  where they matter.
+                  Keep decisions, evidence, and reusable design knowledge connected to the work.
                 </p>
               </div>
               <div class="mode-actions">
-                <span class="mode-status" id="decision-memory-status">No decisions saved</span>
-                <button
-                  class="icon-button mode-close"
-                  data-close-mode="memory"
-                  aria-label="Close Design decision memory"
-                  data-tooltip="Close Design decision memory"
+                <span class="mode-status studio-live-status" id="decision-memory-status"
+                  >No decisions saved</span
                 >
-                  <i data-icon="close"></i>
+                <button class="secondary-button" data-studio-action="memory-export">
+                  Export memory
+                </button>
+                <button class="primary-button" data-studio-action="memory-record">
+                  Record decision
                 </button>
               </div>
             </header>
@@ -929,30 +978,30 @@
           >
             <header class="mode-head">
               <div>
-                <span class="eyebrow">Grounded collaboration</span>
-                <h1>Visual agent</h1>
+                <h1>Visual Agent</h1>
                 <p>
-                  Discuss selected pixels and source context, compare concrete directions, then
-                  promote only the chosen proposal to Review.
+                  Work with an agent that can see the product, propose exact changes, and wait for
+                  your review.
                 </p>
               </div>
               <div class="mode-actions">
-                <span class="mode-status" id="visual-agent-status">Attach live context</span>
-                <button
-                  class="icon-button mode-close"
-                  data-close-mode="agent"
-                  aria-label="Close Visual agent"
-                  data-tooltip="Close Visual agent"
-                >
-                  <i data-icon="close"></i>
+                <button class="secondary-button" data-studio-action="agent-start">
+                  <i data-icon="plus"></i>
+                  New question
+                </button>
+                <button class="primary-button" id="visual-agent-review">
+                  Review chosen proposal
                 </button>
               </div>
             </header>
             <div class="visual-agent-shell">
               <aside class="visual-agent-threads">
                 <header>
-                  <span class="eyebrow">Conversations</span>
-                  <strong>Visual questions</strong>
+                  <div>
+                    <span class="eyebrow">Conversations</span>
+                    <strong>Visual questions</strong>
+                  </div>
+                  <span class="mode-count" id="visual-agent-status">No context</span>
                   <p>Requests stay with this local session.</p>
                 </header>
                 <div class="visual-agent-thread-list" id="visual-agent-thread-list"></div>
@@ -971,40 +1020,41 @@
                     together.
                   </p>
                 </header>
-                <div class="visual-agent-context" id="visual-agent-context"></div>
-                <div class="visual-agent-context-actions">
-                  <button class="secondary-button compact" id="visual-agent-region">
-                    Draw region
-                  </button>
-                  <button class="quiet-button compact" id="visual-agent-clear-region">Clear</button>
+                <section class="visual-agent-context-section">
+                  <div class="visual-agent-context" id="visual-agent-context"></div>
+                  <div class="visual-agent-context-actions">
+                    <button class="secondary-button compact" id="visual-agent-region">
+                      Draw region
+                    </button>
+                    <button class="quiet-button compact" id="visual-agent-clear-region">
+                      Clear
+                    </button>
+                  </div>
+                </section>
+                <div class="visual-agent-compose-form">
+                  <label>
+                    <span>Context comment</span>
+                    <input
+                      id="visual-agent-comment"
+                      placeholder="This label feels detached from its field"
+                    />
+                  </label>
+                  <label>
+                    <span>Question</span>
+                    <textarea
+                      id="visual-agent-prompt"
+                      rows="6"
+                      placeholder="Why do these elements feel inconsistent? Give me two source-safe directions."
+                    ></textarea>
+                  </label>
+                  <button class="primary-button" id="visual-agent-ask">Ask active agent</button>
                 </div>
-                <label>
-                  <span>Context comment</span>
-                  <input
-                    id="visual-agent-comment"
-                    placeholder="This label feels detached from its field"
-                  />
-                </label>
-                <label>
-                  <span>Question</span>
-                  <textarea
-                    id="visual-agent-prompt"
-                    rows="6"
-                    placeholder="Why do these elements feel inconsistent? Give me two source-safe directions."
-                  ></textarea>
-                </label>
-                <button class="primary-button" id="visual-agent-ask">Ask active agent</button>
+                <div class="visual-agent-safety">
+                  <i data-icon="check"></i>
+                  <span>Proposals stay isolated until you preview or move one to Review.</span>
+                </div>
               </aside>
             </div>
-            <footer class="visual-agent-footer">
-              <span
-                >Agent proposals are isolated directions. Source changes still require Review and
-                verification.</span
-              >
-              <button class="primary-button" id="visual-agent-review">
-                Review chosen proposal
-              </button>
-            </footer>
           </section>
 
           <section class="apply-run" id="apply-run" aria-live="polite" hidden></section>

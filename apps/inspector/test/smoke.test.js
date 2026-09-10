@@ -25,6 +25,7 @@ test('change summary is top-centered and review deletion restores through the li
 
 test('review and project utilities are center workspace modes', async () => {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
   for (const mode of [
     'review',
     'states',
@@ -43,10 +44,21 @@ test('review and project utilities are center workspace modes', async () => {
   }
   assert.match(html, /Apply with agent/);
   assert.match(html, /Open overlay preview/);
-  assert.match(html, /data-close-mode="health"/);
-  assert.match(html, /data-close-mode="memory"/);
-  assert.match(html, /aria-label="Close Content and accessibility lab"/);
-  assert.match(html, /aria-label="Close Design decision memory"/);
+  assert.match(html, /aria-label="Foundry workspaces"/);
+  assert.match(
+    html,
+    /data-workspace-mode="states">\s*<i data-icon="layers"><\/i><span>State workbench<\/span>/,
+  );
+  assert.match(
+    html,
+    /data-workspace-mode="recipes">\s*<i data-icon="file"><\/i><span>Visual recipes<\/span>/,
+  );
+  assert.match(html, /data-studio-action="stress-run"/);
+  assert.match(html, /data-studio-action="memory-record"/);
+  assert.match(
+    css,
+    /\.app-shell:not\(\[data-mode='canvas'\]\) \.app-bar\s*\{[\s\S]*display:\s*none/,
+  );
 });
 
 test('visual agent grounds conversation in rendered context and isolates proposals', async () => {
@@ -57,12 +69,17 @@ test('visual agent grounds conversation in rendered context and isolates proposa
   assert.match(html, /id="visual-agent-context"/);
   assert.match(html, /id="visual-agent-region"/);
   assert.match(html, /Ask active agent/);
+  assert.match(html, /New question/);
+  assert.match(html, /id="visual-agent-review"/);
+  assert.match(html, /visual-agent-compose-form/);
   assert.match(source, /function visualAgentContextSnapshot/);
   assert.match(source, /selection\?\.targets/);
   assert.match(source, /visual-agent-requests/);
   assert.match(source, /capture-agent-region/);
   assert.match(source, /Preview direction/);
   assert.match(source, /Move to Review/);
+  assert.match(source, /visual-agent-conversation-head/);
+  assert.match(source, /Source-safe directions/);
   assert.match(source, /verificationPlan/);
   assert.match(source, /\['agent', 'Visual agent', 'a', 'message'\]/);
   assert.match(css, /\.visual-agent-shell/);
@@ -73,7 +90,7 @@ test('design decision memory keeps project guidance contextual, correctable, and
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
-  assert.match(html, /Design decision memory/);
+  assert.match(html, /Design Memory/);
   assert.match(html, /id="decision-memory-list"/);
   assert.match(html, /id="decision-memory-stage"/);
   assert.match(html, /id="decision-guidance"/);
@@ -99,15 +116,20 @@ test('visual recipes preserve intent, inspect compatibility, and enter review ex
   assert.match(html, /data-mode-surface="recipes"/);
   assert.match(html, /id="visual-recipe-list"/);
   assert.match(html, /id="visual-recipe-stage"/);
-  assert.match(html, /Save this treatment/);
+  assert.match(html, /Capture treatment/);
+  assert.match(html, /Portable treatments/);
+  assert.match(html, /Duplicate selected recipe/);
   assert.match(source, /Suggested, never automatic/);
-  assert.match(html, /Nothing reaches source until Review and\s+apply/);
+  assert.match(html, /Running a recipe only creates previews\s+for Review/);
+  assert.match(source, /Destination mapping/);
+  assert.match(source, /visual-recipe-map-columns/);
   assert.match(source, /function renderVisualRecipes/);
   assert.match(source, /save-visual-recipe/);
+  assert.match(source, /duplicate-visual-recipe/);
   assert.match(source, /apply-visual-recipe/);
   assert.match(source, /import-visual-recipes/);
   assert.match(source, /foundry-visual-recipes\.json/);
-  assert.match(source, /\['recipes', 'Visual recipes', 'r', 'bookmark'\]/);
+  assert.match(source, /\['recipes', 'Visual recipes', 'r', 'file'\]/);
   assert.match(css, /\.visual-recipes-shell/);
   assert.match(css, /\.visual-recipe-map-list/);
   assert.match(css, /\.recipe-compatibility/);
@@ -117,7 +139,7 @@ test('content and accessibility lab keeps stress previews temporary and correcti
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
-  assert.match(html, /Content and accessibility lab/);
+  assert.match(html, /Content Stress Lab/);
   assert.match(html, /id="stress-profile-list"/);
   assert.match(html, /id="apply-stress"/);
   assert.match(html, /id="stress-finding-groups"/);
@@ -143,7 +165,8 @@ test('design branches isolate alternatives, compare rendered directions, and pro
   assert.match(html, /id="design-branch-record-list"/);
   assert.match(html, /id="design-branch-record-import"/);
   assert.match(html, /id="design-branch-record-export"/);
-  assert.match(html, /Only a chosen direction enters Review and apply/);
+  assert.match(html, /id="design-branch-compose"/);
+  assert.match(html, /Combine selected/);
   assert.match(source, /function renderDesignBranches/);
   assert.match(source, /switch-design-branch/);
   assert.match(source, /preview-design-branch/);
@@ -152,6 +175,7 @@ test('design branches isolate alternatives, compare rendered directions, and pro
   assert.match(source, /function renderDesignBranchRecords/);
   assert.match(source, /design-branch-records\/\$\{encodeURIComponent/);
   assert.match(source, /Add to Memory/);
+  assert.match(source, /Return to main/);
   assert.match(source, /\['branches', 'Design branches', 'b', 'branch'\]/);
   assert.match(css, /\.design-branches-shell/);
   assert.match(css, /\.design-branch-preview-viewport iframe/);
@@ -276,6 +300,8 @@ test('component workshop exposes source-backed variants, drift repair, safe scop
   const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
   assert.match(html, /id="component-workshop-list"/);
   assert.match(html, /id="component-workshop-detail"/);
+  assert.match(html, /class="workshop-browser-head"/);
+  assert.match(html, /id="component-workshop-contract"/);
   assert.match(source, /function normalizedWorkshopComponents/);
   assert.match(source, /select-component-instance/);
   assert.match(source, /preview-component-variant/);
@@ -302,6 +328,8 @@ test('apply progress reuses the review hierarchy and reports the complete run', 
   const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
   assert.match(html, /id="apply-run" aria-live="polite"/);
   assert.match(source, /class="mode-head apply-head"/);
+  assert.match(source, /class="apply-workspace"/);
+  assert.match(source, /class="apply-evidence"/);
   assert.match(source, /class="apply-progress-list"/);
   assert.match(source, /class="review-footer apply-footer"/);
   assert.match(source, /Changed files/);
@@ -309,8 +337,17 @@ test('apply progress reuses the review hierarchy and reports the complete run', 
   assert.match(source, /run\.state === 'passed'/);
   assert.match(source, /run\.interruptedState \? 'resume' : 'retry'/);
   assert.match(source, /Resume with agent/);
-  assert.match(css, /\.apply-surface\s*\{[\s\S]*flex-direction:\s*column/);
+  assert.match(css, /\.apply-workspace\s*\{[\s\S]*grid-template-columns:/);
+  assert.match(css, /\.apply-evidence\s*\{[\s\S]*flex-direction:\s*column/);
   assert.doesNotMatch(css, /\.apply-card\s*\{/);
+});
+
+test('review values append units only to unitless numeric data', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(source, /if \(!suffix\) return rendered/);
+  assert.match(source, /typeof value === 'number'/);
+  assert.match(source, /return `\$\{rendered\}\$\{suffix\}`/);
+  assert.doesNotMatch(source, /return `\$\{rendered\}\$\{unit \?\? ''\}`/);
 });
 
 test('active source runs require an explicit second action before cancellation', async () => {
@@ -359,16 +396,30 @@ test('workspace dropdowns use the Foundry listbox system', async () => {
   assert.match(css, /max-height/);
 });
 
-test('visual foundations use bundled typefaces and a strict dock contract', async () => {
+test('visual foundations use the Google Sans-led type stack and four-pixel system', async () => {
   const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  const visualSystem = css.slice(css.indexOf('/* Foundry v3 visual system'));
+  const darkTokens = visualSystem.match(/:root\[data-theme='dark'\]\s*\{([^}]+)\}/)?.[1] ?? '';
   assert.match(css, /fonts\/inter\.woff2/);
   assert.match(css, /fonts\/jetbrains-mono\.woff2/);
-  assert.match(css, /--dock:\s*384px/);
-  assert.match(css, /--blue:\s*#2f6fed/);
+  assert.match(css, /'Google Sans Flex', 'Foundry Inter'/);
+  assert.match(css, /'Google Sans Code', 'Foundry JetBrains Mono'/);
+  assert.match(css, /--dock:\s*320px/);
+  assert.match(css, /--bg:\s*#eff0f1/);
+  assert.match(css, /--selection:\s*#e44d00/);
+  assert.match(css, /--blue:\s*var\(--selection\)/);
   assert.match(css, /\.layer-meta[\s\S]*font:\s*600 8px\/1 var\(--mono\)/);
   assert.match(css, /::-webkit-color-swatch[\s\S]*border-radius:\s*4px/);
   assert.match(css, /html,[\s\S]*body\s*\{[\s\S]*font-size:\s*12px/);
-  assert.match(css, /\.mode-head h1\s*\{[\s\S]*font-size:\s*24px/);
+  assert.match(css, /\.mode-head h1\s*\{[\s\S]*font-size:\s*20px/);
+  assert.match(darkTokens, /--selection:\s*#ff681f/);
+  assert.match(darkTokens, /--blue:\s*var\(--selection\)/);
+  assert.match(darkTokens, /--blue-soft:\s*var\(--selection-soft\)/);
+  assert.match(
+    visualSystem,
+    /\.workspace-rail \.rail-button\.is-active\s*\{[\s\S]*color:\s*var\(--selection\);[\s\S]*border-color:\s*var\(--selection\);[\s\S]*background:\s*var\(--selection-soft\);/,
+  );
+  assert.doesNotMatch(visualSystem, /\.rail-button\.is-active:not\(/);
 });
 
 test('workspace uses real Keyline vectors and validates the embedded bridge', async () => {

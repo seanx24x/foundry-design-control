@@ -28,7 +28,36 @@ const SOURCE_EXTENSIONS = new Set([
   '.mjs',
   '.cjs',
   '.json',
+  '.html',
 ]);
+
+const STYLESHEET_EXTENSIONS = new Set(['.css', '.scss', '.sass', '.less']);
+
+type StylesheetSegment = { content: string; offset: number };
+
+function stylesheetSegments(file: string, content: string): StylesheetSegment[] {
+  const extension = extname(file).toLowerCase();
+  if (STYLESHEET_EXTENSIONS.has(extension)) return [{ content, offset: 0 }];
+
+  const segments: StylesheetSegment[] = [];
+  const appendMatches = (pattern: RegExp): void => {
+    for (const match of content.matchAll(pattern)) {
+      const body = match[1];
+      if (!body || match.index == null) continue;
+      const bodyOffset = match[0].indexOf(body);
+      segments.push({ content: body, offset: match.index + Math.max(0, bodyOffset) });
+    }
+  };
+
+  if (extension === '.html') {
+    appendMatches(/<style\b[^>]*>([\s\S]*?)<\/style>/gi);
+  } else if (/\.[cm]?[jt]sx?$/.test(file)) {
+    appendMatches(
+      /\b(?:css|createGlobalStyle|styled(?:\.[A-Za-z_$][\w$]*|\([^)]*\)))\s*`([\s\S]*?)`/g,
+    );
+  }
+  return segments;
+}
 
 function stableId(prefix: string, value: string): string {
   return `${prefix}_${createHash('sha1').update(value).digest('hex').slice(0, 12)}`;
@@ -401,79 +430,98 @@ export async function indexProjectDesign(
   const motion = new Map<string, MotionPreset>();
   const storyVariants = new Map<string, ComponentDefinition['variants']>();
   const axesByFile = new Map<string, ComponentVariantAxis[]>();
-  const documents: Array<{ file: string; content: string }> = [];
+  const documents: Array<{
+    file: string;
+    content: string;
+    stylesheets: StylesheetSegment[];
+  }> = [];
 
   for (const path of files) {
     const content = await readFile(path, 'utf8').catch(() => '');
     const file = relative(root, path).replaceAll('\\', '/');
-    documents.push({ file, content });
+    const stylesheets = stylesheetSegments(file, content);
+    documents.push({ file, content, stylesheets });
     for (const preset of nativeMotionPresets(file, content)) motion.set(preset.id, preset);
-    for (const match of content.matchAll(/(--[\w-]+)\s*:\s*([^;}\n]+)/g)) {
-      const name = match[1]!;
-      const value = match[2]!.trim();
-      tokens.set(name, {
-        id: stableId('tok', name),
-        name,
-        value,
-        category: tokenCategory(name, value),
-        cssVariable: name,
-        source: { file, line: lineAt(content, match.index ?? 0) },
-        confidence: 'instrumented',
-        evidence: ['CSS custom property'],
-      });
-      if (/duration|motion/.test(name)) {
-        const duration = /([\d.]+)m?s/.exec(value);
-        motion.set(name, {
-          id: stableId('mot', name),
-          label: name.replace(/^--/, ''),
-          duration: duration ? Number(duration[1]) * (value.includes('ms') ? 1 : 1000) : undefined,
-          adapter: 'css',
-          configuration: {},
-          source: { file, line: lineAt(content, match.index ?? 0) },
+    for (const stylesheet of stylesheets) {
+      for (const match of stylesheet.content.matchAll(/(--[\w-]+)\s*:\s*([^;}\n]+)/g)) {
+        const name = match[1]!;
+        const value = match[2]!.trim();
+        if (!value || value.includes('${') || value.includes('\\s*')) continue;
+        const index = stylesheet.offset + (match.index ?? 0);
+        tokens.set(name, {
+          id: stableId('tok', name),
+          name,
+          value,
+          category: tokenCategory(name, value),
+          cssVariable: name,
+          source: { file, line: lineAt(content, index) },
+          confidence: 'instrumented',
           evidence: ['CSS custom property'],
         });
+        if (/duration|motion/.test(name)) {
+          const duration = /([\d.]+)m?s/.exec(value);
+          motion.set(name, {
+            id: stableId('mot', name),
+            label: name.replace(/^--/, ''),
+            duration: duration
+              ? Number(duration[1]) * (value.includes('ms') ? 1 : 1000)
+              : undefined,
+            adapter: 'css',
+            configuration: {},
+            source: { file, line: lineAt(content, index) },
+            evidence: ['CSS custom property'],
+          });
+        }
       }
-    }
-    for (const match of content.matchAll(
-      /@media\s*\([^)]*(?:min|max)-width\s*:\s*(\d+)px[^)]*\)/g,
-    )) {
-      const width = Number(match[1]);
-      breakpoints.set(width, {
-        width,
-        source: { file, line: lineAt(content, match.index ?? 0) },
-      });
-    }
-    for (const match of content.matchAll(/@container(?:\s+([\w-]+))?\s*\(([^)]*)\)/g)) {
-      const name = match[1];
-      const condition = match[2]!.trim();
-      const min =
-        /min-(?:width|inline-size)\s*:\s*([\d.]+)px/i.exec(condition)?.[1] ??
-        /(?:width|inline-size)\s*>=?\s*([\d.]+)px/i.exec(condition)?.[1];
-      const max =
-        /max-(?:width|inline-size)\s*:\s*([\d.]+)px/i.exec(condition)?.[1] ??
-        /(?:width|inline-size)\s*<=?\s*([\d.]+)px/i.exec(condition)?.[1];
-      if (!min && !max) continue;
-      const axis = /block-size|height/i.test(condition)
-        ? 'block-size'
-        : /\bsize\b/i.test(condition) && !/inline-size/i.test(condition)
-          ? 'size'
-          : 'inline-size';
-      const id = stableId('container', `${file}:${name ?? 'anonymous'}:${condition}`);
-      containerQueries.set(id, {
-        id,
-        label: `${name ?? 'Anonymous container'} · ${condition}`,
-        ...(name ? { name } : {}),
-        condition,
-        axis,
-        ...(min ? { minWidth: Number(min) } : {}),
-        ...(max ? { maxWidth: Number(max) } : {}),
-        source: { file, line: lineAt(content, match.index ?? 0) },
-        evidence: [
-          'CSS @container rule',
-          ...(content.includes('container-type') ? ['CSS container-type declaration'] : []),
-          ...(name && content.includes('container-name') ? ['CSS container-name declaration'] : []),
-        ],
-      });
+      for (const match of stylesheet.content.matchAll(
+        /@media\s*\([^)]*(?:min|max)-width\s*:\s*(\d+)px[^)]*\)/g,
+      )) {
+        const index = stylesheet.offset + (match.index ?? 0);
+        const width = Number(match[1]);
+        breakpoints.set(width, {
+          width,
+          source: { file, line: lineAt(content, index) },
+        });
+      }
+      for (const match of stylesheet.content.matchAll(
+        /@container(?:\s+([\w-]+))?\s*\(([^)]*)\)/g,
+      )) {
+        const name = match[1];
+        const condition = match[2]!.trim();
+        const min =
+          /min-(?:width|inline-size)\s*:\s*([\d.]+)px/i.exec(condition)?.[1] ??
+          /(?:width|inline-size)\s*>=?\s*([\d.]+)px/i.exec(condition)?.[1];
+        const max =
+          /max-(?:width|inline-size)\s*:\s*([\d.]+)px/i.exec(condition)?.[1] ??
+          /(?:width|inline-size)\s*<=?\s*([\d.]+)px/i.exec(condition)?.[1];
+        if (!min && !max) continue;
+        const axis = /block-size|height/i.test(condition)
+          ? 'block-size'
+          : /\bsize\b/i.test(condition) && !/inline-size/i.test(condition)
+            ? 'size'
+            : 'inline-size';
+        const id = stableId('container', `${file}:${name ?? 'anonymous'}:${condition}`);
+        const index = stylesheet.offset + (match.index ?? 0);
+        containerQueries.set(id, {
+          id,
+          label: `${name ?? 'Anonymous container'} · ${condition}`,
+          ...(name ? { name } : {}),
+          condition,
+          axis,
+          ...(min ? { minWidth: Number(min) } : {}),
+          ...(max ? { maxWidth: Number(max) } : {}),
+          source: { file, line: lineAt(content, index) },
+          evidence: [
+            'CSS @container rule',
+            ...(stylesheet.content.includes('container-type')
+              ? ['CSS container-type declaration']
+              : []),
+            ...(name && stylesheet.content.includes('container-name')
+              ? ['CSS container-name declaration']
+              : []),
+          ],
+        });
+      }
     }
     for (const match of content.matchAll(/(?:data-theme=["']|\[data-theme=["'])([\w-]+)/g)) {
       themes.add(match[1]!);
@@ -604,96 +652,100 @@ export async function indexProjectDesign(
       )
       .sort((a, b) => (b.source?.line ?? 0) - (a.source?.line ?? 0))[0];
 
-  for (const { file, content } of documents) {
-    for (const match of content.matchAll(/var\(\s*(--[\w-]+)(?:\s*,[^)]*)?\)/g)) {
-      const token = tokens.get(match[1]!);
-      if (!token) continue;
-      const line = lineAt(content, match.index ?? 0);
-      const lineStart = content.lastIndexOf('\n', match.index ?? 0) + 1;
-      const declarationPrefix = content.slice(lineStart, match.index ?? 0);
-      const alias = /--[\w-]+\s*:\s*$/.test(declarationPrefix);
-      const component = componentForSource(file, line);
-      tokenUsages.push({
-        id: stableId('use', `${file}:${match.index}:${token.id}`),
-        tokenId: token.id,
-        tokenName: token.name,
-        value: token.value,
-        category: token.category,
-        kind: alias ? 'alias' : 'reference',
-        componentId: component?.id,
-        source: { file, line },
-        evidence: [alias ? 'Token aliases this project value' : 'CSS variable reference'],
-      });
-    }
+  for (const { file, content, stylesheets } of documents) {
+    for (const stylesheet of stylesheets) {
+      for (const match of stylesheet.content.matchAll(/var\(\s*(--[\w-]+)(?:\s*,[^)]*)?\)/g)) {
+        const token = tokens.get(match[1]!);
+        if (!token) continue;
+        const index = stylesheet.offset + (match.index ?? 0);
+        const line = lineAt(content, index);
+        const lineStart = content.lastIndexOf('\n', index) + 1;
+        const declarationPrefix = content.slice(lineStart, index);
+        const alias = /--[\w-]+\s*:\s*$/.test(declarationPrefix);
+        const component = componentForSource(file, line);
+        tokenUsages.push({
+          id: stableId('use', `${file}:${index}:${token.id}`),
+          tokenId: token.id,
+          tokenName: token.name,
+          value: token.value,
+          category: token.category,
+          kind: alias ? 'alias' : 'reference',
+          componentId: component?.id,
+          source: { file, line },
+          evidence: [alias ? 'Token aliases this project value' : 'CSS variable reference'],
+        });
+      }
 
-    for (const match of content.matchAll(/([a-zA-Z][\w-]*)\s*:\s*([^;\n},]+)[;},]/g)) {
-      const property = match[1]!;
-      const value = match[2]!.trim();
-      if (property.startsWith('--') || value.includes('var(')) continue;
-      const category = declarationCategory(property, value);
-      if (!category) continue;
-      const categoryTokens = tokenList.filter((token) => token.category === category);
-      const exact = categoryTokens
-        .filter((token) => comparable(tokenComparableValue(token)) === comparable(value))
-        .sort(
-          (a, b) =>
-            (b.aliasChain?.length ?? 0) - (a.aliasChain?.length ?? 0) ||
-            a.name.localeCompare(b.name),
-        )[0];
-      const suggested =
-        exact ??
-        closeNumericToken(
+      for (const match of stylesheet.content.matchAll(/([a-zA-Z][\w-]*)\s*:\s*([^;\n},]+)[;},]/g)) {
+        const property = match[1]!;
+        const value = match[2]!.trim();
+        if (property.startsWith('--') || value.includes('var(')) continue;
+        const category = declarationCategory(property, value);
+        if (!category) continue;
+        const categoryTokens = tokenList.filter((token) => token.category === category);
+        const exact = categoryTokens
+          .filter((token) => comparable(tokenComparableValue(token)) === comparable(value))
+          .sort(
+            (a, b) =>
+              (b.aliasChain?.length ?? 0) - (a.aliasChain?.length ?? 0) ||
+              a.name.localeCompare(b.name),
+          )[0];
+        const suggested =
+          exact ??
+          closeNumericToken(
+            value,
+            categoryTokens.map((token) => ({ ...token, value: tokenComparableValue(token) })),
+          );
+        const index = stylesheet.offset + (match.index ?? 0);
+        const line = lineAt(content, index);
+        const component = componentForSource(file, line);
+        const recurringKey = `${category}:${comparable(value)}`;
+        const recurring = recurringLiterals.get(recurringKey) ?? {
           value,
-          categoryTokens.map((token) => ({ ...token, value: tokenComparableValue(token) })),
-        );
-      const line = lineAt(content, match.index ?? 0);
-      const component = componentForSource(file, line);
-      const recurringKey = `${category}:${comparable(value)}`;
-      const recurring = recurringLiterals.get(recurringKey) ?? {
-        value,
-        category,
-        properties: [],
-        sources: [],
-        componentIds: [],
-      };
-      recurring.properties.push(property);
-      recurring.sources.push({ file, line });
-      if (component?.id) recurring.componentIds.push(component.id);
-      recurringLiterals.set(recurringKey, recurring);
-      if (!suggested) continue;
-      const usage: DesignTokenUsage = {
-        id: stableId('use', `${file}:${match.index}:${suggested.id}:literal`),
-        tokenId: suggested.id,
-        tokenName: suggested.name,
-        value,
-        category,
-        kind: 'literal',
-        property,
-        componentId: component?.id,
-        source: { file, line },
-        evidence: [
-          exact
-            ? 'Literal equals an existing project token'
-            : 'Literal is close to a project token',
-        ],
-      };
-      tokenUsages.push(usage);
-      findings.push({
-        id: stableId('finding', usage.id),
-        kind: component ? 'component-drift' : 'literal-drift',
-        severity: exact ? 'info' : 'warning',
-        title: exact ? `Use ${suggested.name}` : `${value} is close to ${suggested.name}`,
-        detail: exact
-          ? `${property} repeats ${suggested.value} as a literal instead of its project token.`
-          : `${property} uses ${value}; the nearest ${category} token is ${suggested.name} at ${suggested.value}.`,
-        category,
-        tokenIds: [suggested.id],
-        usageIds: [usage.id],
-        componentIds: component ? [component.id] : [],
-        suggestedTokenId: suggested.id,
-        source: usage.source,
-        evidence: usage.evidence,
-      });
+          category,
+          properties: [],
+          sources: [],
+          componentIds: [],
+        };
+        recurring.properties.push(property);
+        recurring.sources.push({ file, line });
+        if (component?.id) recurring.componentIds.push(component.id);
+        recurringLiterals.set(recurringKey, recurring);
+        if (!suggested) continue;
+        const usage: DesignTokenUsage = {
+          id: stableId('use', `${file}:${index}:${suggested.id}:literal`),
+          tokenId: suggested.id,
+          tokenName: suggested.name,
+          value,
+          category,
+          kind: 'literal',
+          property,
+          componentId: component?.id,
+          source: { file, line },
+          evidence: [
+            exact
+              ? 'Literal equals an existing project token'
+              : 'Literal is close to a project token',
+          ],
+        };
+        tokenUsages.push(usage);
+        findings.push({
+          id: stableId('finding', usage.id),
+          kind: component ? 'component-drift' : 'literal-drift',
+          severity: exact ? 'info' : 'warning',
+          title: exact ? `Use ${suggested.name}` : `${value} is close to ${suggested.name}`,
+          detail: exact
+            ? `${property} repeats ${suggested.value} as a literal instead of its project token.`
+            : `${property} uses ${value}; the nearest ${category} token is ${suggested.name} at ${suggested.value}.`,
+          category,
+          tokenIds: [suggested.id],
+          usageIds: [usage.id],
+          componentIds: component ? [component.id] : [],
+          suggestedTokenId: suggested.id,
+          source: usage.source,
+          evidence: usage.evidence,
+        });
+      }
     }
   }
 
