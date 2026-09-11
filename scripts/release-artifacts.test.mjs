@@ -12,6 +12,7 @@ import {
   captureReleaseSourceState,
   expectedPackedPackageJson,
 } from './release-artifacts.mjs';
+import { normalizeNpmPackMetadata } from './public-package-archive.mjs';
 
 const require = createRequire(import.meta.url);
 const { sortDependencyMaps } = require('../.pnpmfile.cjs');
@@ -150,6 +151,24 @@ test('the pnpm packing hook sorts only dependency maps', () => {
   assert.deepEqual(Object.keys(result.dependencies), ['alpha', 'zebra']);
   assert.deepEqual(Object.keys(result.peerDependencies), ['beta', 'gamma']);
   assert.deepEqual(Object.keys(result.exports['.']), ['import', 'default']);
+});
+
+test('npm pack metadata accepts npm 11 arrays and npm 12 objects without ambiguity', () => {
+  const result = { name: 'example', version: '1.0.0' };
+  assert.equal(normalizeNpmPackMetadata([result], 'example@1.0.0'), result);
+  assert.equal(normalizeNpmPackMetadata(result, 'example@1.0.0'), result);
+  assert.throws(
+    () => normalizeNpmPackMetadata([], 'example@1.0.0'),
+    /ambiguous public archive set/,
+  );
+  assert.throws(
+    () => normalizeNpmPackMetadata([result, result], 'example@1.0.0'),
+    /ambiguous public archive set/,
+  );
+  assert.throws(
+    () => normalizeNpmPackMetadata('unexpected', 'example@1.0.0'),
+    /ambiguous public archive set/,
+  );
 });
 
 test('packed package metadata must match current source metadata and release workspace versions', () => {

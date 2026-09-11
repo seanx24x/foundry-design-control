@@ -10,6 +10,18 @@ import {
 
 const successfulMatches = new Set();
 
+export function normalizeNpmPackMetadata(metadata, spec) {
+  const packed = Array.isArray(metadata)
+    ? metadata.length === 1
+      ? metadata[0]
+      : undefined
+    : metadata;
+  if (!packed || typeof packed !== 'object' || Array.isArray(packed)) {
+    throw new Error(`npm returned an ambiguous public archive set for ${spec}.`);
+  }
+  return packed;
+}
+
 export function assertPublicPackageMatches(root, entry, registry, registryIntegrity) {
   if (registryIntegrity === entry.npmIntegrity) return { match: 'integrity' };
 
@@ -49,10 +61,7 @@ export function assertPublicPackageMatches(root, entry, registry, registryIntegr
     } catch {
       throw new Error(`npm returned invalid archive metadata for ${spec}: ${result.stdout.trim()}`);
     }
-    if (!Array.isArray(metadata) || metadata.length !== 1) {
-      throw new Error(`npm returned an ambiguous public archive set for ${spec}.`);
-    }
-    const [packed] = metadata;
+    const packed = normalizeNpmPackMetadata(metadata, spec);
     if (
       packed?.name !== entry.name ||
       packed?.version !== entry.version ||
