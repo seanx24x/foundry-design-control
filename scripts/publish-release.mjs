@@ -47,6 +47,14 @@ function registryState(entry, { allowIncomplete = false } = {}) {
   } catch {
     throw new Error(`npm returned invalid metadata for ${spec}: ${result.stdout.trim()}`);
   }
+  if (Array.isArray(metadata)) {
+    if (metadata.length !== 1 || !metadata[0] || typeof metadata[0] !== 'object') {
+      throw new Error(
+        `npm returned an ambiguous metadata set for ${spec}: ${result.stdout.trim()}`,
+      );
+    }
+    [metadata] = metadata;
+  }
   const name = metadata.name;
   const version = metadata.version;
   const integrity = metadata['dist.integrity'] ?? metadata.dist?.integrity;
