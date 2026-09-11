@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
+import { assertPublicPackageMatches } from './public-package-archive.mjs';
 import { verifyReleaseArtifacts } from './release-artifacts.mjs';
 
 const root = resolve(import.meta.dirname, '..');
@@ -96,11 +97,16 @@ try {
     if (
       state.status !== 'published' ||
       state.name !== entry.name ||
-      state.version !== entry.version ||
-      state.integrity !== entry.npmIntegrity
+      state.version !== entry.version
     ) {
       throw new Error(
         `Refusing to move ${targetTag}: ${entry.name}@${entry.version} does not match the gated tarball in the public registry.`,
+      );
+    }
+    const match = assertPublicPackageMatches(root, entry, registry, state.integrity);
+    if (match.match === 'content') {
+      console.log(
+        `✓ ${entry.name}@${entry.version} has different archive bytes but identical sealed package content.`,
       );
     }
   }

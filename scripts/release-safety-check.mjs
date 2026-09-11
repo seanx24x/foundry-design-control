@@ -7,7 +7,12 @@ const workflow = readFileSync(join(root, '.github', 'workflows', 'release.yml'),
 const publishScript = readFileSync(join(root, 'scripts', 'publish-release.mjs'), 'utf8');
 const packScript = readFileSync(join(root, 'scripts', 'pack-release.mjs'), 'utf8');
 const tagScript = readFileSync(join(root, 'scripts', 'promote-release.mjs'), 'utf8');
+const publicArchiveScript = readFileSync(
+  join(root, 'scripts', 'public-package-archive.mjs'),
+  'utf8',
+);
 const verifyPublicScript = readFileSync(join(root, 'scripts', 'verify-public-release.mjs'), 'utf8');
+const pnpmFile = readFileSync(join(root, '.pnpmfile.cjs'), 'utf8');
 const rootPackage = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const failures = [];
 
@@ -47,8 +52,37 @@ if (!packScript.includes('rmSync(output, { recursive: true, force: true });\n  c
 if (rootPackage.scripts?.['release:tag-beta'] !== 'node scripts/promote-release.mjs --tag=beta') {
   failures.push('package.json does not expose the authenticated beta-tag convergence command');
 }
-for (const fragment of ['verifyReleaseArtifacts(root, artifactDirectory)', 'entry.npmIntegrity']) {
+for (const fragment of ['verifyReleaseArtifacts(root, artifactDirectory)']) {
   if (!tagScript.includes(fragment)) failures.push(`promote-release.mjs is missing ${fragment}`);
+}
+for (const [label, contents] of [
+  ['publish-release.mjs', publishScript],
+  ['promote-release.mjs', tagScript],
+]) {
+  for (const fragment of ['assertPublicPackageMatches(root, entry, registry, state.integrity)']) {
+    if (!contents.includes(fragment)) failures.push(`${label} is missing ${fragment}`);
+  }
+}
+for (const fragment of [
+  'inspectReleaseTarball',
+  'registryIntegrity === entry.npmIntegrity',
+  'packed?.integrity !== registryIntegrity',
+  'inspected.npmIntegrity !== registryIntegrity',
+  'assertPackedPackageJsonMatches',
+  'inspected.contentSha256 !== entry.contentSha256',
+  'rmSync(directory, { recursive: true, force: true })',
+]) {
+  if (!publicArchiveScript.includes(fragment)) {
+    failures.push(`public-package-archive.mjs is missing ${fragment}`);
+  }
+}
+for (const fragment of [
+  'beforePacking: sortDependencyMaps',
+  "'dependencies'",
+  "'optionalDependencies'",
+  "'peerDependencies'",
+]) {
+  if (!pnpmFile.includes(fragment)) failures.push(`.pnpmfile.cjs is missing ${fragment}`);
 }
 if (workflow.includes('--clobber')) {
   failures.push('release.yml may not overwrite an existing GitHub release asset');

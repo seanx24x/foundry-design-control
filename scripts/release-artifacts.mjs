@@ -24,21 +24,48 @@ export const RELEASE_PACKAGE_DIRECTORIES = [
 
 export const RELEASE_ARTIFACT_COUNT = 7;
 export const RELEASE_INTEGRITY_MANIFEST = 'release-integrity.json';
-export const RELEASE_INTEGRITY_SCHEMA_VERSION = 2;
+export const RELEASE_INTEGRITY_SCHEMA_VERSION = 3;
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-function stableJson(value) {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
-      .join(',')}}`;
+const UNORDERED_PACKAGE_MAPS = new Set([
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+  'peerDependencies',
+]);
+
+function canonicalPackageJson(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('A release package.json must contain a JSON object.');
   }
-  return JSON.stringify(value);
+
+  const normalized = Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => {
+        const entry = value[key];
+        if (
+          UNORDERED_PACKAGE_MAPS.has(key) &&
+          entry &&
+          typeof entry === 'object' &&
+          !Array.isArray(entry)
+        ) {
+          return [
+            key,
+            Object.fromEntries(
+              Object.keys(entry)
+                .sort()
+                .map((dependencyName) => [dependencyName, entry[dependencyName]]),
+            ),
+          ];
+        }
+        return [key, entry];
+      }),
+  );
+  return JSON.stringify(normalized);
 }
 
 function sha256(value) {
@@ -135,50 +162,150 @@ export function assertPackedPackageJsonMatches(
   releasePackages,
 ) {
   const expected = expectedPackedPackageJson(sourcePackageJson, releasePackages);
-  if (stableJson(packedPackageJson) !== stableJson(expected)) {
+  if (canonicalPackageJson(packedPackageJson) !== canonicalPackageJson(expected)) {
     throw new Error(
       `${sourcePackageJson.name}@${sourcePackageJson.version} tarball package.json does not match the current source manifest. Rebuild and repack this release.`,
     );
   }
 }
 
-function readTarPackageJson(tarballPath) {
+function parseTarOctal(field, label, tarballPath) {
+  const text = field.toString('ascii').replace(/\0.*$/, '').trim();
+  if (!/^[0-7]+$/.test(text)) {
+    throw new Error(`Invalid tar ${label} in ${tarballPath}.`);
+  }
+  const value = Number.parseInt(text, 8);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`Invalid tar ${label} in ${tarballPath}.`);
+  }
+  return value;
+}
+
+function assertTarHeaderChecksum(header, tarballPath) {
+  const expected = parseTarOctal(header.subarray(148, 156), 'header checksum', tarballPath);
+  let actual = 0;
+  for (let index = 0; index < header.length; index += 1) {
+    actual += index >= 148 && index < 156 ? 32 : header[index];
+  }
+  if (actual !== expected) {
+    throw new Error(`Invalid tar header checksum in ${tarballPath}.`);
+  }
+}
+
+function readTarEntries(tarballPath) {
   const archive = gunzipSync(readFileSync(tarballPath));
+  const entries = [];
+  const seenPaths = new Set();
   let offset = 0;
+  let foundEndMarker = false;
 
   while (offset + 512 <= archive.length) {
     const header = archive.subarray(offset, offset + 512);
-    if (header.every((byte) => byte === 0)) break;
+    if (header.every((byte) => byte === 0)) {
+      foundEndMarker = true;
+      if (!archive.subarray(offset).every((byte) => byte === 0)) {
+        throw new Error(`Unexpected data after the tar end marker in ${tarballPath}.`);
+      }
+      break;
+    }
+
+    assertTarHeaderChecksum(header, tarballPath);
 
     const name = header.subarray(0, 100).toString('utf8').replace(/\0.*$/, '');
     const prefix = header.subarray(345, 500).toString('utf8').replace(/\0.*$/, '');
     const path = prefix ? `${prefix}/${name}` : name;
-    const sizeText = header.subarray(124, 136).toString('ascii').replace(/\0.*$/, '').trim();
-    const size = Number.parseInt(sizeText || '0', 8);
-    if (!Number.isSafeInteger(size) || size < 0) {
-      throw new Error(`Invalid tar entry size in ${tarballPath}.`);
+    const type = header.subarray(156, 157).toString('ascii').replace(/\0.*$/, '') || '0';
+    const linkName = header.subarray(157, 257).toString('utf8').replace(/\0.*$/, '');
+    const mode = parseTarOctal(header.subarray(100, 108), 'entry mode', tarballPath);
+    const size = parseTarOctal(header.subarray(124, 136), 'entry size', tarballPath);
+
+    if (!path || path.startsWith('/') || path.split('/').includes('..')) {
+      throw new Error(`Unsafe tar entry path ${path || '<empty>'} in ${tarballPath}.`);
+    }
+    if (!(path === 'package' || path.startsWith('package/'))) {
+      throw new Error(`Tar entry ${path} is outside the npm package root in ${tarballPath}.`);
+    }
+    if (seenPaths.has(path)) {
+      throw new Error(`Duplicate tar entry ${path} in ${tarballPath}.`);
+    }
+    seenPaths.add(path);
+    if (!['0', '2', '5'].includes(type)) {
+      throw new Error(`Unsupported tar entry type ${JSON.stringify(type)} for ${path}.`);
+    }
+    if ((type === '2' || type === '5') && size !== 0) {
+      throw new Error(`Tar entry ${path} has invalid content for type ${type}.`);
     }
 
     const contentStart = offset + 512;
-    if (path === 'package/package.json') {
-      return JSON.parse(archive.subarray(contentStart, contentStart + size).toString('utf8'));
+    const contentEnd = contentStart + size;
+    if (contentEnd > archive.length) {
+      throw new Error(`Truncated tar entry ${path} in ${tarballPath}.`);
     }
+    entries.push({
+      path,
+      mode,
+      type,
+      linkName,
+      content: archive.subarray(contentStart, contentEnd),
+    });
     offset = contentStart + Math.ceil(size / 512) * 512;
   }
 
+  if (!foundEndMarker || entries.length === 0) {
+    throw new Error(`Incomplete or empty tar archive ${tarballPath}.`);
+  }
+
+  return entries;
+}
+
+function readTarPackageJson(tarballPath) {
+  const entry = readTarEntries(tarballPath).find(({ path }) => path === 'package/package.json');
+  if (entry) return JSON.parse(entry.content.toString('utf8'));
+
   throw new Error(`${tarballPath} does not contain package/package.json.`);
+}
+
+export function canonicalTarballContentSha256(tarballPath) {
+  const digest = createHash('sha256');
+  const entries = readTarEntries(tarballPath);
+  const packageJsonEntries = entries.filter(({ path }) => path === 'package/package.json');
+  if (packageJsonEntries.length !== 1 || packageJsonEntries[0].type !== '0') {
+    throw new Error(`${tarballPath} must contain one regular package/package.json entry.`);
+  }
+
+  updateDigestSegment(digest, 'foundry-release-content-v1');
+  for (const entry of entries) {
+    updateDigestSegment(digest, entry.path);
+    updateDigestSegment(digest, entry.mode.toString(8));
+    updateDigestSegment(digest, entry.type);
+    updateDigestSegment(digest, entry.linkName);
+    if (entry.path === 'package/package.json') {
+      let packageJson;
+      try {
+        packageJson = JSON.parse(entry.content.toString('utf8'));
+      } catch {
+        throw new Error(`${tarballPath} contains an invalid package/package.json.`);
+      }
+      updateDigestSegment(digest, canonicalPackageJson(packageJson));
+    } else {
+      updateDigestSegment(digest, entry.content);
+    }
+  }
+
+  return digest.digest('hex');
 }
 
 function expectedTarballFilename(packageName, version) {
   return `${packageName.replace(/^@/, '').replaceAll('/', '-')}-${version}.tgz`;
 }
 
-function inspectTarball(tarballPath) {
+export function inspectReleaseTarball(tarballPath) {
   const bytes = readFileSync(tarballPath);
   const digest = createHash('sha512').update(bytes).digest();
   const packageJson = readTarPackageJson(tarballPath);
   return {
     packageJson,
+    contentSha256: canonicalTarballContentSha256(tarballPath),
     size: bytes.length,
     sha512: digest.toString('hex'),
     npmIntegrity: `sha512-${digest.toString('base64')}`,
@@ -226,7 +353,7 @@ export function writeReleaseIntegrityManifest(root, artifactDirectory) {
   const entries = packages.map((expected) => {
     const tarballPath = join(artifactDirectory, expected.filename);
     if (!existsSync(tarballPath)) throw new Error(`Missing release tarball ${expected.filename}.`);
-    const inspected = inspectTarball(tarballPath);
+    const inspected = inspectReleaseTarball(tarballPath);
     if (
       inspected.packageJson.name !== expected.name ||
       inspected.packageJson.version !== expected.version
@@ -242,7 +369,8 @@ export function writeReleaseIntegrityManifest(root, artifactDirectory) {
       version: expected.version,
       filename: expected.filename,
       sourcePackageJsonSha256: expected.sourcePackageJsonSha256,
-      packedPackageJsonSha256: sha256(stableJson(inspected.packageJson)),
+      packedPackageJsonSha256: sha256(canonicalPackageJson(inspected.packageJson)),
+      contentSha256: inspected.contentSha256,
       size: inspected.size,
       sha512: inspected.sha512,
       npmIntegrity: inspected.npmIntegrity,
@@ -333,7 +461,7 @@ export function verifyReleaseArtifacts(root, artifactDirectory) {
 
     const tarballPath = join(artifactDirectory, entry.filename);
     if (!statSync(tarballPath).isFile()) throw new Error(`${entry.filename} is not a file.`);
-    const inspected = inspectTarball(tarballPath);
+    const inspected = inspectReleaseTarball(tarballPath);
     if (
       inspected.packageJson.name !== entry.name ||
       inspected.packageJson.version !== entry.version
@@ -343,10 +471,10 @@ export function verifyReleaseArtifacts(root, artifactDirectory) {
       );
     }
     assertPackedPackageJsonMatches(expected.packageJson, inspected.packageJson, releasePackages);
-    if (entry.packedPackageJsonSha256 !== sha256(stableJson(inspected.packageJson))) {
+    if (entry.packedPackageJsonSha256 !== sha256(canonicalPackageJson(inspected.packageJson))) {
       throw new Error(`${entry.filename} failed its packed package.json integrity check.`);
     }
-    for (const key of ['size', 'sha512', 'npmIntegrity']) {
+    for (const key of ['contentSha256', 'size', 'sha512', 'npmIntegrity']) {
       if (entry[key] !== inspected[key]) {
         throw new Error(`${entry.filename} failed its ${key} integrity check.`);
       }

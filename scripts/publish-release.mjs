@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
+import { assertPublicPackageMatches } from './public-package-archive.mjs';
 import { verifyReleaseArtifacts } from './release-artifacts.mjs';
 
 const root = resolve(import.meta.dirname, '..');
@@ -80,14 +81,10 @@ function registryState(entry, { allowIncomplete = false } = {}) {
 
 function assertMatchingPublicIntegrity(entry, state) {
   if (state.status !== 'published') return;
-  if (state.integrity !== entry.npmIntegrity) {
-    throw new Error(
-      [
-        `Immutable package mismatch for ${entry.name}@${entry.version}.`,
-        `Registry: ${state.integrity}`,
-        `Gated tarball: ${entry.npmIntegrity}`,
-        'Refusing to skip or overwrite a version whose bytes differ.',
-      ].join('\n'),
+  const result = assertPublicPackageMatches(root, entry, registry, state.integrity);
+  if (result.match === 'content') {
+    console.log(
+      `✓ ${entry.name}@${entry.version} has different archive bytes but identical sealed package content; skipping immutable publication.`,
     );
   }
 }
