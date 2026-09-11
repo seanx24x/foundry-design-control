@@ -65,6 +65,7 @@ for (const fragment of [
 
 for (const fragment of [
   'inspectPublicTarball(packageName)',
+  "'pack'",
   "'--dry-run'",
   "'--ignore-scripts'",
   "'--prefer-online'",

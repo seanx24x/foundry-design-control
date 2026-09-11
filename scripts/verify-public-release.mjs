@@ -53,16 +53,27 @@ function inspectPublicTarball(packageName) {
       encoding: 'utf8',
     },
   );
-  if (result.status !== 0) return undefined;
-
-  try {
-    const output = JSON.parse(result.stdout);
-    const entry = Array.isArray(output) ? output[0] : output;
-    if (entry?.name === packageName && entry?.version === version) return entry;
-  } catch {
-    return undefined;
+  if (result.status !== 0) {
+    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+    if (/\bE404\b|404 Not Found|No match found for version|\bETARGET\b/i.test(output)) {
+      return { status: 'pending' };
+    }
+    throw new Error(`Could not verify the public archive for ${spec}.\n${output.trim()}`);
   }
-  return undefined;
+
+  let output;
+  try {
+    output = JSON.parse(result.stdout);
+  } catch {
+    throw new Error(`npm returned invalid archive metadata for ${spec}: ${result.stdout.trim()}`);
+  }
+  const entry = Array.isArray(output) ? output[0] : output;
+  if (entry?.name !== packageName || entry?.version !== version) {
+    throw new Error(
+      `npm returned the wrong archive identity for ${spec}: ${entry?.name ?? 'unknown'}@${entry?.version ?? 'unknown'}.`,
+    );
+  }
+  return { status: 'available', entry };
 }
 
 let failures = [];
@@ -94,9 +105,18 @@ if (failures.length) {
 
 let unavailableTarballs = [...packages];
 for (let attempt = 1; attempt <= tarballAttempts; attempt += 1) {
-  unavailableTarballs = unavailableTarballs.filter(
-    (packageName) => !inspectPublicTarball(packageName),
-  );
+  const nextUnavailable = [];
+  for (const packageName of unavailableTarballs) {
+    try {
+      if (inspectPublicTarball(packageName).status === 'pending') {
+        nextUnavailable.push(packageName);
+      }
+    } catch (error) {
+      console.error(error.message);
+      process.exit(1);
+    }
+  }
+  unavailableTarballs = nextUnavailable;
   if (!unavailableTarballs.length) break;
   if (attempt < tarballAttempts) {
     console.log(
