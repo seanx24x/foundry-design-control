@@ -7,6 +7,7 @@ const workflow = readFileSync(join(root, '.github', 'workflows', 'release.yml'),
 const publishScript = readFileSync(join(root, 'scripts', 'publish-release.mjs'), 'utf8');
 const packScript = readFileSync(join(root, 'scripts', 'pack-release.mjs'), 'utf8');
 const tagScript = readFileSync(join(root, 'scripts', 'promote-release.mjs'), 'utf8');
+const verifyPublicScript = readFileSync(join(root, 'scripts', 'verify-public-release.mjs'), 'utf8');
 const rootPackage = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const failures = [];
 
@@ -59,6 +60,17 @@ for (const fragment of [
 ]) {
   if (!publishScript.includes(fragment)) {
     failures.push(`publish-release.mjs is missing ${fragment}`);
+  }
+}
+
+for (const fragment of [
+  'inspectPublicTarball(packageName)',
+  "'--dry-run'",
+  "'--ignore-scripts'",
+  "'--prefer-online'",
+]) {
+  if (!verifyPublicScript.includes(fragment)) {
+    failures.push(`verify-public-release.mjs is missing ${fragment}`);
   }
 }
 
