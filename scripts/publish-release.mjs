@@ -26,7 +26,7 @@ function wait(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-function registryState(entry) {
+function registryState(entry, { allowIncomplete = false } = {}) {
   const spec = `${entry.name}@${entry.version}`;
   const result = run(
     'npm',
@@ -51,9 +51,9 @@ function registryState(entry) {
   const version = metadata.version;
   const integrity = metadata['dist.integrity'] ?? metadata.dist?.integrity;
   if (name !== entry.name || version !== entry.version || typeof integrity !== 'string') {
-    throw new Error(
-      `Public metadata for ${spec} is incomplete or has the wrong npm identity (${name}@${version}, ${integrity ?? 'no integrity'}).`,
-    );
+    const message = `Public metadata for ${spec} is incomplete or has the wrong npm identity (${name}@${version}, ${integrity ?? 'no integrity'}).`;
+    if (allowIncomplete) return { status: 'pending', message };
+    throw new Error(message);
   }
   return { status: 'published', integrity };
 }
@@ -73,19 +73,26 @@ function assertMatchingPublicIntegrity(entry, state) {
 }
 
 function waitForPublishedEntry(entry) {
+  let lastPendingMessage = '';
   for (let attempt = 1; attempt <= 12; attempt += 1) {
-    const state = registryState(entry);
+    const state = registryState(entry, { allowIncomplete: true });
     assertMatchingPublicIntegrity(entry, state);
     if (state.status === 'published') return;
+    if (state.status === 'pending') lastPendingMessage = state.message;
     if (attempt < 12) {
       console.log(
-        `Waiting for npm to expose ${entry.name}@${entry.version} before continuing (${attempt}/12).`,
+        `Waiting for npm to expose complete metadata for ${entry.name}@${entry.version} before continuing (${attempt}/12).`,
       );
       wait(10_000);
     }
   }
   throw new Error(
-    `npm did not expose ${entry.name}@${entry.version}; refusing to publish packages that may depend on it.`,
+    [
+      `npm did not expose complete metadata for ${entry.name}@${entry.version}; refusing to publish packages that may depend on it.`,
+      lastPendingMessage,
+    ]
+      .filter(Boolean)
+      .join('\n'),
   );
 }
 
