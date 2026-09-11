@@ -155,18 +155,23 @@ test('the pnpm packing hook sorts only dependency maps', () => {
 
 test('npm pack metadata accepts npm 11 arrays and npm 12 objects without ambiguity', () => {
   const result = { name: 'example', version: '1.0.0' };
-  assert.equal(normalizeNpmPackMetadata([result], 'example@1.0.0'), result);
-  assert.equal(normalizeNpmPackMetadata(result, 'example@1.0.0'), result);
+  assert.equal(normalizeNpmPackMetadata([result], 'example@1.0.0', 'example'), result);
+  assert.equal(normalizeNpmPackMetadata(result, 'example@1.0.0', 'example'), result);
+  assert.equal(normalizeNpmPackMetadata({ example: result }, 'example@1.0.0', 'example'), result);
   assert.throws(
-    () => normalizeNpmPackMetadata([], 'example@1.0.0'),
+    () => normalizeNpmPackMetadata([], 'example@1.0.0', 'example'),
     /ambiguous public archive set/,
   );
   assert.throws(
-    () => normalizeNpmPackMetadata([result, result], 'example@1.0.0'),
+    () => normalizeNpmPackMetadata([result, result], 'example@1.0.0', 'example'),
     /ambiguous public archive set/,
   );
   assert.throws(
-    () => normalizeNpmPackMetadata('unexpected', 'example@1.0.0'),
+    () => normalizeNpmPackMetadata({ unexpected: result }, 'example@1.0.0', 'example'),
+    /ambiguous public archive set/,
+  );
+  assert.throws(
+    () => normalizeNpmPackMetadata('unexpected', 'example@1.0.0', 'example'),
     /ambiguous public archive set/,
   );
 });
