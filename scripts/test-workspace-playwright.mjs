@@ -239,7 +239,7 @@ const preview = createServer((_request, response) => {
               temporary: true,
               changeCountDelta: 0,
               fontResources: {
-                cssText: '@font-face{font-family:"Inter";src:local("Arial");font-style:italic;font-weight:600}@font-face{font-family:"' + candidateFamily + '";src:local("Courier New");font-style:italic;font-weight:600}',
+                cssText: '@font-face{font-family:"Inter";src:url("/fonts/inter.woff2") format("woff2");font-style:italic;font-weight:600}@font-face{font-family:"' + candidateFamily + '";src:url("/fonts/jetbrains-mono.woff2") format("woff2");font-style:italic;font-weight:600}',
                 stylesheets: [],
                 faces: [
                   { role: 'current', family: 'Inter', weight: '600', style: 'italic', size: '12px', text: 'Create workspace', renderable: true },
