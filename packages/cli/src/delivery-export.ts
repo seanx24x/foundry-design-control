@@ -156,7 +156,7 @@ export function deliveryExportFiles(
       '',
       ...record.verificationResults.map(
         (item) =>
-          `- [${item.passed ? 'x' : ' '}] ${safe(item.property)}${item.reason ? `: ${safe(item.reason)}` : ''}`,
+          `- [${item.passed ? 'x' : ' '}] ${safe(item.property)}${item.context ? ` (${safe(item.context.breakpoint)} / ${safe(item.context.theme)} / ${safe(item.context.state)})` : ''}${item.reason ? `: ${safe(item.reason)}` : ''}`,
       ),
       '',
     ].join('\n'),

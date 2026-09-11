@@ -9,11 +9,13 @@ export interface SafeDiagnosticsInput {
   protocolVersion?: string;
 }
 
+export const DIAGNOSTICS_PROTOCOL_VERSION = '1.3.0';
+
 /** Build useful support state without exposing project content or session credentials. */
 export function createSafeDiagnostics(input: SafeDiagnosticsInput) {
   return {
     product: 'Foundry Design Control',
-    protocolVersion: input.protocolVersion ?? '1.1.0',
+    protocolVersion: input.protocolVersion ?? DIAGNOSTICS_PROTOCOL_VERSION,
     interfaceTheme: input.interfaceTheme,
     connection: {
       runtime: input.runtimeConnected ? 'connected' : 'disconnected',

@@ -1,13 +1,24 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { access, appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
-import { renderChangePrompt, type Platform, type SessionContext } from 'foundry-design-protocol';
-import { FoundryRuntime, SessionStore, renderDeliveryMarkdown } from 'foundry-design-runtime';
+import {
+  renderChangePrompt,
+  type Platform,
+  type SessionContext,
+  type SourceFileSnapshot,
+} from 'foundry-design-protocol';
+import {
+  FoundryRuntime,
+  SessionStore,
+  renderDeliveryMarkdown,
+  type ReviewedSourceLocation,
+  type SourceChangedRange,
+} from 'foundry-design-runtime';
 import {
   createSetupPlan,
   createUpdatePlan,
@@ -121,6 +132,180 @@ async function revision(root: string): Promise<string | undefined> {
     hash.update(await readFile(join(root, file)).catch(() => Buffer.from('unreadable')));
   }
   return `${head}-dirty-${hash.digest('hex').slice(0, 12)}`;
+}
+
+function safeSourcePath(root: string, input: string): string {
+  const candidate = isAbsolute(input) ? relative(root, input) : input;
+  const normalized = candidate.replaceAll('\\', '/').replace(/^\.\//, '');
+  const absolute = resolve(root, normalized);
+  const fromRoot = relative(root, absolute).replaceAll('\\', '/');
+  if (!normalized || fromRoot.startsWith('../') || isAbsolute(fromRoot)) {
+    throw new Error(`Source path is outside the project root: ${input}`);
+  }
+  return fromRoot;
+}
+
+async function sourceFileSnapshot(
+  root: string,
+  path: string,
+  locations: ReviewedSourceLocation[] = [],
+): Promise<SourceFileSnapshot> {
+  const safePath = safeSourcePath(root, path);
+  const content = await readFile(resolve(root, safePath)).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  const sourceLines = content?.toString('utf8').split(/\r?\n/) ?? [];
+  return {
+    path: safePath,
+    exists: content !== null,
+    sha256: content === null ? null : createHash('sha256').update(content).digest('hex'),
+    lineAnchors:
+      content === null
+        ? []
+        : [
+            ...new Map(
+              locations
+                .filter(
+                  (location) =>
+                    location.line &&
+                    Number.isInteger(location.line) &&
+                    location.line > 0 &&
+                    location.line <= sourceLines.length &&
+                    (!location.symbol || sourceLines[location.line - 1]!.includes(location.symbol)),
+                )
+                .map((location) => [
+                  JSON.stringify([location.line, location.symbol]),
+                  {
+                    line: location.line!,
+                    endLine: location.line!,
+                    symbol: location.symbol,
+                    sha256: createHash('sha256')
+                      .update(sourceLines[location.line! - 1]!)
+                      .digest('hex'),
+                  },
+                ]),
+            ).values(),
+          ].sort((left, right) => left.line - right.line),
+  };
+}
+
+function parseChangedRanges(path: string, diff: string): SourceChangedRange[] {
+  const ranges: SourceChangedRange[] = [];
+  for (const line of diff.split('\n')) {
+    const match = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (!match) continue;
+    ranges.push({
+      path,
+      oldStart: Number(match[1]),
+      oldLines: match[2] === undefined ? 1 : Number(match[2]),
+      newStart: Number(match[3]),
+      newLines: match[4] === undefined ? 1 : Number(match[4]),
+    });
+  }
+  return ranges;
+}
+
+async function gitChangedRanges(
+  root: string,
+  tracked: string[],
+  untracked: string[],
+): Promise<SourceChangedRange[]> {
+  const ranges: SourceChangedRange[] = [];
+  for (const path of tracked) {
+    const diff =
+      (await gitOutput(root, ['diff', '--no-ext-diff', '--unified=0', 'HEAD', '--', path])) ?? '';
+    ranges.push(...parseChangedRanges(path, diff));
+  }
+  for (const path of untracked) {
+    const content = await readFile(resolve(root, path), 'utf8').catch(() => '');
+    ranges.push({
+      path,
+      oldStart: 0,
+      oldLines: 0,
+      newStart: 1,
+      newLines: content.split(/\r?\n/).length,
+    });
+  }
+  return ranges;
+}
+
+async function projectSourceState(
+  root: string,
+  sourcePaths: string[],
+  sourceLocations: ReviewedSourceLocation[] = [],
+): Promise<{
+  supported: boolean;
+  scope?: 'git' | 'mapped-files';
+  revision: string | null;
+  headRevision?: string;
+  files?: SourceFileSnapshot[];
+  changedRanges?: SourceChangedRange[];
+  reason?: string;
+}> {
+  const headRevision = await gitOutput(root, ['rev-parse', 'HEAD']);
+  if (!headRevision) {
+    const mappedPaths = [...new Set(sourcePaths.map((path) => safeSourcePath(root, path)))].sort();
+    if (!mappedPaths.length) {
+      return {
+        supported: false,
+        revision: null,
+        reason: 'No source-backed paths are available for filesystem verification.',
+      };
+    }
+    const files = await Promise.all(
+      mappedPaths.map((path) =>
+        sourceFileSnapshot(
+          root,
+          path,
+          sourceLocations.filter((location) => safeSourcePath(root, location.path) === path),
+        ),
+      ),
+    );
+    const fallbackRevision = createHash('sha256').update(JSON.stringify(files)).digest('hex');
+    return {
+      supported: true,
+      scope: 'mapped-files',
+      revision: `mapped-${fallbackRevision}`,
+      files,
+    };
+  }
+  const currentRevision = (await revision(root)) ?? headRevision;
+  const tracked =
+    (await gitOutput(root, ['diff', '--name-only', 'HEAD']))?.split('\n').filter(Boolean) ?? [];
+  const untracked =
+    (await gitOutput(root, ['ls-files', '--others', '--exclude-standard']))
+      ?.split('\n')
+      .filter(Boolean) ?? [];
+  const paths = [
+    ...new Set(
+      [...tracked, ...untracked, ...sourcePaths]
+        .map((file) => safeSourcePath(root, file))
+        .filter(Boolean),
+    ),
+  ].sort();
+  const files = await Promise.all(
+    paths.map((path) =>
+      sourceFileSnapshot(
+        root,
+        path,
+        sourceLocations.filter((location) => safeSourcePath(root, location.path) === path),
+      ),
+    ),
+  );
+  const changedRanges = await gitChangedRanges(
+    root,
+    tracked.map((path) => safeSourcePath(root, path)),
+    untracked.map((path) => safeSourcePath(root, path)),
+  );
+  return {
+    supported: true,
+    scope: 'git',
+    revision: currentRevision,
+    headRevision,
+    files,
+    changedRanges,
+  };
 }
 
 async function openUrl(url: string): Promise<void> {
@@ -406,6 +591,7 @@ async function start(): Promise<void> {
     revision: projectRevision,
     platform,
     targetUrl,
+    previewOrigin: targetUrl ? new URL(targetUrl).origin : undefined,
     targetName: basename(root),
     viewport: { width: initialViewport.width, height: initialViewport.height ?? 900 },
     theme: 'system',
@@ -431,7 +617,20 @@ async function start(): Promise<void> {
       `Indexed ${graph.tokens.length} tokens, ${graph.components.length} components, and ${graph.breakpoints.length} viewports.`,
     );
   }
-  const runtime = new FoundryRuntime({ store });
+  const runtime = new FoundryRuntime({
+    store,
+    resolveProjectRevision: async ({ projectRoot: revisionRoot, sourcePaths, sourceLocations }) =>
+      projectSourceState(revisionRoot, sourcePaths, sourceLocations),
+    reindexProjectDesign: async ({ projectRoot: graphRoot }) => {
+      const currentConfig = await readFile(
+        join(graphRoot, '.foundry', 'foundry.config.json'),
+        'utf8',
+      )
+        .then((content) => JSON.parse(content) as FoundryProjectConfig)
+        .catch(() => undefined);
+      return indexProjectDesign(graphRoot, currentConfig, await revision(graphRoot));
+    },
+  });
   let ownsRuntime = false;
   try {
     await runtime.start();
@@ -453,9 +652,25 @@ async function start(): Promise<void> {
       'Run setup again after adding a supported client entry to enable exact source mapping.',
     );
   }
+  if (platform === 'web' && targetUrl) {
+    await store.setPreviewOrigin(
+      session.changeSet.sessionId,
+      new URL(basicPreview?.url ?? targetUrl).origin,
+    );
+  }
+  const previewCapability =
+    platform === 'web' && targetUrl ? randomBytes(32).toString('base64url') : undefined;
+  if (previewCapability) {
+    await store.setPreviewCapability(session.changeSet.sessionId, previewCapability);
+  }
   const productUrl =
     targetUrl && platform === 'web'
-      ? addSessionParams(basicPreview?.url ?? targetUrl, session.changeSet.sessionId, session.token)
+      ? addSessionParams(
+          basicPreview?.url ?? targetUrl,
+          session.changeSet.sessionId,
+          session.token,
+          previewCapability,
+        )
       : reviewUrl;
   const workspaceUrl =
     platform === 'web' && targetUrl

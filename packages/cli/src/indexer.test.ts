@@ -123,6 +123,19 @@ export function SpringNotice() { return useSpring({ from: { opacity: 0 }, to: { 
   assert.equal(spring?.configuration.tension, 210);
   assert.equal(spring?.configuration.friction, 24);
   assert.ok(graph.themes.some((theme) => theme.id === 'dark'));
+  assert.deepEqual(
+    graph.themes.find((theme) => theme.id === 'dark'),
+    {
+      id: 'dark',
+      label: 'Dark',
+      selector: '[data-theme="dark"]',
+      attribute: 'data-theme',
+      value: 'dark',
+      source: { file: 'src/theme.css', line: 17 },
+      confidence: 'instrumented',
+      evidence: ['Indexed CSS data-theme selector'],
+    },
+  );
   assert.ok(
     graph.tokenUsages.some((usage) => usage.tokenName === '--accent' && usage.kind === 'reference'),
   );
@@ -211,8 +224,21 @@ test('prefers configured viewport and state definitions', async () => {
         {
           id: 'hover-dark',
           label: 'Dark hover',
+          viewport: { width: 375, height: 812 },
           theme: 'dark',
+          variant: { tone: 'quiet' },
           pseudoStates: ['hover'],
+          query: { mode: 'review' },
+          confidence: 'instrumented',
+          evidence: ['Configured state'],
+        },
+      ],
+      themes: [
+        {
+          id: 'dark',
+          label: 'Dark',
+          attribute: 'data-theme',
+          value: 'dark',
         },
       ],
     },
@@ -222,4 +248,8 @@ test('prefers configured viewport and state definitions', async () => {
     ['phone'],
   );
   assert.equal(graph.states[0]?.pseudoStates[0], 'hover');
+  assert.deepEqual(graph.states[0]?.viewport, { width: 375, height: 812 });
+  assert.deepEqual(graph.states[0]?.variant, { tone: 'quiet' });
+  assert.deepEqual(graph.states[0]?.query, { mode: 'review' });
+  assert.deepEqual(graph.themes[0]?.evidence, ['Configured Foundry theme hook']);
 });

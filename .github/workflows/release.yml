@@ -10,8 +10,12 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
+
+concurrency:
+  group: foundry-release
+  cancel-in-progress: false
 
 jobs:
   publish:
@@ -19,6 +23,22 @@ jobs:
     environment: npm
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Verify release source is the current main commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "Release publication is restricted to refs/heads/main, not ${GITHUB_REF}." >&2
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          main_sha="$(git rev-parse refs/remotes/origin/main)"
+          if [[ "${GITHUB_SHA}" != "${main_sha}" ]]; then
+            echo "Release commit ${GITHUB_SHA} is not the current origin/main commit ${main_sha}." >&2
+            exit 1
+          fi
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
@@ -30,9 +50,89 @@ jobs:
       - run: pnpm check
       - run: pnpm test:e2e
       - run: pnpm release:check
+      - name: Verify release checks did not rewrite tracked source
+        run: git diff --exit-code
       - run: pnpm release:pack
+      - run: pnpm release:verify-artifacts
       - run: pnpm release:test-install
+      - run: pnpm test:golden:packed
+      - run: pnpm test:golden:negative
       - run: pnpm distribution:check
       - run: pnpm mcpb:build
+      - name: Recheck release source before registry mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          main_sha="$(git rev-parse refs/remotes/origin/main)"
+          if [[ "${GITHUB_REF}" != "refs/heads/main" || "${GITHUB_SHA}" != "${main_sha}" ]]; then
+            echo "Release source is no longer the current origin/main commit; refusing registry mutation." >&2
+            exit 1
+          fi
       - name: Publish beta packages
-        run: pnpm release:publish -- ${{ inputs.promote_latest && '--promote-latest' || '' }}
+        run: pnpm release:publish
+      - name: Converge beta tags after resumable publication
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm release:tag-beta
+      - name: Verify immutable public beta packages
+        run: pnpm release:verify-public
+      - name: Run public-registry golden path
+        run: pnpm test:golden:registry
+      - name: Promote latest after public verification
+        if: ${{ inputs.promote_latest }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm release:promote
+      - name: Verify beta tag after the registry golden path
+        run: pnpm release:verify-public -- --tags=beta
+      - name: Verify beta and latest tags after promotion
+        if: ${{ inputs.promote_latest }}
+        run: pnpm release:verify-public -- --tags=beta,latest
+      - name: Create GitHub prerelease and upload Claude Desktop bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node --input-type=module -e "import release from './release.json' with { type: 'json' }; process.stdout.write(release.version)")"
+          tag="v${version}"
+          bundle="artifacts/mcpb/foundry-design-control-${version}.mcpb"
+          asset="$(basename "${bundle}")"
+          test -f "${bundle}"
+          bundle_sha="$(sha256sum "${bundle}" | awk '{print $1}')"
+          git fetch --force --tags origin
+          if git rev-parse --verify --quiet "refs/tags/${tag}^{commit}" >/dev/null; then
+            tag_sha="$(git rev-parse "refs/tags/${tag}^{commit}")"
+            if [[ "${tag_sha}" != "${GITHUB_SHA}" ]]; then
+              echo "Refusing release asset update: ${tag} targets ${tag_sha}, not ${GITHUB_SHA}." >&2
+              exit 1
+            fi
+          fi
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            release_target="$(gh release view "${tag}" --json targetCommitish --jq '.targetCommitish')"
+            release_prerelease="$(gh release view "${tag}" --json isPrerelease --jq '.isPrerelease')"
+            if [[ "${release_target}" != "${GITHUB_SHA}" ]]; then
+              echo "Refusing release asset update: ${tag} was created for ${release_target}, not ${GITHUB_SHA}." >&2
+              exit 1
+            fi
+            if [[ "${release_prerelease}" != "true" ]]; then
+              echo "Refusing release asset update: ${tag} is not a prerelease." >&2
+              exit 1
+            fi
+            if gh release view "${tag}" --json assets --jq '.assets[].name' | grep -Fxq "${asset}"; then
+              release_tmp="$(mktemp -d)"
+              trap 'rm -rf "${release_tmp}"' EXIT
+              gh release download "${tag}" --pattern "${asset}" --dir "${release_tmp}"
+              published_sha="$(sha256sum "${release_tmp}/${asset}" | awk '{print $1}')"
+              if [[ "${published_sha}" != "${bundle_sha}" ]]; then
+                echo "Refusing to replace ${asset}: published SHA-256 ${published_sha} differs from gated ${bundle_sha}." >&2
+                exit 1
+              fi
+              echo "${asset} already exists with the gated SHA-256 ${bundle_sha}."
+            else
+              gh release upload "${tag}" "${bundle}"
+            fi
+          else
+            gh release create "${tag}" "${bundle}" --target "${GITHUB_SHA}" --title "Foundry ${version}" --generate-notes --prerelease
+          fi

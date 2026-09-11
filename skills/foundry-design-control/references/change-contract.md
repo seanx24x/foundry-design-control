@@ -1,17 +1,18 @@
 # Change contract
 
-Foundry protocol `1.2.0` uses these durable objects:
+Foundry protocol `1.3.0` uses these durable objects:
 
 - `SessionContext`: project root and revision plus platform, target, device or viewport, theme, breakpoint, and state.
 - `TargetRef`: stable ID, role, label, component path, optional source reference, live geometry, locator evidence, and confidence.
 - `ControlDescriptor`: property, category, value type, constraints, tokens, and preview support.
-- `DesignChange`: target, before/after values, unit or token, instance/component scope, state scope, evidence, status, and timestamps.
+- `DesignChange`: target, before/after values, unit or token, instance/component scope, exact capture context, affected breakpoint/theme/state context sets, evidence, status, and timestamps.
 - `DesignOperation`: one canvas gesture or command, its targets, state set, ranked source mappings, selected mapping, and resolution status.
 - `SourceMappingCandidate`: semantic intent, property, source, confidence, evidence, and component blast radius.
 - `ProjectDesignGraph`: revisioned local tokens, components, variants, breakpoints, themes, states, and motion presets with provenance.
 - `ChangeSet`: session context, coalesced ordered changes, semantic operations, graph revision, screenshots, and protocol version.
-- `VerificationResult`: requested and rendered values, pass state, reason, geometry, and screenshot evidence.
-- `ApplyRun`: reviewed change IDs, agent claim, progress, source files, validation, verification, retries, and terminal state.
+- `PreviewContext`: versioned viewport, theme, state, motion preference, selected target, request revision, supported capabilities, and the last acknowledged application result.
+- `VerificationResult`: requested and rendered values, exact context, pass state, reason, geometry, and screenshot evidence.
+- `ApplyRun`: an immutable frozen reviewed change contract, private claimant authority, baseline-relative source proof, exactly one Apply-result acknowledgement, attempt-bound verification, retries, and terminal state.
 
 ## Confidence
 
@@ -28,6 +29,6 @@ Review deletion is separate from rejection. Deletion permanently removes an unap
 
 ## Coalescing
 
-Use `target + property + scope + breakpoint + theme + state + state set` as the key. Preserve the original `before` value and the final `after` value. Keep other scopes separate.
+Use `target + property + scope + affected breakpoint/theme/state context sets + state set` as the key. Preserve the original exact capture context and `before` value, then keep the final `after` value. Keep other scopes separate.
 
-Sessions written as `1.0.0` or `1.1.0` migrate with empty operations and no design graph. Never synthesize semantic evidence during migration.
+Sessions written as `1.0.0` or `1.1.0` migrate with empty operations and no design graph. Protocol `1.2.0` changes migrate their exact capture context into singleton breakpoint, theme, and state context sets. Never synthesize semantic evidence during migration.

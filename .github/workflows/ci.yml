@@ -24,6 +24,9 @@ jobs:
       - run: pnpm test:e2e
       - run: pnpm release:check
       - run: pnpm release:pack
+      - run: pnpm release:verify-artifacts
       - run: pnpm release:test-install
+      - run: pnpm test:golden:packed
+      - run: pnpm test:golden:negative
       - run: pnpm distribution:check
       - run: pnpm mcpb:build

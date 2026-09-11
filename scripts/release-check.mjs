@@ -41,6 +41,39 @@ const rootReadmeDigest = createHash('sha256')
   .update(readFileSync(join(root, 'README.md')))
   .digest('hex');
 const rootReadme = readFileSync(join(root, 'README.md'), 'utf8');
+const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
+
+const currentChangelogVersion = changelog.match(/^## (\S+) /m)?.[1];
+if (currentChangelogVersion !== version) {
+  failures.push(
+    `CHANGELOG.md starts at ${currentChangelogVersion ?? 'no release'} instead of ${version}`,
+  );
+}
+
+if (!rootReadme.includes(`**Current beta release:** \`${version}\``)) {
+  failures.push(`README.md does not identify ${version} as the current beta release`);
+}
+if (!rootReadme.includes(`--package=foundry-design@${version} foundry-design`)) {
+  failures.push(`README.md recovery command does not pin foundry-design@${version}`);
+}
+
+const cursorConfigMatch = rootReadme.match(
+  /cursor:\/\/anysphere\.cursor-deeplink\/mcp\/install\?name=foundry-design-control&config=([^),]+)/,
+);
+if (!cursorConfigMatch) {
+  failures.push('README.md is missing the Cursor one-click MCP configuration');
+} else {
+  try {
+    const cursorConfig = JSON.parse(
+      Buffer.from(decodeURIComponent(cursorConfigMatch[1]), 'base64').toString('utf8'),
+    );
+    if (!cursorConfig.args?.includes(`foundry-design-mcp-server@${version}`)) {
+      failures.push(`README.md Cursor configuration does not pin the MCP server to ${version}`);
+    }
+  } catch {
+    failures.push('README.md Cursor one-click MCP configuration is not valid encoded JSON');
+  }
+}
 
 const builtReleasePath = join(root, 'packages/cli/dist/release.js');
 if (!existsSync(builtReleasePath)) {

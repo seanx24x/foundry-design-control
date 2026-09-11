@@ -81,7 +81,7 @@ test('redacts project paths and runtime credentials from every portable delivery
     breakpoint: 'desktop',
     state: 'default',
   });
-  const sensitiveUrl = `${output}/src/Button.tsx?__foundry_token=secret-value&session=session-value&__foundry_session=foundry-session-value`;
+  const sensitiveUrl = `${output}/src/Button.tsx?__foundry_token=secret-value&session=session-value&__foundry_session=foundry-session-value&__foundry_preview_capability=preview-capability-value`;
   const record = deliveryRecord(session.changeSet.sessionId, {
     title: `Button from ${sensitiveUrl}`,
     summary: 'Authenticated with x-foundry-token: header-value',
@@ -94,6 +94,7 @@ test('redacts project paths and runtime credentials from every portable delivery
         rendered: 48,
         passed: true,
         reason: 'x-foundry-token=verification-value',
+        evidence: [`Measured at ${sensitiveUrl}`],
         verifiedAt: now,
       },
     ],
@@ -144,6 +145,7 @@ test('redacts project paths and runtime credentials from every portable delivery
     'secret-value',
     'session-value',
     'foundry-session-value',
+    'preview-capability-value',
     'header-value',
     'verification-value',
     'history-value',

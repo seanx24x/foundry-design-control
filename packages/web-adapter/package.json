@@ -1,6 +1,6 @@
 {
   "name": "foundry-design-web-adapter",
-  "version": "0.2.0-beta.20",
+  "version": "0.2.0-beta.21",
   "description": "Development-only browser inspector for Foundry",
   "type": "module",
   "main": "dist/adapter.js",
@@ -37,6 +37,7 @@
     "test": "node --import tsx --test src/*.test.ts"
   },
   "dependencies": {
-    "@iconify-icons/keyline-icons": "2.0.0"
+    "@iconify-icons/keyline-icons": "2.0.0",
+    "foundry-design-protocol": "workspace:*"
   }
 }

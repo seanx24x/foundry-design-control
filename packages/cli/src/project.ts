@@ -86,9 +86,17 @@ export function normalizeTargetUrl(value: string | undefined): string | undefine
   return url.toString().replace(/\/$/, '');
 }
 
-export function addSessionParams(targetUrl: string, sessionId: string, token: string): string {
+export function addSessionParams(
+  targetUrl: string,
+  sessionId: string,
+  token: string,
+  previewCapability?: string,
+): string {
   const url = new URL(targetUrl);
   url.searchParams.set('__foundry_session', sessionId);
   url.searchParams.set('__foundry_token', token);
+  if (previewCapability) {
+    url.searchParams.set('__foundry_preview_capability', previewCapability);
+  }
   return url.toString();
 }

@@ -7,6 +7,20 @@ import { ClaimLeaseKeeper } from './claim-lease.js';
 import { FoundryRuntimeClient } from './client.js';
 import packageJson from '../package.json' with { type: 'json' };
 
+const verificationContextSchema = z.object({
+  breakpoint: z.string().default('current'),
+  theme: z.string().default('current'),
+  state: z.string().default('current'),
+});
+
+const verificationGeometrySchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number().nonnegative(),
+  height: z.number().nonnegative(),
+  scale: z.number().positive(),
+});
+
 function result(value: unknown) {
   return {
     content: [
@@ -103,8 +117,8 @@ serveStdio(() => {
           version: z.string().optional(),
           taskId: z.string().optional(),
         }),
-        revision: z.string().optional(),
-        designGraphRevision: z.string().optional(),
+        revision: z.string().nullable().optional(),
+        designGraphRevision: z.string().nullable().optional(),
         waitMs: z.number().int().min(0).max(60_000).default(30_000),
       }),
     },
@@ -144,6 +158,7 @@ serveStdio(() => {
             },
             token,
           )) as {
+            claimCapability?: string;
             visualAgentRequests?: Array<{
               id: string;
               status: string;
@@ -158,16 +173,19 @@ serveStdio(() => {
             request?.status === 'thinking' &&
             request.agent?.name === resolvedAgent.name &&
             request.agent.taskId === resolvedAgent.taskId &&
-            request.claimAttemptId
+            request.claimAttemptId &&
+            claimed.claimCapability
           ) {
             claimLeases.start({
               sessionId: id,
               token,
               runId: visualRequest.id,
               claimAttemptId: request.claimAttemptId,
+              claimCapability: claimed.claimCapability,
               kind: 'visual',
             });
-            return result({ kind: 'visual_request', request, session: claimed });
+            const { claimCapability: _secret, ...publicClaim } = claimed;
+            return result({ kind: 'visual_request', request, session: publicClaim });
           }
         }
         const applies = (await client.request(
@@ -185,6 +203,7 @@ serveStdio(() => {
             },
             token,
           )) as {
+            claimCapability?: string;
             applyRuns?: Array<{
               id: string;
               state: string;
@@ -197,15 +216,18 @@ serveStdio(() => {
             run?.state === 'claimed' &&
             run.agent?.name === resolvedAgent.name &&
             run.agent.taskId === resolvedAgent.taskId &&
-            run.claimAttemptId
+            run.claimAttemptId &&
+            claimed.claimCapability
           ) {
             claimLeases.start({
               sessionId: id,
               token,
               runId: apply.id,
               claimAttemptId: run.claimAttemptId,
+              claimCapability: claimed.claimCapability,
             });
-            return result({ kind: 'apply_run', run, session: claimed });
+            const { claimCapability: _secret, ...publicClaim } = claimed;
+            return result({ kind: 'apply_run', run, session: publicClaim });
           }
         }
         if (Date.now() >= deadline) break;
@@ -228,8 +250,8 @@ serveStdio(() => {
           version: z.string().optional(),
           taskId: z.string().optional(),
         }),
-        revision: z.string().optional(),
-        designGraphRevision: z.string().optional(),
+        revision: z.string().nullable().optional(),
+        designGraphRevision: z.string().nullable().optional(),
         waitMs: z.number().int().min(0).max(60_000).default(30_000),
       }),
     },
@@ -273,6 +295,7 @@ serveStdio(() => {
             },
             token,
           )) as {
+            claimCapability?: string;
             applyRuns?: Array<{
               id: string;
               state: string;
@@ -285,14 +308,16 @@ serveStdio(() => {
             claimedRun?.state === 'claimed' &&
             claimedRun.agent?.name === resolvedAgent.name &&
             claimedRun.agent.taskId === resolvedAgent.taskId;
-          if (sameAgent && claimedRun?.claimAttemptId) {
+          if (sameAgent && claimedRun?.claimAttemptId && claimed.claimCapability) {
             claimLeases.start({
               sessionId: id,
               token,
               runId: run.id,
               claimAttemptId: claimedRun.claimAttemptId,
+              claimCapability: claimed.claimCapability,
             });
-            return result(claimed);
+            const { claimCapability: _secret, ...publicClaim } = claimed;
+            return result(publicClaim);
           }
         }
         if (Date.now() >= deadline) break;
@@ -354,6 +379,7 @@ serveStdio(() => {
             },
             token,
           )) as {
+            claimCapability?: string;
             visualAgentRequests?: Array<{
               id: string;
               status: string;
@@ -368,16 +394,19 @@ serveStdio(() => {
             claimedRequest?.status === 'thinking' &&
             claimedRequest.agent?.name === resolvedAgent.name &&
             claimedRequest.agent.taskId === resolvedAgent.taskId &&
-            claimedRequest.claimAttemptId
+            claimedRequest.claimAttemptId &&
+            claimed.claimCapability
           ) {
             claimLeases.start({
               sessionId: id,
               token,
               runId: request.id,
               claimAttemptId: claimedRequest.claimAttemptId,
+              claimCapability: claimed.claimCapability,
               kind: 'visual',
             });
-            return result(claimed);
+            const { claimCapability: _secret, ...publicClaim } = claimed;
+            return result(publicClaim);
           }
         }
         if (Date.now() >= deadline) break;
@@ -434,9 +463,15 @@ serveStdio(() => {
       }),
     },
     async ({ sessionId, token, requestId, ...input }) => {
+      const claimCapability = claimLeases.capability(requestId, input.claimAttemptId);
+      if (!claimCapability) {
+        throw new Error(
+          'No private capability is held for this visual request claim. Claim it again.',
+        );
+      }
       const payload = await client.request(
         `/v1/sessions/${client.sessionId(sessionId)}/visual-agent-requests/${requestId}/respond`,
-        { method: 'POST', body: JSON.stringify(input) },
+        { method: 'POST', body: JSON.stringify({ ...input, claimCapability }) },
         token,
       );
       claimLeases.stop(requestId);
@@ -458,12 +493,16 @@ serveStdio(() => {
     },
     async ({ sessionId, token, runId, claimAttemptId }) => {
       const id = client.sessionId(sessionId);
+      const claimCapability = claimLeases.capability(runId, claimAttemptId);
+      if (!claimCapability) {
+        throw new Error('The private Apply claim capability is unavailable. Reclaim the run.');
+      }
       const payload = await client.request(
         `/v1/sessions/${id}/apply-runs/${runId}/heartbeat`,
-        { method: 'POST', body: JSON.stringify({ claimAttemptId }) },
+        { method: 'POST', body: JSON.stringify({ claimAttemptId, claimCapability }) },
         token,
       );
-      claimLeases.start({ sessionId: id, token, runId, claimAttemptId });
+      claimLeases.start({ sessionId: id, token, runId, claimAttemptId, claimCapability });
       return result(payload);
     },
   );
@@ -514,9 +553,13 @@ serveStdio(() => {
       }),
     },
     async ({ sessionId, token, runId, ...update }) => {
+      const claimCapability = claimLeases.capability(runId, update.claimAttemptId);
+      if (!claimCapability) {
+        throw new Error('The private Apply claim capability is unavailable. Reclaim the run.');
+      }
       const payload = await client.request(
         `/v1/sessions/${client.sessionId(sessionId)}/apply-runs/${runId}`,
-        { method: 'PATCH', body: JSON.stringify(update) },
+        { method: 'PATCH', body: JSON.stringify({ ...update, claimCapability }) },
         token,
       );
       if (update.state === 'failed') claimLeases.stop(runId);
@@ -570,25 +613,47 @@ serveStdio(() => {
     'foundry_design_record_apply_result',
     {
       description:
-        'Mark approved changes applied after a source diff is produced. This tool does not edit source files.',
-      inputSchema: z.object({
-        sessionId: z.string().optional(),
-        token: z.string().optional(),
-        changeIds: z.array(z.string()).min(1),
-      }),
+        'Acknowledge that the exact frozen changes for a claimed apply run produced a source diff. This tool does not edit source files or complete verification.',
+      inputSchema: z
+        .object({
+          sessionId: z.string().optional(),
+          token: z.string().optional(),
+          runId: z.string().min(1).optional(),
+          claimAttemptId: z.string().min(1).optional(),
+          changeIds: z.array(z.string()).min(1),
+        })
+        .superRefine((input, context) => {
+          if (Boolean(input.runId) !== Boolean(input.claimAttemptId)) {
+            context.addIssue({
+              code: 'custom',
+              message: 'runId and claimAttemptId must be provided together',
+            });
+          }
+        }),
     },
-    async ({ sessionId, token, changeIds }) => {
+    async ({ sessionId, token, runId, claimAttemptId, changeIds }) => {
       const id = client.sessionId(sessionId);
-      const updates = [];
-      for (const changeId of changeIds)
-        updates.push(
-          await client.request(
-            `/v1/sessions/${id}/changes/${changeId}`,
-            { method: 'PATCH', body: JSON.stringify({ status: 'applied' }) },
-            token,
-          ),
-        );
-      return result({ updated: changeIds.length, session: updates.at(-1) });
+      const claimCapability =
+        runId && claimAttemptId ? claimLeases.capability(runId, claimAttemptId) : undefined;
+      if (runId && claimAttemptId && !claimCapability) {
+        throw new Error('The private Apply claim capability is unavailable. Reclaim the run.');
+      }
+      return result(
+        await client.request(
+          runId && claimAttemptId
+            ? `/v1/sessions/${id}/apply-runs/${runId}/apply-result`
+            : `/v1/sessions/${id}/apply-runs/apply-result`,
+          {
+            method: 'POST',
+            body: JSON.stringify(
+              runId && claimAttemptId
+                ? { claimAttemptId, claimCapability, changeIds }
+                : { changeIds },
+            ),
+          },
+          token,
+        ),
+      );
     },
   );
 
@@ -599,28 +664,48 @@ serveStdio(() => {
       inputSchema: z.object({
         sessionId: z.string().optional(),
         token: z.string().optional(),
-        runId: z.string().optional(),
+        runId: z.string().min(1),
+        claimAttemptId: z.string().min(1),
         results: z.array(
           z.object({
+            applyRunId: z.string().min(1),
+            claimAttemptId: z.string().min(1),
             changeId: z.string(),
             property: z.string(),
             requested: z.unknown(),
             rendered: z.unknown(),
             passed: z.boolean(),
+            context: verificationContextSchema.optional(),
             reason: z.string().optional(),
+            geometry: verificationGeometrySchema.optional(),
+            evidence: z.array(z.string().min(1)).default([]),
             verifiedAt: z.string().datetime(),
           }),
         ),
       }),
     },
-    async ({ sessionId, token, runId, results }) =>
-      result(
+    async ({ sessionId, token, runId, claimAttemptId, results }) => {
+      const claimCapability = claimLeases.capability(runId, claimAttemptId);
+      if (!claimCapability) {
+        throw new Error('The private Apply claim capability is unavailable. Reclaim the run.');
+      }
+      return result(
         await client.request(
           `/v1/sessions/${client.sessionId(sessionId)}/verify`,
-          { method: 'POST', body: JSON.stringify({ runId, results }) },
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              source: 'native-agent',
+              runId,
+              claimAttemptId,
+              claimCapability,
+              results,
+            }),
+          },
           token,
         ),
-      ),
+      );
+    },
   );
   return server;
 });

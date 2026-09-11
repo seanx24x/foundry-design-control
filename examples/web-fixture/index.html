@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -13,14 +13,14 @@
       data-foundry-id="signup-shell"
       data-foundry-label="Signup page"
       data-foundry-component="Signup/Page"
-      data-foundry-source="examples/web-fixture/index.html:11:4"
+      data-foundry-source="index.html:11:4"
     >
       <header
         class="site-header"
         data-foundry-id="signup-navigation"
         data-foundry-label="Signup navigation"
         data-foundry-component="Signup/Navigation"
-        data-foundry-source="examples/web-fixture/index.html:18:6"
+        data-foundry-source="index.html:18:6"
       >
         <a class="wordmark" href="#" aria-label="Morrow home">
           <span class="wordmark-symbol" aria-hidden="true"><i></i><i></i></span>
@@ -36,7 +36,7 @@
           data-foundry-id="product-story"
           data-foundry-label="Product introduction"
           data-foundry-component="Signup/ProductStory"
-          data-foundry-source="examples/web-fixture/index.html:33:8"
+          data-foundry-source="index.html:33:8"
         >
           <div class="story-copy">
             <span class="story-eyebrow">A workspace for ideas in progress</span>
@@ -51,7 +51,7 @@
             data-foundry-id="working-note"
             data-foundry-label="Shared working note"
             data-foundry-component="Signup/WorkingNote"
-            data-foundry-source="examples/web-fixture/index.html:49:10"
+            data-foundry-source="index.html:49:10"
           >
             <header>
               <div>
@@ -97,7 +97,7 @@
           data-foundry-id="signup-form"
           data-foundry-label="Create workspace form"
           data-foundry-component="Signup/Form"
-          data-foundry-source="examples/web-fixture/index.html:89:8"
+          data-foundry-source="index.html:94:8"
         >
           <div class="form-intro">
             <span>Start with Morrow</span>
@@ -124,7 +124,7 @@
               data-foundry-id="name-field"
               data-foundry-label="Name field"
               data-foundry-component="Signup/Field"
-              data-foundry-source="examples/web-fixture/index.html:115:12"
+              data-foundry-source="index.html:122:12"
             >
               <label for="name">Full name</label>
               <div class="input-shell">
@@ -146,7 +146,7 @@
               data-foundry-id="email-field"
               data-foundry-label="Email field"
               data-foundry-component="Signup/Field"
-              data-foundry-source="examples/web-fixture/index.html:131:12"
+              data-foundry-source="index.html:144:12"
             >
               <label for="email">Work email</label>
               <div class="input-shell">
@@ -175,7 +175,7 @@
               data-foundry-id="password-field"
               data-foundry-label="Password field"
               data-foundry-component="Signup/PasswordField"
-              data-foundry-source="examples/web-fixture/index.html:154:12"
+              data-foundry-source="index.html:173:12"
             >
               <label for="password">Password</label>
               <div class="input-shell">
@@ -193,7 +193,18 @@
                   autocomplete="new-password"
                   placeholder="At least 8 characters"
                 />
-                <button type="button" class="reveal-button" aria-label="Show password">Show</button>
+                <button
+                  type="button"
+                  class="reveal-button"
+                  aria-label="Show password"
+                  data-foundry-id="password-reveal"
+                  data-foundry-label="Password reveal"
+                  data-foundry-component="Signup/PasswordReveal"
+                  data-foundry-source="style.css:660:20"
+                  data-foundry-source-anchor="/* foundry: password-reveal */"
+                >
+                  Show
+                </button>
               </div>
               <div class="strength-row" aria-live="polite">
                 <div class="strength-track" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
@@ -207,7 +218,7 @@
               data-foundry-id="terms-checkbox"
               data-foundry-label="Terms agreement"
               data-foundry-component="Signup/Checkbox"
-              data-foundry-source="examples/web-fixture/index.html:180:12"
+              data-foundry-source="index.html:216:12"
             >
               <input id="terms" name="terms" type="checkbox" />
               <span class="custom-checkbox" aria-hidden="true">
@@ -226,7 +237,7 @@
               data-foundry-id="create-workspace-button"
               data-foundry-label="Create workspace button"
               data-foundry-component="Signup/PrimaryAction"
-              data-foundry-source="examples/web-fixture/index.html:193:12"
+              data-foundry-source="index.html:233:12"
               data-story="Primary"
             >
               <span>Create workspace</span>
@@ -253,7 +264,26 @@
       const termsInput = document.querySelector('#terms');
       const revealButton = document.querySelector('.reveal-button');
       const submitButton = document.querySelector('.submit-button');
+      const themeColor = document.querySelector('meta[name="theme-color"]');
       const touched = new Set();
+      const authoredState = new URLSearchParams(location.search).get('morrow-state');
+
+      if (authoredState === 'loading') {
+        submitButton.dataset.foundryState = 'loading';
+        submitButton.setAttribute('aria-busy', 'true');
+        submitButton.querySelector('span').textContent = 'Creating workspace';
+      }
+
+      function syncThemeColor() {
+        themeColor.content =
+          document.documentElement.dataset.theme === 'dark' ? '#111411' : '#f3f4f0';
+      }
+
+      syncThemeColor();
+      new MutationObserver(syncThemeColor).observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme'],
+      });
 
       const rules = {
         name: (value) => (value.trim() ? '' : 'Enter your name.'),

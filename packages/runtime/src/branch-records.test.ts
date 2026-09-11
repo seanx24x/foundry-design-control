@@ -43,6 +43,7 @@ const branch: DesignBranch = {
       mappingCandidates: [],
       scope: 'component',
       context: { breakpoint: 'desktop', theme: 'light', state: 'default' },
+      contextSet: { breakpoints: ['desktop'], themes: ['light'], states: ['default'] },
       confidence: 'instrumented',
       evidence: ['computed style'],
       createdAt: now,
@@ -55,7 +56,7 @@ const branch: DesignBranch = {
   updatedAt: now,
 };
 const graph: ProjectDesignGraph = {
-  protocolVersion: '1.2.0',
+  protocolVersion: '1.3.0',
   projectRoot: '/project',
   revision: 'graph-1',
   tokens: [],

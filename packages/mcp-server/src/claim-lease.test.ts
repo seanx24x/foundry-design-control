@@ -70,10 +70,10 @@ test('tolerates a transient heartbeat failure and stops after the retry budget',
 });
 
 test('keeps a visual conversation claim alive while the agent reasons', async () => {
-  const requests: string[] = [];
+  const requests: Array<{ path: string; body?: string }> = [];
   const client: ClaimLeaseRequestClient = {
-    async request(path) {
-      requests.push(path);
+    async request(path, options) {
+      requests.push({ path, body: options?.body as string | undefined });
       return {
         visualAgentRequests: [
           { id: 'ask', status: 'thinking', claimAttemptId: claim.claimAttemptId },
@@ -82,9 +82,20 @@ test('keeps a visual conversation claim alive while the agent reasons', async ()
     },
   };
   const keeper = new ClaimLeaseKeeper(client, 60_000);
-  keeper.start({ ...claim, runId: 'ask', kind: 'visual' });
+  keeper.start({
+    ...claim,
+    runId: 'ask',
+    kind: 'visual',
+    claimCapability: 'private-visual-capability',
+  });
+  assert.equal(keeper.capability('ask', claim.claimAttemptId), 'private-visual-capability');
+  assert.equal(keeper.capability('ask', 'other-claim'), undefined);
   await keeper.pulse('ask');
   assert.equal(keeper.has('ask'), true);
-  assert.deepEqual(requests, ['/v1/sessions/session/visual-agent-requests/ask/heartbeat']);
+  assert.equal(requests[0]?.path, '/v1/sessions/session/visual-agent-requests/ask/heartbeat');
+  assert.deepEqual(JSON.parse(requests[0]!.body!), {
+    claimAttemptId: claim.claimAttemptId,
+    claimCapability: 'private-visual-capability',
+  });
   keeper.stop('ask');
 });

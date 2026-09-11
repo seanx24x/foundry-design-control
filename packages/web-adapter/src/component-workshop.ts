@@ -80,69 +80,6 @@ export interface RawStateDefinition {
   evidence?: string[];
 }
 
-const BUILT_IN_STATES: ComponentWorkshopState[] = [
-  {
-    id: 'current',
-    label: 'Default',
-    kind: 'default',
-    confidence: 'instrumented',
-    evidence: ['Live rendered state'],
-  },
-  {
-    id: 'hover',
-    label: 'Hover',
-    kind: 'pseudo',
-    pseudoState: 'hover',
-    confidence: 'instrumented',
-    evidence: ['Forced :hover rules'],
-  },
-  {
-    id: 'focus',
-    label: 'Focus',
-    kind: 'pseudo',
-    pseudoState: 'focus',
-    confidence: 'instrumented',
-    evidence: ['Forced :focus rules'],
-  },
-  {
-    id: 'active',
-    label: 'Pressed',
-    kind: 'pseudo',
-    pseudoState: 'active',
-    confidence: 'instrumented',
-    evidence: ['Forced :active rules'],
-  },
-  {
-    id: 'disabled',
-    label: 'Disabled',
-    kind: 'pseudo',
-    pseudoState: 'disabled',
-    confidence: 'instrumented',
-    evidence: ['Native disabled and aria-disabled attributes'],
-  },
-  {
-    id: 'loading',
-    label: 'Loading',
-    kind: 'semantic',
-    confidence: 'inferred',
-    evidence: ['data-foundry-state and aria-busy preview'],
-  },
-  {
-    id: 'empty',
-    label: 'Empty',
-    kind: 'semantic',
-    confidence: 'inferred',
-    evidence: ['data-foundry-state preview'],
-  },
-  {
-    id: 'error',
-    label: 'Error',
-    kind: 'semantic',
-    confidence: 'inferred',
-    evidence: ['data-foundry-state and aria-invalid preview'],
-  },
-];
-
 function variantProps(variant: RawComponentVariant): Record<string, string | number | boolean> {
   if (variant.props) return { ...variant.props };
   if (!variant.property) return {};
@@ -244,7 +181,7 @@ export function componentVariantDrift(
 export function componentWorkshopStates(
   configured: RawStateDefinition[] | null | undefined,
 ): ComponentWorkshopState[] {
-  const states = new Map(BUILT_IN_STATES.map((state) => [state.id, { ...state }]));
+  const states = new Map<string, ComponentWorkshopState>();
   for (const state of configured ?? []) {
     const pseudoState = state.pseudoStates?.[0];
     states.set(state.id, {

@@ -10,12 +10,12 @@ const contractOnly = process.argv.includes('--contract-only');
 const failures = [];
 
 const packagePaths = [
-  'apps/inspector/package.json',
   'packages/protocol/package.json',
+  'apps/inspector/package.json',
   'packages/web-adapter/package.json',
   'packages/runtime/package.json',
-  'packages/cli/package.json',
   'packages/mcp-server/package.json',
+  'packages/cli/package.json',
   'packages/react-native-adapter/package.json',
 ];
 const packageNames = packagePaths.map(

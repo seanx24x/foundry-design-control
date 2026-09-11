@@ -54,7 +54,9 @@ import { decisionCategories, relevantDesignDecisions } from './design-decisions.
 import { assessRecipe, recipeCategories } from './visual-recipes.js';
 import { renderKeylineIcons } from './keyline-icons.js';
 import { FOUNDRY_UI_FOUNDATION_CSS } from './ui-foundations.js';
-import { createSafeDiagnostics } from './diagnostics.js';
+import { createSafeDiagnostics, DIAGNOSTICS_PROTOCOL_VERSION } from './diagnostics.js';
+import { rebuiltPropertyValueMatches } from './rebuilt-value.js';
+import { rebuiltTargetIdentityMatches } from './rebuilt-identity.js';
 import {
   STRESS_CONDITIONS,
   normalizeStressConditions,
@@ -145,6 +147,30 @@ import {
   type MotionKeyframe,
   type NativeMotionAuthoring,
 } from './motion.js';
+import {
+  PREVIEW_CONTEXT_VERSION,
+  acceptPreviewRevision,
+  authoredPseudoSelectorMatches,
+  applyPreviewMutationAtomically,
+  applyPreviewStateAttributes,
+  applyPreviewTheme,
+  capturePreviewThemeBaseline as captureThemeBaseline,
+  createPreviewThemeBaseline,
+  previewCapabilities,
+  previewStateMethods,
+  queryForPreviewState,
+  replacePreviewPseudoSelector,
+  restorePreviewThemeBaseline,
+  themeHook,
+  variantAttribute,
+  type PreviewAxisResult,
+  type PreviewContext,
+  type PreviewContextResult,
+  type PreviewDesignGraph,
+  type PreviewMotionPreference,
+  type PreviewPseudoState,
+  type PreviewStateDefinition,
+} from './preview-context.js';
 
 export { nativeMotionBinding, registerNativeMotion } from './motion.js';
 export type {
@@ -158,6 +184,7 @@ export interface FoundryInspectorOptions {
   runtimeUrl?: string;
   sessionId?: string;
   token?: string;
+  previewCapability?: string;
   startInspecting?: boolean;
 }
 
@@ -166,6 +193,108 @@ export interface FoundryInspectorController {
   stopInspecting(): void;
   select(element: HTMLElement): void;
   destroy(): void;
+}
+
+interface VerificationContextSet {
+  breakpoints?: string[];
+  themes?: string[];
+  states?: string[];
+}
+
+export function verificationFrameUrl(
+  frozenContext: { targetUrl?: string; previewOrigin?: string },
+  sessionId: string,
+  token: string,
+  previewCapability: string,
+): string {
+  if (!frozenContext.targetUrl) {
+    throw new Error('The frozen reviewed contract has no target URL');
+  }
+  if (!previewCapability) {
+    throw new Error('The live preview has no private verification capability');
+  }
+  const target = new URL(frozenContext.targetUrl);
+  const previewOrigin = frozenContext.previewOrigin
+    ? new URL(frozenContext.previewOrigin).origin
+    : target.origin;
+  const url =
+    previewOrigin === target.origin
+      ? target
+      : new URL(`${target.pathname}${target.search}${target.hash}`, previewOrigin);
+  url.searchParams.set('__foundry_session', sessionId);
+  url.searchParams.set('__foundry_token', token);
+  url.searchParams.set('__foundry_preview_capability', previewCapability);
+  url.searchParams.set('__foundry_child', '1');
+  url.searchParams.set('__foundry_verification', '1');
+  return url.toString();
+}
+
+export function verificationContextsForChange(change: {
+  context?: TypographyVerificationContext;
+  contextSet?: VerificationContextSet;
+}): TypographyVerificationContext[] {
+  const fallback = change.context ?? {
+    breakpoint: 'current',
+    theme: 'current',
+    state: 'current',
+  };
+  const values = (items: string[] | undefined, current: string): string[] => {
+    const normalized = (items?.length ? items : [current]).map(String).filter(Boolean);
+    return [...new Set(normalized.length ? normalized : [current])];
+  };
+  const breakpoints = values(change.contextSet?.breakpoints, fallback.breakpoint);
+  const themes = values(change.contextSet?.themes, fallback.theme);
+  const states = values(change.contextSet?.states, fallback.state);
+  return breakpoints.flatMap((breakpoint) =>
+    themes.flatMap((theme) => states.map((state) => ({ breakpoint, theme, state }))),
+  );
+}
+
+export function verificationViewportForContext(
+  frozenViewport: { width: number; height: number } | undefined,
+  breakpointViewport: { width: number; height?: number } | undefined,
+): { width: number; height: number } | undefined {
+  if (breakpointViewport) {
+    return {
+      width: breakpointViewport.width,
+      height: breakpointViewport.height ?? frozenViewport?.height ?? 900,
+    };
+  }
+  return frozenViewport
+    ? { width: frozenViewport.width, height: frozenViewport.height }
+    : undefined;
+}
+
+type VerificationDisplayContext = Partial<TypographyVerificationContext> & {
+  motionPreference?: string;
+};
+
+export function verificationContextLabel(result: {
+  context?: VerificationDisplayContext;
+  motionPreference?: string;
+}): string {
+  const axes = [
+    `Breakpoint: ${result.context?.breakpoint ?? 'not reported'}`,
+    `Theme: ${result.context?.theme ?? 'not reported'}`,
+    `State: ${result.context?.state ?? 'not reported'}`,
+  ];
+  const motionPreference = result.context?.motionPreference ?? result.motionPreference;
+  if (motionPreference) axes.push(`Motion: ${motionPreference}`);
+  return axes.join(' · ');
+}
+
+export function reviewContextSetLabel(change: {
+  context?: TypographyVerificationContext;
+  contextSet?: VerificationContextSet;
+}): string {
+  const contexts = verificationContextsForChange(change);
+  const values = (axis: keyof TypographyVerificationContext) => [
+    ...new Set(contexts.map((context) => context[axis])),
+  ];
+  const breakpoints = values('breakpoint');
+  const themes = values('theme');
+  const states = values('state');
+  return `Breakpoint: ${breakpoints.join(', ')} · Theme: ${themes.join(', ')} · State: ${states.join(', ')} · ${contexts.length} ${contexts.length === 1 ? 'context' : 'contexts'}`;
 }
 
 type Category =
@@ -394,7 +523,7 @@ const PANEL_CSS = `
   .effect-section { display:block;padding:0 12px 12px; }.effects-editor,.effect-stack { display:grid;gap:8px; }.effect-empty { margin:0;padding:16px 12px;border:1px dashed var(--fdc-line);border-radius:8px;color:var(--fdc-muted);font-size:12px;text-align:center; }.effect-card { overflow:hidden;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.effect-card-head { min-height:36px;display:flex;align-items:center;gap:8px;padding:0 4px 0 8px;border-bottom:1px solid var(--fdc-line); }.effect-card-head strong,.effect-card-head select { min-width:0;flex:1;height:32px;border:0;background:transparent;color:var(--fdc-ink);font:500 12px/1 var(--fdc-font);outline:none; }.effect-symbol { width:20px;height:20px;display:grid;place-items:center;color:var(--fdc-muted); }.effect-symbol svg,.effect-remove svg,.effect-add summary svg,.effect-menu svg { width:16px;height:16px; }.effect-remove { width:28px;height:28px;display:grid;place-items:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.effect-remove:hover { color:var(--fdc-ink);background:var(--fdc-subtle); }.effect-fields { display:grid;gap:8px;padding:8px; }.effect-shadow-fields { grid-template-columns:1fr 1fr; }.effect-value { min-width:0;height:32px;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;overflow:hidden;border:1px solid var(--fdc-line);border-radius:4px;background:var(--fdc-surface); }.effect-value>span { min-width:28px;padding:0 8px;color:var(--fdc-muted);font:500 12px/1 var(--fdc-font); }.effect-value input { width:100%;height:100%;min-width:0;padding:0 8px;border:0;background:transparent;color:var(--fdc-ink);font:400 12px/1 var(--fdc-font-mono);outline:none; }.effect-color,.effect-blur { display:grid;grid-template-columns:52px minmax(0,1fr);align-items:center;gap:8px;color:var(--fdc-muted);font-size:12px; }.effect-color { grid-column:1/-1; }.effect-color-control { height:32px;display:grid;grid-template-columns:40px minmax(0,1fr) 24px;align-items:center;overflow:hidden;border:1px solid var(--fdc-line);border-radius:4px;background:var(--fdc-surface); }.effect-color-control input[type="color"] { width:40px;height:100%;padding:4px;border:0;background:transparent; }.effect-color-control input[type="color"]::-webkit-color-swatch-wrapper { padding:0; }.effect-color-control input[type="color"]::-webkit-color-swatch { border:0;border-radius:4px; }.effect-color-control input[type="number"] { width:100%;height:100%;min-width:0;padding:0 8px;border:0;border-left:1px solid var(--fdc-line);background:transparent;color:var(--fdc-ink);font:400 12px/1 var(--fdc-font-mono);outline:none; }.effect-color-control>span { color:var(--fdc-muted);font:400 12px/1 var(--fdc-font); }.effect-add { position:relative; }.effect-add summary { min-height:32px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper);color:var(--fdc-ink);font-size:12px;cursor:pointer;list-style:none; }.effect-add summary::-webkit-details-marker { display:none; }.effect-add summary:hover { background:var(--fdc-subtle); }.effect-menu { position:absolute;z-index:8;right:0;bottom:calc(100% + 4px);width:220px;padding:4px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-elevated);box-shadow:0 12px 28px rgb(0 0 0 / 24%); }.effect-menu button { width:100%;height:32px;display:grid;grid-template-columns:20px minmax(0,1fr) auto;align-items:center;gap:8px;padding:0 8px;border:0;border-radius:4px;background:transparent;color:var(--fdc-ink);font-size:12px;text-align:left;cursor:pointer; }.effect-menu button:hover:not(:disabled) { background:var(--fdc-subtle); }.effect-menu button:disabled { color:var(--fdc-muted);cursor:not-allowed; }.effect-menu small { font:500 8px/1 var(--fdc-font-mono); }.motion-list { display:grid;gap:8px;padding:0 12px 12px; }.motion-row { display:grid;gap:12px;padding:12px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-paper); }.motion-title { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:8px; }.motion-title strong { display:block;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:550;white-space:nowrap; }.motion-title code { display:block;margin-top:4px;color:var(--fdc-muted);font:400 8px/1.4 var(--fdc-font-mono);text-transform:uppercase;letter-spacing:.04em; }.motion-badge { min-height:20px;display:inline-flex;align-items:center;padding:0 8px;border-radius:1000px;color:var(--fdc-muted);background:var(--fdc-subtle);font:500 8px/1 var(--fdc-font);white-space:nowrap; }.motion-badge[data-tier="compositor"] { color:#236c59;background:#e8f7f1; }.motion-badge[data-tier="layout"] { color:#8b4d3d;background:#faece7; }.motion-timeline { width:100%;accent-color:var(--fdc-signal); }.motion-timeline:disabled { opacity:.32; }.motion-transport { display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) minmax(88px,1.2fr);gap:4px; }.motion-transport button,.motion-transport select { min-width:0;height:32px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-ink);background:var(--fdc-surface);font:400 12px/1 var(--fdc-font);cursor:pointer; }.motion-transport button:hover:not(:disabled) { border-color:var(--fdc-line-strong);background:var(--fdc-subtle); }.motion-transport button:disabled,.motion-transport select:disabled { opacity:.35;cursor:not-allowed; }.motion-transport .fdc-select { min-height:32px; }.motion-transport .fdc-select-trigger { height:32px;border-radius:4px;font-family:var(--fdc-font-mono); }.motion-fields { display:grid;grid-template-columns:1fr 1fr;gap:8px; }.motion-fields label { display:grid;gap:8px;color:var(--fdc-muted);font:500 8px/1 var(--fdc-font); }.motion-fields label:last-child { grid-column:1/-1; }.motion-fields input { width:100%;height:32px;min-width:0;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;color:var(--fdc-ink);background:var(--fdc-surface);font:400 12px/1 var(--fdc-font-mono);outline:0; }.motion-fields input:focus-visible { border-color:var(--fdc-signal);box-shadow:0 0 0 4px color-mix(in srgb,var(--fdc-signal) 18%,transparent); }.motion-fields input:disabled { opacity:.35;cursor:not-allowed; }.motion-properties { overflow:hidden;text-overflow:ellipsis;color:var(--fdc-muted);font:400 8px/1.4 var(--fdc-font-mono);white-space:nowrap; }
   .empty { padding:48px 28px;text-align:center;color:var(--fdc-muted);font-size:12px;line-height:1.6; }.empty::before { content:"⌖";display:grid;place-items:center;width:40px;height:40px;margin:0 auto 12px;color:var(--fdc-signal);background:var(--fdc-signal-soft);border-radius:12px;font:20px/1 var(--fdc-font); }
   .change-dock { min-height:48px;display:grid;grid-template-columns:minmax(0,1fr) 32px 68px;align-items:center;gap:8px;padding:8px 8px;border-top:1px solid var(--fdc-line);background:white; }.change-dock[hidden] { display:none; }.change-dock-copy { min-width:0;padding-left:4px; }.change-dock-copy strong,.change-dock-copy span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.change-dock-copy strong { font-size:12px;font-weight:550; }.change-dock-copy span { margin-top:4px;color:var(--fdc-muted);font-size:8px; }.change-dock button { height:32px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:var(--fdc-ink);font-size:8px;cursor:pointer; }.change-dock .dock-review { color:white;border-color:var(--fdc-ink);background:var(--fdc-ink); }.change-dock svg { width:12px;height:12px; }.footer { display:grid;grid-template-columns:84px 1fr;gap:8px;padding:8px;background:var(--fdc-surface);border-top:1px solid var(--fdc-line); }.footer:has(.review[hidden]) { grid-template-columns:1fr; }.footer button[hidden] { display:none; }.footer button { min-height:36px;border:1px solid var(--fdc-line);border-radius:8px;background:var(--fdc-surface);color:var(--fdc-ink);font-size:12px;font-weight:450;cursor:pointer; }.footer button:hover { border-color:#d0d0d0;background:var(--fdc-paper); }.footer .review { align-items:center;justify-content:center;gap:8px;color:white;background:var(--fdc-ink);border-color:var(--fdc-ink); }.footer .review:not([hidden]) { display:flex; }.footer .review:hover { background:#2f2f2f; }.change-count { min-width:20px;height:20px;display:inline-grid;place-items:center;padding:0 4px;color:var(--fdc-ink);background:white;border-radius:1000px;font:500 8px/1 var(--fdc-font); }.change-count[hidden] { display:none; }
-  .review-view { min-height:0;flex:1;display:none;flex-direction:column;background:var(--fdc-surface); }.panel.reviewing .selection,.panel.reviewing .scope,.panel.reviewing .controls,.panel.reviewing>.footer,.panel.reviewing>.change-dock { display:none; }.panel.reviewing .review-view { display:flex; }.review-head { min-height:48px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--fdc-line); }.review-head button { width:32px;height:32px;display:grid;place-items:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.review-head button:hover { background:var(--fdc-subtle);color:var(--fdc-ink); }.review-head svg { width:16px;height:16px; }.review-head strong { font-size:12px;font-weight:550; }.review-head span { margin-left:auto;color:var(--fdc-muted);font-size:12px; }.review-body { min-height:160px;overflow-x:hidden;overflow-y:auto; }.review-toolbar { position:sticky;top:0;z-index:1;display:flex;gap:4px;padding:8px 8px;border-bottom:1px solid var(--fdc-line);background:rgb(255 255 255 / 96%);backdrop-filter:blur(8px); }.review-toolbar button { height:28px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#555;font-size:8px;cursor:pointer; }.review-toolbar button:last-child { margin-left:auto; }.review-empty { padding:44px 24px;color:var(--fdc-muted);font-size:12px;line-height:1.55;text-align:center; }.review-group { border-bottom:1px solid var(--fdc-line); }.review-group-title { width:100%;min-height:36px;display:flex;align-items:center;gap:8px;padding:0 12px;border:0;background:white;color:var(--fdc-muted);font-size:12px;font-weight:500;text-align:left;cursor:pointer; }.review-group-title span { margin-left:auto;font-size:8px; }.review-group-title svg { width:12px;height:12px;transition:transform .12s ease; }.review-group.collapsed .review-group-title svg { transform:rotate(-90deg); }.review-group.collapsed .review-card { display:none; }.review-card { display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;padding:8px 12px 12px; }.review-card.rejected { opacity:.62; }.review-card+.review-card { border-top:1px solid var(--fdc-line); }.review-card input[type="checkbox"] { width:16px;height:16px;margin:4px 0 0;accent-color:var(--fdc-ink); }.review-card-main { min-width:0; }.review-card-line { display:flex;align-items:center;gap:8px; }.review-card-line strong { min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:500;white-space:nowrap; }.review-card-tools { display:flex;gap:4px;margin-left:auto; }.review-card-tools button { height:24px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#666;font-size:8px;cursor:pointer; }.confidence-pill { flex:none;padding:4px 4px;border-radius:4px;background:#edf6ff;color:#0761d1;font-size:8px;text-transform:capitalize; }.confidence-pill.unresolved { color:#984a2b;background:#fff0e8; }.review-values { display:grid;grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr);align-items:center;gap:4px;margin-top:8px; }.review-before { overflow:hidden;text-overflow:ellipsis;padding:8px;color:var(--fdc-muted);background:var(--fdc-subtle);border-radius:4px;font-size:12px;white-space:nowrap; }.review-values>span { color:var(--fdc-muted);font-size:12px;text-align:center; }.review-after { width:100%;height:28px;min-width:0;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;font-size:12px;outline:none; }.review-after:focus { border-color:var(--fdc-signal);box-shadow:0 0 0 4px rgb(0 112 243 / 10%); }.review-source { margin-top:8px;overflow-wrap:anywhere;color:var(--fdc-muted);font-size:8px;line-height:1.45; }.review-actions { display:grid;grid-template-columns:84px 1fr;gap:8px;padding:8px;border-top:1px solid var(--fdc-line); }.review-actions button { min-height:36px;border:1px solid var(--fdc-line);border-radius:8px;background:white;font-size:12px;cursor:pointer; }.review-actions .apply { color:white;background:var(--fdc-ink);border-color:var(--fdc-ink); }.review-actions button:disabled { opacity:.45;cursor:not-allowed; }.run-summary { padding:16px 12px;border-bottom:1px solid var(--fdc-line); }.run-state { display:flex;align-items:center;gap:8px; }.run-state i { width:8px;height:8px;border-radius:50%;background:#a3a3a3; }.run-state i.active { background:var(--fdc-signal);box-shadow:0 0 0 4px rgb(0 112 243 / 10%); }.run-state i.passed { background:#2ca67f; }.run-state i.attention { background:#d16d51; }.run-state strong { font-size:12px;font-weight:550;text-transform:capitalize; }.run-summary p { margin:8px 0 0;color:var(--fdc-muted);font-size:12px;line-height:1.5; }.run-steps { padding:4px 12px 12px; }.run-step { display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;padding:8px 0;border-bottom:1px solid var(--fdc-line); }.run-step:last-child { border-bottom:0; }.run-step span:first-child { color:var(--fdc-muted);font-size:12px; }.run-step strong { display:block;font-size:12px;font-weight:500;text-transform:capitalize; }.run-step p { margin:4px 0 0;color:var(--fdc-muted);font-size:8px;line-height:1.45; }.result-list { padding:0 12px 12px; }.result-row { display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--fdc-line);font-size:12px; }.result-row span:last-child { color:var(--fdc-muted);text-align:right; }.result-row.pass span:first-child { color:#23715c; }.result-row.fail span:first-child { color:#a24d30; }.run-files { padding:0 12px 12px;color:var(--fdc-muted);font-size:8px;line-height:1.5; }.run-files code { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+  .review-view { min-height:0;flex:1;display:none;flex-direction:column;background:var(--fdc-surface); }.panel.reviewing .selection,.panel.reviewing .scope,.panel.reviewing .controls,.panel.reviewing>.footer,.panel.reviewing>.change-dock { display:none; }.panel.reviewing .review-view { display:flex; }.review-head { min-height:48px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--fdc-line); }.review-head button { width:32px;height:32px;display:grid;place-items:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--fdc-muted);cursor:pointer; }.review-head button:hover { background:var(--fdc-subtle);color:var(--fdc-ink); }.review-head svg { width:16px;height:16px; }.review-head strong { font-size:12px;font-weight:550; }.review-head span { margin-left:auto;color:var(--fdc-muted);font-size:12px; }.review-body { min-height:160px;overflow-x:hidden;overflow-y:auto; }.review-toolbar { position:sticky;top:0;z-index:1;display:flex;gap:4px;padding:8px 8px;border-bottom:1px solid var(--fdc-line);background:rgb(255 255 255 / 96%);backdrop-filter:blur(8px); }.review-toolbar button { height:28px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#555;font-size:8px;cursor:pointer; }.review-toolbar button:last-child { margin-left:auto; }.review-empty { padding:44px 24px;color:var(--fdc-muted);font-size:12px;line-height:1.55;text-align:center; }.review-group { border-bottom:1px solid var(--fdc-line); }.review-group-title { width:100%;min-height:36px;display:flex;align-items:center;gap:8px;padding:0 12px;border:0;background:white;color:var(--fdc-muted);font-size:12px;font-weight:500;text-align:left;cursor:pointer; }.review-group-title span { margin-left:auto;font-size:8px; }.review-group-title svg { width:12px;height:12px;transition:transform .12s ease; }.review-group.collapsed .review-group-title svg { transform:rotate(-90deg); }.review-group.collapsed .review-card { display:none; }.review-card { display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;padding:8px 12px 12px; }.review-card.rejected { opacity:.62; }.review-card+.review-card { border-top:1px solid var(--fdc-line); }.review-card input[type="checkbox"] { width:16px;height:16px;margin:4px 0 0;accent-color:var(--fdc-ink); }.review-card-main { min-width:0; }.review-card-line { display:flex;align-items:center;gap:8px; }.review-card-line strong { min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:500;white-space:nowrap; }.review-card-tools { display:flex;gap:4px;margin-left:auto; }.review-card-tools button { height:24px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#666;font-size:8px;cursor:pointer; }.confidence-pill { flex:none;padding:4px 4px;border-radius:4px;background:#edf6ff;color:#0761d1;font-size:8px;text-transform:capitalize; }.confidence-pill.unresolved { color:#984a2b;background:#fff0e8; }.review-values { display:grid;grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr);align-items:center;gap:4px;margin-top:8px; }.review-before { overflow:hidden;text-overflow:ellipsis;padding:8px;color:var(--fdc-muted);background:var(--fdc-subtle);border-radius:4px;font-size:12px;white-space:nowrap; }.review-values>span { color:var(--fdc-muted);font-size:12px;text-align:center; }.review-after { width:100%;height:28px;min-width:0;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;font-size:12px;outline:none; }.review-after:focus { border-color:var(--fdc-signal);box-shadow:0 0 0 4px rgb(0 112 243 / 10%); }.review-context,.verification-context { display:block;margin-top:4px;overflow-wrap:anywhere;color:var(--fdc-muted);font-size:8px;line-height:1.45; }.review-context { margin-top:8px; }.review-source { margin-top:8px;overflow-wrap:anywhere;color:var(--fdc-muted);font-size:8px;line-height:1.45; }.review-actions { display:grid;grid-template-columns:84px 1fr;gap:8px;padding:8px;border-top:1px solid var(--fdc-line); }.review-actions button { min-height:36px;border:1px solid var(--fdc-line);border-radius:8px;background:white;font-size:12px;cursor:pointer; }.review-actions .apply { color:white;background:var(--fdc-ink);border-color:var(--fdc-ink); }.review-actions button:disabled { opacity:.45;cursor:not-allowed; }.run-summary { padding:16px 12px;border-bottom:1px solid var(--fdc-line); }.run-state { display:flex;align-items:center;gap:8px; }.run-state i { width:8px;height:8px;border-radius:50%;background:#a3a3a3; }.run-state i.active { background:var(--fdc-signal);box-shadow:0 0 0 4px rgb(0 112 243 / 10%); }.run-state i.passed { background:#2ca67f; }.run-state i.attention { background:#d16d51; }.run-state strong { font-size:12px;font-weight:550;text-transform:capitalize; }.run-summary p { margin:8px 0 0;color:var(--fdc-muted);font-size:12px;line-height:1.5; }.run-steps { padding:4px 12px 12px; }.run-step { display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;padding:8px 0;border-bottom:1px solid var(--fdc-line); }.run-step:last-child { border-bottom:0; }.run-step span:first-child { color:var(--fdc-muted);font-size:12px; }.run-step strong { display:block;font-size:12px;font-weight:500;text-transform:capitalize; }.run-step p { margin:4px 0 0;color:var(--fdc-muted);font-size:8px;line-height:1.45; }.result-list { padding:0 12px 12px; }.result-row { display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--fdc-line);font-size:12px; }.result-row span:last-child { color:var(--fdc-muted);text-align:right; }.result-row.pass span:first-child { color:#23715c; }.result-row.fail span:first-child { color:#a24d30; }.run-files { padding:0 12px 12px;color:var(--fdc-muted);font-size:8px;line-height:1.5; }.run-files code { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
   .toast { position:fixed;left:50%;bottom:76px;transform:translate(-50%,8px);padding:8px 12px;background:var(--fdc-ink);color:white;border-radius:8px;font-size:12px;font-weight:450;opacity:0;transition:.15s ease;pointer-events:none;white-space:nowrap;box-shadow:0 8px 20px rgb(0 0 0 / 16%); }.toast.show { opacity:1;transform:translate(-50%,0); }
   .resize-handle { position:absolute;width:8px;height:8px;min-width:8px;min-height:8px;aspect-ratio:1;padding:0;border:1px solid #f0f1f3;border-radius:1px;background:var(--fdc-signal);box-shadow:0 1px 4px rgb(0 0 0 / 28%);appearance:none;pointer-events:auto;touch-action:none; }
   .resize-handle[data-handle="n"]{top:-4px;left:calc(50% - 4px);cursor:ns-resize}.resize-handle[data-handle="s"]{bottom:-4px;left:calc(50% - 4px);cursor:ns-resize}.resize-handle[data-handle="e"]{right:-4px;top:calc(50% - 4px);cursor:ew-resize}.resize-handle[data-handle="w"]{left:-4px;top:calc(50% - 4px);cursor:ew-resize}.resize-handle[data-handle="ne"]{right:-4px;top:-4px;cursor:nesw-resize}.resize-handle[data-handle="nw"]{left:-4px;top:-4px;cursor:nwse-resize}.resize-handle[data-handle="se"]{right:-4px;bottom:-4px;cursor:nwse-resize}.resize-handle[data-handle="sw"]{left:-4px;bottom:-4px;cursor:nesw-resize}
@@ -427,7 +556,7 @@ const PANEL_CSS = `
   .comparison-stage { position:fixed;z-index:2147483647;inset:12px;display:flex;flex-direction:column;overflow:hidden;border:1px solid #303030;border-radius:12px;background:#111;box-shadow:0 24px 80px rgb(0 0 0 / 35%);pointer-events:auto; }.comparison-stage[hidden] { display:none; }.comparison-stage header { min-height:48px;display:flex;align-items:center;padding:0 8px 0 16px;color:white;border-bottom:1px solid #292929;background:#171717; }.comparison-stage header strong { font-size:12px;font-weight:550; }.comparison-stage header span { margin-left:8px;color:#8d8d8d;font-size:12px; }.comparison-stage header button { width:32px;height:32px;display:grid;place-items:center;margin-left:auto;padding:0;border:0;border-radius:4px;background:transparent;color:#aaa;cursor:pointer; }.comparison-stage header button:hover { color:white;background:#292929; }.comparison-stage header svg { width:16px;height:16px; }.comparison-frames { min-height:0;flex:1;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#343434; }.comparison-frame { position:relative;min-width:0;min-height:0;background:white; }.comparison-frame span { position:absolute;z-index:1;top:12px;left:12px;padding:4px 8px;border-radius:4px;background:rgb(17 17 17 / 88%);color:white;font-size:8px; }.comparison-frame iframe { width:100%;height:100%;display:block;border:0;background:white; }
   .impact-list { display:grid;gap:4px;margin-top:8px; }.impact-item { display:flex;align-items:flex-start;gap:4px;color:#666;font-size:8px;line-height:1.35; }.impact-item::before { content:"";width:4px;height:4px;flex:none;margin-top:4px;border-radius:50%;background:#9a9a9a; }.impact-item.warning { color:#985033; }.impact-item.warning::before { background:#d16d51; }
   .mapping-chooser { grid-column:2;margin-top:8px;padding:8px;background:#fff9ed;border:1px solid #f4ddb2;border-radius:8px; }.mapping-chooser>strong { display:block;margin-bottom:4px;color:#80561c;font-size:8px;font-weight:550; }.mapping-option { display:flex;align-items:flex-start;gap:8px;padding:4px 0;color:#5f4b2d;font-size:8px;line-height:1.35;cursor:pointer; }.mapping-option input { margin:1px 0 0;accent-color:var(--fdc-signal); }.mapping-option small { display:block;color:#8b7758;font-size:8px; }
-  .workbench { position:fixed;z-index:2147483647;inset:12px;display:flex;flex-direction:column;overflow:hidden;border:1px solid #303030;border-radius:12px;background:#111;box-shadow:0 24px 80px rgb(0 0 0 / 35%);pointer-events:auto; }.workbench[hidden] { display:none; }.workbench-head { min-height:48px;display:flex;align-items:center;gap:8px;padding:0 8px 0 16px;color:white;border-bottom:1px solid #292929;background:#171717; }.workbench-head strong { font-size:12px;font-weight:550; }.workbench-context { color:#8d8d8d;font-size:12px; }.workbench-controls { display:flex;align-items:center;gap:4px;margin-left:auto; }.workbench-controls button,.workbench-controls select { height:32px;padding:0 8px;border:1px solid #343434;border-radius:8px;background:#202020;color:#d7d7d7;font-size:12px;cursor:pointer; }.workbench-controls button.active { color:#111;background:white;border-color:white; }.workbench-controls .icon-button { width:32px;padding:0; }.workbench-stage { min-height:0;flex:1;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:28px;background-color:#151515;background-image:linear-gradient(#202020 1px,transparent 1px),linear-gradient(90deg,#202020 1px,transparent 1px);background-size:24px 24px; }.frame-shell { position:relative;flex:none;border-radius:8px;background:white;box-shadow:0 0 0 1px #333,0 20px 60px rgb(0 0 0 / 35%);overflow:hidden; }.frame-label { position:absolute;left:0;top:-20px;color:#8f8f8f;font-size:8px; }.frame-shell iframe { display:block;width:100%;height:100%;border:0;background:white; }.workbench-warning { position:absolute;left:50%;bottom:20px;transform:translateX(-50%);max-width:520px;padding:8px 12px;border:1px solid #3b3b3b;border-radius:8px;background:#1d1d1d;color:#aaa;font-size:12px;line-height:1.4; }
+  .workbench { position:fixed;z-index:2147483647;inset:12px;display:flex;flex-direction:column;overflow:hidden;border:1px solid #303030;border-radius:12px;background:#111;box-shadow:0 24px 80px rgb(0 0 0 / 35%);pointer-events:auto; }.workbench[hidden] { display:none; }.workbench-head { min-height:48px;display:flex;align-items:center;gap:8px;padding:0 8px 0 16px;color:white;border-bottom:1px solid #292929;background:#171717; }.workbench-head strong { font-size:12px;font-weight:550; }.workbench-context { color:#8d8d8d;font-size:12px; }.workbench-controls,[data-workbench-states] { display:flex;align-items:center;gap:4px; }.workbench-controls { margin-left:auto; }.workbench-controls button,.workbench-controls select { height:32px;padding:0 8px;border:1px solid #343434;border-radius:8px;background:#202020;color:#d7d7d7;font-size:12px;cursor:pointer; }.workbench-controls button.active { color:#111;background:white;border-color:white; }.workbench-controls button:disabled { opacity:.44;cursor:not-allowed; }.workbench-controls .icon-button { width:32px;padding:0; }.workbench-stage { min-height:0;flex:1;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:28px;background-color:#151515;background-image:linear-gradient(#202020 1px,transparent 1px),linear-gradient(90deg,#202020 1px,transparent 1px);background-size:24px 24px; }.frame-shell { position:relative;flex:none;border-radius:8px;background:white;box-shadow:0 0 0 1px #333,0 20px 60px rgb(0 0 0 / 35%);overflow:hidden; }.frame-label { position:absolute;left:0;top:-20px;color:#8f8f8f;font-size:8px; }.frame-shell iframe { display:block;width:100%;height:100%;border:0;background:white; }.workbench-warning { position:absolute;left:50%;bottom:20px;transform:translateX(-50%);max-width:520px;padding:8px 12px;border:1px solid #3b3b3b;border-radius:8px;background:#1d1d1d;color:#aaa;font-size:12px;line-height:1.4; }
   .library-panel { position:fixed;z-index:2147483647;top:12px;right:352px;width:300px;max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--fdc-line);border-radius:12px;background:white;box-shadow:0 12px 32px rgb(0 0 0 / 14%);pointer-events:auto; }.library-panel[hidden] { display:none; }.library-head { min-height:48px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid var(--fdc-line); }.library-head svg { width:16px;height:16px; }.library-head strong { font-size:12px;font-weight:550; }.library-head span { color:var(--fdc-muted);font-size:8px; }.library-head .icon-button { margin-left:auto; }.library-actions { display:flex;gap:4px;padding:8px;border-bottom:1px solid var(--fdc-line); }.library-actions button { min-height:32px;display:flex;align-items:center;justify-content:center;gap:8px;flex:1;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#4d4d4d;font-size:8px;cursor:pointer; }.library-actions button:disabled { opacity:.45;cursor:not-allowed; }.library-actions svg { width:12px;height:12px; }.library-body { min-height:120px;overflow:auto;padding:8px; }.library-section+.library-section { margin-top:12px; }.library-section-head { display:flex;align-items:center;margin:0 4px 8px;color:#666;font-size:8px;text-transform:uppercase;letter-spacing:.04em; }.library-section-head span { margin-left:auto;text-transform:none;letter-spacing:0; }.memory-card { padding:8px;border:1px solid var(--fdc-line);border-radius:8px;background:white; }.memory-card+.memory-card { margin-top:4px; }.memory-card-top { display:flex;align-items:center;gap:8px; }.memory-card-top strong { min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:550;white-space:nowrap; }.memory-status { width:8px;height:8px;flex:none;border-radius:50%;background:#2ca67f; }.memory-card p { margin:4px 0 0;color:var(--fdc-muted);font-size:8px;line-height:1.45; }.memory-card-actions { display:flex;gap:4px;margin-top:8px; }.memory-card-actions button { height:28px;padding:0 8px;border:1px solid var(--fdc-line);border-radius:4px;background:white;color:#555;font-size:8px;cursor:pointer; }.memory-card-actions button:first-child { flex:1;color:white;border-color:var(--fdc-ink);background:var(--fdc-ink); }.library-empty { padding:20px 12px;color:var(--fdc-muted);font-size:8px;line-height:1.5;text-align:center; }
   .review-visual { display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px; }.review-sample { position:relative;min-height:36px;display:grid;place-items:center;overflow:hidden;border:1px solid var(--fdc-line);border-radius:4px;background:#fafafa;color:#777;font-size:8px; }.review-sample::after { content:attr(data-label);position:absolute;left:4px;bottom:4px;padding:4px 4px;border-radius:4px;background:rgb(255 255 255 / 84%);color:#777;font-size:8px; }.review-sample>i { width:32px;height:16px;display:block;border:1px solid #bbb;background:var(--sample-color,#e8e8e8);border-radius:var(--sample-radius,4px);transform:scale(var(--sample-scale,1)); }.review-card.locating { background:#f5f9ff; }.review-group-title .included-count { margin-left:auto;color:#23715c; }.review-group-title .group-total { margin-left:4px; }.baseline-badge { display:inline-flex;align-items:center;gap:4px;margin-top:8px;padding:4px 8px;border-radius:4px;color:#23715c;background:#edf8f4;font-size:8px; }.baseline-badge::before { content:"";width:4px;height:4px;border-radius:50%;background:#2ca67f; }
   .workbench-matrix { display:grid;grid-template-columns:92px repeat(var(--matrix-columns),minmax(112px,1fr));gap:1px;width:min(900px,100%);margin:0 auto 24px;padding:1px;background:#303030;border-radius:8px;overflow:hidden; }.matrix-cell { min-height:52px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;padding:8px;border:0;background:#1d1d1d;color:#ddd;font-size:8px;text-align:left;cursor:pointer; }.matrix-cell:hover { background:#252525; }.matrix-cell.header { min-height:32px;color:#888;background:#181818;cursor:default; }.matrix-cell strong { font-size:8px;font-weight:500; }.matrix-cell span { color:#777;font-size:8px; }.matrix-cell.verified span { color:#68caa8; }.workbench-stage.matrix-mode { display:block; }.workbench-stage.matrix-mode .frame-shell { margin:0 auto; }
@@ -625,7 +754,7 @@ const PANEL_CSS = `
   .review-modal .review-more .review-card-tools { top:36px; }
   .review-modal .review-more .review-card-tools button { height:32px;padding:0 8px;font-size:12px; }
   .review-modal .review-details summary { min-height:32px;font-size:12px; }
-  .review-modal .review-source { font-size:12px;line-height:1.5; }
+  .review-modal .review-source,.review-modal .review-context,.review-modal .verification-context { font-size:12px;line-height:1.5; }
   .review-modal .impact-list,.review-modal .impact-list li { font-size:12px;line-height:1.5; }
   .review-modal .review-actions button { min-height:44px;font-size:12px;font-weight:550; }
   .review-modal .run-state strong { font-size:16px; }
@@ -1298,7 +1427,8 @@ export function installFoundryInspector(
   options: FoundryInspectorOptions = {},
 ): FoundryInspectorController {
   const query = new URLSearchParams(location.search);
-  if (query.get('__foundry_child') === '1') {
+  const verificationChild = query.get('__foundry_verification') === '1';
+  if (query.get('__foundry_child') === '1' && !verificationChild) {
     return {
       inspect() {},
       stopInspecting() {},
@@ -1309,8 +1439,12 @@ export function installFoundryInspector(
   const runtimeUrl = (options.runtimeUrl ?? 'http://127.0.0.1:4387').replace(/\/$/, '');
   const sessionId = options.sessionId ?? query.get('__foundry_session') ?? '';
   const token = options.token ?? query.get('__foundry_token') ?? '';
-  const embeddedWorkspace = query.get('__foundry_embedded') === '1' && window.parent !== window;
+  const previewCapability =
+    options.previewCapability ?? query.get('__foundry_preview_capability') ?? '';
+  const embeddedWorkspace =
+    (query.get('__foundry_embedded') === '1' || verificationChild) && window.parent !== window;
   const runtimeOrigin = new URL(runtimeUrl).origin;
+  const workspaceParentOrigin = verificationChild ? location.origin : runtimeOrigin;
   const host = document.createElement('div');
   const interfaceThemeKey = '__foundry_interface_theme';
   const systemDarkTheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -1359,7 +1493,7 @@ export function installFoundryInspector(
       <div class="inspector-head"><strong>Inspector</strong><span>Selection properties</span><button class="icon-button toggle-inspector inspector-collapse" aria-label="Close inspector"><i data-foundry-icon="x"></i></button></div>
       <div class="inspector-scroll">
         <div class="selection"><div class="selection-heading"><small class="selection-kind">No layer</small><span class="selection-state">Ready</span></div><strong>Nothing selected</strong><code>Click any element to inspect it</code><div class="selection-stats" hidden><span data-selection-size></span><span data-selection-confidence></span></div><div class="selection-path" hidden><button data-select-parent aria-label="Select parent layer"><i data-foundry-icon="chevron-right"></i><span>Parent</span></button><span class="path-name"></span><button data-select-child aria-label="Select first child layer"><span>Child</span><i data-foundry-icon="chevron-down"></i></button></div></div>
-        <div class="scope"><label>Scope<select data-scope><option value="instance">Instance</option><option value="variant">Variant</option><option value="component">Component</option></select></label><label>Breakpoint<select data-breakpoint><option>current</option><option>mobile</option><option>tablet</option><option>desktop</option></select></label><label>Theme<select data-theme><option>current</option><option>light</option><option>dark</option></select></label></div>
+        <div class="scope"><label>Scope<select data-scope><option value="instance">Instance</option><option value="variant">Variant</option><option value="component">Component</option></select></label><label>Breakpoint<select data-breakpoint><option value="current">Current</option></select></label><label>Theme<select data-theme><option value="current">Current</option></select></label></div>
         <div class="controls"><div class="empty">Select an element to inspect its measured design controls.</div></div>
       </div>
     </aside>
@@ -1485,13 +1619,7 @@ export function installFoundryInspector(
   workbench.className = 'workbench';
   workbench.hidden = true;
   workbench.setAttribute('aria-label', 'Foundry state workbench');
-  workbench.innerHTML = `<header class="workbench-head"><strong>State workbench</strong><span class="workbench-context">Live application frame</span><div class="workbench-controls"><button data-workbench-matrix>Matrix</button><select data-workbench-viewport aria-label="Viewport"></select><select data-workbench-theme aria-label="Theme"><option value="current">Current theme</option></select><button data-workbench-state="hover">Hover</button><button data-workbench-state="focus">Focus</button><button data-workbench-motion>Reduce motion</button><button class="icon-button close-workbench" aria-label="Close state workbench"><i data-foundry-icon="x"></i></button></div></header><div class="workbench-stage"><div class="workbench-matrix" hidden></div><div class="frame-shell"><span class="frame-label"></span><iframe title="Foundry live state preview"></iframe></div><div class="workbench-warning" hidden></div></div>`;
-  workbench
-    .querySelector<HTMLElement>('[data-workbench-motion]')!
-    .insertAdjacentHTML(
-      'beforebegin',
-      '<button data-workbench-state="active">Active</button><button data-workbench-state="disabled">Disabled</button>',
-    );
+  workbench.innerHTML = `<header class="workbench-head"><strong>State workbench</strong><span class="workbench-context">Live application frame</span><div class="workbench-controls"><button data-workbench-matrix>Matrix</button><select data-workbench-viewport aria-label="Viewport"></select><select data-workbench-theme aria-label="Theme"><option value="current">Current theme</option></select><div data-workbench-states role="group" aria-label="Authored states"></div><button class="icon-button close-workbench" aria-label="Close state workbench"><i data-foundry-icon="x"></i></button></div></header><div class="workbench-stage"><div class="workbench-matrix" hidden></div><div class="frame-shell"><span class="frame-label"></span><iframe title="Foundry live state preview"></iframe></div><div class="workbench-warning" hidden></div></div>`;
   shadow.append(workbench);
   const comparisonStage = document.createElement('section');
   comparisonStage.className = 'comparison-stage';
@@ -1926,6 +2054,8 @@ export function installFoundryInspector(
     : 384;
   host.style.setProperty('--fdc-dock-width', `${Math.round(dockWidth)}px`);
   let designGraph: {
+    version?: string;
+    revision?: string;
     tokens: BrowserDesignToken[];
     components: ComponentWorkshopDefinition[];
     breakpoints: Array<{
@@ -1973,6 +2103,18 @@ export function installFoundryInspector(
       evidence: string[];
     }>;
   } | null = null;
+  const previewThemeBaseline = createPreviewThemeBaseline();
+  let restorePreviewState = (): void => {};
+  let previewApplicationRevision = 0;
+  let currentPreviewContext: PreviewContext = {
+    version: PREVIEW_CONTEXT_VERSION,
+    requestRevision: 0,
+    viewport: { id: 'current' },
+    theme: 'current',
+    state: 'current',
+    motionPreference: 'system',
+  };
+  let lastPreviewApplication: PreviewContextResult | null = null;
   let workshopComponentId = '';
   let workshopVariantId = '';
   let workshopStateId = 'current';
@@ -2047,7 +2189,7 @@ export function installFoundryInspector(
         inlineStyle: string;
         inlineVariationSettings: string;
         family: string;
-        origin: 'local' | 'google';
+        origin: 'local' | 'google' | 'project';
         link?: HTMLLinkElement;
       }
     | undefined;
@@ -2088,12 +2230,22 @@ export function installFoundryInspector(
   const onboardingCompleted = new Set<OnboardingStepId>();
   let designMemory: ProjectDesignMemory = emptyDesignMemory();
   let matrixMode = false;
+  let workbenchStateId = 'current';
+  let restoreWorkbenchPreview = (): void => {};
   let lastUtilityTrigger: HTMLElement | null = null;
   let workspaceCanvasTool: 'select' | 'interact' | 'pan' = inspecting ? 'select' : 'interact';
   let embeddedSpaceHeld = false;
   let embeddedPanActive = false;
   let embeddedPanPointer: Element | null = null;
   let responsiveStressMode = 'none';
+  type ResponsiveEditScopeMode = 'breakpoint' | 'all-breakpoints';
+  let responsiveEditScope: {
+    scope: ResponsiveEditScopeMode;
+    activeBreakpoint: string;
+  } = {
+    scope: 'breakpoint',
+    activeBreakpoint: 'current',
+  };
   let responsiveStressTextTarget: HTMLElement | null = null;
   let responsiveStressOriginalText = '';
   let responsiveContainerPreview: {
@@ -2223,6 +2375,10 @@ export function installFoundryInspector(
     };
     return {
       version: 1,
+      ...(verificationChild ? { verificationReady: hydratedOnce } : {}),
+      capabilities: configuredPreviewCapabilities(),
+      currentPreviewContext,
+      lastPreviewApplication,
       mode: inspecting ? 'select' : 'interact',
       interfaceTheme: resolvedInterfaceTheme(),
       context: {
@@ -2424,6 +2580,15 @@ export function installFoundryInspector(
           : [],
       },
       responsive: {
+        editScope: {
+          scope: responsiveEditScope.scope,
+          activeBreakpoint: responsiveEditScope.activeBreakpoint,
+          breakpoints:
+            responsiveEditScope.scope === 'all-breakpoints'
+              ? (designGraph?.breakpoints ?? []).map((item) => item.id)
+              : [responsiveEditScope.activeBreakpoint],
+          sourceMapped: Boolean(selected && targetFor(selected).source),
+        },
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
         documentScrollWidth: document.documentElement.scrollWidth,
@@ -2792,19 +2957,892 @@ export function installFoundryInspector(
     window.setTimeout(publishWorkspaceState, 0);
   }
 
+  function responsiveLayoutSignature(): string {
+    const root = document.documentElement;
+    const body = document.body.getBoundingClientRect();
+    const selectedRect = selected?.getBoundingClientRect();
+    return [
+      root.scrollWidth,
+      root.scrollHeight,
+      Math.round(body.width * 100) / 100,
+      Math.round(body.height * 100) / 100,
+      selectedRect ? Math.round(selectedRect.width * 100) / 100 : 0,
+      selectedRect ? Math.round(selectedRect.height * 100) / 100 : 0,
+    ].join(':');
+  }
+
+  async function waitForResponsiveAuditStability(timeoutMs = 2400): Promise<{
+    stable: boolean;
+    samples: number;
+    durationMs: number;
+    fontsReady: boolean;
+    fontStatus: string;
+  }> {
+    const startedAt = performance.now();
+    const maximum = Math.max(240, Math.min(5000, Number(timeoutMs) || 2400));
+    let fontsReady = document.fonts.status === 'loaded';
+    await Promise.race([
+      document.fonts.ready.then(() => {
+        fontsReady = true;
+      }),
+      new Promise<void>((resolve) => window.setTimeout(resolve, maximum)),
+    ]);
+    let previous = '';
+    let matchingSamples = 0;
+    let samples = 0;
+    while (performance.now() - startedAt < maximum) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const signature = responsiveLayoutSignature();
+      samples += 1;
+      if (signature === previous) matchingSamples += 1;
+      else matchingSamples = 0;
+      previous = signature;
+      if (matchingSamples >= 2) break;
+    }
+    return {
+      stable: matchingSamples >= 2,
+      samples,
+      durationMs: Math.round(performance.now() - startedAt),
+      fontsReady,
+      fontStatus: document.fonts.status,
+    };
+  }
+
+  function responsiveAuditFindingSnapshot(element: HTMLElement): HealthFinding[] {
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    const backgroundColor = opaqueBackground(element);
+    const animationDuration = durationMilliseconds(style.animationDuration);
+    const transitionDuration = durationMilliseconds(style.transitionDuration);
+    const interactive = isInteractiveElement(element);
+    const keyboardCandidate =
+      interactive &&
+      element.getAttribute('aria-disabled') !== 'true' &&
+      !(
+        (element instanceof HTMLButtonElement ||
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLSelectElement ||
+          element instanceof HTMLTextAreaElement) &&
+        element.disabled
+      );
+    return auditHealthSnapshot({
+      hasVisibleText: Boolean(directText(element)),
+      color: style.color,
+      backgroundColor,
+      fontSize: Number.parseFloat(style.fontSize) || 16,
+      fontWeight: Number.parseFloat(style.fontWeight) || 400,
+      interactive,
+      targetSizeEligible:
+        interactive && !(element.tagName === 'A' && ['inline', 'contents'].includes(style.display)),
+      accessibleName: accessibleName(element),
+      keyboardCandidate,
+      keyboardReachable: keyboardCandidate ? keyboardReachable(element) : false,
+      positiveTabIndex: element.tabIndex > 0,
+      imageElement: element instanceof HTMLImageElement,
+      imageHasAlternative:
+        !(element instanceof HTMLImageElement) ||
+        element.hasAttribute('alt') ||
+        Boolean(element.getAttribute('aria-label') || element.getAttribute('aria-labelledby')),
+      width: rect.width,
+      height: rect.height,
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      scrollWidth: element.scrollWidth,
+      scrollHeight: element.scrollHeight,
+      clientWidth: element.clientWidth,
+      clientHeight: element.clientHeight,
+      overflowX: style.overflowX,
+      overflowY: style.overflowY,
+      motionDuration: Math.max(animationDuration, transitionDuration),
+      reducedMotionProtected:
+        Math.max(animationDuration, transitionDuration) <= 300 || hasReducedMotionRule(element),
+      layoutMode: style.display,
+      gap: Number.parseFloat(style.gap) || 0,
+      spacingTokens: (designGraph?.tokens ?? []).filter((token) => token.category === 'spacing'),
+      contrastFix: accessibleTextColor(element, backgroundColor),
+    });
+  }
+
+  async function responsiveAudit(
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const stability = await waitForResponsiveAuditStability(Number(payload.timeoutMs));
+    const elements = collectLayerElements(document)
+      .filter(
+        (element) =>
+          element.getAttribute('aria-hidden') !== 'true' &&
+          isVisibleLayer(element) &&
+          element !== document.documentElement &&
+          element !== document.body,
+      )
+      .slice(0, 10_000);
+    const geometry = elements.map((element) => {
+      const rect = element.getBoundingClientRect();
+      const computed = getComputedStyle(element);
+      return {
+        id: foundryTargetId(element),
+        selector: foundrySelector(element),
+        source: element.dataset.foundrySource ?? null,
+        label: layerLabel(element),
+        rect: {
+          x: Number(rect.x.toFixed(2)),
+          y: Number(rect.y.toFixed(2)),
+          width: Number(rect.width.toFixed(2)),
+          height: Number(rect.height.toFixed(2)),
+          top: Number(rect.top.toFixed(2)),
+          right: Number(rect.right.toFixed(2)),
+          bottom: Number(rect.bottom.toFixed(2)),
+          left: Number(rect.left.toFixed(2)),
+        },
+        scrollWidth: element.scrollWidth,
+        scrollHeight: element.scrollHeight,
+        clientWidth: element.clientWidth,
+        clientHeight: element.clientHeight,
+        lineCount: measuredTextLineCount(element) ?? 0,
+        display: computed.display,
+        whiteSpace: computed.whiteSpace,
+      };
+    });
+    const findings = elements.flatMap((element) =>
+      responsiveAuditFindingSnapshot(element).map((finding) => ({
+        ...finding,
+        id: `${foundrySelector(element)}:${finding.ruleId}`,
+        selector: foundrySelector(element),
+        source: element.dataset.foundrySource ?? null,
+        label: layerLabel(element),
+      })),
+    );
+    return {
+      frame: {
+        id: String(payload.frameId ?? currentPreviewContext.viewport.id ?? 'current'),
+        viewportId: String(payload.viewportId ?? currentPreviewContext.viewport.id ?? 'current'),
+        width: window.innerWidth,
+        height: window.innerHeight,
+        dpr: window.devicePixelRatio || 1,
+        href: location.href,
+      },
+      fonts: { ready: stability.fontsReady, status: stability.fontStatus },
+      stableLayout: {
+        stable: stability.stable,
+        samples: stability.samples,
+        durationMs: stability.durationMs,
+      },
+      document: {
+        scrollWidth: document.documentElement.scrollWidth,
+        scrollHeight: document.documentElement.scrollHeight,
+      },
+      elements: geometry,
+      findings,
+      summary: {
+        scanned: geometry.length,
+        findings: findings.length,
+        high: findings.filter((finding) => finding.severity === 'high').length,
+        medium: findings.filter((finding) => finding.severity === 'medium').length,
+        low: findings.filter((finding) => finding.severity === 'low').length,
+      },
+      context: currentPreviewContext,
+      auditedAt: new Date().toISOString(),
+    };
+  }
+
+  async function replaceWorkspaceDesignGraph(
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const candidate = (payload.designGraph ?? payload.graph) as Record<string, unknown> | undefined;
+    if (!candidate || typeof candidate !== 'object') throw new Error('A design graph is required');
+    for (const field of ['tokens', 'components', 'breakpoints', 'themes', 'states']) {
+      if (!Array.isArray(candidate[field]))
+        throw new Error(`Design graph ${field} must be an array`);
+    }
+    const expectedRevision = String(payload.expectedRevision ?? '');
+    const currentRevision = designGraph?.revision ?? '';
+    if (expectedRevision && currentRevision && expectedRevision !== currentRevision) {
+      throw new Error(
+        `Design graph revision conflict: expected ${expectedRevision}, current ${currentRevision}`,
+      );
+    }
+    const nextGraph = {
+      ...(candidate as NonNullable<typeof designGraph>),
+      components: normalizeWorkshopComponents(
+        candidate.components as ComponentWorkshopDefinition[],
+      ),
+      motionPresets: Array.isArray(candidate.motionPresets) ? candidate.motionPresets : [],
+    };
+
+    const previousGraph = designGraph;
+    const previousApplication = lastPreviewApplication;
+    const previousThemeBaseline = {
+      attributes: new Map(previewThemeBaseline.attributes),
+      classes: new Map(previewThemeBaseline.classes),
+    };
+    const activeContext = currentPreviewContext;
+    try {
+      restorePreviewState();
+      restorePreviewState = (): void => {};
+      restoreConfiguredPreviewTheme();
+      previewThemeBaseline.attributes.clear();
+      previewThemeBaseline.classes.clear();
+      designGraph = nextGraph;
+      capturePreviewThemeBaseline();
+
+      const reappliedContext = await applyPreviewContext({
+        ...activeContext,
+        requestRevision: Math.max(previewApplicationRevision, activeContext.requestRevision) + 1,
+      });
+      let previewContextPreserved = reappliedContext.applied;
+      let activeContextResult = reappliedContext;
+      if (!previewContextPreserved) {
+        activeContextResult = await applyPreviewContext({
+          version: PREVIEW_CONTEXT_VERSION,
+          requestRevision:
+            Math.max(previewApplicationRevision, reappliedContext.requestRevision) + 1,
+          viewport: { id: 'current' },
+          theme: 'current',
+          state: 'current',
+          motionPreference: 'system',
+          ...(activeContext.selectedTarget ? { selectedTarget: activeContext.selectedTarget } : {}),
+        });
+        if (!activeContextResult.applied) {
+          throw new Error(
+            activeContextResult.failureReason ||
+              'The refreshed design graph could not restore a safe preview baseline',
+          );
+        }
+        previewContextPreserved = false;
+      }
+
+      populateDesignContext();
+      if (!layersPanel.hidden) renderLayers();
+      if (!componentWorkshopPanel.hidden) renderComponentWorkshop();
+      if (!healthPanel.hidden) scanDesignHealth();
+      publishWorkspaceState();
+      return {
+        replaced: true,
+        revision: designGraph.revision ?? null,
+        previewContext: {
+          preserved: previewContextPreserved,
+          requested: reappliedContext,
+          current: activeContextResult,
+        },
+        counts: {
+          tokens: designGraph.tokens.length,
+          components: designGraph.components.length,
+          breakpoints: designGraph.breakpoints.length,
+          themes: designGraph.themes.length,
+          states: designGraph.states.length,
+        },
+      };
+    } catch (error) {
+      restorePreviewState();
+      restorePreviewState = (): void => {};
+      restoreConfiguredPreviewTheme();
+      designGraph = previousGraph;
+      previewThemeBaseline.attributes.clear();
+      previewThemeBaseline.classes.clear();
+      for (const [attribute, value] of previousThemeBaseline.attributes) {
+        previewThemeBaseline.attributes.set(attribute, value);
+      }
+      for (const [className, present] of previousThemeBaseline.classes) {
+        previewThemeBaseline.classes.set(className, present);
+      }
+      restoreConfiguredPreviewTheme();
+      const restoredContext = await applyPreviewContext({
+        ...activeContext,
+        requestRevision: Math.max(previewApplicationRevision, activeContext.requestRevision) + 1,
+      });
+      if (!restoredContext.applied) {
+        currentPreviewContext = {
+          ...activeContext,
+          requestRevision: restoredContext.requestRevision,
+        };
+        lastPreviewApplication = previousApplication;
+      }
+      populateDesignContext();
+      throw error;
+    }
+  }
+
+  function typographyCommandTarget(payload: Record<string, unknown>): HTMLElement {
+    const selector = String(payload.selector ?? '').trim();
+    const target = selector ? resolveFoundrySelector(document, selector) : selected;
+    if (!target) throw new Error('Select a rendered text layer before comparing fonts');
+    return target;
+  }
+
+  interface TransferableTypographyRule {
+    family: string;
+    cssText: string;
+    baseUrl: string;
+  }
+
+  function typographyRuleFamily(cssText: string): string {
+    const declaration = cssText.match(/font-family\s*:\s*([^;}]+)/i)?.[1] ?? '';
+    return parseFontFamilyStack(declaration)[0]?.trim() ?? '';
+  }
+
+  function typographyFontFaceBlocks(cssText: string): string[] {
+    const blocks: string[] = [];
+    const normalized = cssText.toLocaleLowerCase();
+    let cursor = 0;
+    while (cursor < cssText.length) {
+      const start = normalized.indexOf('@font-face', cursor);
+      if (start < 0) break;
+      const openingBrace = cssText.indexOf('{', start);
+      if (openingBrace < 0) break;
+      let depth = 1;
+      let quote = '';
+      let index = openingBrace + 1;
+      for (; index < cssText.length && depth > 0; index += 1) {
+        const character = cssText[index];
+        const previous = cssText[index - 1];
+        if (quote) {
+          if (character === quote && previous !== '\\') quote = '';
+          continue;
+        }
+        if (character === '"' || character === "'") {
+          quote = character;
+          continue;
+        }
+        if (character === '{') depth += 1;
+        else if (character === '}') depth -= 1;
+      }
+      if (depth === 0) blocks.push(cssText.slice(start, index));
+      cursor = Math.max(index, openingBrace + 1);
+    }
+    return blocks;
+  }
+
+  async function transferableTypographyRules(
+    families: string[],
+    extraStylesheets: string[] = [],
+  ): Promise<TransferableTypographyRule[]> {
+    const requested = new Set(families.map((family) => family.toLocaleLowerCase()));
+    const rules: TransferableTypographyRule[] = [];
+    const fetched = new Set<string>();
+    const addRule = (cssText: string, baseUrl: string): void => {
+      const family = typographyRuleFamily(cssText);
+      if (!family || !requested.has(family.toLocaleLowerCase())) return;
+      const key = `${family.toLocaleLowerCase()}\n${cssText}`;
+      if (rules.some((rule) => `${rule.family.toLocaleLowerCase()}\n${rule.cssText}` === key))
+        return;
+      rules.push({ family, cssText, baseUrl });
+    };
+    const visitRules = (cssRules: CSSRuleList, baseUrl: string): void => {
+      for (const rule of cssRules) {
+        if (rule.type === CSSRule.FONT_FACE_RULE) addRule(rule.cssText, baseUrl);
+        const nested = (rule as CSSRule & { cssRules?: CSSRuleList }).cssRules;
+        if (nested) visitRules(nested, baseUrl);
+      }
+    };
+    const readStylesheet = async (href: string): Promise<void> => {
+      const absolute = new URL(href, document.baseURI).href;
+      if (fetched.has(absolute)) return;
+      fetched.add(absolute);
+      try {
+        const response = await fetch(absolute, {
+          credentials: new URL(absolute).origin === location.origin ? 'same-origin' : 'omit',
+        });
+        if (!response.ok) return;
+        typographyFontFaceBlocks(await response.text()).forEach((block) =>
+          addRule(block, absolute),
+        );
+      } catch {
+        // A caller may still provide the isolated font stylesheet to the inspector directly.
+      }
+    };
+    for (const sheet of document.styleSheets) {
+      const baseUrl = sheet.href || document.baseURI;
+      try {
+        visitRules(sheet.cssRules, baseUrl);
+      } catch {
+        if (sheet.href) await readStylesheet(sheet.href);
+      }
+    }
+    for (const href of extraStylesheets) await readStylesheet(href);
+    return rules;
+  }
+
+  function typographyDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolveData, rejectData) => {
+      const reader = new FileReader();
+      reader.addEventListener('load', () => resolveData(String(reader.result)), { once: true });
+      reader.addEventListener('error', () => rejectData(reader.error), { once: true });
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function inlineTypographyRuleUrls(
+    rule: TransferableTypographyRule,
+  ): Promise<{ cssText: string; complete: boolean }> {
+    const matches = [...rule.cssText.matchAll(/url\(\s*(['"]?)([^'"\)]+)\1\s*\)/gi)];
+    let cssText = rule.cssText;
+    let complete = true;
+    for (const match of matches.reverse()) {
+      if (match.index == null) continue;
+      const rawUrl = (match[2] ?? '').trim();
+      if (/^(?:data:|blob:)/i.test(rawUrl)) continue;
+      const absolute = new URL(rawUrl, rule.baseUrl).href;
+      try {
+        const response = await fetch(absolute, {
+          credentials: new URL(absolute).origin === location.origin ? 'same-origin' : 'omit',
+        });
+        if (!response.ok) throw new Error(`Font resource returned ${response.status}`);
+        const replacement = `url("${await typographyDataUrl(await response.blob())}")`;
+        cssText = `${cssText.slice(0, match.index)}${replacement}${cssText.slice(
+          match.index + match[0].length,
+        )}`;
+      } catch {
+        complete = false;
+      }
+    }
+    return { cssText, complete };
+  }
+
+  async function typographyComparisonResources(
+    current: Record<string, unknown>,
+    candidate: Record<string, unknown>,
+    origin: 'google' | 'local' | 'project',
+    googleStylesheet?: string,
+  ): Promise<Record<string, unknown>> {
+    const faces = [
+      { role: 'current', measurement: current },
+      { role: 'candidate', measurement: candidate },
+    ] as const;
+    const families: [string, string] = [
+      String(current.primaryFamily ?? current.family ?? '').trim(),
+      String(candidate.primaryFamily ?? candidate.family ?? '').trim(),
+    ];
+    const sourceRules = await transferableTypographyRules(
+      families,
+      googleStylesheet ? [googleStylesheet] : [],
+    );
+    const preparedRules = await Promise.all(sourceRules.map(inlineTypographyRuleUrls));
+    const cssRules = preparedRules.filter((rule) => rule.complete).map((rule) => rule.cssText);
+    const resourceFaces = faces.map(({ role, measurement }) => {
+      const family = role === 'current' ? families[0] : families[1];
+      const matchingSourceRules = sourceRules
+        .map((rule, ruleIndex) => ({ rule, prepared: preparedRules[ruleIndex] }))
+        .filter(({ rule }) => rule.family.toLocaleLowerCase() === family.toLocaleLowerCase());
+      const registeredFaces = [...document.fonts].filter(
+        (face) =>
+          (parseFontFamilyStack(face.family)[0] ?? face.family).toLocaleLowerCase() ===
+          family.toLocaleLowerCase(),
+      );
+      const localFace = role === 'candidate' && origin === 'local';
+      const systemFace = registeredFaces.length === 0 && matchingSourceRules.length === 0;
+      if (localFace || systemFace) {
+        const escaped = family.replaceAll('"', '\\"');
+        cssRules.push(
+          `@font-face{font-family:"${escaped}";src:local("${escaped}");font-style:${String(
+            measurement.style ?? 'normal',
+          )};font-weight:${String(measurement.weight ?? 400)}}`,
+        );
+      }
+      const googleFallback = role === 'candidate' && origin === 'google' && googleStylesheet;
+      const transferable =
+        localFace ||
+        systemFace ||
+        matchingSourceRules.some(({ prepared }) => prepared?.complete === true) ||
+        Boolean(googleFallback);
+      return {
+        role,
+        family,
+        weight: String(measurement.weight ?? 400),
+        style: String(measurement.style ?? 'normal'),
+        size: String(measurement.fontSize ?? '16px'),
+        text: String(measurement.text ?? 'BESbswy').slice(0, 32),
+        renderable: transferable,
+        ...(transferable
+          ? {}
+          : {
+              reason: `${family} was measurable in the product preview, but its font resource could not be transferred to the visible comparison.`,
+            }),
+      };
+    });
+    return {
+      cssText: cssRules.join('\n'),
+      stylesheets:
+        origin === 'google' &&
+        googleStylesheet &&
+        !cssRules.some((rule) => rule.includes(families[1]))
+          ? [googleStylesheet]
+          : [],
+      faces: resourceFaces,
+    };
+  }
+
+  async function typographySpecimenMeasurement(
+    element: HTMLElement,
+    options: {
+      family?: string;
+      weight?: number;
+      style?: string;
+      variationSettings?: string;
+      text?: string;
+    } = {},
+  ): Promise<Record<string, unknown>> {
+    const sourceStyle = getComputedStyle(element);
+    const sourceRect = element.getBoundingClientRect();
+    const candidate = Boolean(options.family);
+    const specimen = candidate ? (element.cloneNode(true) as HTMLElement) : element;
+    if (candidate) {
+      specimen.removeAttribute('id');
+      specimen.querySelectorAll<HTMLElement>('[id]').forEach((item) => item.removeAttribute('id'));
+      Object.assign(specimen.style, {
+        position: 'fixed',
+        left: '-20000px',
+        top: '0',
+        margin: '0',
+        boxSizing: sourceStyle.boxSizing,
+        width: `${sourceRect.width}px`,
+        height: `${sourceRect.height}px`,
+        minWidth: `${sourceRect.width}px`,
+        maxWidth: `${sourceRect.width}px`,
+        minHeight: `${sourceRect.height}px`,
+        maxHeight: `${sourceRect.height}px`,
+        padding: sourceStyle.padding,
+        border: sourceStyle.border,
+        fontFamily: fontFamilyDeclaration(options.family!, sourceStyle.fontFamily),
+        fontSize: sourceStyle.fontSize,
+        fontWeight: String(options.weight ?? sourceStyle.fontWeight),
+        fontStyle: options.style ?? sourceStyle.fontStyle,
+        fontVariationSettings: options.variationSettings ?? sourceStyle.fontVariationSettings,
+        lineHeight: sourceStyle.lineHeight,
+        letterSpacing: sourceStyle.letterSpacing,
+        whiteSpace: sourceStyle.whiteSpace,
+        overflowWrap: sourceStyle.overflowWrap,
+        wordBreak: sourceStyle.wordBreak,
+        textAlign: sourceStyle.textAlign,
+        textTransform: sourceStyle.textTransform,
+        textIndent: sourceStyle.textIndent,
+        direction: sourceStyle.direction,
+        writingMode: sourceStyle.writingMode,
+        overflow: sourceStyle.overflow,
+        opacity: '0',
+        pointerEvents: 'none',
+        zIndex: '-1',
+      });
+      if (typeof options.text === 'string') specimen.textContent = options.text;
+      document.body.append(specimen);
+    }
+    try {
+      await document.fonts.ready;
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const computed = getComputedStyle(specimen);
+      const rect = specimen.getBoundingClientRect();
+      const primaryFamily = parseFontFamilyStack(computed.fontFamily)[0] ?? computed.fontFamily;
+      const escapedFamily = primaryFamily.replaceAll('"', '\\"');
+      const fontCheck = document.fonts.check(
+        `${computed.fontStyle} ${computed.fontWeight} ${computed.fontSize} "${escapedFamily}"`,
+        specimen.textContent?.trim().slice(0, 32) || 'BESbswy',
+      );
+      const matchingFaces = [...document.fonts].filter(
+        (face) =>
+          parseFontFamilyStack(face.family)[0]?.toLocaleLowerCase() ===
+          primaryFamily.toLocaleLowerCase(),
+      );
+      const clipped =
+        (['hidden', 'clip'].includes(computed.overflowX) &&
+          specimen.scrollWidth > specimen.clientWidth + 1) ||
+        (['hidden', 'clip'].includes(computed.overflowY) &&
+          specimen.scrollHeight > specimen.clientHeight + 1);
+      const width = Number(rect.width.toFixed(2));
+      const height = Number(rect.height.toFixed(2));
+      const visibleSpecimen = {
+        version: 1,
+        text: specimen.textContent ?? '',
+        width,
+        height,
+        boxSizing: computed.boxSizing,
+        paddingTop: computed.paddingTop,
+        paddingRight: computed.paddingRight,
+        paddingBottom: computed.paddingBottom,
+        paddingLeft: computed.paddingLeft,
+        borderTopWidth: computed.borderTopWidth,
+        borderRightWidth: computed.borderRightWidth,
+        borderBottomWidth: computed.borderBottomWidth,
+        borderLeftWidth: computed.borderLeftWidth,
+        borderTopStyle: computed.borderTopStyle,
+        borderRightStyle: computed.borderRightStyle,
+        borderBottomStyle: computed.borderBottomStyle,
+        borderLeftStyle: computed.borderLeftStyle,
+        fontFamily: computed.fontFamily,
+        fontSize: computed.fontSize,
+        fontWeight: computed.fontWeight,
+        fontStyle: computed.fontStyle,
+        fontVariationSettings: computed.fontVariationSettings,
+        lineHeight: computed.lineHeight,
+        letterSpacing: computed.letterSpacing,
+        whiteSpace: computed.whiteSpace,
+        overflowWrap: computed.overflowWrap,
+        wordBreak: computed.wordBreak,
+        textAlign: computed.textAlign,
+        textTransform: computed.textTransform,
+        textIndent: computed.textIndent,
+        direction: computed.direction,
+        writingMode: computed.writingMode,
+        overflowX: computed.overflowX,
+        overflowY: computed.overflowY,
+      };
+      return {
+        text: specimen.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+        family: computed.fontFamily,
+        primaryFamily,
+        weight: computed.fontWeight,
+        style: computed.fontStyle,
+        variationSettings: computed.fontVariationSettings,
+        fontSize: computed.fontSize,
+        lineHeight: computed.lineHeight,
+        letterSpacing: computed.letterSpacing,
+        loadedFaceStatus: fontCheck
+          ? matchingFaces.some((face) => face.status !== 'loaded')
+            ? 'loading'
+            : 'loaded'
+          : 'missing',
+        fontCheck,
+        lineCount: measuredTextLineCount(specimen) ?? 1,
+        width,
+        height,
+        scrollWidth: specimen.scrollWidth,
+        scrollHeight: specimen.scrollHeight,
+        clientWidth: specimen.clientWidth,
+        clientHeight: specimen.clientHeight,
+        clipped,
+        visibleSpecimen,
+      };
+    } finally {
+      if (candidate) specimen.remove();
+    }
+  }
+
+  function googleFontFromPayload(
+    payload: Record<string, unknown>,
+    family: string,
+  ): GoogleFontFamily {
+    const supplied = payload.font as GoogleFontFamily | undefined;
+    const font =
+      supplied?.family === family
+        ? supplied
+        : googleTypographyFonts.find(
+            (item) => item.family.toLocaleLowerCase() === family.toLocaleLowerCase(),
+          );
+    if (!font) throw new Error(`Google Font ${family} is not available in the loaded catalog`);
+    return font;
+  }
+
+  function googleSelectionFromPayload(
+    payload: Record<string, unknown>,
+    font: GoogleFontFamily,
+    element: HTMLElement,
+  ): GoogleFontSelection {
+    const computed = getComputedStyle(element);
+    const selection = defaultGoogleFontSelection(
+      font,
+      Number(payload.weight ?? (Number.parseInt(computed.fontWeight, 10) || 400)),
+      payload.style === 'italic' ? 'italic' : 'normal',
+    );
+    if (payload.axes && typeof payload.axes === 'object') {
+      selection.axes = {
+        ...selection.axes,
+        ...(payload.axes as Record<string, number>),
+      };
+    }
+    return selection;
+  }
+
+  async function compareTypography(
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const element = typographyCommandTarget(payload);
+    const family = String(payload.family ?? '').trim();
+    if (!family) throw new Error('A candidate font family is required');
+    const origin =
+      payload.origin === 'google' ? 'google' : payload.origin === 'local' ? 'local' : 'project';
+    if (
+      origin === 'project' &&
+      !collectProjectFonts(document, element).some(
+        (font) => font.family.toLocaleLowerCase() === family.toLocaleLowerCase(),
+      )
+    ) {
+      throw new Error(`Project font ${family} is not indexed`);
+    }
+    if (
+      origin === 'local' &&
+      !localTypographyFonts.some(
+        (font) => font.family.toLocaleLowerCase() === family.toLocaleLowerCase(),
+      )
+    ) {
+      throw new Error(`Local font ${family} is not permitted for this preview`);
+    }
+    const changeCountBefore = recordedChangeCount;
+    let previewLink: HTMLLinkElement | undefined;
+    let selection: GoogleFontSelection | undefined;
+    if (origin === 'google') {
+      selection = googleSelectionFromPayload(
+        payload,
+        googleFontFromPayload(payload, family),
+        element,
+      );
+      previewLink = await loadGoogleFontStylesheet(selection);
+    }
+    try {
+      const [current, candidate] = await Promise.all([
+        typographySpecimenMeasurement(element),
+        typographySpecimenMeasurement(element, {
+          family,
+          weight: Number(payload.weight) || undefined,
+          style: String(payload.style ?? getComputedStyle(element).fontStyle),
+          variationSettings: selection ? googleFontVariationSettings(selection) : undefined,
+          text: typeof payload.text === 'string' ? payload.text : undefined,
+        }),
+      ]);
+      const fontResources = await typographyComparisonResources(
+        current,
+        candidate,
+        origin,
+        previewLink?.href,
+      );
+      return {
+        current,
+        candidate,
+        origin,
+        context: currentPreviewContext,
+        temporary: true,
+        changeCountDelta: recordedChangeCount - changeCountBefore,
+        fontResources,
+      };
+    } finally {
+      previewLink?.remove();
+    }
+  }
+
+  async function useTypographyFont(
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const element = typographyCommandTarget(payload);
+    if (element !== selected) select(element);
+    const family = String(payload.family ?? '').trim();
+    if (!family) throw new Error('A font family is required');
+    const origin =
+      payload.origin === 'google' ? 'google' : payload.origin === 'local' ? 'local' : 'project';
+    const familyControl = selectedControls.find((item) => item.property === 'fontFamily');
+    if (!familyControl)
+      throw new Error('The selected target does not expose a font-family control');
+    if (origin === 'local') {
+      if (
+        !localTypographyFonts.some(
+          (font) => font.family.toLocaleLowerCase() === family.toLocaleLowerCase(),
+        )
+      ) {
+        throw new Error(`Local font ${family} is not permitted for this preview`);
+      }
+      restoreTypographyPreview();
+      typographyPreview = {
+        element,
+        inlineFamily: element.style.fontFamily,
+        inlineWeight: element.style.fontWeight,
+        inlineStyle: element.style.fontStyle,
+        inlineVariationSettings: element.style.fontVariationSettings,
+        family,
+        origin: 'local',
+      };
+      element.style.fontFamily = fontFamilyDeclaration(family, String(familyControl.read()));
+      selectedControls = controlsFor(element);
+      publishWorkspaceState();
+      return {
+        staged: false,
+        previewOnly: true,
+        changes: 0,
+        reason: 'Local fonts cannot be mapped to portable project source',
+      };
+    }
+    const currentFamily = String(familyControl.read());
+    if (origin === 'project') {
+      if (
+        !collectProjectFonts(document, element).some(
+          (font) => font.family.toLocaleLowerCase() === family.toLocaleLowerCase(),
+        )
+      ) {
+        throw new Error(`Project font ${family} is not indexed`);
+      }
+      const next = fontFamilyDeclaration(family, currentFamily);
+      if (next === currentFamily)
+        return { staged: false, changes: 0, reason: 'Font is already active' };
+      const outcome = await applyControlValue(familyControl, next, `Use ${family}`);
+      if (!outcome.recorded) {
+        throw new Error('The font preview changed, but its source change could not be recorded');
+      }
+      selectedControls = controlsFor(element);
+      publishWorkspaceState();
+      return { staged: true, changes: 1, family, origin };
+    }
+    const selection = googleSelectionFromPayload(
+      payload,
+      googleFontFromPayload(payload, family),
+      element,
+    );
+    const strategy = (payload.strategy ?? googleTypographyStrategy) as FontInstallStrategy;
+    if (!fontInstallStrategies.some((item) => item.id === strategy)) {
+      throw new Error(`Font source strategy ${String(strategy)} is not supported`);
+    }
+    const link = await loadGoogleFontStylesheet(selection, true);
+    const integration = buildFontIntegrationPlan(selection, strategy, currentFamily);
+    const validation = currentTypographyValidationPlan();
+    const evidence = [
+      'Google Fonts CSS2 preview loaded',
+      `font integration plan: ${JSON.stringify(integration)}`,
+      `font integration strategy: ${strategy}`,
+      `Google Fonts family: ${family}`,
+      ...integration.sourceActions.map((action) => `source action: ${action}`),
+      ...integration.verificationChecks.map((check) => `verification check: ${check}`),
+      ...typographyValidationEvidence(validation),
+    ];
+    const next = fontFamilyDeclaration(family, currentFamily);
+    if (next === currentFamily) {
+      link.remove();
+      return { staged: false, changes: 0, reason: 'Font is already active' };
+    }
+    const outcome = await applyControlValue(
+      familyControl,
+      next,
+      `Use ${family} through ${
+        fontInstallStrategies.find((item) => item.id === strategy)?.label.toLocaleLowerCase() ??
+        strategy
+      }`,
+      evidence,
+    );
+    if (!outcome.recorded) {
+      throw new Error('The font preview changed, but its source plan could not be recorded');
+    }
+    pendingGoogleFontFamilies.add(family.toLocaleLowerCase());
+    selectedControls = controlsFor(element);
+    publishWorkspaceState();
+    return { staged: true, changes: 1, family, origin, sourcePlan: integration };
+  }
+
   function publishWorkspaceState(): void {
     if (!embeddedWorkspace) return;
-    cancelAnimationFrame(workspacePublishFrame);
-    workspacePublishFrame = requestAnimationFrame(() => {
+    const publish = (): void => {
       window.parent.postMessage(
         {
           type: 'foundry:workspace-state',
           sessionId,
           payload: workspaceSnapshot(),
         },
-        runtimeOrigin,
+        workspaceParentOrigin,
       );
-    });
+    };
+    if (verificationChild) {
+      publish();
+      return;
+    }
+    cancelAnimationFrame(workspacePublishFrame);
+    workspacePublishFrame = requestAnimationFrame(publish);
   }
 
   function publishCanvasInput(action: string, payload: Record<string, unknown> = {}): void {
@@ -2815,12 +3853,648 @@ export function installFoundryInspector(
         sessionId,
         payload: { action, ...payload },
       },
-      runtimeOrigin,
+      workspaceParentOrigin,
     );
   }
 
+  function publishWorkspaceResult(
+    requestId: string | undefined,
+    result: { ok: true; payload: unknown } | { ok: false; error: string; payload?: unknown },
+  ): void {
+    if (!requestId) return;
+    window.parent.postMessage(
+      {
+        type: 'foundry:workspace-result',
+        sessionId,
+        requestId,
+        ...result,
+      },
+      workspaceParentOrigin,
+    );
+  }
+
+  async function executeWorkspaceCommand(
+    command: string,
+    payload: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (command === 'preview-ping') {
+      return {
+        alive: true,
+        receivedAt: Date.now(),
+        ...(Number.isFinite(Number(payload.sentAt)) ? { sentAt: Number(payload.sentAt) } : {}),
+        snapshot: {
+          version: 1,
+          verificationReady: verificationChild ? hydratedOnce : true,
+          currentPreviewContext,
+          lastPreviewApplication,
+        },
+        selection: selected
+          ? { id: foundryTargetId(selected), selector: foundrySelector(selected) }
+          : null,
+      };
+    }
+    if (command === 'request-state') {
+      const snapshot = workspaceSnapshot();
+      publishWorkspaceState();
+      return snapshot;
+    }
+    if (command === 'audit-responsive') return responsiveAudit(payload);
+    if (command === 'replace-design-graph') return await replaceWorkspaceDesignGraph(payload);
+    if (command === 'set-responsive-edit-scope') {
+      const nextScope: ResponsiveEditScopeMode =
+        payload.scope === 'all-breakpoints' ? 'all-breakpoints' : 'breakpoint';
+      const activeBreakpoint = String(
+        payload.breakpointId ??
+          (currentPreviewContext.viewport.id !== 'current'
+            ? currentPreviewContext.viewport.id
+            : breakpoint.value || 'current'),
+      );
+      if (
+        activeBreakpoint !== 'current' &&
+        !(designGraph?.breakpoints ?? []).some((item) => item.id === activeBreakpoint)
+      ) {
+        throw new Error(`Breakpoint ${activeBreakpoint} is not indexed`);
+      }
+      const sourceMapped = Boolean(selected && targetFor(selected).source);
+      if (nextScope === 'all-breakpoints' && !selected) {
+        throw new Error('Select a target before editing every breakpoint');
+      }
+      if (nextScope === 'all-breakpoints' && !sourceMapped) {
+        throw new Error('All breakpoints requires a source-mapped target');
+      }
+      const breakpoints =
+        nextScope === 'all-breakpoints'
+          ? (designGraph?.breakpoints ?? []).map((item) => item.id)
+          : [activeBreakpoint];
+      if (nextScope === 'all-breakpoints' && breakpoints.length === 0) {
+        throw new Error('No indexed breakpoints are available');
+      }
+      responsiveEditScope = { scope: nextScope, activeBreakpoint };
+      if ([...breakpoint.options].some((option) => option.value === activeBreakpoint)) {
+        breakpoint.value = activeBreakpoint;
+        syncFdcSelect(breakpoint);
+      }
+      publishWorkspaceState();
+      return { scope: nextScope, activeBreakpoint, breakpoints, sourceMapped };
+    }
+    if (command === 'apply-preview-context' || command === 'set-context') {
+      if (command === 'set-context' && String(payload.key) === 'scope') {
+        const nextScope = String(payload.value ?? 'instance');
+        if (![...scope.options].some((option) => option.value === nextScope)) {
+          throw new Error(`Scope ${nextScope} is not available`);
+        }
+        scope.value = nextScope;
+        syncFdcSelect(scope);
+        publishWorkspaceState();
+        return { scope: nextScope, compatibilityAlias: true };
+      }
+      let contextRequest: unknown = payload.context ?? payload;
+      if (command === 'set-context') {
+        const key = String(payload.key);
+        const value = String(payload.value ?? 'current');
+        const next: PreviewContext = {
+          ...currentPreviewContext,
+          requestRevision: ++previewApplicationRevision,
+          selectedTarget: selected
+            ? { id: foundryTargetId(selected), selector: foundrySelector(selected) }
+            : currentPreviewContext.selectedTarget,
+        };
+        if (key === 'breakpoint') {
+          const definition = previewGraph().breakpoints.find((item) => item.id === value);
+          next.viewport = definition
+            ? { id: definition.id, width: definition.width, height: definition.height }
+            : { id: value };
+        } else if (key === 'theme') next.theme = value;
+        else if (key === 'state') next.state = value;
+        else if (key === 'motion' || key === 'motionPreference') {
+          next.motionPreference =
+            value === 'reduce' || value === 'no-preference' ? value : 'system';
+        } else {
+          throw new Error(`Context axis ${key} is not supported`);
+        }
+        contextRequest = next;
+      }
+      const result = await applyPreviewContext(contextRequest);
+      publishWorkspaceState();
+      return result;
+    }
+    if (command === 'switch-design-branch' || command === 'preview-design-branch') {
+      applyDesignBranch(
+        Array.isArray(payload.previousChanges) ? payload.previousChanges : [],
+        Array.isArray(payload.changes)
+          ? payload.changes
+          : Array.isArray(payload.nextChanges)
+            ? payload.nextChanges
+            : [],
+        command === 'switch-design-branch',
+      );
+      return { switched: true, persisted: command === 'switch-design-branch' };
+    }
+    if (command === 'delete-change') {
+      const changeId = String(payload.changeId ?? '');
+      if (!changeId) throw new Error('A change id is required');
+      return deleteReviewChange(changeId);
+    }
+    if (command === 'arm-agent-region' || command === 'capture-agent-region') {
+      captureVisualAgentRegion();
+      if (!visualAgentRegionCleanup) throw new Error('The preview could not arm region capture');
+      publishWorkspaceState();
+      return { armed: true };
+    }
+    if (command === 'clear-agent-region') {
+      visualAgentRegionCleanup?.();
+      visualAgentRegion = null;
+      publishWorkspaceState();
+      return { cleared: true };
+    }
+    if (command === 'set-mode') {
+      workspaceCanvasTool =
+        payload.mode === 'pan' ? 'pan' : payload.mode === 'interact' ? 'interact' : 'select';
+      inspecting = workspaceCanvasTool === 'select';
+      document.documentElement.style.cursor = workspaceCanvasTool === 'pan' ? 'grab' : '';
+      updateInspectionMode();
+      publishWorkspaceState();
+      return { mode: workspaceCanvasTool };
+    }
+    if (command === 'select') {
+      const selector = String(payload.selector ?? '');
+      if (!selector) throw new Error('A target selector is required');
+      const element = resolveFoundrySelector(document, selector);
+      if (!element) throw new Error(`Target ${selector} did not resolve in this preview`);
+      select(element, Boolean(payload.additive));
+      return { selected: true, id: foundryTargetId(element), selector: foundrySelector(element) };
+    }
+    if (command === 'select-component-instance') {
+      const componentId = String(payload.componentId ?? '');
+      if (!componentId) throw new Error('A component id is required');
+      const entry = workshopCatalog().find(
+        (item) =>
+          item.id === componentId ||
+          item.definition?.id === componentId ||
+          item.name === componentId,
+      );
+      const element = entry?.elements[Number(payload.index ?? 0)];
+      if (!element) throw new Error(`Component instance ${componentId} did not resolve`);
+      select(element);
+      return { selected: true, id: foundryTargetId(element) };
+    }
+    if (command === 'preview-component-state') {
+      if (!selected) throw new Error('Select a component instance before previewing a state');
+      const stateId = String(payload.stateId ?? 'current');
+      const nextState: ComponentWorkshopState | undefined =
+        stateId === 'current'
+          ? {
+              id: 'current',
+              label: 'Current',
+              kind: 'default',
+              confidence: 'instrumented',
+              evidence: ['Current rendered source state'],
+            }
+          : componentWorkshopStates(designGraph?.states).find((item) => item.id === stateId);
+      if (!nextState) throw new Error(`State ${stateId} is not authored for this project`);
+      workshopStateId = nextState.id;
+      applyWorkshopStatePreview(selected, nextState);
+      publishWorkspaceState();
+      return { previewed: true, stateId };
+    }
+    if (command === 'preview-component-variant' || command === 'repair-component-variant-drift') {
+      workshopComponentId = String(payload.componentId ?? workshopComponentId);
+      const entry = currentWorkshopEntry();
+      if (!entry) throw new Error('The requested component is not available');
+      const variantId = String(payload.variantId ?? '');
+      const variant = entry.definition?.variants.find((item) => item.id === variantId);
+      if (!variant) throw new Error(`Variant ${variantId} is not available`);
+      const outcome =
+        command === 'preview-component-variant'
+          ? await previewWorkshopVariant(entry, variant)
+          : await repairWorkshopVariantDrift(entry, variant);
+      publishWorkspaceState();
+      return { completed: true, componentId: entry.id, variantId, ...outcome };
+    }
+    if (command === 'stage-component-variant') {
+      workshopComponentId = String(payload.componentId ?? workshopComponentId);
+      const entry = currentWorkshopEntry();
+      if (!entry?.definition)
+        throw new Error('The requested source-backed component is unavailable');
+      if (!String(payload.axisId ?? '').trim() || !String(payload.value ?? '').trim()) {
+        throw new Error('A variant axis and value are required');
+      }
+      const outcome = await stageWorkshopVariant(entry, {
+        axisId: String(payload.axisId),
+        label: String(payload.label ?? ''),
+        value: String(payload.value),
+        baseVariantId: String(payload.baseVariantId ?? '') || undefined,
+      });
+      publishWorkspaceState();
+      return { staged: true, componentId: entry.id, ...outcome };
+    }
+    if (command === 'stage-token-promotion') {
+      const candidateId = String(payload.candidateId ?? '');
+      const candidate = designGraph?.tokenPromotions?.find((item) => item.id === candidateId);
+      if (!candidate) throw new Error(`Token promotion ${candidateId} is not available`);
+      if (!candidate.canStage || !candidate.sources.length) {
+        throw new Error(candidate.blockers[0] ?? 'This promotion has no exact source mapping');
+      }
+      const outcome = await stageTokenPromotion(candidateId);
+      return { staged: true, candidateId, ...outcome };
+    }
+    if (command === 'preview-responsive-stress') {
+      const mode = String(payload.mode ?? 'none');
+      if (!['none', 'browser-zoom', 'dynamic-type', 'long-content'].includes(mode)) {
+        throw new Error(`Responsive stress mode ${mode} is not supported`);
+      }
+      applyResponsiveStress(mode);
+      return { previewed: true, mode };
+    }
+    if (command === 'preview-responsive-container') {
+      const width = payload.width == null ? undefined : Number(payload.width);
+      if (width !== undefined && (!selected || !nearestResponsiveContainer(selected))) {
+        throw new Error('Select an element inside an indexed container first');
+      }
+      if (width !== undefined && (!Number.isFinite(width) || width <= 0)) {
+        throw new Error('Container width must be a positive number');
+      }
+      previewResponsiveContainer(width);
+      return { previewed: width !== undefined, width: width ?? null };
+    }
+    if (command === 'apply-health-stress') {
+      const stressScope: StressScope = payload.scope === 'canvas' ? 'canvas' : 'selection';
+      if (stressScope === 'selection' && !selected) throw new Error('Select a target first');
+      applyStressConditions(
+        Array.isArray(payload.conditions) ? payload.conditions : [],
+        stressScope,
+      );
+      return { applied: true, scope: stressScope, conditions: activeStressConditions };
+    }
+    if (command === 'clear-health-stress') {
+      stressDraftConditions = [];
+      restoreStressConditions();
+      return { cleared: true };
+    }
+    if (command === 'select-health-issue' || command === 'preview-health-fix') {
+      const issueId = String(payload.issueId ?? '');
+      const issue = healthIssues.find((item) => item.id === issueId);
+      if (!issue?.element.isConnected) throw new Error(`Health finding ${issueId} is unavailable`);
+      if (command === 'select-health-issue') select(issue.element);
+      else if (!issue.previewed) await previewHealthFix(issue);
+      publishWorkspaceState();
+      return { completed: true, issueId };
+    }
+    if (command === 'save-visual-recipe') {
+      if (!selected) throw new Error('Select a target before saving a visual recipe');
+      if (!previewHistory.some((entry) => entry.element === selected)) {
+        throw new Error('Refine the selected target before saving a visual recipe');
+      }
+      const before = designMemory.recipes.length;
+      saveSelectedRecipe(String(payload.name ?? ''), String(payload.intent ?? ''));
+      if (designMemory.recipes.length !== before + 1)
+        throw new Error('The visual recipe was not saved');
+      publishWorkspaceState();
+      return { saved: true, recipe: designMemory.recipes.at(-1) };
+    }
+    if (command === 'duplicate-visual-recipe') {
+      const recipeId = String(payload.recipeId ?? '');
+      const recipe = designMemory.recipes.find((item) => item.id === recipeId);
+      if (!recipe) throw new Error(`Visual recipe ${recipeId} was not found`);
+      const copy = {
+        ...recipe,
+        id: `recipe_${Date.now().toString(36)}`,
+        name: `${recipe.name} copy`,
+        createdAt: new Date().toISOString(),
+      };
+      designMemory = addRecipe(designMemory, copy);
+      persistDesignMemory();
+      renderDesignMemory();
+      publishWorkspaceState();
+      return { duplicated: true, recipe: copy };
+    }
+    if (command === 'remove-visual-recipe') {
+      const recipeId = String(payload.recipeId ?? '');
+      if (!designMemory.recipes.some((item) => item.id === recipeId)) {
+        throw new Error(`Visual recipe ${recipeId} was not found`);
+      }
+      designMemory = removeRecipe(designMemory, recipeId);
+      persistDesignMemory();
+      renderDesignMemory();
+      publishWorkspaceState();
+      return { removed: true, recipeId };
+    }
+    if (command === 'apply-visual-recipe') {
+      const recipeId = String(payload.recipeId ?? '');
+      if (!selected) throw new Error('Select a compatible target first');
+      if (!designMemory.recipes.some((item) => item.id === recipeId)) {
+        throw new Error(`Visual recipe ${recipeId} was not found`);
+      }
+      const outcome = await applyRecipe(recipeId);
+      publishWorkspaceState();
+      return { recipeId, ...outcome };
+    }
+    if (command === 'import-visual-recipes') {
+      const imported = JSON.parse(String(payload.json ?? ''));
+      const recipes = Array.isArray(imported) ? imported : imported?.recipes;
+      if (!Array.isArray(recipes)) throw new Error('No recipes were found in this file');
+      let importedCount = 0;
+      for (const recipe of recipes) {
+        if (!recipe?.id || !recipe?.name || !Array.isArray(recipe.values)) continue;
+        designMemory = addRecipe(designMemory, recipe);
+        importedCount += 1;
+      }
+      persistDesignMemory();
+      renderDesignMemory();
+      publishWorkspaceState();
+      return { imported: importedCount };
+    }
+    if (command === 'save-design-decision') {
+      if (!String(payload.title ?? '').trim() || !String(payload.summary ?? '').trim()) {
+        throw new Error('A decision title and clear guidance are required');
+      }
+      const before = designMemory.decisions.length;
+      saveSelectedDesignDecision(payload);
+      if (designMemory.decisions.length !== before + 1)
+        throw new Error('The design decision was not saved');
+      publishWorkspaceState();
+      return { saved: true, decision: designMemory.decisions.at(-1) };
+    }
+    if (command === 'update-design-decision') {
+      const decisionId = String(payload.decisionId ?? '');
+      if (!designMemory.decisions.some((item) => item.id === decisionId)) {
+        throw new Error(`Design decision ${decisionId} was not found`);
+      }
+      designMemory = updateDesignDecision(designMemory, decisionId, {
+        title: typeof payload.title === 'string' ? payload.title.trim() : undefined,
+        summary: typeof payload.summary === 'string' ? payload.summary.trim() : undefined,
+        rationale: typeof payload.rationale === 'string' ? payload.rationale.trim() : undefined,
+        enabled: typeof payload.enabled === 'boolean' ? payload.enabled : undefined,
+      });
+      persistDesignMemory();
+      renderDesignMemory();
+      publishWorkspaceState();
+      return { updated: true, decisionId };
+    }
+    if (command === 'remove-design-decision') {
+      const decisionId = String(payload.decisionId ?? '');
+      if (!designMemory.decisions.some((item) => item.id === decisionId)) {
+        throw new Error(`Design decision ${decisionId} was not found`);
+      }
+      designMemory = removeDesignDecision(designMemory, decisionId);
+      persistDesignMemory();
+      renderDesignMemory();
+      publishWorkspaceState();
+      return { removed: true, decisionId };
+    }
+    if (command === 'import-design-decisions') {
+      const imported = JSON.parse(String(payload.json ?? ''));
+      const decisions = Array.isArray(imported) ? imported : imported?.decisions;
+      if (!Array.isArray(decisions)) throw new Error('No design decisions were found');
+      let importedCount = 0;
+      for (const decision of decisions) {
+        if (!decision?.id || !decision?.title || !decision?.outcome) continue;
+        designMemory = addDesignDecision(designMemory, {
+          ...decision,
+          categories: Array.isArray(decision.categories) ? decision.categories : [],
+          conditions: decision.conditions ?? {},
+          rules: Array.isArray(decision.rules) ? decision.rules : [],
+          evidence: Array.isArray(decision.evidence) ? decision.evidence : [],
+          sourceLocations: Array.isArray(decision.sourceLocations) ? decision.sourceLocations : [],
+          enabled: decision.enabled !== false,
+        });
+        importedCount += 1;
+      }
+      persistDesignMemory();
+      renderDesignMemory();
+      publishWorkspaceState();
+      return { imported: importedCount };
+    }
+    if (command === 'set-control') {
+      if (!selected) throw new Error('Select a target before changing a control');
+      if (responsiveEditScope.scope === 'all-breakpoints' && !targetFor(selected).source) {
+        throw new Error('All breakpoints requires a source-mapped target');
+      }
+      const control =
+        selectedControls[Number(payload.index)] ??
+        selectedControls.find((item) => item.property === payload.property);
+      if (!control)
+        throw new Error(
+          `Control ${String(payload.property ?? payload.index ?? '')} is unavailable`,
+        );
+      const outcome = await applyControlValue(
+        control,
+        payload.value as string | number,
+        `Adjust ${control.label}`,
+      );
+      if (outcome.applied && !outcome.recorded) {
+        throw new Error('The preview changed, but its source change could not be recorded');
+      }
+      selectedControls = controlsFor(selected);
+      renderControls();
+      publishWorkspaceState();
+      return {
+        applied: outcome.applied,
+        recorded: outcome.recorded,
+        property: control.property,
+        value: control.read(),
+      };
+    }
+    if (command === 'motion-action') {
+      if (!selected) throw new Error('Select a moving layer first');
+      const motionId = String(payload.id ?? '');
+      const motion = findDiscoveredMotion(selected, motionId);
+      const animation = motion?.animation;
+      const action = String(payload.action ?? '');
+      if (!motion || !animation)
+        throw new Error(`Motion ${motionId} is not available on this target`);
+      let outcome = { applied: true, recorded: false };
+      if (action === 'scrub') {
+        animation.pause();
+        animation.currentTime = Number(payload.value ?? 0);
+      } else if (action === 'speed') {
+        animation.playbackRate = Number(payload.value ?? 1);
+      } else if (action === 'toggle') {
+        if (animation.playState === 'paused') animation.play();
+        else animation.pause();
+      } else if (action === 'replay') {
+        animation.currentTime = 0;
+        animation.play();
+      } else if (action === 'loop') {
+        toggleMotionLoop(animation);
+      } else if (
+        ['duration', 'delay', 'easing', 'iterations', 'direction', 'fill'].includes(action)
+      ) {
+        const after = ['easing', 'direction', 'fill'].includes(action)
+          ? String(payload.value ?? '')
+          : Number(payload.value);
+        outcome = await applyMotionTiming(
+          motion,
+          action as 'duration' | 'delay' | 'easing' | 'iterations' | 'direction' | 'fill',
+          after,
+        );
+      } else if (action === 'curve') {
+        outcome = await applyMotionCurve(motion, requestedMotionCurve(payload));
+      } else if (action === 'path-point') {
+        const index = Number(payload.index);
+        const frame = motion.descriptor.keyframes.find((candidate) => candidate.index === index);
+        if (!frame) throw new Error(`Motion keyframe ${index} was not found`);
+        const nextTransform = replaceMotionTranslation(
+          String(frame.values.transform ?? 'none'),
+          Number(payload.x),
+          Number(payload.y),
+        );
+        outcome = await applyMotionKeyframe(motion, index, 'transform', nextTransform);
+      } else if (['keyframe-value', 'keyframe-offset', 'keyframe-easing'].includes(action)) {
+        const property =
+          action === 'keyframe-value'
+            ? String(payload.property ?? '')
+            : action === 'keyframe-offset'
+              ? 'offset'
+              : 'easing';
+        if (!property) throw new Error('A keyframe property is required');
+        outcome = await applyMotionKeyframe(
+          motion,
+          Number(payload.index),
+          property,
+          action === 'keyframe-offset' ? Number(payload.value) : String(payload.value),
+        );
+      } else {
+        throw new Error(`Motion action ${action} is not supported`);
+      }
+      if (
+        outcome.applied &&
+        !outcome.recorded &&
+        !['scrub', 'speed', 'toggle', 'replay', 'loop'].includes(action)
+      ) {
+        throw new Error('The motion preview changed, but its source change could not be recorded');
+      }
+      publishWorkspaceState();
+      return { ...outcome, action, motionId, currentTime: animation.currentTime };
+    }
+    if (command === 'typography-compare') return compareTypography(payload);
+    if (command === 'typography-use-font') return useTypographyFont(payload);
+    if (command === 'typography-action') {
+      if (!selected) throw new Error('Select a rendered text layer first');
+      const action = String(payload.action ?? '');
+      if (action === 'compare-font') return compareTypography(payload);
+      if (action === 'use-font') return useTypographyFont(payload);
+      if (action === 'preview-family') {
+        const family = String(payload.family ?? '').trim();
+        const origin = payload.origin === 'local' ? 'local' : 'project';
+        if (!family) throw new Error('A font family is required');
+        if (origin === 'local' && !localTypographyFonts.some((font) => font.family === family)) {
+          throw new Error(`Local font ${family} is not permitted for this preview`);
+        }
+        if (
+          origin === 'project' &&
+          !collectProjectFonts(document, selected).some((font) => font.family === family)
+        ) {
+          throw new Error(`Project font ${family} is not indexed`);
+        }
+        const control = selectedControls.find((item) => item.property === 'fontFamily');
+        if (!control) throw new Error('This layer does not expose a font-family control');
+        restoreTypographyPreview();
+        typographyPreview = {
+          element: selected,
+          inlineFamily: selected.style.fontFamily,
+          inlineWeight: selected.style.fontWeight,
+          inlineStyle: selected.style.fontStyle,
+          inlineVariationSettings: selected.style.fontVariationSettings,
+          family,
+          origin,
+        };
+        selected.style.fontFamily = fontFamilyDeclaration(family, String(control.read()));
+      } else if (action === 'preview-google') {
+        const font = payload.font as GoogleFontFamily | undefined;
+        if (!font?.family) throw new Error('A Google Font record is required');
+        await previewGoogleFont(font);
+        if (typographyPreview?.family !== font.family)
+          throw new Error(`${font.family} could not be previewed`);
+      } else if (action === 'review-google') {
+        const font = googleTypographySelection?.font;
+        if (!font) throw new Error('Preview a Google Font before adding it to review');
+        return useTypographyFont({
+          ...payload,
+          family: font.family,
+          font,
+          origin: 'google',
+          weight: payload.weight ?? googleTypographySelection?.weight,
+          style: payload.style ?? googleTypographySelection?.style,
+          axes: googleTypographySelection?.axes,
+        });
+      } else if (action === 'preview-treatment') {
+        previewTypeTreatment(String(payload.treatmentId ?? 'balanced'));
+      } else if (action === 'preview-scale') {
+        typographyScaleBase = Number(payload.base ?? typographyScaleBase);
+        typographyScaleRatio = Number(payload.ratio ?? typographyScaleRatio);
+        typographyScaleStep = Number(payload.step ?? typographyScaleStep);
+        typographyScaleFluid = Boolean(payload.fluid);
+        previewTypeScale();
+      } else if (action === 'review-treatment') {
+        if (!typographyTreatmentPreview?.treatmentId)
+          throw new Error('Preview a type treatment first');
+        await reviewTypeTreatment();
+      } else if (action === 'review-scale') {
+        if (!typographyTreatmentPreview?.scaleValue) throw new Error('Preview a type scale first');
+        await reviewTypeScale();
+      } else if (action === 'reset-preview') {
+        restoreTypographyPreview();
+      } else if (action === 'save-style') {
+        typographyStyleName = String(payload.name ?? '');
+        if (!typographyStyleName.trim()) throw new Error('A project style name is required');
+        await saveCurrentProjectTypographyStyle();
+      } else if (action === 'apply-style') {
+        const styleId = String(payload.styleId ?? '');
+        if (!projectTypographyStyles.some((item) => item.id === styleId))
+          throw new Error(`Typography style ${styleId} was not found`);
+        await applyProjectTypographyStyle(styleId);
+      } else if (action === 'remove-style') {
+        const styleId = String(payload.styleId ?? '');
+        if (!projectTypographyStyles.some((item) => item.id === styleId))
+          throw new Error(`Typography style ${styleId} was not found`);
+        removeProjectTypographyStyle(styleId);
+      } else {
+        throw new Error(`Typography action ${action} is not supported`);
+      }
+      if (selected) selectedControls = controlsFor(selected);
+      publishWorkspaceState();
+      return { completed: true, action };
+    }
+    if (command === 'undo' || command === 'redo') {
+      const direction = command === 'undo' ? -1 : 1;
+      if (direction === -1 && historyCursor <= 0)
+        throw new Error('There is no preview change to undo');
+      if (direction === 1 && historyCursor >= previewHistory.length)
+        throw new Error('There is no preview change to redo');
+      const outcome = await replayHistory(direction);
+      publishWorkspaceState();
+      return { completed: true, historyCursor, ...outcome };
+    }
+    if (command === 'compare') {
+      const mode = payload.mode === 'before' ? 'before' : 'after';
+      showComparison(mode);
+      publishWorkspaceState();
+      return { mode };
+    }
+    if (command === 'interface-theme') {
+      const preference = String(payload.value);
+      if (preference !== 'system' && preference !== 'light' && preference !== 'dark') {
+        throw new Error(`Interface theme ${preference} is not supported`);
+      }
+      applyInterfaceTheme(preference);
+      publishWorkspaceState();
+      return { preference, resolved: resolvedInterfaceTheme() };
+    }
+    if (command === 'scan-health') {
+      scanDesignHealth();
+      publishWorkspaceState();
+      return { scanned: true, findings: healthIssues.length };
+    }
+    throw new Error(`Unknown workspace command: ${command}`);
+  }
+
   function handleWorkspaceMessage(event: MessageEvent): void {
-    if (!embeddedWorkspace || event.source !== window.parent || event.origin !== runtimeOrigin)
+    if (
+      !embeddedWorkspace ||
+      event.source !== window.parent ||
+      event.origin !== workspaceParentOrigin
+    )
       return;
     const message = event.data as {
       type?: string;
@@ -2831,482 +4505,27 @@ export function installFoundryInspector(
     };
     if (message.type !== 'foundry:workspace-command' || message.sessionId !== sessionId) return;
     const payload = message.payload ?? {};
-    if (message.command === 'switch-design-branch' || message.command === 'preview-design-branch') {
-      try {
-        applyDesignBranch(
-          Array.isArray(payload.previousChanges) ? payload.previousChanges : [],
-          Array.isArray(payload.changes)
-            ? payload.changes
-            : Array.isArray(payload.nextChanges)
-              ? payload.nextChanges
-              : [],
-          message.command === 'switch-design-branch',
-        );
-        if (message.requestId) {
-          window.parent.postMessage(
-            {
-              type: 'foundry:workspace-result',
-              sessionId,
-              requestId: message.requestId,
-              ok: true,
-              payload: { switched: true },
-            },
-            runtimeOrigin,
-          );
-        }
-      } catch (error) {
-        if (message.requestId) {
-          window.parent.postMessage(
-            {
-              type: 'foundry:workspace-result',
-              sessionId,
-              requestId: message.requestId,
-              ok: false,
-              error:
-                error instanceof Error ? error.message : 'Could not render this design direction',
-            },
-            runtimeOrigin,
-          );
-        }
-      }
-      return;
-    }
-    if (message.command === 'delete-change') {
-      void deleteReviewChange(String(payload.changeId ?? ''))
-        .then((result) => {
-          window.parent.postMessage(
-            {
-              type: 'foundry:workspace-result',
-              sessionId,
-              requestId: message.requestId,
-              ok: true,
-              payload: result,
-            },
-            runtimeOrigin,
-          );
-        })
-        .catch((error) => {
-          window.parent.postMessage(
-            {
-              type: 'foundry:workspace-result',
-              sessionId,
-              requestId: message.requestId,
-              ok: false,
-              error: error instanceof Error ? error.message : 'Could not delete this change',
-            },
-            runtimeOrigin,
-          );
-        });
-      return;
-    }
-    if (message.command === 'request-state') publishWorkspaceState();
-    if (message.command === 'capture-agent-region') captureVisualAgentRegion();
-    if (message.command === 'clear-agent-region') {
-      visualAgentRegionCleanup?.();
-      visualAgentRegion = null;
-      publishWorkspaceState();
-    }
-    if (message.command === 'set-mode') {
-      workspaceCanvasTool =
-        payload.mode === 'pan' ? 'pan' : payload.mode === 'interact' ? 'interact' : 'select';
-      inspecting = workspaceCanvasTool === 'select';
-      document.documentElement.style.cursor = workspaceCanvasTool === 'pan' ? 'grab' : '';
-      updateInspectionMode();
-      publishWorkspaceState();
-    }
-    if (message.command === 'select') {
-      const element = resolveFoundrySelector(document, String(payload.selector ?? ''));
-      if (element) select(element, Boolean(payload.additive));
-    }
-    if (message.command === 'select-component-instance') {
-      const componentId = String(payload.componentId ?? '');
-      const entry = workshopCatalog().find(
-        (item) =>
-          item.id === componentId ||
-          item.definition?.id === componentId ||
-          item.name === componentId,
-      );
-      const element = entry?.elements[Number(payload.index ?? 0)];
-      if (element) select(element);
-    }
-    if (message.command === 'preview-component-state') {
-      const nextState = componentWorkshopStates(designGraph?.states).find(
-        (item) => item.id === String(payload.stateId ?? 'current'),
-      );
-      if (selected && nextState) {
-        workshopStateId = nextState.id;
-        applyWorkshopStatePreview(selected, nextState);
-        publishWorkspaceState();
-      }
-    }
-    if (message.command === 'preview-component-variant') {
-      workshopComponentId = String(payload.componentId ?? workshopComponentId);
-      const entry = currentWorkshopEntry();
-      const variant = entry?.definition?.variants.find(
-        (item) => item.id === String(payload.variantId ?? ''),
-      );
-      if (entry && variant) void previewWorkshopVariant(entry, variant).then(publishWorkspaceState);
-    }
-    if (message.command === 'stage-component-variant') {
-      workshopComponentId = String(payload.componentId ?? workshopComponentId);
-      const entry = currentWorkshopEntry();
-      if (entry)
-        void stageWorkshopVariant(entry, {
-          axisId: String(payload.axisId ?? ''),
-          label: String(payload.label ?? ''),
-          value: String(payload.value ?? ''),
-          baseVariantId: String(payload.baseVariantId ?? '') || undefined,
-        }).then(publishWorkspaceState);
-    }
-    if (message.command === 'stage-token-promotion') {
-      void stageTokenPromotion(String(payload.candidateId ?? ''));
-    }
-    if (message.command === 'repair-component-variant-drift') {
-      workshopComponentId = String(payload.componentId ?? workshopComponentId);
-      const entry = currentWorkshopEntry();
-      const variant = entry?.definition?.variants.find(
-        (item) => item.id === String(payload.variantId ?? ''),
-      );
-      if (entry && variant)
-        void repairWorkshopVariantDrift(entry, variant).then(publishWorkspaceState);
-    }
-    if (message.command === 'preview-responsive-stress') {
-      applyResponsiveStress(String(payload.mode ?? 'none'));
-    }
-    if (message.command === 'preview-responsive-container') {
-      previewResponsiveContainer(payload.width == null ? undefined : Number(payload.width));
-    }
-    if (message.command === 'apply-health-stress') {
-      applyStressConditions(
-        Array.isArray(payload.conditions) ? payload.conditions : [],
-        payload.scope === 'canvas' ? 'canvas' : 'selection',
-      );
-    }
-    if (message.command === 'clear-health-stress') {
-      stressDraftConditions = [];
-      restoreStressConditions();
-    }
-    if (message.command === 'select-health-issue') {
-      const issue = healthIssues.find((item) => item.id === String(payload.issueId ?? ''));
-      if (issue?.element.isConnected) select(issue.element);
-    }
-    if (message.command === 'preview-health-fix') {
-      const issue = healthIssues.find((item) => item.id === String(payload.issueId ?? ''));
-      if (issue && !issue.previewed) void previewHealthFix(issue).then(publishWorkspaceState);
-    }
-    if (message.command === 'save-visual-recipe') {
-      saveSelectedRecipe(String(payload.name ?? ''), String(payload.intent ?? ''));
-      publishWorkspaceState();
-    }
-    if (message.command === 'duplicate-visual-recipe') {
-      const recipe = designMemory.recipes.find(
-        (item) => item.id === String(payload.recipeId ?? ''),
-      );
-      if (recipe) {
-        designMemory = addRecipe(designMemory, {
-          ...recipe,
-          id: `recipe_${Date.now().toString(36)}`,
-          name: `${recipe.name} copy`,
-          createdAt: new Date().toISOString(),
-        });
-        persistDesignMemory();
-        renderDesignMemory();
-        publishWorkspaceState();
-        showToast('Recipe duplicated');
-      }
-    }
-    if (message.command === 'remove-visual-recipe') {
-      designMemory = removeRecipe(designMemory, String(payload.recipeId ?? ''));
-      persistDesignMemory();
-      renderDesignMemory();
-      publishWorkspaceState();
-    }
-    if (message.command === 'apply-visual-recipe') {
-      void applyRecipe(String(payload.recipeId ?? '')).then(publishWorkspaceState);
-    }
-    if (message.command === 'import-visual-recipes') {
-      try {
-        const imported = JSON.parse(String(payload.json ?? ''));
-        const recipes = Array.isArray(imported) ? imported : imported?.recipes;
-        if (!Array.isArray(recipes)) throw new Error('No recipes were found in this file');
-        for (const recipe of recipes) {
-          if (!recipe?.id || !recipe?.name || !Array.isArray(recipe.values)) continue;
-          designMemory = addRecipe(designMemory, recipe);
-        }
-        persistDesignMemory();
-        renderDesignMemory();
-        publishWorkspaceState();
-        showToast(
-          `${recipes.length} visual ${recipes.length === 1 ? 'recipe' : 'recipes'} imported`,
-        );
-      } catch (error) {
-        showToast(error instanceof Error ? error.message : 'Could not import these recipes');
-      }
-    }
-    if (message.command === 'save-design-decision') {
-      saveSelectedDesignDecision(payload);
-      publishWorkspaceState();
-    }
-    if (message.command === 'update-design-decision') {
-      designMemory = updateDesignDecision(designMemory, String(payload.decisionId ?? ''), {
-        title: typeof payload.title === 'string' ? payload.title.trim() : undefined,
-        summary: typeof payload.summary === 'string' ? payload.summary.trim() : undefined,
-        rationale: typeof payload.rationale === 'string' ? payload.rationale.trim() : undefined,
-        enabled: typeof payload.enabled === 'boolean' ? payload.enabled : undefined,
+    const command = String(message.command ?? '');
+    if (!command) {
+      publishWorkspaceResult(message.requestId, {
+        ok: false,
+        error: 'Workspace command is required',
       });
-      persistDesignMemory();
-      renderDesignMemory();
-      publishWorkspaceState();
+      return;
     }
-    if (message.command === 'remove-design-decision') {
-      designMemory = removeDesignDecision(designMemory, String(payload.decisionId ?? ''));
-      persistDesignMemory();
-      renderDesignMemory();
-      publishWorkspaceState();
-    }
-    if (message.command === 'import-design-decisions') {
-      try {
-        const imported = JSON.parse(String(payload.json ?? ''));
-        const decisions = Array.isArray(imported) ? imported : imported?.decisions;
-        if (!Array.isArray(decisions)) throw new Error('No design decisions were found');
-        let importedCount = 0;
-        for (const decision of decisions) {
-          if (!decision?.id || !decision?.title || !decision?.outcome) continue;
-          designMemory = addDesignDecision(designMemory, {
-            ...decision,
-            categories: Array.isArray(decision.categories) ? decision.categories : [],
-            conditions: decision.conditions ?? {},
-            rules: Array.isArray(decision.rules) ? decision.rules : [],
-            evidence: Array.isArray(decision.evidence) ? decision.evidence : [],
-            sourceLocations: Array.isArray(decision.sourceLocations)
-              ? decision.sourceLocations
-              : [],
-            enabled: decision.enabled !== false,
-          });
-          importedCount += 1;
-        }
-        persistDesignMemory();
-        renderDesignMemory();
-        publishWorkspaceState();
-        showToast(
-          `${importedCount} design ${importedCount === 1 ? 'decision' : 'decisions'} imported`,
-        );
-      } catch (error) {
-        showToast(error instanceof Error ? error.message : 'Could not import these decisions');
-      }
-    }
-    if (message.command === 'set-control') {
-      const control =
-        selectedControls[Number(payload.index)] ??
-        selectedControls.find((item) => item.property === payload.property);
-      if (control) {
-        void applyControlValue(
-          control,
-          payload.value as string | number,
-          `Adjust ${control.label}`,
-        ).then(() => {
-          if (selected) selectedControls = controlsFor(selected);
-          renderControls();
-          publishWorkspaceState();
+    void executeWorkspaceCommand(command, payload)
+      .then((result) => {
+        publishWorkspaceResult(message.requestId, {
+          ok: true,
+          payload: result ?? { acknowledged: true, command },
         });
-      }
-    }
-    if (message.command === 'motion-action' && selected) {
-      const motion = findDiscoveredMotion(selected, String(payload.id ?? ''));
-      const animation = motion?.animation;
-      const action = String(payload.action ?? '');
-      if (motion && animation) {
-        if (action === 'scrub') {
-          animation.pause();
-          animation.currentTime = Number(payload.value ?? 0);
-          publishWorkspaceState();
-        }
-        if (action === 'speed') {
-          animation.playbackRate = Number(payload.value ?? 1);
-          publishWorkspaceState();
-        }
-        if (action === 'toggle') {
-          if (animation.playState === 'paused') animation.play();
-          else animation.pause();
-          publishWorkspaceState();
-        }
-        if (action === 'replay') {
-          animation.currentTime = 0;
-          animation.play();
-          publishWorkspaceState();
-        }
-        if (action === 'loop') {
-          toggleMotionLoop(animation);
-          publishWorkspaceState();
-        }
-        if (
-          action === 'duration' ||
-          action === 'delay' ||
-          action === 'easing' ||
-          action === 'iterations' ||
-          action === 'direction' ||
-          action === 'fill'
-        ) {
-          const after = ['easing', 'direction', 'fill'].includes(action)
-            ? String(payload.value ?? '')
-            : Number(payload.value);
-          void applyMotionTiming(motion, action, after).then(() => {
-            renderControls();
-            publishWorkspaceState();
-          });
-        }
-        if (action === 'curve') {
-          void applyMotionCurve(motion, requestedMotionCurve(payload)).then(() => {
-            renderControls();
-            publishWorkspaceState();
-          });
-        }
-        if (action === 'path-point') {
-          const index = Number(payload.index);
-          const frame = motion.descriptor.keyframes.find((candidate) => candidate.index === index);
-          if (frame) {
-            const currentTransform = String(frame.values.transform ?? 'none');
-            const nextTransform = replaceMotionTranslation(
-              currentTransform,
-              Number(payload.x),
-              Number(payload.y),
-            );
-            void applyMotionKeyframe(motion, index, 'transform', nextTransform).then(() => {
-              renderControls();
-              publishWorkspaceState();
-            });
-          }
-        }
-        if (
-          action === 'keyframe-value' ||
-          action === 'keyframe-offset' ||
-          action === 'keyframe-easing'
-        ) {
-          const property =
-            action === 'keyframe-value'
-              ? String(payload.property ?? '')
-              : action === 'keyframe-offset'
-                ? 'offset'
-                : 'easing';
-          const after =
-            action === 'keyframe-offset' ? Number(payload.value) : String(payload.value);
-          void applyMotionKeyframe(motion, Number(payload.index), property, after).then(() => {
-            renderControls();
-            publishWorkspaceState();
-          });
-        }
-      }
-    }
-    if (message.command === 'typography-action' && selected) {
-      const action = String(payload.action ?? '');
-      if (action === 'preview-family') {
-        const family = String(payload.family ?? '');
-        const origin = payload.origin === 'local' ? 'local' : 'project';
-        const control = selectedControls.find((item) => item.property === 'fontFamily');
-        if (family && control) {
-          if (origin === 'local') {
-            restoreTypographyPreview();
-            typographyPreview = {
-              element: selected,
-              inlineFamily: selected.style.fontFamily,
-              inlineWeight: selected.style.fontWeight,
-              inlineStyle: selected.style.fontStyle,
-              inlineVariationSettings: selected.style.fontVariationSettings,
-              family,
-              origin: 'local',
-            };
-            selected.style.fontFamily = fontFamilyDeclaration(family, String(control.read()));
-            selectedControls = controlsFor(selected);
-            updateOutline();
-            publishWorkspaceState();
-          } else {
-            restoreTypographyPreview();
-            void applyControlValue(
-              control,
-              fontFamilyDeclaration(family, String(control.read())),
-              `Use ${family}`,
-            ).then(() => {
-              if (selected) selectedControls = controlsFor(selected);
-              renderControls();
-              publishWorkspaceState();
-            });
-          }
-        }
-      }
-      if (action === 'preview-google') {
-        void previewGoogleFont(payload.font as unknown as GoogleFontFamily).then(
-          publishWorkspaceState,
-        );
-      }
-      if (action === 'review-google') {
-        if (payload.strategy) googleTypographyStrategy = payload.strategy as FontInstallStrategy;
-        if (googleTypographySelection) {
-          if (payload.weight) {
-            googleTypographySelection.weight = Number(payload.weight);
-            googleTypographySelection.axes.wght = Number(payload.weight);
-          }
-          if (payload.style === 'normal' || payload.style === 'italic')
-            googleTypographySelection.style = payload.style;
-        }
-        void reviewGoogleFont().then(publishWorkspaceState);
-      }
-      if (action === 'preview-treatment') {
-        previewTypeTreatment(String(payload.treatmentId ?? 'balanced'));
-        publishWorkspaceState();
-      }
-      if (action === 'preview-scale') {
-        typographyScaleBase = Number(payload.base ?? typographyScaleBase);
-        typographyScaleRatio = Number(payload.ratio ?? typographyScaleRatio);
-        typographyScaleStep = Number(payload.step ?? typographyScaleStep);
-        typographyScaleFluid = Boolean(payload.fluid);
-        previewTypeScale();
-        publishWorkspaceState();
-      }
-      if (action === 'review-treatment') void reviewTypeTreatment().then(publishWorkspaceState);
-      if (action === 'review-scale') void reviewTypeScale().then(publishWorkspaceState);
-      if (action === 'reset-preview') {
-        restoreTypographyPreview();
-        publishWorkspaceState();
-      }
-      if (action === 'save-style') {
-        typographyStyleName = String(payload.name ?? '');
-        void saveCurrentProjectTypographyStyle().then(publishWorkspaceState);
-      }
-      if (action === 'apply-style')
-        void applyProjectTypographyStyle(String(payload.styleId ?? '')).then(publishWorkspaceState);
-      if (action === 'remove-style') {
-        removeProjectTypographyStyle(String(payload.styleId ?? ''));
-        publishWorkspaceState();
-      }
-    }
-    if (message.command === 'set-context') {
-      const fields = { scope, breakpoint, theme, state } as const;
-      const key = String(payload.key) as keyof typeof fields;
-      const field = fields[key];
-      if (field) {
-        field.value = String(payload.value ?? 'current');
-        field.dispatchEvent(new Event('change', { bubbles: true }));
-        publishWorkspaceState();
-      }
-    }
-    if (message.command === 'undo') void replayHistory(-1).then(publishWorkspaceState);
-    if (message.command === 'redo') void replayHistory(1).then(publishWorkspaceState);
-    if (message.command === 'compare') {
-      const mode = payload.mode === 'before' ? 'before' : 'after';
-      showComparison(mode);
-      publishWorkspaceState();
-    }
-    if (message.command === 'interface-theme') {
-      const preference = String(payload.value);
-      if (preference === 'system' || preference === 'light' || preference === 'dark') {
-        applyInterfaceTheme(preference);
-        publishWorkspaceState();
-      }
-    }
-    if (message.command === 'scan-health') {
-      scanDesignHealth();
-      window.setTimeout(publishWorkspaceState, 0);
-    }
+      })
+      .catch((error) => {
+        const detail =
+          error instanceof Error ? error.message : `Workspace command ${command} failed`;
+        publishWorkspaceResult(message.requestId, { ok: false, error: detail });
+        if (!message.requestId) showToast(detail);
+      });
   }
 
   function handleEmbeddedCanvasKeyDown(event: KeyboardEvent): void {
@@ -3766,6 +4985,7 @@ export function installFoundryInspector(
     const selectedWorkbenchViewport = workbenchViewport.value;
     const workbenchTheme = shadow.querySelector<HTMLSelectElement>('[data-workbench-theme]')!;
     const selectedWorkbenchTheme = workbenchTheme.value || 'current';
+    const workbenchStates = shadow.querySelector<HTMLElement>('[data-workbench-states]')!;
     breakpoint.innerHTML = [
       '<option value="current">Current</option>',
       ...designGraph.breakpoints.map(
@@ -3784,11 +5004,6 @@ export function installFoundryInspector(
       ...designGraph.states.map(
         (item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`,
       ),
-      '<option value="hover">Hover</option>',
-      '<option value="focus">Focus</option>',
-      '<option value="active">Active</option>',
-      '<option value="disabled">Disabled</option>',
-      '<option value="reduced-motion">Reduced motion</option>',
     ].join('');
     workbenchViewport.innerHTML = designGraph.breakpoints
       .map(
@@ -3802,6 +5017,16 @@ export function installFoundryInspector(
         (item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`,
       ),
     ].join('');
+    if (!designGraph.states.some((item) => item.id === workbenchStateId)) {
+      workbenchStateId = 'current';
+    }
+    workbenchStates.innerHTML = designGraph.states
+      .map((item) => {
+        const methods = previewStateMethods(item as PreviewStateDefinition);
+        const supported = methods.length > 0;
+        return `<button type="button" data-workbench-state="${escapeHtml(item.id)}" class="${item.id === workbenchStateId ? 'active' : ''}" aria-pressed="${item.id === workbenchStateId}" ${supported ? '' : 'disabled'} title="${supported ? escapeHtml(methods.join(', ')) : 'No authored preview method'}">${escapeHtml(item.label)}</button>`;
+      })
+      .join('');
     const restoreValue = (field: HTMLSelectElement, value: string, fallback?: string): void => {
       const available = [...field.options].some((option) => option.value === value);
       field.value = available ? value : (fallback ?? field.options[0]?.value ?? '');
@@ -3876,6 +5101,7 @@ export function installFoundryInspector(
         showToast('Click any element. Shift-click builds a selection.');
       }
       hydratedOnce = true;
+      if (verificationChild) publishWorkspaceState();
     } catch (error) {
       runtimeConnected = false;
       setSessionStatus(
@@ -3890,7 +5116,7 @@ export function installFoundryInspector(
     clearInterval(sessionPoll);
     sessionPoll = setInterval(() => void hydrateSession(), 5000);
   }
-  startSessionPolling();
+  if (!verificationChild) startSessionPolling();
 
   function showToast(message: string): void {
     const toast = shadow.querySelector<HTMLElement>('.toast')!;
@@ -4094,13 +5320,12 @@ export function installFoundryInspector(
     showToast('Decision saved to this project');
   }
 
-  async function applyRecipe(recipeId: string): Promise<void> {
+  async function applyRecipe(recipeId: string): Promise<{ applied: number; attempted: number }> {
     if (!selected) {
-      showToast('Select a compatible element first');
-      return;
+      throw new Error('Select a compatible element first');
     }
     const recipe = designMemory.recipes.find((item) => item.id === recipeId);
-    if (!recipe) return;
+    if (!recipe) throw new Error(`Visual recipe ${recipeId} was not found`);
     const available = controlsFor(selected);
     const assessment = assessRecipe(
       recipe,
@@ -4117,17 +5342,39 @@ export function installFoundryInspector(
       },
     );
     let applied = 0;
+    let attempted = 0;
     for (const mapping of assessment.mappings) {
       if (mapping.status === 'unsupported' || mapping.resolvedValue == null) continue;
       const control = available.find((item) => item.property === mapping.property);
       if (!control) continue;
-      await applyControlValue(control, mapping.resolvedValue, `Apply ${recipe.name}`);
-      applied += 1;
+      attempted += 1;
+      const before = control.read();
+      const historyLength = previewHistory.length;
+      const cursorBefore = historyCursor;
+      const outcome = await applyControlValue(
+        control,
+        mapping.resolvedValue,
+        `Apply ${recipe.name}`,
+      );
+      if (outcome.applied && !outcome.recorded) {
+        control.apply(before);
+        previewHistory.splice(historyLength);
+        historyCursor = Math.min(cursorBefore, previewHistory.length);
+        updateHistoryActions();
+        updateOutline();
+        throw new Error(
+          applied
+            ? `${applied} recipe values were recorded, but the next source change failed`
+            : 'The recipe preview changed, but its source changes could not be recorded',
+        );
+      }
+      if (outcome.recorded) applied += 1;
     }
     selectedControls = controlsFor(selected);
     renderControls();
     renderDesignMemory();
     showToast(applied ? `${applied} treatment values previewed` : 'No compatible values found');
+    return { applied, attempted };
   }
 
   function saveManualBaseline(): void {
@@ -4242,6 +5489,503 @@ export function installFoundryInspector(
       hash = Math.imul(hash, 16777619);
     }
     return `web_${(hash >>> 0).toString(16)}`;
+  }
+
+  function previewGraph(): PreviewDesignGraph {
+    return {
+      breakpoints: designGraph?.breakpoints ?? [],
+      themes: designGraph?.themes ?? [],
+      states: (designGraph?.states ?? []) as PreviewStateDefinition[],
+    };
+  }
+
+  function configuredPreviewCapabilities() {
+    return previewCapabilities(previewGraph());
+  }
+
+  function normalizePreviewContext(value: unknown): PreviewContext {
+    const input = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+    const viewportInput =
+      input.viewport && typeof input.viewport === 'object'
+        ? (input.viewport as Record<string, unknown>)
+        : {};
+    const targetInput =
+      input.selectedTarget && typeof input.selectedTarget === 'object'
+        ? (input.selectedTarget as Record<string, unknown>)
+        : null;
+    const requestRevision = Number(input.requestRevision);
+    const motion = String(input.motionPreference ?? 'system');
+    return {
+      version: PREVIEW_CONTEXT_VERSION,
+      requestRevision: Number.isFinite(requestRevision)
+        ? Math.max(0, Math.round(requestRevision))
+        : ++previewApplicationRevision,
+      viewport: {
+        id: String(viewportInput.id ?? 'current'),
+        ...(Number.isFinite(Number(viewportInput.width))
+          ? { width: Number(viewportInput.width) }
+          : {}),
+        ...(Number.isFinite(Number(viewportInput.height))
+          ? { height: Number(viewportInput.height) }
+          : {}),
+      },
+      theme: String(input.theme ?? 'current'),
+      state: String(input.state ?? 'current'),
+      motionPreference: motion === 'reduce' || motion === 'no-preference' ? motion : 'system',
+      ...(targetInput && typeof targetInput.selector === 'string' && targetInput.selector
+        ? {
+            selectedTarget: {
+              id: String(targetInput.id ?? targetInput.selector),
+              selector: targetInput.selector,
+            },
+          }
+        : {}),
+    };
+  }
+
+  function previewAxis(
+    status: PreviewAxisResult['status'],
+    method: string,
+    evidence: string[],
+    failureReason?: string,
+  ): PreviewAxisResult {
+    return {
+      status,
+      method,
+      evidence,
+      ...(failureReason ? { failureReason } : {}),
+    };
+  }
+
+  function previewTarget(context: PreviewContext): HTMLElement | null {
+    if (context.selectedTarget?.selector) {
+      return resolveFoundrySelector(document, context.selectedTarget.selector);
+    }
+    return selected;
+  }
+
+  function capturePreviewThemeBaseline(): void {
+    captureThemeBaseline(document.documentElement, previewGraph().themes, previewThemeBaseline);
+  }
+
+  function restoreConfiguredPreviewTheme(): void {
+    restorePreviewThemeBaseline(document.documentElement, previewThemeBaseline);
+  }
+
+  function deepestActiveElement(documentRoot: Document): HTMLElement | null {
+    let active = documentRoot.activeElement;
+    const HTMLElementConstructor = documentRoot.defaultView?.HTMLElement;
+    while (
+      HTMLElementConstructor &&
+      active instanceof HTMLElementConstructor &&
+      active.shadowRoot?.activeElement
+    ) {
+      active = active.shadowRoot.activeElement;
+    }
+    return HTMLElementConstructor && active instanceof HTMLElementConstructor
+      ? (active as HTMLElement)
+      : null;
+  }
+
+  function restoreOriginalFocus(
+    documentRoot: Document,
+    target: HTMLElement,
+    previouslyFocused: HTMLElement | null,
+  ): void {
+    if (deepestActiveElement(documentRoot) !== target || previouslyFocused === target) return;
+    if (
+      previouslyFocused &&
+      previouslyFocused !== documentRoot.body &&
+      previouslyFocused.isConnected
+    ) {
+      previouslyFocused.focus({ preventScroll: true });
+      return;
+    }
+    target.blur();
+  }
+
+  function authoredReducedMotionEvidence(documentRoot: Document): string[] {
+    const matches: string[] = [];
+    const visit = (rules: CSSRuleList): void => {
+      for (const rule of [...rules]) {
+        const condition =
+          'conditionText' in rule ? String((rule as CSSConditionRule).conditionText ?? '') : '';
+        if (condition.includes('prefers-reduced-motion')) matches.push(condition);
+        if ('cssRules' in rule) {
+          try {
+            visit((rule as CSSGroupingRule).cssRules);
+          } catch {
+            // Cross-origin nested rules cannot be inspected safely.
+          }
+        }
+      }
+    };
+    for (const sheet of [...documentRoot.styleSheets]) {
+      try {
+        visit(sheet.cssRules);
+      } catch {
+        // Cross-origin stylesheets remain visible but cannot prove authored behavior.
+      }
+    }
+    return [...new Set(matches)];
+  }
+
+  function managedStateQueryNeedsReload(
+    stateDefinition: PreviewStateDefinition | undefined,
+    stateId: string,
+  ): boolean {
+    const managedKeys = new Set(
+      previewGraph().states.flatMap((item) => Object.keys(item.query ?? {})),
+    );
+    const requested = queryForPreviewState(previewGraph().states, stateId);
+    for (const key of managedKeys) {
+      const actual = new URL(location.href).searchParams.get(key);
+      const expected = requested[key] ?? null;
+      if (actual !== expected) return true;
+    }
+    return Boolean(
+      stateDefinition && Object.keys(stateDefinition.query ?? {}).length && !managedKeys.size,
+    );
+  }
+
+  function applyAuthoredPreviewState(
+    target: HTMLElement | null,
+    definition: PreviewStateDefinition | undefined,
+    pseudoRules: Map<PreviewPseudoState, { css: string; evidence: string[] }>,
+  ): void {
+    restorePreviewState();
+    restorePreviewState = (): void => {};
+    if (!target || !definition) return;
+    const previouslyFocused = deepestActiveElement(document);
+    const restorers: Array<() => void> = [applyPreviewStateAttributes(target, definition)];
+    for (const pseudo of definition.pseudoStates ?? []) {
+      const authored = pseudoRules.get(pseudo);
+      if (authored?.css) {
+        const style = document.createElement('style');
+        style.dataset.foundryPreviewState = pseudo;
+        style.textContent = authored.css;
+        document.head.append(style);
+        restorers.push(() => style.remove());
+      }
+    }
+    const restore = () => {
+      restorers.reverse().forEach((restore) => restore());
+      restoreOriginalFocus(document, target, previouslyFocused);
+    };
+    restorePreviewState = restore;
+    if (definition.pseudoStates?.includes('focus') && deepestActiveElement(document) !== target) {
+      restore();
+      restorePreviewState = (): void => {};
+      throw new Error('The selected target did not accept native focus');
+    }
+    if (
+      definition.pseudoStates?.includes('disabled') &&
+      (!('disabled' in target) || !(target as HTMLButtonElement).disabled)
+    ) {
+      restore();
+      restorePreviewState = (): void => {};
+      throw new Error('The selected target did not accept the native disabled state');
+    }
+  }
+
+  function supportsNativeFocus(target: HTMLElement): boolean {
+    if ('disabled' in target && Boolean((target as HTMLButtonElement).disabled)) return false;
+    return target.matches(
+      'button, input, select, textarea, a[href], area[href], summary, iframe, object, embed, audio[controls], video[controls], [contenteditable]:not([contenteditable="false"]), [tabindex]',
+    );
+  }
+
+  async function applyPreviewContext(
+    requested: unknown,
+    rollback = false,
+  ): Promise<PreviewContextResult> {
+    const graph = previewGraph();
+    const request = normalizePreviewContext(requested);
+    previewApplicationRevision = acceptPreviewRevision(
+      request.requestRevision,
+      currentPreviewContext.requestRevision,
+      previewApplicationRevision,
+    );
+    const stateDefinition =
+      request.state === 'current'
+        ? undefined
+        : graph.states.find((definition) => definition.id === request.state);
+    const effectiveContext: PreviewContext = {
+      ...request,
+      theme:
+        request.theme === 'current' && stateDefinition?.theme
+          ? stateDefinition.theme
+          : request.theme,
+      motionPreference:
+        request.motionPreference === 'system' && stateDefinition?.reducedMotion
+          ? 'reduce'
+          : request.motionPreference,
+      viewport:
+        request.viewport.id === 'current' && stateDefinition?.viewport
+          ? { ...request.viewport, ...stateDefinition.viewport }
+          : request.viewport,
+    };
+    const target = previewTarget(effectiveContext);
+    const breakpointDefinition = graph.breakpoints.find(
+      (definition) => definition.id === effectiveContext.viewport.id,
+    );
+    const expectedWidth = effectiveContext.viewport.width ?? breakpointDefinition?.width;
+    const expectedHeight = effectiveContext.viewport.height ?? breakpointDefinition?.height;
+    const viewportRequested =
+      effectiveContext.viewport.id !== 'current' ||
+      expectedWidth !== undefined ||
+      expectedHeight !== undefined;
+    const viewportMatches =
+      (!expectedWidth || Math.abs(window.innerWidth - expectedWidth) <= 2) &&
+      (!expectedHeight || Math.abs(window.innerHeight - expectedHeight) <= 2);
+    const viewportResult = !viewportRequested
+      ? previewAxis('current', 'frame', [
+          `Current frame is ${window.innerWidth} × ${window.innerHeight}`,
+        ])
+      : !breakpointDefinition && !stateDefinition?.viewport && !expectedWidth
+        ? previewAxis(
+            'unsupported',
+            'frame',
+            [],
+            `Viewport ${effectiveContext.viewport.id} is not indexed`,
+          )
+        : viewportMatches
+          ? previewAxis('applied', 'frame', [
+              `Rendered frame matches ${expectedWidth ?? window.innerWidth} × ${expectedHeight ?? window.innerHeight}`,
+            ])
+          : previewAxis(
+              'unsupported',
+              'frame',
+              [`Rendered frame is ${window.innerWidth} × ${window.innerHeight}`],
+              `Resize the preview to ${expectedWidth ?? window.innerWidth} × ${expectedHeight ?? window.innerHeight}`,
+            );
+
+    const themeDefinition =
+      effectiveContext.theme === 'current'
+        ? undefined
+        : graph.themes.find((definition) => definition.id === effectiveContext.theme);
+    const resolvedThemeHook = themeDefinition ? themeHook(themeDefinition) : null;
+    const themeResult =
+      effectiveContext.theme === 'current'
+        ? previewAxis('current', 'root-baseline', ['Original root theme hooks preserved'])
+        : !themeDefinition
+          ? previewAxis(
+              'unsupported',
+              'root-hook',
+              [],
+              `Theme ${effectiveContext.theme} is not indexed`,
+            )
+          : resolvedThemeHook?.method === 'unsupported'
+            ? previewAxis(
+                'unsupported',
+                'root-hook',
+                themeDefinition.selector ? [themeDefinition.selector] : [],
+                'The indexed theme does not expose a root attribute or class hook',
+              )
+            : previewAxis('applied', `root-${resolvedThemeHook?.method}`, [
+                themeDefinition.attribute
+                  ? `${themeDefinition.attribute}=${themeDefinition.value ?? themeDefinition.id}`
+                  : (themeDefinition.selector ?? themeDefinition.id),
+              ]);
+
+    const stateMethods = previewStateMethods(stateDefinition);
+    const stateNeedsTarget = Boolean(
+      Object.keys(stateDefinition?.variant ?? {}).length ||
+      (stateDefinition?.pseudoStates ?? []).length,
+    );
+    const pseudoRules = new Map<PreviewPseudoState, { css: string; evidence: string[] }>();
+    if (target) {
+      for (const pseudo of stateDefinition?.pseudoStates ?? []) {
+        pseudoRules.set(pseudo, authoredPseudoCss(document, pseudo, target));
+      }
+    }
+    const unmatchedAuthoredPseudo = (stateDefinition?.pseudoStates ?? []).find(
+      (pseudo) =>
+        (pseudo === 'hover' || pseudo === 'active') && !pseudoRules.get(pseudo)?.evidence.length,
+    );
+    let stateFailure = '';
+    if (effectiveContext.state !== 'current' && !stateDefinition) {
+      stateFailure = `State ${effectiveContext.state} is not indexed`;
+    } else if (stateNeedsTarget && !target) {
+      stateFailure = 'Select the authored target before previewing this state';
+    } else if (
+      stateDefinition &&
+      !stateMethods.length &&
+      !stateDefinition.theme &&
+      !stateDefinition.viewport
+    ) {
+      stateFailure = 'This state has no authored query, variant, pseudo, viewport, or theme hook';
+    } else if (
+      target &&
+      stateDefinition?.pseudoStates?.includes('disabled') &&
+      !('disabled' in target)
+    ) {
+      stateFailure = 'The selected target does not support the native disabled state';
+    } else if (
+      target &&
+      stateDefinition?.pseudoStates?.includes('focus') &&
+      !supportsNativeFocus(target)
+    ) {
+      stateFailure = 'The selected target does not support native focus';
+    } else if (unmatchedAuthoredPseudo) {
+      stateFailure = `No readable same-origin authored :${unmatchedAuthoredPseudo} rule matches the selected target`;
+    }
+    const stateEvidence = [
+      ...(stateDefinition?.evidence ?? []),
+      ...[...pseudoRules.values()].flatMap((item) => item.evidence),
+    ];
+    const stateResult =
+      effectiveContext.state === 'current'
+        ? previewAxis('current', 'source-baseline', ['Original target state preserved'])
+        : stateFailure
+          ? previewAxis(
+              'unsupported',
+              stateMethods.join('+') || 'authored-state',
+              stateEvidence,
+              stateFailure,
+            )
+          : previewAxis('applied', stateMethods.join('+') || 'authored-context', [
+              ...stateEvidence,
+              `Applied indexed state ${stateDefinition?.label ?? effectiveContext.state}`,
+            ]);
+
+    const reducedMotionRules = authoredReducedMotionEvidence(document);
+    const systemReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let motionResult: PreviewAxisResult;
+    if (effectiveContext.motionPreference === 'system') {
+      motionResult = previewAxis('current', 'system-media-query', [
+        `System preference is ${systemReducedMotion ? 'reduce' : 'no-preference'}`,
+      ]);
+    } else if (effectiveContext.motionPreference === 'reduce') {
+      motionResult = !reducedMotionRules.length
+        ? previewAxis(
+            'unsupported',
+            'authored-media-query',
+            [],
+            'No authored prefers-reduced-motion rule was found',
+          )
+        : !systemReducedMotion
+          ? previewAxis(
+              'unsupported',
+              'authored-media-query',
+              reducedMotionRules,
+              'This browser frame cannot emulate reduced motion; enable the system preference',
+            )
+          : previewAxis('applied', 'authored-media-query', reducedMotionRules);
+    } else {
+      motionResult = systemReducedMotion
+        ? previewAxis(
+            'unsupported',
+            'system-media-query',
+            [],
+            'This browser frame cannot override the active reduced-motion system preference',
+          )
+        : previewAxis('applied', 'system-media-query', ['System preference is no-preference']);
+    }
+
+    const axes = {
+      viewport: viewportResult,
+      theme: themeResult,
+      state: stateResult,
+      motion: motionResult,
+    };
+    const unsupported = Object.entries(axes).filter(
+      ([, result]) => result.status === 'unsupported',
+    );
+    if (unsupported.length) {
+      return {
+        version: PREVIEW_CONTEXT_VERSION,
+        requestRevision: effectiveContext.requestRevision,
+        applied: false,
+        context: effectiveContext,
+        axes,
+        failureReason: unsupported
+          .map(([axis, result]) => `${axis}: ${result.failureReason}`)
+          .join('; '),
+      };
+    }
+
+    if (managedStateQueryNeedsReload(stateDefinition, effectiveContext.state)) {
+      return {
+        version: PREVIEW_CONTEXT_VERSION,
+        requestRevision: effectiveContext.requestRevision,
+        applied: false,
+        context: effectiveContext,
+        axes,
+        reloadQuery: queryForPreviewState(graph.states, effectiveContext.state),
+      };
+    }
+
+    const previousContext = currentPreviewContext;
+    try {
+      await applyPreviewMutationAtomically(
+        async () => {
+          capturePreviewThemeBaseline();
+          restoreConfiguredPreviewTheme();
+          if (themeDefinition && resolvedThemeHook?.method !== 'unsupported') {
+            applyPreviewTheme(document.documentElement, themeDefinition, graph.themes);
+          }
+          applyAuthoredPreviewState(target, stateDefinition, pseudoRules);
+          if (
+            [...breakpoint.options].some((option) => option.value === effectiveContext.viewport.id)
+          ) {
+            breakpoint.value = effectiveContext.viewport.id;
+            syncFdcSelect(breakpoint);
+          }
+          if ([...theme.options].some((option) => option.value === effectiveContext.theme)) {
+            theme.value = effectiveContext.theme;
+            syncFdcSelect(theme);
+          }
+          if ([...state.options].some((option) => option.value === effectiveContext.state)) {
+            state.value = effectiveContext.state;
+            syncFdcSelect(state);
+          }
+          currentPreviewContext = effectiveContext;
+          await document.fonts?.ready;
+          await new Promise<void>((resolve) => {
+            if (verificationChild) window.setTimeout(resolve, 0);
+            else requestAnimationFrame(() => resolve());
+          });
+        },
+        () => {
+          restorePreviewState();
+          restoreConfiguredPreviewTheme();
+          currentPreviewContext = previousContext;
+        },
+      );
+      const result: PreviewContextResult = {
+        version: PREVIEW_CONTEXT_VERSION,
+        requestRevision: effectiveContext.requestRevision,
+        applied: true,
+        context: effectiveContext,
+        axes,
+      };
+      lastPreviewApplication = result;
+      return result;
+    } catch (error) {
+      restorePreviewState();
+      restoreConfiguredPreviewTheme();
+      const rollbackContext = {
+        ...previousContext,
+        requestRevision: effectiveContext.requestRevision,
+      };
+      currentPreviewContext = previousContext;
+      if (!rollback) {
+        const restored = await applyPreviewContext(rollbackContext, true).catch(() => null);
+        if (!restored?.applied) currentPreviewContext = rollbackContext;
+      } else {
+        currentPreviewContext = rollbackContext;
+      }
+      return {
+        version: PREVIEW_CONTEXT_VERSION,
+        requestRevision: effectiveContext.requestRevision,
+        applied: false,
+        context: effectiveContext,
+        axes,
+        failureReason:
+          error instanceof Error ? error.message : 'The preview context could not be applied',
+      };
+    }
   }
 
   function collectLayerElements(root: Document | ShadowRoot): HTMLElement[] {
@@ -4511,6 +6255,19 @@ export function installFoundryInspector(
     target: HTMLElement,
     workshopState: ComponentWorkshopState,
   ): void {
+    const pseudo = workshopState.pseudoState;
+    const authored = pseudo ? authoredPseudoCss(document, pseudo, target) : undefined;
+    if ((pseudo === 'hover' || pseudo === 'active') && !authored?.evidence.length) {
+      throw new Error(
+        `No readable same-origin authored :${pseudo} rule matches the selected component`,
+      );
+    }
+    if (pseudo === 'focus' && !supportsNativeFocus(target)) {
+      throw new Error('The selected component does not support native focus');
+    }
+    if (pseudo === 'disabled' && !('disabled' in target)) {
+      throw new Error('The selected component does not support the native disabled state');
+    }
     clearWorkshopStatePreview();
     if (workshopState.kind === 'default') {
       state.value = 'current';
@@ -4524,18 +6281,24 @@ export function installFoundryInspector(
       ariaInvalid: target.getAttribute('aria-invalid'),
       foundryState: target.getAttribute('data-foundry-state'),
     };
-    const pseudo = workshopState.pseudoState;
     let style: HTMLStyleElement | undefined;
     if (pseudo) {
       target.setAttribute(`data-foundry-force-${pseudo}`, 'true');
-      style = document.createElement('style');
-      style.dataset.foundryWorkshopState = pseudo;
-      style.textContent = forcedPseudoCss(document, pseudo);
-      document.head.append(style);
+      if (authored?.css) {
+        style = document.createElement('style');
+        style.dataset.foundryWorkshopState = pseudo;
+        style.textContent = authored.css;
+        document.head.append(style);
+      }
       if (pseudo === 'focus') target.focus({ preventScroll: true });
       if (pseudo === 'disabled') {
         target.setAttribute('disabled', '');
         target.setAttribute('aria-disabled', 'true');
+      }
+      if (pseudo === 'focus' && deepestActiveElement(document) !== target) {
+        style?.remove();
+        target.removeAttribute(`data-foundry-force-${pseudo}`);
+        throw new Error('The selected component did not accept native focus');
       }
     } else {
       target.setAttribute('data-foundry-state', workshopState.id);
@@ -4563,14 +6326,17 @@ export function installFoundryInspector(
   async function previewWorkshopVariant(
     entry: NonNullable<ReturnType<typeof currentWorkshopEntry>>,
     variant: ComponentWorkshopVariant,
-  ): Promise<void> {
+  ): Promise<{ recorded: number; requested: number }> {
     const target = selected && entry.elements.includes(selected) ? selected : entry.elements[0];
-    if (!target) return;
+    if (!target) throw new Error('The requested component instance is unavailable');
     select(target);
     workshopVariantId = variant.id;
+    let recorded = 0;
+    const requested = Object.keys(variant.props).length;
     for (const [key, value] of Object.entries(variant.props)) {
       const attribute = `data-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
-      const before = target.getAttribute(attribute) ?? '';
+      const previous = target.getAttribute(attribute);
+      const before = previous ?? '';
       target.setAttribute(attribute, String(value));
       const control: Control = {
         category: 'content',
@@ -4581,13 +6347,32 @@ export function installFoundryInspector(
         read: () => target.getAttribute(attribute) ?? '',
         apply: (next) => target.setAttribute(attribute, String(next)),
       };
-      await record(control, before, String(value), target, `Set ${variant.name} variant`, [
-        `Component Workshop variant: ${variant.name}`,
-        `Variant source: ${workshopSourceLabel(variant.source)}`,
-      ]);
+      const didRecord = await record(
+        control,
+        before,
+        String(value),
+        target,
+        `Set ${variant.name} variant`,
+        [
+          `Component Workshop variant: ${variant.name}`,
+          `Variant source: ${workshopSourceLabel(variant.source)}`,
+        ],
+      );
+      if (!didRecord) {
+        if (previous == null) target.removeAttribute(attribute);
+        else target.setAttribute(attribute, previous);
+        renderComponentWorkshop();
+        throw new Error(
+          recorded
+            ? `${recorded} variant values were recorded, but the next source change failed`
+            : 'The variant preview changed, but its source changes could not be recorded',
+        );
+      }
+      recorded += 1;
     }
     renderComponentWorkshop();
     showToast(`${variant.name} previewed on ${entry.name}`);
+    return { recorded, requested };
   }
 
   function workshopElementProps(
@@ -4606,14 +6391,16 @@ export function installFoundryInspector(
   async function stageWorkshopVariant(
     entry: NonNullable<ReturnType<typeof currentWorkshopEntry>>,
     input: { axisId: string; label: string; value: string; baseVariantId?: string },
-  ): Promise<void> {
+  ): Promise<{ recorded: boolean; property: string }> {
     const definition = entry.definition;
     const target = selected && entry.elements.includes(selected) ? selected : entry.elements[0];
-    if (!definition || !target) return;
+    if (!definition || !target)
+      throw new Error('The requested source-backed component is unavailable');
     try {
       const draft = createComponentVariantDraft({ component: definition, ...input });
       const attribute = `data-${draft.property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
-      const before = target.getAttribute(attribute) ?? '';
+      const previous = target.getAttribute(attribute);
+      const before = previous ?? '';
       target.setAttribute(attribute, draft.value);
       const control: Control = {
         category: 'content',
@@ -4624,7 +6411,7 @@ export function installFoundryInspector(
         read: () => target.getAttribute(attribute) ?? '',
         apply: (next) => target.setAttribute(attribute, String(next)),
       };
-      await record(
+      const recorded = await record(
         control,
         before,
         draft.value,
@@ -4640,18 +6427,27 @@ export function installFoundryInspector(
         ],
         { source: draft.source, scope: 'component' },
       );
+      if (!recorded) {
+        if (previous == null) target.removeAttribute(attribute);
+        else target.setAttribute(attribute, previous);
+        throw new Error('The variant preview changed, but its source change could not be recorded');
+      }
       showToast(`${draft.label} is ready for review`);
+      return { recorded, property: draft.property };
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not stage this variant');
+      throw error;
     }
   }
 
-  async function stageTokenPromotion(candidateId: string): Promise<void> {
+  async function stageTokenPromotion(
+    candidateId: string,
+  ): Promise<{ recorded: boolean; changeIds: string[] }> {
     const candidate = designGraph?.tokenPromotions?.find((item) => item.id === candidateId);
-    if (!candidate || !sessionId || !token) return;
+    if (!candidate) throw new Error(`Token promotion ${candidateId} is not available`);
+    if (!sessionId || !token) throw new Error('Session connection is missing');
     if (!candidate.canStage || !candidate.sources.length) {
-      showToast(candidate.blockers[0] ?? 'This promotion has no exact source mapping');
-      return;
+      throw new Error(candidate.blockers[0] ?? 'This promotion has no exact source mapping');
     }
     const source = candidate.sources[0]!;
     const operationId = `op_${crypto.randomUUID().replaceAll('-', '')}`;
@@ -4694,62 +6490,61 @@ export function installFoundryInspector(
       },
     ];
     try {
-      let responsePayload = await sessionRequest('/changes', {
+      const responsePayload = await sessionRequest('/change-records', {
         method: 'POST',
         body: JSON.stringify({
-          target: {
-            id: targetId,
-            platform: 'web',
-            semanticRole: 'design-token',
-            label: candidate.suggestedTokenName,
-            componentPath: [],
-            source,
-            geometry: { x: 0, y: 0, width: 0, height: 0, scale: 1 },
-            locator: { sources: candidate.sources },
+          change: {
+            target: {
+              id: targetId,
+              platform: 'web',
+              semanticRole: 'design-token',
+              label: candidate.suggestedTokenName,
+              componentPath: [],
+              source,
+              geometry: { x: 0, y: 0, width: 0, height: 0, scale: 1 },
+              locator: { sources: candidate.sources },
+              confidence: 'instrumented',
+              evidence: ['Project token index', 'Exact authored source locations'],
+            },
+            category,
+            property: `designToken.${candidate.recommendation === 'use-existing' ? 'promote' : 'create'}`,
+            before: candidate.value,
+            after: replacement,
+            token: candidate.suggestedTokenName,
+            operationId,
+            stateIds: [],
+            mappingCandidates,
+            selectedMappingId: mappingId,
+            scope: 'component',
+            context: { breakpoint: 'current', theme: 'current', state: 'current' },
             confidence: 'instrumented',
-            evidence: ['Project token index', 'Exact authored source locations'],
+            evidence: [
+              ...candidate.evidence,
+              ...candidate.sources.map((item) => `${item.file}${item.line ? `:${item.line}` : ''}`),
+              'Preserve the resolved rendered value and semantic alias chain.',
+              'Re-index, rebuild, and verify every affected consumer after apply.',
+            ],
+            status: 'draft',
           },
-          category,
-          property: `designToken.${candidate.recommendation === 'use-existing' ? 'promote' : 'create'}`,
-          before: candidate.value,
-          after: replacement,
-          token: candidate.suggestedTokenName,
-          operationId,
-          stateIds: [],
-          mappingCandidates,
-          selectedMappingId: mappingId,
-          scope: 'component',
-          context: { breakpoint: 'current', theme: 'current', state: 'current' },
-          confidence: 'instrumented',
-          evidence: [
-            ...candidate.evidence,
-            ...candidate.sources.map((item) => `${item.file}${item.line ? `:${item.line}` : ''}`),
-            'Preserve the resolved rendered value and semantic alias chain.',
-            'Re-index, rebuild, and verify every affected consumer after apply.',
-          ],
-          status: 'draft',
+          operation: {
+            id: operationId,
+            kind: 'token-refactor',
+            label:
+              candidate.recommendation === 'use-existing'
+                ? `Promote ${candidate.occurrenceCount} literals to ${candidate.suggestedTokenName}`
+                : `Create ${candidate.suggestedTokenName} and promote ${candidate.occurrenceCount} literals`,
+            targetIds: [targetId],
+            stateIds: [],
+            mappingCandidates,
+            selectedMappingId: mappingId,
+            status: 'resolved',
+          },
         }),
       });
       const changeIds = responsePayload.changeSet.changes
         .filter((change: any) => change.operationId === operationId)
         .map((change: any) => change.id);
-      responsePayload = await sessionRequest('/operations', {
-        method: 'POST',
-        body: JSON.stringify({
-          id: operationId,
-          kind: 'token-refactor',
-          label:
-            candidate.recommendation === 'use-existing'
-              ? `Promote ${candidate.occurrenceCount} literals to ${candidate.suggestedTokenName}`
-              : `Create ${candidate.suggestedTokenName} and promote ${candidate.occurrenceCount} literals`,
-          targetIds: [targetId],
-          changeIds,
-          stateIds: [],
-          mappingCandidates,
-          selectedMappingId: mappingId,
-          status: 'resolved',
-        }),
-      });
+      if (!changeIds.length) throw new Error('The token promotion did not create a review change');
       const activeChanges = responsePayload.changeSet.changes.filter(
         (change: any) =>
           change.status !== 'rejected' && String(change.before) !== String(change.after),
@@ -4758,16 +6553,18 @@ export function installFoundryInspector(
       lastRecordedSummary = `${candidate.suggestedTokenName} · ${candidate.occurrenceCount} source locations`;
       updateChangeCount(activeChanges.length, activeChanges.at(-1));
       showToast('Token plan added to Review');
+      publishWorkspaceState();
+      return { recorded: true, changeIds };
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not stage this token plan');
+      throw error;
     }
-    publishWorkspaceState();
   }
 
   async function repairWorkshopVariantDrift(
     entry: NonNullable<ReturnType<typeof currentWorkshopEntry>>,
     variant: ComponentWorkshopVariant,
-  ): Promise<void> {
+  ): Promise<{ recorded: number; requested: number }> {
     const drift = componentVariantDrift(
       entry.elements.map((element) => ({
         id: foundryTargetId(element),
@@ -4776,6 +6573,7 @@ export function installFoundryInspector(
       })),
       variant,
     );
+    let recorded = 0;
     for (const mismatch of drift) {
       const target = entry.elements.find(
         (element) => foundryTargetId(element) === mismatch.instanceId,
@@ -4792,7 +6590,7 @@ export function installFoundryInspector(
         read: () => target.getAttribute(attribute) ?? '',
         apply: (next) => target.setAttribute(attribute, String(next)),
       };
-      await record(
+      const didRecord = await record(
         control,
         String(mismatch.actual),
         String(mismatch.expected),
@@ -4805,12 +6603,22 @@ export function installFoundryInspector(
         ],
         { source: variant.source },
       );
+      if (!didRecord) {
+        target.setAttribute(attribute, String(mismatch.actual));
+        throw new Error(
+          recorded
+            ? `${recorded} drift values were recorded, but the next source change failed`
+            : 'The drift repair preview changed, but its source change could not be recorded',
+        );
+      }
+      recorded += 1;
     }
     showToast(
       drift.length
         ? `${drift.length} drift ${drift.length === 1 ? 'value' : 'values'} ready for review`
         : 'No explicit variant drift was found',
     );
+    return { recorded, requested: drift.length };
   }
 
   function renderComponentWorkshop(): void {
@@ -4899,14 +6707,16 @@ export function installFoundryInspector(
             )
             .join('')
         : '<span class="component-workshop-scope-note">No variants were discovered for this component.</span>'
-    }</div></section>${authoring}${driftMarkup}<section class="component-workshop-section"><header><strong>Visual states</strong><span>Preview only · never saved as a design change</span></header><div class="component-workshop-states">${states
-      .map(
-        (item) =>
-          `<button class="${workshopStateId === item.id ? 'active' : ''}" data-workshop-state="${escapeHtml(item.id)}" data-confidence="${item.confidence}" ${entry.elements.length ? '' : 'disabled'}><i class="component-workshop-state-signal"></i>${escapeHtml(item.label)}</button>`,
-      )
-      .join(
-        '',
-      )}</div><span class="component-workshop-state-note">Green states use native browser behavior. Inferred product states expose semantic attributes and remain read-only when the project has no matching style.</span></section>`;
+    }</div></section>${authoring}${driftMarkup}<section class="component-workshop-section"><header><strong>Visual states</strong><span>Preview only · never saved as a design change</span></header><div class="component-workshop-states">${
+      states.length
+        ? states
+            .map(
+              (item) =>
+                `<button class="${workshopStateId === item.id ? 'active' : ''}" data-workshop-state="${escapeHtml(item.id)}" data-confidence="${item.confidence}" ${entry.elements.length ? '' : 'disabled'}><i class="component-workshop-state-signal"></i>${escapeHtml(item.label)}</button>`,
+            )
+            .join('')
+        : '<span class="component-workshop-state-note">No authored component states are indexed for this project.</span>'
+    }</div><span class="component-workshop-state-note">Only authored states from the project design graph appear here.</span></section>`;
     renderIcons(body);
     upgradeFdcSelects(body);
     body
@@ -5432,11 +7242,11 @@ export function installFoundryInspector(
     }
   }
 
-  async function replayHistory(direction: -1 | 1): Promise<void> {
+  async function replayHistory(direction: -1 | 1): Promise<{ recorded: boolean }> {
     const entry = direction < 0 ? previewHistory[historyCursor - 1] : previewHistory[historyCursor];
-    if (!entry) return;
-    if (direction < 0) historyCursor -= 1;
-    else historyCursor += 1;
+    if (!entry)
+      throw new Error(direction < 0 ? 'There is nothing to undo' : 'There is nothing to redo');
+    const nextCursor = historyCursor + direction;
     const from = direction < 0 ? entry.after : entry.before;
     const to = direction < 0 ? entry.before : entry.after;
     applyHistoryValue(entry, to);
@@ -5450,8 +7260,23 @@ export function installFoundryInspector(
       read: () => to,
       apply: () => {},
     };
-    await record(historyControl, from, to, entry.element, direction < 0 ? 'Undo' : 'Redo');
+    const recorded = await record(
+      historyControl,
+      from,
+      to,
+      entry.element,
+      direction < 0 ? 'Undo' : 'Redo',
+    );
+    if (!recorded) {
+      applyHistoryValue(entry, from);
+      updateHistoryActions();
+      throw new Error(
+        `The preview ${direction < 0 ? 'undo' : 'redo'} could not be recorded and was restored`,
+      );
+    }
+    historyCursor = nextCursor;
     updateHistoryActions();
+    return { recorded };
   }
 
   async function sessionRequest(path = '', options: RequestInit = {}): Promise<any> {
@@ -5496,29 +7321,63 @@ export function installFoundryInspector(
     breakpoint.value = viewport.id;
   }
 
-  function forcedPseudoCss(
+  let pseudoMatchRevision = 0;
+
+  function authoredPseudoCss(
     documentRoot: Document,
-    state: 'hover' | 'focus' | 'active' | 'disabled',
-  ): string {
+    state: PreviewPseudoState,
+    target: HTMLElement,
+  ): { css: string; evidence: string[] } {
     const rules: string[] = [];
-    for (const sheet of [...documentRoot.styleSheets]) {
-      try {
-        for (const rule of [...sheet.cssRules]) {
-          if (rule.type !== 1) continue;
-          const styleRule = rule as CSSStyleRule;
-          if (!styleRule.selectorText.includes(`:${state}`)) continue;
-          rules.push(
-            `${styleRule.selectorText.replaceAll(`:${state}`, `[data-foundry-force-${state}]`)}{${styleRule.style.cssText}}`,
-          );
+    const evidence: string[] = [];
+    const markerAttribute = 'data-foundry-pseudo-match';
+    const markerValue = `${state}-${++pseudoMatchRevision}`;
+    const previousMarker = target.getAttribute(markerAttribute);
+    const markerSelector = `[${markerAttribute}="${markerValue}"]`;
+    target.setAttribute(markerAttribute, markerValue);
+    try {
+      const visit = (ruleList: CSSRuleList): void => {
+        for (const rule of [...ruleList]) {
+          if ('selectorText' in rule && 'style' in rule) {
+            const styleRule = rule as CSSStyleRule;
+            const matchesTarget = authoredPseudoSelectorMatches(
+              styleRule.selectorText,
+              state,
+              markerSelector,
+              (selector) => documentRoot.querySelector(selector) !== null,
+            );
+            if (!matchesTarget) continue;
+            const selector = replacePreviewPseudoSelector(styleRule.selectorText, state);
+            if (!selector) continue;
+            rules.push(`${selector}{${styleRule.style.cssText}}`);
+            evidence.push(styleRule.selectorText);
+            continue;
+          }
+          if ('cssRules' in rule) {
+            try {
+              visit((rule as CSSGroupingRule).cssRules);
+            } catch {
+              // Cross-origin nested rules cannot be rewritten safely.
+            }
+          }
         }
-      } catch {
-        // Cross-origin styles remain visible but cannot be safely rewritten.
+      };
+      for (const sheet of [...documentRoot.styleSheets]) {
+        try {
+          visit(sheet.cssRules);
+        } catch {
+          // Cross-origin styles remain visible but cannot be safely rewritten.
+        }
       }
+    } finally {
+      if (previousMarker == null) target.removeAttribute(markerAttribute);
+      else target.setAttribute(markerAttribute, previousMarker);
     }
-    return rules.join('\n');
+    return { css: rules.join('\n'), evidence: [...new Set(evidence)] };
   }
 
   function applyWorkbenchState(): void {
+    const frame = shadow.querySelector<HTMLIFrameElement>('.frame-shell iframe')!;
     const frameDocument = workbenchDocument();
     const warning = shadow.querySelector<HTMLElement>('.workbench-warning')!;
     if (!frameDocument) {
@@ -5527,61 +7386,144 @@ export function installFoundryInspector(
         'This application blocks same-origin framing. Foundry is keeping the current live viewport available instead.';
       return;
     }
-    warning.hidden = true;
-    const themeId = shadow.querySelector<HTMLSelectElement>('[data-workbench-theme]')!.value;
-    for (const item of designGraph?.themes ?? []) {
-      if (item.attribute) frameDocument.documentElement.removeAttribute(item.attribute);
-      if (item.selector?.startsWith('.'))
-        frameDocument.documentElement.classList.remove(item.selector.slice(1));
+    restoreWorkbenchPreview();
+    restoreWorkbenchPreview = (): void => {};
+    const graph = previewGraph();
+    const selectedState = graph.states.find((item) => item.id === workbenchStateId);
+    const managedQueryKeys = new Set(graph.states.flatMap((item) => Object.keys(item.query ?? {})));
+    const requestedQuery = queryForPreviewState(graph.states, workbenchStateId);
+    const nextUrl = new URL(frame.src || location.href, location.href);
+    for (const key of managedQueryKeys) {
+      if (key in requestedQuery) nextUrl.searchParams.set(key, requestedQuery[key]!);
+      else nextUrl.searchParams.delete(key);
     }
-    const selectedTheme = designGraph?.themes.find((item) => item.id === themeId);
-    if (selectedTheme?.attribute)
-      frameDocument.documentElement.setAttribute(
-        selectedTheme.attribute,
-        selectedTheme.value ?? selectedTheme.id,
-      );
-    if (selectedTheme?.selector?.startsWith('.'))
-      frameDocument.documentElement.classList.add(selectedTheme.selector.slice(1));
-    theme.value = themeId;
-
+    if (nextUrl.href !== frame.src) {
+      frame.src = nextUrl.href;
+      return;
+    }
+    const issues: string[] = [];
+    const restorers: Array<() => void> = [];
+    const preserveAttribute = (element: HTMLElement, name: string): void => {
+      const before = element.getAttribute(name);
+      restorers.push(() => {
+        if (before == null) element.removeAttribute(name);
+        else element.setAttribute(name, before);
+      });
+    };
+    const root = frameDocument.documentElement;
+    const requestedThemeId =
+      shadow.querySelector<HTMLSelectElement>('[data-workbench-theme]')!.value;
+    const themeId =
+      requestedThemeId === 'current' && selectedState?.theme
+        ? selectedState.theme
+        : requestedThemeId;
+    if (themeId !== 'current') {
+      const selectedTheme = graph.themes.find((item) => item.id === themeId);
+      if (!selectedTheme) {
+        issues.push(`Theme ${themeId} is not authored for this project.`);
+      } else {
+        const preservedAttributes = new Set<string>();
+        const preservedClasses = new Set<string>();
+        for (const item of graph.themes) {
+          const hook = themeHook(item);
+          if (hook.method === 'attribute' && !preservedAttributes.has(hook.attribute)) {
+            preservedAttributes.add(hook.attribute);
+            preserveAttribute(root, hook.attribute);
+            root.removeAttribute(hook.attribute);
+          }
+          if (hook.method === 'class' && !preservedClasses.has(hook.className)) {
+            preservedClasses.add(hook.className);
+            const present = root.classList.contains(hook.className);
+            restorers.push(() => root.classList.toggle(hook.className, present));
+            root.classList.remove(hook.className);
+          }
+        }
+        const hook = themeHook(selectedTheme);
+        if (hook.method === 'attribute') root.setAttribute(hook.attribute, hook.value);
+        else if (hook.method === 'class') root.classList.add(hook.className);
+        else issues.push(`Theme ${selectedTheme.label} has no safe root hook.`);
+      }
+    }
+    if ([...theme.options].some((option) => option.value === themeId)) {
+      theme.value = themeId;
+      syncFdcSelect(theme);
+    }
     const selector = selected ? cssPath(selected) : undefined;
     const framedTarget = selector
       ? (frameDocument.querySelector(selector) as HTMLElement | null)
       : null;
-    for (const state of ['hover', 'focus', 'active', 'disabled'] as const) {
-      frameDocument.querySelectorAll(`[data-foundry-force-${state}]`).forEach((item) => {
-        item.removeAttribute(`data-foundry-force-${state}`);
-        if (state === 'disabled') {
-          item.removeAttribute('disabled');
-          item.removeAttribute('aria-disabled');
-        }
-      });
-      const button = shadow.querySelector<HTMLButtonElement>(`[data-workbench-state="${state}"]`)!;
-      const styleId = `foundry-force-${state}`;
-      frameDocument.getElementById(styleId)?.remove();
-      if (!button.classList.contains('active') || !framedTarget) continue;
-      framedTarget.setAttribute(`data-foundry-force-${state}`, 'true');
-      if (state === 'focus') framedTarget.focus();
-      if (state === 'disabled') {
-        framedTarget.setAttribute('disabled', '');
-        framedTarget.setAttribute('aria-disabled', 'true');
+    const requiresTarget = Boolean(
+      selectedState &&
+      (Object.keys(selectedState.variant ?? {}).length ||
+        (selectedState.pseudoStates ?? []).length),
+    );
+    if (requiresTarget && !framedTarget) {
+      issues.push('Select a rendered target before previewing this authored state.');
+    } else if (selectedState && framedTarget) {
+      for (const [property, value] of Object.entries(selectedState.variant ?? {})) {
+        const attribute = variantAttribute(property);
+        preserveAttribute(framedTarget, attribute);
+        framedTarget.setAttribute(attribute, String(value));
       }
-      const style = frameDocument.createElement('style');
-      style.id = styleId;
-      style.textContent = forcedPseudoCss(frameDocument, state);
-      frameDocument.head.append(style);
+      const previouslyFocused = deepestActiveElement(frameDocument);
+      for (const pseudo of selectedState.pseudoStates ?? []) {
+        const authored = authoredPseudoCss(frameDocument, pseudo, framedTarget);
+        if ((pseudo === 'hover' || pseudo === 'active') && !authored.evidence.length) {
+          issues.push(`No same-origin authored :${pseudo} rule matches the selected target.`);
+          continue;
+        }
+        if (pseudo === 'focus' && !supportsNativeFocus(framedTarget)) {
+          issues.push('The selected target does not support native focus.');
+          continue;
+        }
+        if (pseudo === 'disabled' && !('disabled' in framedTarget)) {
+          issues.push('The selected target does not support the native disabled state.');
+          continue;
+        }
+        const forcedAttribute = `data-foundry-force-${pseudo}`;
+        preserveAttribute(framedTarget, forcedAttribute);
+        framedTarget.setAttribute(forcedAttribute, 'true');
+        if (authored.css) {
+          const style = frameDocument.createElement('style');
+          style.dataset.foundryWorkbenchState = pseudo;
+          style.textContent = authored.css;
+          frameDocument.head.append(style);
+          restorers.push(() => style.remove());
+        }
+        if (pseudo === 'focus') framedTarget.focus({ preventScroll: true });
+        if (pseudo === 'disabled') {
+          preserveAttribute(framedTarget, 'disabled');
+          preserveAttribute(framedTarget, 'aria-disabled');
+          framedTarget.setAttribute('disabled', '');
+          framedTarget.setAttribute('aria-disabled', 'true');
+        }
+      }
+      restorers.push(() => {
+        restoreOriginalFocus(frameDocument, framedTarget, previouslyFocused);
+      });
     }
-    const reduceMotion = shadow
-      .querySelector<HTMLButtonElement>('[data-workbench-motion]')!
-      .classList.contains('active');
-    frameDocument.getElementById('foundry-reduced-motion')?.remove();
-    if (reduceMotion) {
-      const style = frameDocument.createElement('style');
-      style.id = 'foundry-reduced-motion';
-      style.textContent =
-        '*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}';
-      frameDocument.head.append(style);
+    if (selectedState?.reducedMotion) {
+      const authoredRules = authoredReducedMotionEvidence(frameDocument);
+      if (!authoredRules.length) {
+        issues.push('This project does not expose an authored reduced-motion rule.');
+      } else if (
+        !frameDocument.defaultView?.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
+        issues.push(
+          'Enable the system reduced-motion preference to inspect the project’s authored behavior.',
+        );
+      }
     }
+    restoreWorkbenchPreview = () => restorers.reverse().forEach((restore) => restore());
+    if ([...state.options].some((option) => option.value === workbenchStateId)) {
+      state.value = workbenchStateId;
+      syncFdcSelect(state);
+    } else {
+      state.value = 'current';
+      syncFdcSelect(state);
+    }
+    warning.hidden = issues.length === 0;
+    warning.textContent = issues.join(' ');
   }
 
   function renderWorkbenchMatrix(): void {
@@ -5662,6 +7604,15 @@ export function installFoundryInspector(
       open: false,
     });
     workbench.hidden = true;
+    restoreWorkbenchPreview();
+    restoreWorkbenchPreview = (): void => {};
+    workbenchStateId = 'current';
+    shadow.querySelectorAll<HTMLButtonElement>('[data-workbench-state]').forEach((button) => {
+      button.classList.remove('active');
+      button.setAttribute('aria-pressed', 'false');
+    });
+    const frame = shadow.querySelector<HTMLIFrameElement>('.frame-shell iframe')!;
+    frame.removeAttribute('src');
     const workbenchButton = shadow.querySelector<HTMLButtonElement>('.open-workbench')!;
     workbenchButton.classList.remove('active');
     workbenchButton.setAttribute('aria-pressed', 'false');
@@ -5833,7 +7784,8 @@ export function installFoundryInspector(
                     unresolved,
                   });
                   const deletable = change.status !== 'applied';
-                  return `<div class="review-card ${change.status === 'rejected' ? 'rejected' : ''}" data-review-card="${escapeHtml(change.id)}"><input aria-label="Include ${escapeHtml(change.property)} change" type="checkbox" data-review-change="${escapeHtml(change.id)}" ${checked ? 'checked' : ''} ${selectable ? '' : 'disabled'}/><div class="review-card-main"><div class="review-card-line"><strong title="${escapeHtml(change.property)}">${escapeHtml(humanizeProperty(change.property))}</strong><span class="confidence-pill ${unresolved ? 'unresolved' : ''}">${escapeHtml(change.status === 'rejected' ? 'removed' : change.confidence)}</span><span class="review-values"><span class="review-before" title="Before: ${escapeHtml(reviewValue(change.before, change.unit))}">${escapeHtml(reviewValue(change.before, change.unit))}</span><span aria-hidden="true">→</span><input aria-label="New ${escapeHtml(change.property)} value" class="review-after" data-review-after="${escapeHtml(change.id)}" data-value-kind="${inputType}" type="${inputType}" value="${escapeHtml(afterValue)}" ${selectable ? '' : 'disabled'}/></span><details class="review-more"><summary aria-label="More actions for ${escapeHtml(humanizeProperty(change.property))}">•••</summary><div class="review-card-tools"><button data-review-locate="${escapeHtml(change.id)}">Locate</button><button data-review-preview="${escapeHtml(change.id)}" title="Hold to preview before">Preview before</button><button data-review-delete="${escapeHtml(change.id)}" ${deletable ? '' : 'disabled'}><i data-foundry-icon="bin"></i>Delete and restore</button><details class="review-details"><summary>Source and scope</summary><span class="review-source">${escapeHtml(change.property)} · ${escapeHtml(reviewSource(change))} · ${escapeHtml(change.scope)} · ${escapeHtml(change.context.breakpoint)} · ${escapeHtml(change.context.theme)}${change.token ? ` · ${escapeHtml(change.token)}` : ''}</span><span class="impact-list">${impact.map((message) => `<span class="impact-item ${unresolved || (!change.token && message.includes('literal')) ? 'warning' : ''}">${escapeHtml(message)}</span>`).join('')}</span></details></div></details></div>${mappingChooser}</div></div>`;
+                  const contextSetLabel = reviewContextSetLabel(change);
+                  return `<div class="review-card ${change.status === 'rejected' ? 'rejected' : ''}" data-review-card="${escapeHtml(change.id)}"><input aria-label="Include ${escapeHtml(change.property)} change" type="checkbox" data-review-change="${escapeHtml(change.id)}" ${checked ? 'checked' : ''} ${selectable ? '' : 'disabled'}/><div class="review-card-main"><div class="review-card-line"><strong title="${escapeHtml(change.property)}">${escapeHtml(humanizeProperty(change.property))}</strong><span class="confidence-pill ${unresolved ? 'unresolved' : ''}">${escapeHtml(change.status === 'rejected' ? 'removed' : change.confidence)}</span><span class="review-values"><span class="review-before" title="Before: ${escapeHtml(reviewValue(change.before, change.unit))}">${escapeHtml(reviewValue(change.before, change.unit))}</span><span aria-hidden="true">→</span><input aria-label="New ${escapeHtml(change.property)} value" class="review-after" data-review-after="${escapeHtml(change.id)}" data-value-kind="${inputType}" type="${inputType}" value="${escapeHtml(afterValue)}" ${selectable ? '' : 'disabled'}/></span><details class="review-more"><summary aria-label="More actions for ${escapeHtml(humanizeProperty(change.property))}">•••</summary><div class="review-card-tools"><button data-review-locate="${escapeHtml(change.id)}">Locate</button><button data-review-preview="${escapeHtml(change.id)}" title="Hold to preview before">Preview before</button><button data-review-delete="${escapeHtml(change.id)}" ${deletable ? '' : 'disabled'}><i data-foundry-icon="bin"></i>Delete and restore</button><details class="review-details"><summary>Source and scope</summary><span class="review-source">${escapeHtml(change.property)} · ${escapeHtml(reviewSource(change))} · ${escapeHtml(change.scope)} · ${escapeHtml(contextSetLabel)}${change.token ? ` · ${escapeHtml(change.token)}` : ''}</span><span class="impact-list">${impact.map((message) => `<span class="impact-item ${unresolved || (!change.token && message.includes('literal')) ? 'warning' : ''}">${escapeHtml(message)}</span>`).join('')}</span></details></div></details></div><span class="review-context">${escapeHtml(contextSetLabel)}</span>${mappingChooser}</div></div>`;
                 })
                 .join('')}</section>`;
             })
@@ -5990,7 +7942,14 @@ export function installFoundryInspector(
   };
 
   function maybeVerifyRun(run: any): void {
-    if (run.state !== 'verifying' || verifyingRuns.has(run.id)) return;
+    if (verificationChild || run.state !== 'verifying' || verifyingRuns.has(run.id)) return;
+    if (!run.claimAttemptId) {
+      showToast('The active Apply claim is missing. Reclaim the run before verifying.');
+      return;
+    }
+    if (!run.applyResultAcknowledgedAt || run.applyResultClaimAttemptId !== run.claimAttemptId) {
+      return;
+    }
     const reloadKey = '__foundry_verifying_run';
     if (sessionStorage.getItem(reloadKey) !== run.id) {
       sessionStorage.setItem(reloadKey, run.id);
@@ -5998,7 +7957,7 @@ export function installFoundryInspector(
       return;
     }
     verifyingRuns.add(run.id);
-    void verify(run.changeIds, run.id)
+    void verify(run.changeIds, run.id, run.claimAttemptId)
       .then(() => sessionStorage.removeItem(reloadKey))
       .catch((error) => {
         showToast(error instanceof Error ? error.message : 'Rendered verification was interrupted');
@@ -6008,7 +7967,7 @@ export function installFoundryInspector(
 
   function captureVerifiedRun(run: any): void {
     if (run.state !== 'passed' || capturedBaselineRuns.has(run.id)) return;
-    const changes = (activeReviewPayload?.changeSet?.changes ?? []).filter((change: any) =>
+    const changes = (run.reviewedChangeSet?.changes ?? []).filter((change: any) =>
       run.changeIds.includes(change.id),
     );
     const groups = new Map<string, any[]>();
@@ -6060,7 +8019,7 @@ export function installFoundryInspector(
       )
       .join(
         '',
-      )}</div>${run.changedFiles.length ? `<div class="run-files"><strong>Changed files</strong>${run.changedFiles.map((file: string) => `<code>${escapeHtml(file)}</code>`).join('')}</div>` : ''}${run.validationResults.length ? `<div class="result-list">${run.validationResults.map((result: any) => `<div class="result-row ${result.passed ? 'pass' : 'fail'}"><span>${result.passed ? 'Passed' : 'Failed'} · ${escapeHtml(result.name)}</span><span>${escapeHtml(result.summary ?? '')}</span></div>`).join('')}</div>` : ''}${run.verificationResults.length ? `<div class="result-list">${run.verificationResults.map((result: any) => `<div class="result-row ${result.passed ? 'pass' : 'fail'}"><span>${result.passed ? 'Matched' : 'Mismatch'} · ${escapeHtml(result.property)}</span><span>${escapeHtml(verificationResultValue(result))}${result.reason ? `<br/>${escapeHtml(result.reason)}` : ''}</span></div>`).join('')}</div>` : ''}`;
+      )}</div>${run.changedFiles.length ? `<div class="run-files"><strong>Changed files</strong>${run.changedFiles.map((file: string) => `<code>${escapeHtml(file)}</code>`).join('')}</div>` : ''}${run.validationResults.length ? `<div class="result-list">${run.validationResults.map((result: any) => `<div class="result-row ${result.passed ? 'pass' : 'fail'}"><span>${result.passed ? 'Passed' : 'Failed'} · ${escapeHtml(result.name)}</span><span>${escapeHtml(result.summary ?? '')}</span></div>`).join('')}</div>` : ''}${run.verificationResults.length ? `<div class="result-list">${run.verificationResults.map((result: any) => `<div class="result-row ${result.passed ? 'pass' : 'fail'}"><span>${result.passed ? 'Matched' : 'Mismatch'} · ${escapeHtml(result.property)}</span><span>${escapeHtml(verificationResultValue(result))}<small class="verification-context">${escapeHtml(verificationContextLabel(result))}</small>${result.reason ? `<br/>${escapeHtml(result.reason)}` : ''}</span></div>`).join('')}</div>` : ''}`;
     const primaryAction = applyRunAction(run, activeAgentPresence.connected, runStateLabels);
     applyButton.dataset.action = primaryAction.action;
     applyButton.textContent = primaryAction.label;
@@ -6255,7 +8214,11 @@ export function installFoundryInspector(
       renderReviewPayload(
         await sessionRequest(`/apply-runs/${encodeURIComponent(run.id)}/resume`, {
           method: 'POST',
-          body: '{}',
+          body: JSON.stringify({
+            expectedRevision: activeReviewPayload?.changeSet?.context?.revision ?? null,
+            expectedDesignGraphRevision:
+              activeReviewPayload?.changeSet?.designGraphRevision ?? null,
+          }),
         }),
       );
       showToast('Resume authorized. Waiting for an agent to reinspect this run.');
@@ -6419,7 +8382,15 @@ export function installFoundryInspector(
 
   function targetFor(element: HTMLElement) {
     const rect = element.getBoundingClientRect();
-    const source = parseSource(element.dataset.foundrySource);
+    const parsedSource = parseSource(element.dataset.foundrySource);
+    const source = parsedSource
+      ? {
+          ...parsedSource,
+          ...(element.dataset.foundrySourceAnchor
+            ? { symbol: element.dataset.foundrySourceAnchor }
+            : {}),
+        }
+      : undefined;
     const label =
       element.dataset.foundryLabel ||
       element.getAttribute('aria-label') ||
@@ -6464,10 +8435,10 @@ export function installFoundryInspector(
       source?: ComponentWorkshopSource;
       scope?: ComponentWorkshopScope;
     } = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (!element || !sessionId || !token) {
       showToast('Session connection is missing');
-      return;
+      return false;
     }
     const category =
       control.category === 'effects'
@@ -6495,10 +8466,30 @@ export function installFoundryInspector(
       control.property,
       `${after}${control.unit ?? ''}`,
     );
+    const activeBreakpoint =
+      responsiveEditScope.activeBreakpoint !== 'current'
+        ? responsiveEditScope.activeBreakpoint
+        : currentPreviewContext.viewport.id !== 'current'
+          ? currentPreviewContext.viewport.id
+          : breakpoint.value;
+    const contextBreakpoints =
+      responsiveEditScope.scope === 'all-breakpoints'
+        ? (designGraph?.breakpoints ?? []).map((item) => item.id)
+        : [activeBreakpoint];
+    if (responsiveEditScope.scope === 'all-breakpoints' && !target.source) {
+      showToast('All breakpoints requires a source-mapped target');
+      return false;
+    }
+    if (responsiveEditScope.scope === 'all-breakpoints' && contextBreakpoints.length === 0) {
+      showToast('No indexed breakpoints are available for this edit');
+      return false;
+    }
+    const contextThemes = [theme.value];
+    const contextStates = [state.value];
     const stateIds =
-      breakpoint.value === 'current' && theme.value === 'current' && state.value === 'current'
+      activeBreakpoint === 'current' && theme.value === 'current' && state.value === 'current'
         ? []
-        : [`${breakpoint.value}:${theme.value}:${state.value}`];
+        : contextBreakpoints.map((breakpointId) => `${breakpointId}:${theme.value}:${state.value}`);
     const payload = {
       target,
       category,
@@ -6513,9 +8504,14 @@ export function installFoundryInspector(
       selectedMappingId,
       scope: recordScope,
       context: {
-        breakpoint: breakpoint.value,
+        breakpoint: activeBreakpoint,
         theme: theme.value,
         state: state.value,
+      },
+      contextSet: {
+        breakpoints: contextBreakpoints,
+        themes: contextThemes,
+        states: contextStates,
       },
       confidence: ambiguous ? 'unresolved' : (candidates[0]?.confidence ?? 'measured'),
       evidence: [
@@ -6526,26 +8522,23 @@ export function installFoundryInspector(
       ],
       status: ambiguous ? 'unresolved' : 'draft',
     };
+    let recorded = false;
     try {
-      let responsePayload = await sessionRequest('/changes', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      const changeIds = responsePayload.changeSet.changes
-        .filter((change: any) => change.operationId === operationId)
-        .map((change: any) => change.id);
-      responsePayload = await sessionRequest('/operations', {
+      const responsePayload = await sessionRequest('/change-records', {
         method: 'POST',
         body: JSON.stringify({
-          id: operationId,
-          kind: candidates[0]?.intent === 'position' ? 'style' : (candidates[0]?.intent ?? 'style'),
-          label: operationLabel ?? `${control.label}: ${before} → ${after}`,
-          targetIds: [target.id],
-          changeIds,
-          stateIds,
-          mappingCandidates: candidates,
-          selectedMappingId,
-          status: ambiguous ? 'unresolved' : 'resolved',
+          change: payload,
+          operation: {
+            id: operationId,
+            kind:
+              candidates[0]?.intent === 'position' ? 'style' : (candidates[0]?.intent ?? 'style'),
+            label: operationLabel ?? `${control.label}: ${before} → ${after}`,
+            targetIds: [target.id],
+            stateIds,
+            mappingCandidates: candidates,
+            selectedMappingId,
+            status: ambiguous ? 'unresolved' : 'resolved',
+          },
         }),
       });
       const activeChanges = responsePayload.changeSet.changes.filter(
@@ -6557,10 +8550,12 @@ export function installFoundryInspector(
       lastRecordedSummary = `${target.label} · ${control.label} ${before}${control.unit ?? ''} → ${after}${control.unit ?? ''}`;
       updateChangeCount(activeChanges.length, activeChanges.at(-1));
       showToast(ambiguous ? 'Choose the source intent in review' : 'Change recorded');
+      recorded = true;
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not record change');
     }
     publishWorkspaceState();
+    return recorded;
   }
 
   function renderToolTabs(): void {
@@ -6838,13 +8833,17 @@ export function installFoundryInspector(
     value: string | number,
     operationLabel: string,
     extraEvidence: string[] = [],
-  ): Promise<void> {
-    if (!selected) return;
+  ): Promise<{ applied: boolean; recorded: boolean }> {
+    if (!selected) return { applied: false, recorded: false };
     const element = selected;
+    if (responsiveEditScope.scope === 'all-breakpoints' && !targetFor(element).source) {
+      showToast('All breakpoints requires a source-mapped target');
+      return { applied: false, recorded: false };
+    }
     const before = control.read();
     control.apply(value);
     const after = control.read();
-    if (String(before) === String(after)) return;
+    if (String(before) === String(after)) return { applied: false, recorded: false };
     pushHistory({
       element,
       property: control.property,
@@ -6855,7 +8854,10 @@ export function installFoundryInspector(
       label: control.label,
     });
     updateOutline();
-    await record(control, before, after, element, operationLabel, extraEvidence);
+    return {
+      applied: true,
+      recorded: await record(control, before, after, element, operationLabel, extraEvidence),
+    };
   }
 
   function restoreTypographyPreview(): void {
@@ -9132,15 +11134,18 @@ export function installFoundryInspector(
     effect.updateTiming({ easing: snapshot.previewValue });
   }
 
-  async function applyMotionCurve(motion: DiscoveredMotion, requested: MotionCurve): Promise<void> {
+  async function applyMotionCurve(
+    motion: DiscoveredMotion,
+    requested: MotionCurve,
+  ): Promise<{ applied: boolean; recorded: boolean }> {
     const animation = motion.animation;
     const effect = animation?.effect as KeyframeEffect | null;
-    if (!animation || !effect) return;
+    if (!animation || !effect) return { applied: false, recorded: false };
     ensureMotionComparisonBaseline(motion);
     const current = previewMotionCurves.get(animation);
     const before = current?.sourceValue ?? String(effect.getTiming().easing ?? 'linear');
     const snapshot = motionCurveSnapshot(requested);
-    if (before === snapshot.sourceValue) return;
+    if (before === snapshot.sourceValue) return { applied: false, recorded: false };
     effect.updateTiming({ easing: snapshot.previewValue });
     previewMotionCurves.set(animation, snapshot);
     const applyValue = (value: string | number): void => {
@@ -9148,7 +11153,7 @@ export function installFoundryInspector(
       effect.updateTiming({ easing: next.previewValue });
       previewMotionCurves.set(animation, next);
     };
-    await record(
+    const recorded = await record(
       {
         category: 'motion',
         property: `motion.${motion.descriptor.id}.easing`,
@@ -9177,20 +11182,23 @@ export function installFoundryInspector(
         ),
       ],
     );
+    if (!recorded) applyValue(before);
+    return { applied: true, recorded };
   }
 
   async function applyMotionTiming(
     motion: DiscoveredMotion,
     property: 'duration' | 'delay' | 'easing' | 'iterations' | 'direction' | 'fill',
     after: string | number,
-  ): Promise<void> {
+  ): Promise<{ applied: boolean; recorded: boolean }> {
     const effect = motion.animation?.effect as KeyframeEffect | null;
-    if (!effect) return;
+    if (!effect) return { applied: false, recorded: false };
     ensureMotionComparisonBaseline(motion);
     const before = effect.getTiming()[property] as string | number;
     if (property === 'easing') applyMotionEasingValue(effect, after);
     else effect.updateTiming({ [property]: after });
-    await record(
+    if (String(before) === String(after)) return { applied: false, recorded: false };
+    const recorded = await record(
       {
         category: 'motion',
         property: `motion.${motion.descriptor.id}.${property}`,
@@ -9210,6 +11218,11 @@ export function installFoundryInspector(
       `Adjust ${motion.descriptor.label} ${property}`,
       motionSourceEvidence(selected, motion, property),
     );
+    if (!recorded) {
+      if (property === 'easing') applyMotionEasingValue(effect, before);
+      else effect.updateTiming({ [property]: before });
+    }
+    return { applied: true, recorded };
   }
 
   async function applyMotionKeyframe(
@@ -9217,13 +11230,14 @@ export function installFoundryInspector(
     index: number,
     property: string,
     after: string | number,
-  ): Promise<void> {
+  ): Promise<{ applied: boolean; recorded: boolean }> {
     const effect = motion.animation?.effect as KeyframeEffect | null;
-    if (!effect) return;
+    if (!effect) return { applied: false, recorded: false };
     ensureMotionComparisonBaseline(motion);
     const frames = motionKeyframes(effect);
     const before = motionKeyframeValue(frames, index, property);
-    if (before == null || String(before) === String(after)) return;
+    if (before == null || String(before) === String(after))
+      return { applied: false, recorded: false };
     const applyValue = (value: string | number): void => {
       const current = motionKeyframes(effect);
       effect.setKeyframes(editableKeyframes(updateMotionKeyframe(current, index, property, value)));
@@ -9231,7 +11245,7 @@ export function installFoundryInspector(
     applyValue(after);
     const propertyLabel =
       property === 'offset' ? 'Position' : property === 'easing' ? 'Easing' : property;
-    await record(
+    const recorded = await record(
       {
         category: 'motion',
         property: `motion.${motion.descriptor.id}.keyframe.${index}.${property}`,
@@ -9253,6 +11267,8 @@ export function installFoundryInspector(
         ...motionSourceEvidence(selected, motion, 'keyframes'),
       ],
     );
+    if (!recorded) applyValue(before);
+    return { applied: true, recorded };
   }
 
   function toggleMotionLoop(animation: Animation): void {
@@ -9887,20 +11903,23 @@ export function installFoundryInspector(
         const control = selectedControls[index];
         if (!control) return;
         const editedElement = selected;
-        const recorder = createDebouncedChangeRecorder<string | number>(180, (before, after) => {
-          if (editedElement) {
-            pushHistory({
-              element: editedElement,
-              property: control.property,
-              before,
-              after,
-              unit: control.unit,
-              category: control.category,
-              label: control.label,
-            });
-          }
-          return record(control, before, after, editedElement);
-        });
+        const recorder = createDebouncedChangeRecorder<string | number>(
+          180,
+          async (before, after) => {
+            if (editedElement) {
+              pushHistory({
+                element: editedElement,
+                property: control.property,
+                before,
+                after,
+                unit: control.unit,
+                category: control.category,
+                label: control.label,
+              });
+            }
+            await record(control, before, after, editedElement);
+          },
+        );
         fieldRecorders.set(index, recorder);
         field.addEventListener('focus', () => {
           activeControlProperty = control.property;
@@ -10013,6 +12032,13 @@ export function installFoundryInspector(
       selectedElements = [element];
       selected = element;
     }
+    responsiveEditScope = {
+      scope: 'breakpoint',
+      activeBreakpoint:
+        currentPreviewContext.viewport.id !== 'current'
+          ? currentPreviewContext.viewport.id
+          : breakpoint.value || 'current',
+    };
     completeOnboardingStep('selection');
     if (!sectionPreferenceTouched) {
       const categoryKeys = [
@@ -10112,6 +12138,13 @@ export function installFoundryInspector(
     selected = null;
     selectedElements = [];
     selectedControls = [];
+    responsiveEditScope = {
+      scope: 'breakpoint',
+      activeBreakpoint:
+        currentPreviewContext.viewport.id !== 'current'
+          ? currentPreviewContext.viewport.id
+          : breakpoint.value || 'current',
+    };
     sessionStorage.removeItem('__foundry_selected_selector');
     resizeObserver?.disconnect();
     outline.hidden = true;
@@ -10343,80 +12376,226 @@ export function installFoundryInspector(
     }
   }
 
+  interface VerificationDocument {
+    documentRoot: Document | null;
+    contextResult?: PreviewContextResult;
+    failureReason?: string;
+    cleanup(): void;
+  }
+
+  function waitForVerificationFrame(frame: HTMLIFrameElement): Promise<void> {
+    const source = frame.contentWindow;
+    if (!source) return Promise.reject(new Error('The verification frame could not start'));
+    return new Promise((resolveReady, rejectReady) => {
+      const requestId = `verification_ready_${crypto.randomUUID().replaceAll('-', '')}`;
+      const timer = window.setTimeout(() => {
+        cleanup();
+        rejectReady(new Error('The verification frame did not become ready'));
+      }, 10_000);
+      const ping = (): void => {
+        source.postMessage(
+          {
+            type: 'foundry:workspace-command',
+            sessionId,
+            requestId,
+            command: 'preview-ping',
+            payload: { sentAt: Date.now() },
+          },
+          location.origin,
+        );
+      };
+      const interval = window.setInterval(ping, 200);
+      const cleanup = (): void => {
+        window.clearTimeout(timer);
+        window.clearInterval(interval);
+        window.removeEventListener('message', handleMessage);
+        frame.removeEventListener('load', ping);
+        frame.removeEventListener('error', handleError);
+      };
+      const handleError = (): void => {
+        cleanup();
+        rejectReady(new Error('The verification frame failed to load'));
+      };
+      const handleMessage = (event: MessageEvent): void => {
+        if (event.source !== source || event.origin !== location.origin) return;
+        const message = event.data as {
+          type?: string;
+          sessionId?: string;
+          requestId?: string;
+          ok?: boolean;
+          payload?: {
+            alive?: boolean;
+            snapshot?: { verificationReady?: boolean };
+          };
+        };
+        if (
+          message.type !== 'foundry:workspace-result' ||
+          message.sessionId !== sessionId ||
+          message.requestId !== requestId ||
+          message.ok !== true ||
+          message.payload?.alive !== true ||
+          message.payload.snapshot?.verificationReady !== true
+        )
+          return;
+        cleanup();
+        resolveReady();
+      };
+      window.addEventListener('message', handleMessage);
+      frame.addEventListener('load', ping);
+      frame.addEventListener('error', handleError, { once: true });
+      ping();
+    });
+  }
+
+  function requestVerificationPreviewContext(
+    frame: HTMLIFrameElement,
+    context: PreviewContext,
+  ): Promise<PreviewContextResult> {
+    const source = frame.contentWindow;
+    if (!source) return Promise.reject(new Error('The verification frame disconnected'));
+    const requestId = `verification_${crypto.randomUUID().replaceAll('-', '')}`;
+    return new Promise((resolveResult, rejectResult) => {
+      const timer = window.setTimeout(() => {
+        cleanup();
+        rejectResult(new Error('The verification context was not acknowledged'));
+      }, 10_000);
+      const cleanup = (): void => {
+        window.clearTimeout(timer);
+        window.removeEventListener('message', handleMessage);
+      };
+      const handleMessage = (event: MessageEvent): void => {
+        if (event.source !== source || event.origin !== location.origin) return;
+        const message = event.data as {
+          type?: string;
+          sessionId?: string;
+          requestId?: string;
+          ok?: boolean;
+          error?: string;
+          payload?: PreviewContextResult;
+        };
+        if (
+          message.type !== 'foundry:workspace-result' ||
+          message.sessionId !== sessionId ||
+          message.requestId !== requestId
+        )
+          return;
+        cleanup();
+        if (!message.ok || !message.payload) {
+          rejectResult(new Error(message.error || 'The verification context was rejected'));
+          return;
+        }
+        resolveResult(message.payload);
+      };
+      window.addEventListener('message', handleMessage);
+      source.postMessage(
+        {
+          type: 'foundry:workspace-command',
+          sessionId,
+          requestId,
+          command: 'apply-preview-context',
+          payload: { context },
+        },
+        location.origin,
+      );
+    });
+  }
+
   async function verificationDocument(
     change: any,
-    context: TypographyVerificationContext = change.context,
-  ): Promise<{ documentRoot: Document; cleanup(): void } | null> {
-    if (
-      context.breakpoint === 'current' &&
-      context.theme === 'current' &&
-      context.state === 'current'
-    ) {
-      return { documentRoot: document, cleanup() {} };
-    }
+    context: TypographyVerificationContext,
+    frozenContext: {
+      targetUrl?: string;
+      previewOrigin?: string;
+      viewport?: { width: number; height: number };
+    },
+  ): Promise<VerificationDocument> {
+    const cleanup = (frame: HTMLIFrameElement): void => frame.remove();
+    const graph = previewGraph();
     const viewport = designGraph?.breakpoints.find((item) => item.id === context.breakpoint);
+    const verificationViewport = verificationViewportForContext(frozenContext.viewport, viewport);
     const frame = document.createElement('iframe');
     frame.title = 'Foundry verification frame';
     Object.assign(frame.style, {
       position: 'fixed',
       left: '-12000px',
       top: '0',
-      width: `${viewport?.width ?? window.innerWidth}px`,
-      height: `${viewport?.height ?? window.innerHeight}px`,
+      width: `${verificationViewport?.width ?? 0}px`,
+      height: `${verificationViewport?.height ?? 0}px`,
       border: '0',
     });
-    const url = new URL(location.href);
-    url.searchParams.set('__foundry_child', '1');
-    frame.src = url.href;
+    if (!verificationViewport) {
+      return {
+        documentRoot: null,
+        failureReason: 'The reviewed contract has no frozen viewport dimensions',
+        cleanup: () => cleanup(frame),
+      };
+    }
+    let url: URL;
+    try {
+      url = new URL(verificationFrameUrl(frozenContext, sessionId, token, previewCapability));
+    } catch (error) {
+      return {
+        documentRoot: null,
+        failureReason:
+          error instanceof Error ? error.message : 'The frozen preview URL is unavailable',
+        cleanup: () => cleanup(frame),
+      };
+    }
+    const managedQueryKeys = new Set(graph.states.flatMap((item) => Object.keys(item.query ?? {})));
+    const requestedQuery = queryForPreviewState(graph.states, context.state);
+    for (const key of managedQueryKeys) {
+      if (key in requestedQuery) url.searchParams.set(key, requestedQuery[key]!);
+      else url.searchParams.delete(key);
+    }
     shadow.append(frame);
-    const loaded = await new Promise<boolean>((resolveLoad) => {
-      const timer = setTimeout(() => resolveLoad(false), 5_000);
-      frame.addEventListener(
-        'load',
-        () => {
-          clearTimeout(timer);
-          resolveLoad(true);
+    const ready = waitForVerificationFrame(frame);
+    frame.src = url.href;
+    try {
+      await ready;
+      const contextResult = await requestVerificationPreviewContext(frame, {
+        version: PREVIEW_CONTEXT_VERSION,
+        requestRevision: 1,
+        viewport: {
+          id: viewport?.id ?? context.breakpoint,
+          width: verificationViewport.width,
+          height: verificationViewport.height,
         },
-        { once: true },
-      );
-    });
-    const frameDocument = loaded ? frame.contentDocument : null;
-    if (!frameDocument) {
-      frame.remove();
-      return null;
+        theme: context.theme,
+        state: context.state,
+        motionPreference: 'system',
+        selectedTarget: {
+          id: String(change.target.id),
+          selector: String(change.target.locator.selector),
+        },
+      });
+      const frameDocument = frame.contentDocument;
+      if (!contextResult.applied || !frameDocument) {
+        return {
+          documentRoot: null,
+          contextResult,
+          failureReason:
+            contextResult.failureReason ||
+            (contextResult.reloadQuery
+              ? 'The authored state requested an additional reload'
+              : 'The verification context could not be applied'),
+          cleanup: () => cleanup(frame),
+        };
+      }
+      await frameDocument.fonts?.ready;
+      await new Promise((resolveWait) => setTimeout(resolveWait, 180));
+      return {
+        documentRoot: frameDocument,
+        contextResult,
+        cleanup: () => cleanup(frame),
+      };
+    } catch (error) {
+      return {
+        documentRoot: null,
+        failureReason:
+          error instanceof Error ? error.message : 'The verification frame could not be prepared',
+        cleanup: () => cleanup(frame),
+      };
     }
-    const requestedTheme = designGraph?.themes.find((item) => item.id === context.theme);
-    if (requestedTheme?.attribute)
-      frameDocument.documentElement.setAttribute(
-        requestedTheme.attribute,
-        requestedTheme.value ?? requestedTheme.id,
-      );
-    if (requestedTheme?.selector?.startsWith('.'))
-      frameDocument.documentElement.classList.add(requestedTheme.selector.slice(1));
-    const framedTarget = frameDocument.querySelector(
-      change.target.locator.selector,
-    ) as HTMLElement | null;
-    const requestedState = context.state;
-    if (framedTarget && ['hover', 'focus', 'active', 'disabled'].includes(requestedState)) {
-      framedTarget.setAttribute(`data-foundry-force-${requestedState}`, 'true');
-      const style = frameDocument.createElement('style');
-      style.textContent = forcedPseudoCss(
-        frameDocument,
-        requestedState as 'hover' | 'focus' | 'active' | 'disabled',
-      );
-      frameDocument.head.append(style);
-      if (requestedState === 'focus') framedTarget.focus();
-      if (requestedState === 'disabled') framedTarget.setAttribute('disabled', '');
-    }
-    if (requestedState === 'reduced-motion') {
-      const style = frameDocument.createElement('style');
-      style.textContent =
-        '*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}';
-      frameDocument.head.append(style);
-    }
-    await frameDocument.fonts?.ready;
-    await new Promise((resolveWait) => setTimeout(resolveWait, 180));
-    return { documentRoot: frameDocument, cleanup: () => frame.remove() };
   }
 
   function authoredStyleValue(element: HTMLElement, property: string): string {
@@ -10551,139 +12730,196 @@ export function installFoundryInspector(
     };
   }
 
-  async function verify(changeIds?: string[], runId?: string): Promise<void> {
+  async function verify(changeIds: string[], runId: string, claimAttemptId: string): Promise<void> {
     if (!sessionId || !token) {
       showToast('Session connection is missing');
       return;
     }
-    const { changeSet } = await sessionRequest();
-    const changes = changeSet.changes.filter((change: any) =>
-      changeIds
-        ? changeIds.includes(change.id)
-        : change.status !== 'rejected' && String(change.before) !== String(change.after),
+    const session = await sessionRequest();
+    const run = session.applyRuns?.find((candidate: any) => candidate.id === runId);
+    if (!run || run.claimAttemptId !== claimAttemptId || run.state !== 'verifying') {
+      throw new Error('The Apply claim changed before rendered verification began');
+    }
+    if (!run.reviewedChangeSet) {
+      throw new Error('The frozen reviewed contract is unavailable');
+    }
+    const changes = run.reviewedChangeSet.changes.filter((change: any) =>
+      changeIds.includes(change.id),
     );
     await waitForStableGeometry(changes);
     const results: any[] = [];
     for (const change of changes) {
-      const typographyContexts = parseTypographyVerificationContexts(change.evidence);
-      if (typographyVerificationProperties.has(change.property) && typographyContexts.length) {
-        const snapshots: ReturnType<typeof typographyVerificationSnapshot>[] = [];
-        let missingContext = false;
-        let missingTarget = false;
-        let geometry: any = undefined;
-        for (const context of typographyContexts) {
-          const verificationContext = await verificationDocument(change, context);
-          const documentRoot = verificationContext?.documentRoot;
-          const element = documentRoot
+      const contexts = verificationContextsForChange(change);
+      const typographyVerification =
+        typographyVerificationProperties.has(change.property) &&
+        parseTypographyVerificationContexts(change.evidence).length > 0;
+      for (const context of contexts) {
+        const verificationContext = await verificationDocument(
+          change,
+          context,
+          run.reviewedChangeSet.context,
+        );
+        try {
+          const documentRoot = verificationContext.documentRoot;
+          const resolvedElement = documentRoot
             ? resolveFoundrySelector(documentRoot, change.target.locator.selector)
             : null;
-          if (!verificationContext) missingContext = true;
-          else if (!element) missingTarget = true;
-          else {
+          const resolvedSource = resolvedElement
+            ? parseSource(resolvedElement.dataset.foundrySource)
+            : undefined;
+          const element =
+            resolvedElement &&
+            rebuiltTargetIdentityMatches(change.target, {
+              foundryId: resolvedElement.dataset.foundryId,
+              componentPath:
+                resolvedElement.dataset.foundryComponent?.split('/').filter(Boolean) ?? [],
+              source: resolvedSource
+                ? {
+                    ...resolvedSource,
+                    ...(resolvedElement.dataset.foundrySourceAnchor
+                      ? { symbol: resolvedElement.dataset.foundrySourceAnchor }
+                      : {}),
+                  }
+                : undefined,
+            })
+              ? resolvedElement
+              : null;
+          let geometry: any = undefined;
+          let visibleGeometry = false;
+          if (element) {
             const rect = element.getBoundingClientRect();
-            geometry ??= {
+            const view = element.ownerDocument.defaultView;
+            geometry = {
               x: rect.x,
               y: rect.y,
               width: rect.width,
               height: rect.height,
               scale: element.ownerDocument.defaultView?.devicePixelRatio || 1,
             };
-            snapshots.push(typographyVerificationSnapshot(element, change, context));
+            visibleGeometry =
+              Number.isFinite(rect.width) &&
+              Number.isFinite(rect.height) &&
+              rect.width > 0 &&
+              rect.height > 0 &&
+              rect.right > 0 &&
+              rect.bottom > 0 &&
+              rect.left < (view?.innerWidth ?? Number.POSITIVE_INFINITY) &&
+              rect.top < (view?.innerHeight ?? Number.POSITIVE_INFINITY);
           }
-          verificationContext?.cleanup();
+          const evidence = element
+            ? [
+                `Resolved ${change.target.locator.selector} in the isolated verification frame.`,
+                ...Object.values(verificationContext.contextResult?.axes ?? {}).flatMap(
+                  (axis: any) => axis.evidence ?? [],
+                ),
+              ]
+            : [];
+          if (typographyVerification) {
+            const snapshot = element
+              ? typographyVerificationSnapshot(element, change, context)
+              : null;
+            const valueMismatch = Boolean(
+              snapshot && !typographyPropertyMatches(change.property, snapshot.value, change.after),
+            );
+            const missingFont = Boolean(snapshot && !snapshot.fontLoaded);
+            const clipped = Boolean(snapshot?.clipped);
+            const passed = Boolean(
+              snapshot && visibleGeometry && !valueMismatch && !missingFont && !clipped,
+            );
+            const failures = [
+              !documentRoot
+                ? verificationContext.failureReason ||
+                  'The reviewed validation context could not be reproduced'
+                : '',
+              documentRoot && !element ? 'The target locator did not resolve in this context' : '',
+              valueMismatch ? 'The rendered value differs from the reviewed value' : '',
+              missingFont ? 'The requested font face did not report loaded' : '',
+              clipped ? 'text clips in one or more validation contexts' : '',
+              snapshot && !visibleGeometry ? 'the target is not visible in the viewport' : '',
+            ].filter(Boolean);
+            results.push({
+              applyRunId: runId,
+              claimAttemptId,
+              changeId: change.id,
+              property: change.property,
+              requested: change.after,
+              rendered: {
+                value: snapshot?.value ?? null,
+                family: snapshot?.family ?? null,
+                weight: snapshot?.weight ?? null,
+                style: snapshot?.style ?? null,
+                axes: snapshot?.axes ?? null,
+                contexts: snapshot ? [snapshot] : [],
+              },
+              context,
+              passed,
+              reason: passed
+                ? undefined
+                : failures.length
+                  ? failures.join('; ')
+                  : 'Typography verification did not complete',
+              geometry,
+              evidence,
+              verifiedAt: new Date().toISOString(),
+            });
+            continue;
+          }
+          const rendered = element ? renderedValue(element, change) : null;
+          const expected =
+            typeof change.after === 'number' && change.unit
+              ? `${change.after}${change.unit}`
+              : change.after;
+          const passed = Boolean(
+            element &&
+            visibleGeometry &&
+            rebuiltPropertyValueMatches(change.property, rendered, expected),
+          );
+          results.push({
+            applyRunId: runId,
+            claimAttemptId,
+            changeId: change.id,
+            property: change.property,
+            requested: change.after,
+            rendered,
+            context,
+            passed,
+            reason: !documentRoot
+              ? verificationContext.failureReason ||
+                'The recorded responsive or state context could not be reproduced'
+              : element
+                ? passed
+                  ? undefined
+                  : 'Rendered value differs from requested value'
+                : 'Target locator no longer resolves',
+            geometry,
+            evidence,
+            verifiedAt: new Date().toISOString(),
+          });
+        } finally {
+          verificationContext.cleanup();
         }
-        const valueMismatch = snapshots.some(
-          (snapshot) => !typographyPropertyMatches(change.property, snapshot.value, change.after),
-        );
-        const missingFont = snapshots.some((snapshot) => !snapshot.fontLoaded);
-        const clipped = snapshots.some((snapshot) => snapshot.clipped);
-        const passed =
-          snapshots.length === typographyContexts.length &&
-          !missingContext &&
-          !missingTarget &&
-          !valueMismatch &&
-          !missingFont &&
-          !clipped;
-        const failures = [
-          missingContext ? 'one or more validation contexts could not be reproduced' : '',
-          missingTarget ? 'the target locator did not resolve in every context' : '',
-          valueMismatch ? 'the rendered value differs from the reviewed value' : '',
-          missingFont ? 'the requested font face did not report loaded' : '',
-          clipped ? 'text clips in one or more validation contexts' : '',
-        ].filter(Boolean);
-        results.push({
-          changeId: change.id,
-          property: change.property,
-          requested: change.after,
-          rendered: {
-            value: snapshots[0]?.value ?? null,
-            family: snapshots[0]?.family ?? null,
-            weight: snapshots[0]?.weight ?? null,
-            style: snapshots[0]?.style ?? null,
-            axes: snapshots[0]?.axes ?? null,
-            contexts: snapshots,
-          },
-          passed,
-          reason: passed
-            ? undefined
-            : failures.length
-              ? failures.join('; ')
-              : 'Typography verification did not complete',
-          geometry,
-          verifiedAt: new Date().toISOString(),
-        });
-        continue;
       }
-      const verificationContext = await verificationDocument(change);
-      const documentRoot = verificationContext?.documentRoot;
-      const element = documentRoot
-        ? resolveFoundrySelector(documentRoot, change.target.locator.selector)
-        : null;
-      let rendered: any = null;
-      let geometry: any = undefined;
-      if (element) {
-        const rect = element.getBoundingClientRect();
-        geometry = {
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height,
-          scale: window.devicePixelRatio || 1,
-        };
-        rendered = renderedValue(element, change);
-      }
-      const expected =
-        typeof change.after === 'number' && change.unit
-          ? `${change.after}${change.unit}`
-          : change.after;
-      const passed =
-        String(rendered).replaceAll(' ', '') === String(expected).replaceAll(' ', '') ||
-        Number.parseFloat(String(rendered)) === Number.parseFloat(String(expected));
-      results.push({
-        changeId: change.id,
-        property: change.property,
-        requested: change.after,
-        rendered,
-        passed,
-        reason: !verificationContext
-          ? 'The recorded responsive or state context could not be reproduced'
-          : element
-            ? passed
-              ? undefined
-              : 'Rendered value differs from requested value'
-            : 'Target locator no longer resolves',
-        geometry,
-        verifiedAt: new Date().toISOString(),
-      });
-      verificationContext?.cleanup();
     }
+    const challenge = await sessionRequest(
+      `/apply-runs/${encodeURIComponent(runId)}/verification-challenge`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ claimAttemptId, previewCapability }),
+      },
+    );
     const payload = await sessionRequest('/verify', {
       method: 'POST',
-      body: JSON.stringify({ runId, results }),
+      body: JSON.stringify({
+        source: 'browser-preview',
+        runId,
+        claimAttemptId,
+        challenge: challenge.challenge,
+        results,
+      }),
     });
     if (workspaceState.reviewOpen) renderReviewPayload(payload);
     showToast(
-      `${results.filter((result: any) => result.passed).length}/${results.length} changes verified`,
+      `${results.filter((result: any) => result.passed).length}/${results.length} contexts verified`,
     );
   }
 
@@ -10863,6 +13099,7 @@ export function installFoundryInspector(
     .querySelector<HTMLButtonElement>('[data-status-diagnostics]')!
     .addEventListener('click', () => {
       const diagnostics = createSafeDiagnostics({
+        protocolVersion: DIAGNOSTICS_PROTOCOL_VERSION,
         interfaceTheme: resolvedInterfaceTheme(),
         runtimeConnected,
         agentConnected: activeAgentPresence.connected,
@@ -11067,25 +13304,18 @@ export function installFoundryInspector(
   shadow
     .querySelector<HTMLSelectElement>('[data-workbench-theme]')!
     .addEventListener('change', applyWorkbenchState);
-  shadow.querySelectorAll<HTMLButtonElement>('[data-workbench-state]').forEach((button) =>
-    button.addEventListener('click', () => {
-      shadow
-        .querySelectorAll<HTMLButtonElement>('[data-workbench-state]')
-        .forEach((item) => item !== button && item.classList.remove('active'));
-      button.classList.toggle('active');
-      state.value = button.classList.contains('active')
-        ? (button.dataset.workbenchState ?? 'current')
-        : 'current';
-      applyWorkbenchState();
-    }),
-  );
   shadow
-    .querySelector<HTMLButtonElement>('[data-workbench-motion]')!
+    .querySelector<HTMLElement>('[data-workbench-states]')!
     .addEventListener('click', (event) => {
-      (event.currentTarget as HTMLButtonElement).classList.toggle('active');
-      state.value = (event.currentTarget as HTMLButtonElement).classList.contains('active')
-        ? 'reduced-motion'
-        : 'current';
+      const button = (event.target as Element).closest<HTMLButtonElement>('[data-workbench-state]');
+      if (!button || button.disabled) return;
+      const requestedState = button.dataset.workbenchState ?? 'current';
+      workbenchStateId = button.classList.contains('active') ? 'current' : requestedState;
+      shadow.querySelectorAll<HTMLButtonElement>('[data-workbench-state]').forEach((item) => {
+        const active = item.dataset.workbenchState === workbenchStateId;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-pressed', String(active));
+      });
       applyWorkbenchState();
     });
   shadow.querySelector('.undo')?.addEventListener('click', () => void replayHistory(-1));
@@ -11191,7 +13421,7 @@ export function installFoundryInspector(
     else clearSelection();
   }
   document.addEventListener('keydown', handleGlobalShortcuts);
-  if (sessionStorage.getItem('__foundry_verifying_run')) void openReview();
+  if (!verificationChild && sessionStorage.getItem('__foundry_verifying_run')) void openReview();
   let mutationFrame = 0;
   const layerMutationObserver = new MutationObserver(() => {
     cancelAnimationFrame(mutationFrame);
@@ -11226,6 +13456,8 @@ export function installFoundryInspector(
   }
 
   function destroyInspector(): void {
+    restorePreviewState();
+    restoreConfiguredPreviewTheme();
     restoreTypographyPreview();
     resizeObserver?.disconnect();
     fdcSelectObserver.disconnect();

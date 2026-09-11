@@ -94,12 +94,32 @@ test('workspace tabs and panel resizing are fully keyboard operable', async () =
   assert.match(source, /\['ArrowLeft', 'ArrowRight', 'Home', 'End'\]/);
 });
 
-test('state workbench falls back to its first available state when canvas context is unmatched', async () => {
+test('state workbench uses only authored states in an independently acknowledged preview', async () => {
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
-  assert.match(source, /const requestedState = \$\('#canvas-state'\)\?\.value/);
-  assert.match(source, /states\.some\(\(item\) => item\.id === requestedState\)/);
-  assert.match(source, /: states\[0\]\?\.id \|\| 'current'/);
+  assert.match(source, /id="state-live-preview"/);
+  assert.match(source, /requestFrameCommand\([\s\S]*'apply-preview-context'/);
+  assert.match(source, /requestFrameCommand\(frame, 'request-state'/);
+  assert.match(
+    source,
+    /previewContextsMatch\(measurement\?\.currentPreviewContext, result\.context\)/,
+  );
+  assert.match(source, /measurement: measurement\.selection \?\? null/);
+  assert.match(source, /stateWorkbenchResults\.set/);
+  assert.match(source, /format: 'foundry\.state-matrix',[\s\S]*version: 2/);
+  assert.doesNotMatch(source, /\['Default', 'Hover', 'Focus', 'Error', 'Disabled'\]/);
   assert.match(source, /aria-pressed="\$\{String\(active\)\}"/);
+});
+
+test('preview context queues preserve newer Canvas and State Workbench requests', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(source, /let stateWorkbenchRequestedContext = null/);
+  assert.match(
+    source,
+    /stateWorkbenchRequestedContext\.requestRevision !== context\.requestRevision/,
+  );
+  assert.match(source, /function requestStateWorkbenchPreviewContext\(\)/);
+  assert.match(source, /canvasRequestedContext\?\.requestRevision === context\.requestRevision/);
+  assert.match(source, /canvasRequestedContext\.requestRevision !== context\.requestRevision/);
 });
 
 test('session polling preserves active edits and scroll while coalescing connection failures', async () => {
@@ -126,6 +146,7 @@ test('review distinguishes the live preview from the active agent listener', asy
   assert.match(source, /\/v1\/sessions\/\$\{sessionId\}\/agent-presence/);
   assert.match(source, /const listenerConnected = Boolean\(activeAgentPresence\.connected\)/);
   assert.match(source, /Queue \$\{included\} for agent/);
+  assert.match(source, /Apply listener ready/);
   assert.match(source, /Agent currently offline/);
   assert.match(source, /Waiting for agent/);
   assert.match(source, /Agent handoff/);
@@ -134,6 +155,12 @@ test('review distinguishes the live preview from the active agent listener', asy
     source,
     /Batch queued\. A Foundry agent will claim it when its listener reconnects\./,
   );
+  const review = source.slice(
+    source.indexOf('function renderReview()'),
+    source.indexOf('function renderApplyRun('),
+  );
+  assert.doesNotMatch(review, /activeAgentPresence\.presence\?\.agent/);
+  assert.doesNotMatch(review, /listenerName/);
 });
 
 test('the application bar reports runtime, preview, and listener status truthfully', async () => {
@@ -156,6 +183,8 @@ test('delivery milestones use an in-product, source-safe dialog', async () => {
   assert.match(html, /id="delivery-milestone-name"[\s\S]*maxlength="80"[\s\S]*required/);
   assert.match(source, /\$\('#delivery-milestone-dialog'\)[\s\S]*dialog\.showModal\(\)/);
   assert.match(source, /\/delivery-milestones/);
+  assert.match(source, /function deliveryVerificationMarkup/);
+  assert.match(source, /record\.verificationResults\.map\(deliveryVerificationMarkup\)/);
   assert.doesNotMatch(source, /window\.prompt\('Milestone name'/);
 });
 
@@ -166,16 +195,26 @@ test('visual agent grounds conversation in rendered context and isolates proposa
   assert.match(html, /data-mode-surface="agent"/);
   assert.match(html, /id="visual-agent-context"/);
   assert.match(html, /id="visual-agent-region"/);
-  assert.match(html, /Ask active agent/);
+  assert.match(html, /Ask visual agent/);
+  assert.doesNotMatch(html, /Ask active agent/);
   assert.match(html, /New question/);
   assert.match(html, /id="visual-agent-review"/);
   assert.match(html, /visual-agent-compose-form/);
   assert.match(source, /function visualAgentContextSnapshot/);
   assert.match(source, /selection\?\.targets/);
   assert.match(source, /visual-agent-requests/);
-  assert.match(source, /capture-agent-region/);
+  assert.match(source, /requestCommand\('arm-agent-region'\)/);
   assert.match(source, /Preview direction/);
   assert.match(source, /Move to Review/);
+  assert.match(source, /askButton\.textContent = listenerConnected \? 'Ask visual agent'/);
+  assert.match(source, /body: JSON\.stringify\(\{ action: 'previewed' \}\)/);
+  assert.match(source, /acknowledgedProposal\?\.status !== 'previewing'/);
+  assert.match(source, /proposal\.status !== 'previewing' \? 'disabled' : ''/);
+  const visualAgent = source.slice(
+    source.indexOf('function renderVisualAgent()'),
+    source.indexOf('function deliveryStatusLabel'),
+  );
+  assert.doesNotMatch(visualAgent, /activeAgentPresence\.presence\?\.agent/);
   assert.match(source, /visual-agent-conversation-head/);
   assert.match(source, /Source-safe directions/);
   assert.match(source, /verificationPlan/);
@@ -301,9 +340,13 @@ test('typography studio connects font discovery, live previews, diagnostics, and
   assert.match(source, /review-google/);
   assert.match(source, /save-style/);
   assert.match(source, /Rendered type is stable/);
+  assert.match(source, /TYPOGRAPHY_SPECIMEN_STYLE_PROPERTIES/);
+  assert.match(source, /metrics\?\.visibleSpecimen/);
+  assert.match(source, /data-specimen-contract="\$\{contract\.version\}"/);
   assert.match(source, /\['typography', 'Typography studio', '0', 'typography'\]/);
   assert.match(css, /\.typography-studio-shell/);
   assert.match(css, /\.typography-specimen/);
+  assert.match(css, /\.typography-comparison-specimen-stage/);
   assert.match(css, /\.typography-audit/);
 });
 
@@ -403,6 +446,24 @@ test('responsive lab keeps native iframe viewports and temporary stress state se
   assert.match(source, /--preview-width/);
   assert.match(source, /preview-responsive-stress/);
   assert.match(source, /preview-responsive-container/);
+  assert.match(source, /function responsivePreviewContext\(viewportId\)/);
+  assert.match(source, /applyResponsiveFrameContext\(frame, viewportId\)/);
+  assert.match(source, /requestFrameCommand\(frame, 'apply-preview-context', \{ context \}\)/);
+  assert.match(
+    source,
+    /contextApplication = await applyResponsiveFrameContext\(frame, viewportId\)/,
+  );
+  assert.match(source, /responsive-document-overflow/);
+  assert.match(source, /cross-frame-overflow/);
+  assert.match(source, /function applyResponsiveScopeTransaction/);
+  assert.match(source, /const results = await Promise\.allSettled/);
+  assert.match(
+    source,
+    /endpoints\.map\(\(endpoint\) => apply\(endpoint, previousScope, previousSelector\)\)/,
+  );
+  assert.match(source, /requestResponsiveSelectionSync/);
+  assert.match(source, /disposeResponsiveFrames\('Responsive frames were rebuilt/);
+  assert.match(source, /invalidateFrameTransport\([\s\S]*responsive frame reloaded/);
   assert.match(source, /projectDesign\(\)\.containerQueries/);
   assert.match(source, /function responsiveComparisonSnapshot/);
   assert.match(source, /documentScrollWidth > snapshot\.viewportWidth/);
@@ -443,6 +504,8 @@ test('component workshop exposes source-backed variants, drift repair, safe scop
   assert.match(source, /select-component-instance/);
   assert.match(source, /preview-component-variant/);
   assert.match(source, /preview-component-state/);
+  assert.match(source, /\['current', \['current', 'Current', 'instrumented'\]\]/);
+  assert.doesNotMatch(source, /const WORKSHOP_STATES/);
   assert.match(source, /Create source variant/);
   assert.match(source, /stage-component-variant/);
   assert.match(source, /Cross-instance drift/);
@@ -471,11 +534,14 @@ test('apply progress reuses the review hierarchy and reports the complete run', 
   assert.match(source, /class="review-footer apply-footer"/);
   assert.match(source, /Changed files/);
   assert.match(source, /Rendered verification/);
+  assert.match(source, /function verificationContextLabel/);
+  assert.match(source, /class="verification-context"/);
   assert.match(source, /run\.state === 'passed'/);
   assert.match(source, /run\.interruptedState \? 'resume' : 'retry'/);
   assert.match(source, /Resume with agent/);
   assert.match(css, /\.apply-workspace\s*\{[\s\S]*grid-template-columns:/);
   assert.match(css, /\.apply-evidence\s*\{[\s\S]*flex-direction:\s*column/);
+  assert.match(css, /\.verification-context\s*\{/);
   assert.doesNotMatch(css, /\.apply-card\s*\{/);
 });
 
@@ -638,7 +704,7 @@ test('workspace uses real Keyline vectors and validates the embedded bridge', as
   assert.match(source, /Background blur/);
   assert.match(source, /Available when the project exposes a mapped effect recipe/);
   assert.match(source, /function motionEditorMarkup/);
-  assert.match(source, /sendCommand\('motion-action'/);
+  assert.match(source, /runDurableAction\('motion-action'/);
   assert.match(source, /data-motion-action="scrub"/);
   assert.match(source, /data-motion-keyframe-index/);
   assert.match(source, /keyframe-\$\{action\}/);
@@ -651,4 +717,97 @@ test('workspace uses real Keyline vectors and validates the embedded bridge', as
   assert.match(css, /\.motion-timeline/);
   assert.match(css, /\.motion-track-rail/);
   assert.match(css, /\.motion-keyframe\.is-selected/);
+});
+
+test('durable preview actions cannot bypass acknowledgement', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /sendTransientCommand/);
+  assert.doesNotMatch(source, /function sendCommand\(/);
+  assert.doesNotMatch(source, /\bsendCommand\(/);
+  const responsiveTransientCommands = [
+    ...source.matchAll(/sendResponsiveTransientCommand\([^,]+,\s*'([^']+)'/g),
+  ].map((match) => match[1]);
+  assert.deepEqual([...new Set(responsiveTransientCommands)].sort(), [
+    'preview-responsive-container',
+    'preview-responsive-stress',
+  ]);
+  const scrubStart = source.indexOf('function scrubResponsiveCustomFrame');
+  const scrubEnd = source.indexOf('function renderResponsiveLab', scrubStart);
+  const transientCallIndexes = [
+    ...source.matchAll(/sendResponsiveTransientCommand\([^,]+,\s*'[^']+'/g),
+  ].map((match) => match.index);
+  assert.ok(scrubStart >= 0 && scrubEnd > scrubStart);
+  assert.ok(
+    transientCallIndexes.every((index) => index > scrubStart && index < scrubEnd),
+    'responsive fire-and-forget commands are allowed only inside continuous scrubbing',
+  );
+  assert.match(source, /payload\.action !== 'scrub'/);
+  for (const command of [
+    'interface-theme',
+    'set-mode',
+    'apply-health-stress',
+    'clear-health-stress',
+    'save-visual-recipe',
+    'save-design-decision',
+    'arm-agent-region',
+    'audit-responsive',
+    'replace-design-graph',
+    'typography-compare',
+    'typography-use-font',
+  ]) {
+    assert.match(
+      source,
+      new RegExp(`(?:runDurableAction|request(?:Frame)?Command)\\([\\s\\S]{0,180}?['\"]${command}`),
+    );
+  }
+  assert.match(source, /function runDurableAction/);
+  assert.match(source, /WORKSPACE_COMMAND_REJECTED/);
+  assert.match(source, /WORKSPACE_COMMAND_TIMEOUT/);
+  assert.match(source, /isWorkspaceTransportError\(error\)/);
+  assert.match(source, /timeoutMs:\s*10_000/);
+  assert.match(source, /\{ timeoutMs:\s*12_500 \}/);
+  assert.match(source, /result\?\.fonts\?\.ready !== true/);
+  assert.match(source, /result\?\.stableLayout\?\.stable !== true/);
+  assert.match(source, /installTypographyComparisonFonts\(typographyComparison\.fontResources\)/);
+  assert.match(source, /loadedFaces\.length === 0/);
+  assert.match(source, /could not be rendered in the visible comparison/);
+  assert.match(source, /return \{ viewportId, result: null, partial: result, error: message \}/);
+  for (const command of [
+    'set-control',
+    'motion-action',
+    'stage-component-variant',
+    'stage-token-promotion',
+    'import-visual-recipes',
+    'import-design-decisions',
+    'duplicate-visual-recipe',
+    'update-design-decision',
+    'remove-design-decision',
+    'undo',
+    'redo',
+  ]) {
+    assert.match(
+      source,
+      new RegExp(`runDurableAction\\([\\s\\S]{0,80}?['\"]${command}`),
+      `${command} must wait for an acknowledged result`,
+    );
+  }
+  assert.match(source, /setInterval\(pingPreviewFrames, 2000\)/);
+  assert.match(source, /Date\.now\(\) - lastSeen >= 5000/);
+});
+
+test('visual agent retry and promotion report queued and partial outcomes truthfully', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.match(source, /Visual request queued\. It will wait for a Foundry listener\./);
+  assert.match(source, /The connected listener can claim it now\./);
+  assert.match(source, /const partialFailures = \[\]/);
+  assert.match(source, /await requestCommand\('save-design-decision'/);
+  assert.match(source, /Chosen direction moved to Review\. \$\{partialFailures\.join\('\. '\)\}\./);
+  const promotionStart = source.indexOf("if (action === 'promote')");
+  const promotion = source.slice(promotionStart, source.indexOf('function deliveryStatusLabel'));
+  assert.ok(promotionStart >= 0, 'the promotion handler must exist');
+  assert.ok(
+    promotion.indexOf('renderSession(updated)') <
+      promotion.indexOf("requestCommand('switch-design-branch'"),
+    'the persisted Review state must render before the preview is attempted',
+  );
 });

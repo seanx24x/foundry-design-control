@@ -1,3 +1,5 @@
+import { rebuiltPropertyValueMatches } from './rebuilt-value.js';
+
 export type FontOrigin = 'active' | 'project' | 'used' | 'local';
 
 export interface TypographyFontFace {
@@ -474,6 +476,14 @@ function comparableTypographyValue(value: unknown): string {
     .toLocaleLowerCase();
 }
 
+const scalarTypographyProperties = new Set([
+  'fontSize',
+  'lineHeight',
+  'letterSpacing',
+  'wordSpacing',
+  'textIndent',
+]);
+
 export function typographyPropertyMatches(
   property: string,
   rendered: unknown,
@@ -502,22 +512,8 @@ export function typographyPropertyMatches(
       comparableTypographyValue(expected).replaceAll(' ', '')
     );
   }
-  const numericProperties = new Set([
-    'fontSize',
-    'lineHeight',
-    'letterSpacing',
-    'wordSpacing',
-    'textIndent',
-  ]);
-  if (numericProperties.has(property)) {
-    const renderedNumber = Number.parseFloat(String(rendered));
-    const expectedNumber = Number.parseFloat(String(expected));
-    return (
-      Number.isFinite(renderedNumber) &&
-      Number.isFinite(expectedNumber) &&
-      Math.abs(renderedNumber - expectedNumber) < 0.02
-    );
-  }
+  if (scalarTypographyProperties.has(property))
+    return rebuiltPropertyValueMatches(property, rendered, expected);
   return comparableTypographyValue(rendered) === comparableTypographyValue(expected);
 }
 

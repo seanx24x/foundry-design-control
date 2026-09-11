@@ -204,6 +204,7 @@
                     <option value="current">Current</option>
                   </select></label
                 >
+                <span class="canvas-responsive-scope" id="canvas-responsive-scope" hidden></span>
                 <button
                   class="icon-button is-active"
                   data-dock-toggle="inspector"
@@ -369,6 +370,7 @@
                 </p>
               </div>
               <div class="mode-actions">
+                <button class="secondary-button" id="responsive-open-canvas">Edit in Canvas</button>
                 <button class="secondary-button" data-studio-action="responsive-fit">
                   Reset view
                 </button>
@@ -516,8 +518,12 @@
                 <button class="secondary-button" data-studio-action="system-export">
                   Export tokens
                 </button>
-                <button class="primary-button" data-studio-action="system-sync">
-                  Refresh view
+                <button
+                  class="primary-button"
+                  id="design-system-reindex"
+                  data-studio-action="system-sync"
+                >
+                  Re-index project
                 </button>
               </div>
             </header>
@@ -617,7 +623,11 @@
                 <span class="mode-count studio-live-status" id="typography-studio-status"
                   >Select a text layer</span
                 >
-                <button class="secondary-button" data-studio-action="typography-compare">
+                <button
+                  class="secondary-button"
+                  id="typography-compare"
+                  data-studio-action="typography-compare"
+                >
                   Compare fonts
                 </button>
                 <button class="primary-button" data-studio-action="typography-apply">
@@ -1114,7 +1124,7 @@
                       placeholder="Why do these elements feel inconsistent? Give me two source-safe directions."
                     ></textarea>
                   </label>
-                  <button class="primary-button" id="visual-agent-ask">Ask active agent</button>
+                  <button class="primary-button" id="visual-agent-ask">Ask visual agent</button>
                 </div>
                 <div class="visual-agent-safety">
                   <i data-icon="check"></i>

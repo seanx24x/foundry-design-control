@@ -66,19 +66,22 @@ When `foundry_design_wait_for_work` returns `kind: visual_request`, read [visual
 6. Implement the user's selected semantic mapping at the narrowest source of truth.
 7. Preserve existing tokens and component conventions. Prefer a matching token over a new literal. Do not invent a global token for an instance-scoped adjustment.
 8. Apply the batch as a normal, reviewable source diff. Never write generated preview styles into production code.
-9. Report `rebuilding` and every later agent state with the same `claimAttemptId`, including changed files and validation results. Report `failed` for a terminal source or validation failure.
-10. Report any request that cannot be represented without changing the requested scope or architecture.
+9. After the source edit and rebuild, report `rebuilding` with the same `claimAttemptId`, the complete changed-file list, and at least one real validation result. Every validation must pass before Apply can continue.
+10. While the run is still `rebuilding`, call `foundry_design_record_apply_result` exactly once with the run ID, claim attempt ID, and the exact frozen change IDs. This acknowledges server-measured source proof; it does not mark the changes applied or complete verification.
+11. Only after that acknowledgement succeeds, report `verifying` with the same `claimAttemptId`. Report `failed` for a terminal source or validation failure.
+12. Report any request that cannot be represented without changing the requested scope or architecture.
 
 ## Verify
 
 1. Run the project's targeted tests, type checks, lint, and build in proportion to the edited surface.
 2. Rebuild the target in the same device, viewport, theme, breakpoint, and state recorded by the session.
 3. Read [state-workbench.md](references/state-workbench.md) for multi-state verification and unsupported browser states.
-4. Report `verifying` only after a real source diff exists and validation completes. The web adapter reloads to clear preview overrides and measures the rebuilt result.
+4. Report `verifying` only after the real source diff and passing validation have been acknowledged once through `foundry_design_record_apply_result`. The web adapter then reloads to clear preview overrides, obtains a one-use verification challenge, and measures the rebuilt result.
 5. Require measured geometry for selection targets. Treat zero-size, fallback, or out-of-bounds targets as failures.
-6. Mark changes applied only after the source diff exists. Mark verification passed only when every recorded state matches.
-7. Read the completed apply run and return the source diff summary, validation results, verification count, and unresolved items.
-8. If the run needs attention, explain the mismatch and wait for the user to authorize the in-product retry. Never retry automatically.
+6. Do not mark changes applied directly and do not submit manual web verification. Foundry marks the frozen changes applied only after the live web adapter proves every recorded context against the acknowledged source result.
+7. Treat the browser challenge as a local, one-use, origin-bound handoff rather than remote attestation. Native verification is accepted only through the private claim capability held by the MCP bridge; `claimAttemptId` is correlation, not authority.
+8. Read the completed apply run and return the source diff summary, validation results, verification count, and unresolved items.
+9. If the run needs attention, explain the mismatch and wait for the user to authorize the in-product retry. Never retry automatically.
 
 For native limitations and motion registration, read [platform-setup.md](references/platform-setup.md).
 

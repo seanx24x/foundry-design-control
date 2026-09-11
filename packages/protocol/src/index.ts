@@ -1,8 +1,17 @@
 import { z } from 'zod';
+export { verificationValueMatches } from './verification-value.js';
 
-export const PROTOCOL_VERSION = '1.2.0' as const;
+export const PROTOCOL_VERSION = '1.3.0' as const;
+export const PREVIOUS_PROTOCOL_VERSION = '1.2.0' as const;
 export const LEGACY_PROTOCOL_VERSION = '1.0.0' as const;
 export const APPLY_RUN_PROTOCOL_VERSION = '1.1.0' as const;
+
+const readableProtocolVersionSchema = z.enum([
+  PROTOCOL_VERSION,
+  PREVIOUS_PROTOCOL_VERSION,
+  APPLY_RUN_PROTOCOL_VERSION,
+  LEGACY_PROTOCOL_VERSION,
+]);
 
 export const platformSchema = z.enum(['web', 'swiftui', 'react-native']);
 export const changeCategorySchema = z.enum([
@@ -44,6 +53,7 @@ export const sessionContextSchema = z.object({
   designGraphRevision: z.string().optional(),
   platform: platformSchema,
   targetUrl: z.string().url().optional(),
+  previewOrigin: z.string().url().optional(),
   targetName: z.string().optional(),
   device: z.string().optional(),
   viewport: z.object({ width: z.number().positive(), height: z.number().positive() }).optional(),
@@ -51,6 +61,31 @@ export const sessionContextSchema = z.object({
   breakpoint: z.string().default('current'),
   state: z.string().default('current'),
 });
+
+export const changeContextSchema = z.object({
+  breakpoint: z.string().default('current'),
+  theme: z.string().default('current'),
+  state: z.string().default('current'),
+});
+
+const contextSetValuesSchema = z
+  .array(z.string().min(1))
+  .min(1)
+  .transform((values) => [...new Set(values)]);
+
+export const contextSetSchema = z.object({
+  breakpoints: contextSetValuesSchema,
+  themes: contextSetValuesSchema,
+  states: contextSetValuesSchema,
+});
+
+function singletonContextSet(context: z.infer<typeof changeContextSchema>) {
+  return {
+    breakpoints: [context.breakpoint],
+    themes: [context.theme],
+    states: [context.state],
+  };
+}
 
 export const targetRefSchema = z.object({
   id: z.string().min(1),
@@ -220,6 +255,8 @@ export const themeDefinitionSchema = z.object({
   attribute: z.string().optional(),
   value: z.string().optional(),
   source: sourceRefSchema.optional(),
+  confidence: confidenceSchema.default('instrumented'),
+  evidence: z.array(z.string()).default([]),
 });
 
 export const motionPresetSchema = z.object({
@@ -263,8 +300,8 @@ export const designSystemFindingSchema = z.object({
   evidence: z.array(z.string()).default([]),
 });
 
-export const projectDesignGraphSchema = z.object({
-  protocolVersion: z.literal(PROTOCOL_VERSION),
+const projectDesignGraphInputSchema = z.object({
+  protocolVersion: z.union([z.literal(PROTOCOL_VERSION), z.literal(PREVIOUS_PROTOCOL_VERSION)]),
   projectRoot: z.string().min(1),
   revision: z.string().optional(),
   tokens: z.array(designTokenSchema).default([]),
@@ -279,6 +316,11 @@ export const projectDesignGraphSchema = z.object({
   tokenPromotions: z.array(tokenPromotionCandidateSchema).optional(),
   indexedAt: z.string().datetime(),
 });
+
+export const projectDesignGraphSchema = projectDesignGraphInputSchema.transform((graph) => ({
+  ...graph,
+  protocolVersion: PROTOCOL_VERSION,
+}));
 
 export const sourceMappingCandidateSchema = z.object({
   id: z.string().min(1),
@@ -306,32 +348,64 @@ export const sourceMappingCandidateSchema = z.object({
   blastRadius: z.number().int().nonnegative().default(1),
 });
 
-export const designOperationSchema = z.object({
-  id: z.string().min(1),
-  kind: z.enum([
-    'resize',
-    'spacing',
-    'align',
-    'distribute',
-    'style',
-    'content',
-    'motion',
-    'state',
-    'component-variant',
-    'token-refactor',
-  ]),
-  label: z.string().min(1),
-  targetIds: z.array(z.string().min(1)).min(1),
-  changeIds: z.array(z.string().min(1)).default([]),
-  stateIds: z.array(z.string().min(1)).default([]),
-  mappingCandidates: z.array(sourceMappingCandidateSchema).default([]),
-  selectedMappingId: z.string().optional(),
-  status: z.enum(['preview', 'resolved', 'unresolved']).default('preview'),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
+export const designOperationSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.enum([
+      'resize',
+      'spacing',
+      'align',
+      'distribute',
+      'style',
+      'content',
+      'motion',
+      'state',
+      'component-variant',
+      'token-refactor',
+    ]),
+    label: z.string().min(1),
+    targetIds: z.array(z.string().min(1)).min(1),
+    changeIds: z.array(z.string().min(1)).default([]),
+    stateIds: z.array(z.string().min(1)).default([]),
+    mappingCandidates: z.array(sourceMappingCandidateSchema).default([]),
+    selectedMappingId: z.string().optional(),
+    status: z.enum(['preview', 'resolved', 'unresolved']).default('preview'),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .superRefine((operation, context) => {
+    const candidateIds = operation.mappingCandidates.map((candidate) => candidate.id);
+    if (new Set(candidateIds).size !== candidateIds.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['mappingCandidates'],
+        message: 'Source mapping candidate ids must be unique',
+      });
+    }
+    if (
+      operation.selectedMappingId &&
+      !operation.mappingCandidates.some((candidate) => candidate.id === operation.selectedMappingId)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['selectedMappingId'],
+        message: 'Selected source mapping must name an existing candidate',
+      });
+    }
+    if (
+      operation.status === 'resolved' &&
+      (operation.mappingCandidates.length === 0 ||
+        (operation.mappingCandidates.length > 1 && !operation.selectedMappingId))
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['selectedMappingId'],
+        message: 'Resolved operations require a selected source mapping',
+      });
+    }
+  });
 
-export const designChangeSchema = z.object({
+const designChangeInputSchema = z.object({
   id: z.string().min(1),
   target: targetRefSchema,
   category: changeCategorySchema,
@@ -345,11 +419,8 @@ export const designChangeSchema = z.object({
   mappingCandidates: z.array(sourceMappingCandidateSchema).default([]),
   selectedMappingId: z.string().optional(),
   scope: scopeSchema.default('instance'),
-  context: z.object({
-    breakpoint: z.string().default('current'),
-    theme: z.string().default('current'),
-    state: z.string().default('current'),
-  }),
+  context: changeContextSchema,
+  contextSet: contextSetSchema.optional(),
   confidence: confidenceSchema,
   evidence: z.array(z.string()).default([]),
   createdAt: z.string().datetime(),
@@ -357,8 +428,46 @@ export const designChangeSchema = z.object({
   status: z.enum(['draft', 'approved', 'applied', 'rejected', 'unresolved']).default('draft'),
 });
 
-export const changeSetSchema = z.object({
-  protocolVersion: z.literal(PROTOCOL_VERSION),
+export const designChangeSchema = designChangeInputSchema
+  .transform((change) => ({
+    ...change,
+    contextSet: change.contextSet ?? singletonContextSet(change.context),
+  }))
+  .superRefine((change, context) => {
+    const candidateIds = change.mappingCandidates.map((candidate) => candidate.id);
+    if (new Set(candidateIds).size !== candidateIds.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['mappingCandidates'],
+        message: 'Source mapping candidate ids must be unique',
+      });
+    }
+    if (
+      change.selectedMappingId &&
+      !change.mappingCandidates.some((candidate) => candidate.id === change.selectedMappingId)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['selectedMappingId'],
+        message: 'Selected source mapping must name an existing candidate',
+      });
+    }
+    const missingAxes = [
+      change.contextSet.breakpoints.includes(change.context.breakpoint) ? undefined : 'breakpoint',
+      change.contextSet.themes.includes(change.context.theme) ? undefined : 'theme',
+      change.contextSet.states.includes(change.context.state) ? undefined : 'state',
+    ].filter((axis): axis is string => Boolean(axis));
+    if (missingAxes.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['contextSet'],
+        message: `Context set must contain the exact capture ${missingAxes.join(', ')}`,
+      });
+    }
+  });
+
+const changeSetInputSchema = z.object({
+  protocolVersion: readableProtocolVersionSchema,
   sessionId: z.string().min(1),
   context: sessionContextSchema,
   changes: z.array(designChangeSchema),
@@ -377,17 +486,94 @@ export const changeSetSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
-export const designBranchSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1).max(80),
-  status: z.enum(['exploring', 'chosen', 'rejected', 'archived']).default('exploring'),
-  originBranchId: z.string().optional(),
-  changes: z.array(designChangeSchema).default([]),
-  operations: z.array(designOperationSchema).default([]),
-  rejectionReason: z.string().max(280).optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
+function refineChangeCollection(
+  value: {
+    changes: Array<{ id: string; operationId?: string }>;
+    operations: Array<{ id: string; changeIds: string[]; targetIds: string[] }>;
+  },
+  context: z.RefinementCtx,
+): void {
+  const changeIds = value.changes.map((change) => change.id);
+  if (new Set(changeIds).size !== changeIds.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['changes'],
+      message: 'Design change ids must be unique within a change collection',
+    });
+  }
+  const operationIds = value.operations.map((operation) => operation.id);
+  if (new Set(operationIds).size !== operationIds.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['operations'],
+      message: 'Design operation ids must be unique within a change collection',
+    });
+  }
+  const changes = new Map(value.changes.map((change) => [change.id, change]));
+  const operations = new Map(value.operations.map((operation) => [operation.id, operation]));
+  for (const [index, operation] of value.operations.entries()) {
+    if (new Set(operation.changeIds).size !== operation.changeIds.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['operations', index, 'changeIds'],
+        message: 'Operation change ids must be unique',
+      });
+    }
+    if (new Set(operation.targetIds).size !== operation.targetIds.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['operations', index, 'targetIds'],
+        message: 'Operation target ids must be unique',
+      });
+    }
+    for (const referencedId of operation.changeIds) {
+      const change = changes.get(referencedId);
+      if (!change || change.operationId !== operation.id) {
+        context.addIssue({
+          code: 'custom',
+          path: ['operations', index, 'changeIds'],
+          message: `Operation ${operation.id} references an inconsistent change ${referencedId}`,
+        });
+      }
+    }
+  }
+  for (const [index, change] of value.changes.entries()) {
+    if (!change.operationId) continue;
+    const operation = operations.get(change.operationId);
+    if (!operation || !operation.changeIds.includes(change.id)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['changes', index, 'operationId'],
+        message: `Change ${change.id} references an inconsistent operation ${change.operationId}`,
+      });
+    }
+  }
+}
+
+export const changeSetSchema = changeSetInputSchema
+  .transform((changeSet) => ({
+    ...changeSet,
+    protocolVersion: PROTOCOL_VERSION,
+  }))
+  .superRefine((changeSet, context) => {
+    refineChangeCollection(changeSet, context);
+  });
+
+export const designBranchSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1).max(80),
+    status: z.enum(['exploring', 'chosen', 'rejected', 'archived']).default('exploring'),
+    originBranchId: z.string().optional(),
+    changes: z.array(designChangeSchema).default([]),
+    operations: z.array(designOperationSchema).default([]),
+    rejectionReason: z.string().max(280).optional(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .superRefine((branch, context) => {
+    refineChangeCollection(branch, context);
+  });
 
 export const designBranchRecordSourceSchema = z.object({
   targetId: z.string().min(1),
@@ -397,28 +583,32 @@ export const designBranchRecordSourceSchema = z.object({
   source: sourceRefSchema.optional(),
 });
 
-export const designBranchRecordSchema = z.object({
-  version: z.literal(1),
-  id: z.string().min(1),
-  branchId: z.string().min(1),
-  name: z.string().min(1).max(80),
-  outcome: z.enum(['chosen', 'rejected']),
-  rationale: z.string().max(280).optional(),
-  context: sessionContextSchema,
-  changes: z.array(designChangeSchema).default([]),
-  operations: z.array(designOperationSchema).default([]),
-  sourceRelationships: z.array(designBranchRecordSourceSchema).default([]),
-  compatibility: z.object({
-    status: z.enum(['current', 'stale', 'missing']),
-    matchedSources: z.number().int().nonnegative(),
-    totalSources: z.number().int().nonnegative(),
-    warnings: z.array(z.string()).default([]),
-    checkedAt: z.string().datetime(),
-  }),
-  importedAt: z.string().datetime().optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
+export const designBranchRecordSchema = z
+  .object({
+    version: z.literal(1),
+    id: z.string().min(1),
+    branchId: z.string().min(1),
+    name: z.string().min(1).max(80),
+    outcome: z.enum(['chosen', 'rejected']),
+    rationale: z.string().max(280).optional(),
+    context: sessionContextSchema,
+    changes: z.array(designChangeSchema).default([]),
+    operations: z.array(designOperationSchema).default([]),
+    sourceRelationships: z.array(designBranchRecordSourceSchema).default([]),
+    compatibility: z.object({
+      status: z.enum(['current', 'stale', 'missing']),
+      matchedSources: z.number().int().nonnegative(),
+      totalSources: z.number().int().nonnegative(),
+      warnings: z.array(z.string()).default([]),
+      checkedAt: z.string().datetime(),
+    }),
+    importedAt: z.string().datetime().optional(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .superRefine((record, context) => {
+    refineChangeCollection(record, context);
+  });
 
 export const designBranchRecordBundleSchema = z.object({
   format: z.literal('foundry.design-branch-records'),
@@ -432,9 +622,13 @@ export const verificationResultSchema = z.object({
   property: z.string().min(1),
   requested: changeValueSchema,
   rendered: changeValueSchema,
+  context: changeContextSchema.optional(),
+  applyRunId: z.string().min(1).optional(),
+  claimAttemptId: z.string().min(1).optional(),
   passed: z.boolean(),
   reason: z.string().optional(),
   geometry: geometrySchema.optional(),
+  evidence: z.array(z.string().min(1)).default([]),
   screenshotPath: z.string().optional(),
   verifiedAt: z.string().datetime(),
 });
@@ -462,40 +656,141 @@ export const validationResultSchema = z.object({
   name: z.string().min(1),
   passed: z.boolean(),
   summary: z.string().optional(),
+  applyRunId: z.string().min(1).optional(),
+  claimAttemptId: z.string().min(1).optional(),
+  validatedRevision: z.string().min(1).optional(),
+  validatedAt: z.string().datetime().optional(),
 });
 
-export const applyRunSchema = z.object({
-  id: z.string().min(1),
-  sessionId: z.string().min(1),
-  changeIds: z.array(z.string().min(1)).min(1),
-  revision: z.string().optional(),
-  designGraphRevision: z.string().optional(),
-  state: applyRunStateSchema,
-  agent: z
-    .object({
-      name: z.string().min(1),
-      version: z.string().optional(),
-      taskId: z.string().optional(),
-    })
-    .optional(),
-  messages: z.array(applyRunMessageSchema).default([]),
-  changedFiles: z.array(z.string()).default([]),
-  validationResults: z.array(validationResultSchema).default([]),
-  verificationResults: z.array(verificationResultSchema).default([]),
-  attempts: z.number().int().positive().default(1),
-  claimAttemptId: z.string().min(1).optional(),
-  claimExpiresAt: z.string().datetime().optional(),
-  claimHeartbeatAt: z.string().datetime().optional(),
-  requeueCount: z.number().int().nonnegative().default(0),
-  interruptedState: z.enum(['applying', 'rebuilding', 'verifying']).optional(),
-  resumedAt: z.string().datetime().optional(),
-  retryOf: z.string().optional(),
-  error: z.string().optional(),
-  requestedAt: z.string().datetime(),
-  claimedAt: z.string().datetime().optional(),
-  completedAt: z.string().datetime().optional(),
-  updatedAt: z.string().datetime(),
+export const sourceLineAnchorSchema = z
+  .object({
+    line: z.number().int().positive(),
+    endLine: z.number().int().positive().optional(),
+    symbol: z.string().min(1).optional(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .superRefine((anchor, context) => {
+    if (anchor.endLine !== undefined && anchor.endLine < anchor.line) {
+      context.addIssue({
+        code: 'custom',
+        path: ['endLine'],
+        message: 'Source anchor endLine must not precede line',
+      });
+    }
+  });
+
+export const sourceFileSnapshotSchema = z.object({
+  path: z.string().min(1),
+  exists: z.boolean(),
+  sha256: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .nullable(),
+  lineAnchors: z.array(sourceLineAnchorSchema).optional(),
 });
+
+export const applyRunSchema = z
+  .object({
+    id: z.string().min(1),
+    sessionId: z.string().min(1),
+    changeIds: z.array(z.string().min(1)).min(1),
+    reviewedChangeSet: changeSetSchema.optional(),
+    /** Enables only the pre-1.3 acknowledgement shape for a run migrated from that protocol. */
+    legacyApplyCompatibility: z.boolean().optional(),
+    revision: z.string().optional(),
+    designGraphRevision: z.string().optional(),
+    state: applyRunStateSchema,
+    agent: z
+      .object({
+        name: z.string().min(1),
+        version: z.string().optional(),
+        taskId: z.string().optional(),
+      })
+      .optional(),
+    messages: z.array(applyRunMessageSchema).default([]),
+    changedFiles: z.array(z.string()).default([]),
+    validationResults: z.array(validationResultSchema).default([]),
+    verificationResults: z.array(verificationResultSchema).default([]),
+    applyResultAcknowledgedAt: z.string().datetime().optional(),
+    applyResultClaimAttemptId: z.string().min(1).optional(),
+    sourceProofScope: z.enum(['git', 'mapped-files']).optional(),
+    sourceHeadRevision: z.string().min(1).optional(),
+    baselineSourceFiles: z.array(sourceFileSnapshotSchema).default([]),
+    appliedRevision: z.string().min(1).optional(),
+    appliedChangedFiles: z.array(z.string().min(1)).default([]),
+    appliedSourceFiles: z.array(sourceFileSnapshotSchema).default([]),
+    attempts: z.number().int().positive().default(1),
+    claimAttemptId: z.string().min(1).optional(),
+    claimCapabilityHash: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+    claimExpiresAt: z.string().datetime().optional(),
+    claimHeartbeatAt: z.string().datetime().optional(),
+    requeueCount: z.number().int().nonnegative().default(0),
+    interruptedState: z.enum(['applying', 'rebuilding', 'verifying']).optional(),
+    resumedAt: z.string().datetime().optional(),
+    retryOf: z.string().optional(),
+    error: z.string().optional(),
+    requestedAt: z.string().datetime(),
+    claimedAt: z.string().datetime().optional(),
+    completedAt: z.string().datetime().optional(),
+    updatedAt: z.string().datetime(),
+  })
+  .superRefine((run, context) => {
+    if (Boolean(run.applyResultAcknowledgedAt) !== Boolean(run.applyResultClaimAttemptId)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['applyResultAcknowledgedAt'],
+        message: 'Apply result acknowledgement time and claim attempt must be stored together',
+      });
+    }
+    if (
+      run.applyResultAcknowledgedAt &&
+      (!run.appliedRevision ||
+        run.appliedChangedFiles.length === 0 ||
+        run.appliedSourceFiles.length === 0)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['appliedRevision'],
+        message: 'Acknowledged Apply results require a proven revision and changed source files',
+      });
+    }
+    if (!run.reviewedChangeSet) return;
+    if (run.reviewedChangeSet.sessionId !== run.sessionId) {
+      context.addIssue({
+        code: 'custom',
+        path: ['reviewedChangeSet', 'sessionId'],
+        message: 'Reviewed change set must belong to the apply run session',
+      });
+    }
+    const runIds = [...new Set(run.changeIds)].sort();
+    const reviewedIds = [
+      ...new Set(run.reviewedChangeSet.changes.map((change) => change.id)),
+    ].sort();
+    if (
+      runIds.length !== run.changeIds.length ||
+      reviewedIds.length !== run.reviewedChangeSet.changes.length ||
+      runIds.length !== reviewedIds.length ||
+      runIds.some((id, index) => id !== reviewedIds[index])
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['reviewedChangeSet', 'changes'],
+        message: 'Reviewed change set must contain each apply run change exactly once',
+      });
+    }
+    for (const [index, change] of run.reviewedChangeSet.changes.entries()) {
+      if (change.status !== 'approved') {
+        context.addIssue({
+          code: 'custom',
+          path: ['reviewedChangeSet', 'changes', index, 'status'],
+          message: 'Frozen reviewed changes must remain approved',
+        });
+      }
+    }
+  });
 
 export const deliveryRecordStatusSchema = z.enum([
   'draft',
@@ -554,6 +849,8 @@ export const deliveryRecordSchema = z.object({
     )
     .default([]),
   revision: z.string().optional(),
+  baselineRevision: z.string().optional(),
+  appliedRevision: z.string().optional(),
   designGraphRevision: z.string().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -596,6 +893,8 @@ export const designHistoryEntrySchema = z.object({
   validationResults: z.array(validationResultSchema).default([]),
   verificationResults: z.array(verificationResultSchema).default([]),
   revision: z.string().optional(),
+  baselineRevision: z.string().optional(),
+  appliedRevision: z.string().optional(),
   createdAt: z.string().datetime(),
 });
 
@@ -692,6 +991,10 @@ export const visualAgentRequestSchema = z.object({
     })
     .optional(),
   claimAttemptId: z.string().optional(),
+  claimCapabilityHash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
   claimExpiresAt: z.string().datetime().optional(),
   error: z.string().optional(),
   createdAt: z.string().datetime(),
@@ -733,6 +1036,82 @@ export const surfaceSnapshotSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const previewContextSchema = z.object({
+  version: z.literal(1),
+  requestRevision: z.number().int().nonnegative(),
+  viewport: z.object({
+    id: z.string().min(1),
+    width: z.number().positive().optional(),
+    height: z.number().positive().optional(),
+  }),
+  theme: z.string().min(1),
+  state: z.string().min(1),
+  motionPreference: z.enum(['system', 'reduce', 'no-preference']),
+  selectedTarget: z
+    .object({
+      id: z.string().min(1),
+      selector: z.string().min(1),
+    })
+    .optional(),
+});
+
+export const previewAxisResultSchema = z.object({
+  status: z.enum(['applied', 'current', 'unsupported']),
+  method: z.string().min(1),
+  evidence: z.array(z.string()).default([]),
+  failureReason: z.string().min(1).optional(),
+});
+
+export const previewContextResultSchema = z.object({
+  version: z.literal(1),
+  requestRevision: z.number().int().nonnegative(),
+  applied: z.boolean(),
+  reloadQuery: z.record(z.string(), z.string()).optional(),
+  failureReason: z.string().min(1).optional(),
+  context: previewContextSchema,
+  axes: z.object({
+    viewport: previewAxisResultSchema,
+    theme: previewAxisResultSchema,
+    state: previewAxisResultSchema,
+    motion: previewAxisResultSchema,
+  }),
+});
+
+export const previewCapabilitiesSchema = z.object({
+  version: z.literal(1),
+  viewports: z.array(
+    z.object({
+      id: z.string().min(1),
+      width: z.number().positive().optional(),
+      height: z.number().positive().optional(),
+    }),
+  ),
+  themes: z.array(
+    z.object({
+      id: z.string().min(1),
+      selector: z.string().min(1).optional(),
+      attribute: z.string().min(1).optional(),
+      value: z.string().optional(),
+    }),
+  ),
+  states: z.array(
+    z.object({
+      id: z.string().min(1),
+      methods: z
+        .array(z.enum(['query', 'variant', 'pseudo', 'native', 'reduced-motion']))
+        .default([]),
+    }),
+  ),
+  motionPreferences: z.array(z.enum(['system', 'reduce', 'no-preference'])).default(['system']),
+});
+
+export const workspaceSnapshotSchema = z.object({
+  version: z.literal(1),
+  capabilities: previewCapabilitiesSchema,
+  currentPreviewContext: previewContextSchema.nullable().default(null),
+  lastPreviewApplication: previewContextResultSchema.nullable().default(null),
+});
+
 export const previewCommandSchema = z.object({
   id: z.string().min(1),
   targetId: z.string().min(1),
@@ -746,6 +1125,8 @@ export type Platform = z.infer<typeof platformSchema>;
 export type ChangeCategory = z.infer<typeof changeCategorySchema>;
 export type SourceRef = z.infer<typeof sourceRefSchema>;
 export type SessionContext = z.infer<typeof sessionContextSchema>;
+export type ChangeContext = z.infer<typeof changeContextSchema>;
+export type ContextSet = z.infer<typeof contextSetSchema>;
 export type TargetRef = z.infer<typeof targetRefSchema>;
 export type ControlDescriptor = z.infer<typeof controlDescriptorSchema>;
 export type DesignChange = z.infer<typeof designChangeSchema>;
@@ -759,6 +1140,7 @@ export type BreakpointDefinition = z.infer<typeof breakpointDefinitionSchema>;
 export type ThemeDefinition = z.infer<typeof themeDefinitionSchema>;
 export type MotionPreset = z.infer<typeof motionPresetSchema>;
 export type ProjectDesignGraph = z.infer<typeof projectDesignGraphSchema>;
+export type ProjectDesignGraphInput = z.input<typeof projectDesignGraphSchema>;
 export type DesignTokenUsage = z.infer<typeof designTokenUsageSchema>;
 export type DesignSystemFinding = z.infer<typeof designSystemFindingSchema>;
 export type TokenPromotionCandidate = z.infer<typeof tokenPromotionCandidateSchema>;
@@ -774,6 +1156,8 @@ export type VerificationResult = z.infer<typeof verificationResultSchema>;
 export type ApplyRunState = z.infer<typeof applyRunStateSchema>;
 export type ApplyRunMessage = z.infer<typeof applyRunMessageSchema>;
 export type ValidationResult = z.infer<typeof validationResultSchema>;
+export type SourceFileSnapshot = z.infer<typeof sourceFileSnapshotSchema>;
+export type SourceLineAnchor = z.infer<typeof sourceLineAnchorSchema>;
 export type ApplyRun = z.infer<typeof applyRunSchema>;
 export type DeliveryRecordStatus = z.infer<typeof deliveryRecordStatusSchema>;
 export type DeliveryNarrativeSource = z.infer<typeof deliveryNarrativeSourceSchema>;
@@ -791,41 +1175,55 @@ export type VisualAgentRequest = z.infer<typeof visualAgentRequestSchema>;
 export type StressConditionId = z.infer<typeof stressConditionIdSchema>;
 export type StressTestSession = z.infer<typeof stressTestSessionSchema>;
 export type SurfaceSnapshot = z.infer<typeof surfaceSnapshotSchema>;
+export type PreviewContext = z.infer<typeof previewContextSchema>;
+export type PreviewAxisResult = z.infer<typeof previewAxisResultSchema>;
+export type PreviewContextResult = z.infer<typeof previewContextResultSchema>;
+export type PreviewCapabilities = z.infer<typeof previewCapabilitiesSchema>;
+export type WorkspaceSnapshot = z.infer<typeof workspaceSnapshotSchema>;
 export type PreviewCommand = z.infer<typeof previewCommandSchema>;
 
 export function changeKey(change: DesignChange): string {
-  const context = change.context;
-  return [
+  const contextSet = change.contextSet;
+  return JSON.stringify([
     change.target.id,
     change.property,
     change.scope,
-    context.breakpoint,
-    context.theme,
-    context.state,
-    [...change.stateIds].sort().join(','),
-  ].join('::');
+    [...contextSet.breakpoints].sort(),
+    [...contextSet.themes].sort(),
+    [...contextSet.states].sort(),
+    [...change.stateIds].sort(),
+  ]);
 }
 
 export function coalesceChanges(changes: DesignChange[]): DesignChange[] {
-  const order: string[] = [];
-  const byKey = new Map<string, DesignChange>();
+  const result: DesignChange[] = [];
+  const editableIndexByKey = new Map<string, number>();
   for (const change of changes) {
     const parsed = designChangeSchema.parse(change);
     const key = changeKey(parsed);
-    const existing = byKey.get(key);
-    if (!existing) {
-      order.push(key);
-      byKey.set(key, parsed);
+
+    if (!['draft', 'unresolved'].includes(parsed.status)) {
+      result.push(parsed);
+      editableIndexByKey.delete(key);
       continue;
     }
-    byKey.set(key, {
+
+    const existingIndex = editableIndexByKey.get(key);
+    if (existingIndex === undefined) {
+      editableIndexByKey.set(key, result.length);
+      result.push(parsed);
+      continue;
+    }
+
+    const existing = result[existingIndex]!;
+    result[existingIndex] = {
       ...parsed,
       id: existing.id,
       before: existing.before,
       createdAt: existing.createdAt,
-    });
+    };
   }
-  return order.map((key) => byKey.get(key)!);
+  return result;
 }
 
 function renderValue(value: unknown, unit?: string): string {
@@ -858,14 +1256,15 @@ export function renderChangePrompt(changeSet: ChangeSet): string {
       `${index + 1}. ${change.target.label} — ${change.property}`,
       `   - Change: ${renderValue(change.before, change.unit)} → ${renderValue(change.after, change.unit)}`,
       `   - Scope: ${change.scope}; breakpoint=${change.context.breakpoint}; theme=${change.context.theme}; state=${change.context.state}`,
+      `   - Affected contexts: breakpoints=${change.contextSet.breakpoints.join(', ')}; themes=${change.contextSet.themes.join(', ')}; states=${change.contextSet.states.join(', ')}`,
       `   - Target: ${change.target.source ? `${change.target.source.file}${change.target.source.line ? `:${change.target.source.line}` : ''}` : JSON.stringify(change.target.locator)}`,
       `   - Evidence: ${change.confidence}; ${[...new Set([...change.target.evidence, ...change.evidence])].join('; ') || 'none recorded'}`,
     );
     if (change.token) lines.push(`   - Token: ${change.token}`);
     if (change.stateIds.length) lines.push(`   - State set: ${change.stateIds.join(', ')}`);
-    const mapping = change.mappingCandidates.find(
-      (candidate) => candidate.id === change.selectedMappingId,
-    );
+    const mapping =
+      change.mappingCandidates.find((candidate) => candidate.id === change.selectedMappingId) ??
+      (change.mappingCandidates.length === 1 ? change.mappingCandidates[0] : undefined);
     if (mapping) {
       lines.push(
         `   - Source intent: ${mapping.label}; property=${mapping.property}; confidence=${mapping.confidence}; blast-radius=${mapping.blastRadius}`,

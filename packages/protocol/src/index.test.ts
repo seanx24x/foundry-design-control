@@ -3,8 +3,11 @@ import test from 'node:test';
 import {
   PROTOCOL_VERSION,
   applyRunSchema,
+  changeKey,
+  changeSetSchema,
   coalesceChanges,
   designBranchRecordBundleSchema,
+  designBranchRecordSchema,
   designChangeSchema,
   designBranchSchema,
   designOperationSchema,
@@ -217,12 +220,13 @@ const base = designChangeSchema.parse({
 
 test('coalesces repeated edits while preserving the original before value', () => {
   const changes = coalesceChanges([
-    base,
+    { ...base, status: 'draft' },
     {
       ...base,
       id: 'chg_2',
       before: 120,
       after: 144,
+      status: 'draft',
       updatedAt: '2026-08-29T00:01:00.000Z',
     },
   ]);
@@ -232,16 +236,156 @@ test('coalesces repeated edits while preserving the original before value', () =
   assert.equal(changes[0]?.id, 'chg_1');
 });
 
-test('keeps edits with different responsive scopes separate', () => {
+test('migrates legacy change contexts to singleton context sets', () => {
+  const parsed = designChangeSchema.parse({ ...base, contextSet: undefined });
+  assert.deepEqual(parsed.contextSet, {
+    breakpoints: ['desktop'],
+    themes: ['light'],
+    states: ['default'],
+  });
+});
+
+test('requires every context set to include the exact capture context', () => {
+  assert.throws(
+    () =>
+      designChangeSchema.parse({
+        ...base,
+        contextSet: {
+          breakpoints: ['mobile'],
+          themes: ['dark'],
+          states: ['hover'],
+        },
+      }),
+    /Context set must contain the exact capture breakpoint, theme, state/,
+  );
+});
+
+test('coalesces equal context sets and preserves the latest exact capture context', () => {
   const changes = coalesceChanges([
-    base,
+    {
+      ...base,
+      status: 'draft',
+      contextSet: {
+        breakpoints: ['desktop', 'mobile'],
+        themes: ['light'],
+        states: ['default'],
+      },
+    },
     {
       ...base,
       id: 'chg_2',
+      before: 120,
+      after: 144,
+      status: 'draft',
       context: { ...base.context, breakpoint: 'mobile' },
+      contextSet: {
+        breakpoints: ['mobile', 'desktop'],
+        themes: ['light'],
+        states: ['default'],
+      },
+      updatedAt: '2026-08-29T00:01:00.000Z',
+    },
+  ]);
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0]?.context.breakpoint, 'mobile');
+  assert.deepEqual(changes[0]?.contextSet.breakpoints, ['mobile', 'desktop']);
+  assert.equal(changes[0]?.before, 100);
+  assert.equal(changes[0]?.after, 144);
+});
+
+test('keeps edits with different context sets separate', () => {
+  const changes = coalesceChanges([
+    { ...base, status: 'draft' },
+    {
+      ...base,
+      id: 'chg_2',
+      status: 'draft',
+      contextSet: {
+        breakpoints: ['desktop', 'mobile'],
+        themes: ['light'],
+        states: ['default'],
+      },
     },
   ]);
   assert.equal(changes.length, 2);
+});
+
+test('keeps edits with different responsive scopes separate', () => {
+  const changes = coalesceChanges([
+    { ...base, status: 'draft' },
+    {
+      ...base,
+      id: 'chg_2',
+      status: 'draft',
+      context: { ...base.context, breakpoint: 'mobile' },
+      contextSet: { ...base.contextSet, breakpoints: ['mobile'] },
+    },
+  ]);
+  assert.equal(changes.length, 2);
+});
+
+test('uses structural context-set keys without delimiter collisions', () => {
+  const commaValue = designChangeSchema.parse({
+    ...base,
+    status: 'draft',
+    context: { ...base.context, breakpoint: 'a,b' },
+    contextSet: {
+      breakpoints: ['a,b'],
+      themes: ['light'],
+      states: ['default'],
+    },
+  });
+  const twoValues = designChangeSchema.parse({
+    ...base,
+    id: 'chg_2',
+    status: 'draft',
+    context: { ...base.context, breakpoint: 'a' },
+    contextSet: {
+      breakpoints: ['a', 'b'],
+      themes: ['light'],
+      states: ['default'],
+    },
+  });
+
+  assert.notEqual(changeKey(commaValue), changeKey(twoValues));
+  assert.deepEqual(
+    coalesceChanges([commaValue, twoValues]).map((change) => change.id),
+    ['chg_1', 'chg_2'],
+  );
+});
+
+test('preserves reviewed history and starts a fresh coalescing chain', () => {
+  for (const status of ['approved', 'applied', 'rejected'] as const) {
+    const changes = coalesceChanges([
+      { ...base, status },
+      {
+        ...base,
+        id: `chg_${status}_next`,
+        before: 120,
+        after: 144,
+        status: 'draft',
+        createdAt: '2026-08-29T00:01:00.000Z',
+        updatedAt: '2026-08-29T00:01:00.000Z',
+      },
+      {
+        ...base,
+        id: `chg_${status}_latest`,
+        before: 144,
+        after: 160,
+        status: 'draft',
+        createdAt: '2026-08-29T00:02:00.000Z',
+        updatedAt: '2026-08-29T00:02:00.000Z',
+      },
+    ]);
+
+    assert.equal(changes.length, 2);
+    assert.equal(changes[0]?.id, 'chg_1');
+    assert.equal(changes[0]?.status, status);
+    assert.equal(changes[0]?.after, 120);
+    assert.equal(changes[1]?.id, `chg_${status}_next`);
+    assert.equal(changes[1]?.before, 120);
+    assert.equal(changes[1]?.after, 160);
+  }
 });
 
 test('parses an isolated design branch with decisions and provenance', () => {
@@ -261,7 +405,7 @@ test('parses an isolated design branch with decisions and provenance', () => {
 
 test('renders a portable prompt from canonical JSON', () => {
   const set: ChangeSet = {
-    protocolVersion: '1.2.0',
+    protocolVersion: PROTOCOL_VERSION,
     sessionId: 'ses_1',
     context: {
       projectRoot: '/project',
@@ -279,12 +423,13 @@ test('renders a portable prompt from canonical JSON', () => {
   const prompt = renderChangePrompt(set);
   assert.match(prompt, /Save button — width/);
   assert.match(prompt, /100px → 120px/);
+  assert.match(prompt, /Affected contexts: breakpoints=desktop; themes=light; states=default/);
   assert.match(prompt, /getBoundingClientRect/);
 });
 
 test('requires reviewed changes in portable prompt exports', () => {
   const set: ChangeSet = {
-    protocolVersion: '1.2.0',
+    protocolVersion: PROTOCOL_VERSION,
     sessionId: 'ses_1',
     context: {
       projectRoot: '/project',
@@ -300,6 +445,27 @@ test('requires reviewed changes in portable prompt exports', () => {
     updatedAt: '2026-08-29T00:00:00.000Z',
   };
   assert.match(renderChangePrompt(set), /No reviewed changes are present/);
+});
+
+test('reads protocol 1.2 change sets and migrates them to 1.3 context sets', () => {
+  const parsed = changeSetSchema.parse({
+    protocolVersion: '1.2.0',
+    sessionId: 'ses_legacy',
+    context: {
+      projectRoot: '/project',
+      platform: 'web',
+      theme: 'light',
+      breakpoint: 'desktop',
+      state: 'default',
+    },
+    changes: [{ ...base, contextSet: undefined }],
+    operations: [],
+    screenshots: [],
+    createdAt: '2026-08-29T00:00:00.000Z',
+    updatedAt: '2026-08-29T00:00:00.000Z',
+  });
+  assert.equal(parsed.protocolVersion, '1.3.0');
+  assert.deepEqual(parsed.changes[0]?.contextSet.breakpoints, ['desktop']);
 });
 
 test('parses a portable apply run with progress and validation', () => {
@@ -330,6 +496,49 @@ test('parses a portable apply run with progress and validation', () => {
   assert.equal(run.claimAttemptId, 'claim_1');
   assert.equal(run.requeueCount, 0);
   assert.equal(run.validationResults[0]?.passed, true);
+});
+
+test('freezes one exact reviewed change set on an apply run', () => {
+  const reviewedChangeSet = changeSetSchema.parse({
+    protocolVersion: PROTOCOL_VERSION,
+    sessionId: 'ses_1',
+    context: {
+      projectRoot: '/project',
+      platform: 'web',
+      breakpoint: 'desktop',
+      theme: 'light',
+      state: 'default',
+    },
+    changes: [base],
+    operations: [],
+    screenshots: [],
+    createdAt: '2026-08-29T00:00:00.000Z',
+    updatedAt: '2026-08-29T00:00:00.000Z',
+  });
+  const run = applyRunSchema.parse({
+    id: 'run_frozen',
+    sessionId: 'ses_1',
+    changeIds: ['chg_1'],
+    reviewedChangeSet,
+    state: 'queued',
+    requestedAt: '2026-08-29T00:00:00.000Z',
+    updatedAt: '2026-08-29T00:00:00.000Z',
+  });
+  assert.equal(run.reviewedChangeSet?.changes[0]?.after, 120);
+  assert.deepEqual(run.reviewedChangeSet?.changes[0]?.contextSet, {
+    breakpoints: ['desktop'],
+    themes: ['light'],
+    states: ['default'],
+  });
+
+  assert.throws(
+    () =>
+      applyRunSchema.parse({
+        ...run,
+        changeIds: ['a-different-change'],
+      }),
+    /must contain each apply run change exactly once/,
+  );
 });
 
 test('parses a revisioned project design graph', () => {
@@ -410,6 +619,7 @@ test('parses a revisioned project design graph', () => {
   });
   assert.equal(graph.tokenUsages[0]?.source.line, 8);
   assert.equal(graph.designSystemFindings[0]?.kind, 'literal-drift');
+  assert.equal(graph.protocolVersion, '1.3.0');
 });
 
 test('accepts source-aware variant change scope', () => {
@@ -446,6 +656,146 @@ test('requires explicit resolution for ambiguous semantic operations', () => {
   });
   assert.equal(operation.mappingCandidates.length, 2);
   assert.equal(operation.selectedMappingId, undefined);
+});
+
+test('validates mapping identities while preserving sole-candidate compatibility', () => {
+  const soleCandidate = {
+    id: 'map-width',
+    label: 'Set element width',
+    intent: 'resize' as const,
+    property: 'width',
+    value: 120,
+    confidence: 'inferred' as const,
+  };
+  const operation = designOperationSchema.parse({
+    id: 'op-sole',
+    kind: 'resize',
+    label: 'Resize Save button',
+    targetIds: ['button-primary'],
+    mappingCandidates: [soleCandidate],
+    status: 'resolved',
+    createdAt: '2026-08-29T00:00:00.000Z',
+    updatedAt: '2026-08-29T00:00:00.000Z',
+  });
+  assert.equal(operation.selectedMappingId, undefined);
+
+  assert.throws(
+    () =>
+      designOperationSchema.parse({
+        ...operation,
+        mappingCandidates: [],
+      }),
+    /Resolved operations require a selected source mapping/,
+  );
+  assert.throws(
+    () =>
+      designOperationSchema.parse({
+        ...operation,
+        selectedMappingId: 'missing',
+      }),
+    /Selected source mapping must name an existing candidate/,
+  );
+  assert.throws(
+    () =>
+      designChangeSchema.parse({
+        ...base,
+        mappingCandidates: [soleCandidate, { ...soleCandidate }],
+      }),
+    /Source mapping candidate ids must be unique/,
+  );
+});
+
+test('rejects duplicate and inconsistent change-operation identities', () => {
+  const operation = designOperationSchema.parse({
+    id: 'op-1',
+    kind: 'resize',
+    label: 'Resize Save button',
+    targetIds: ['button-primary'],
+    changeIds: ['chg_1'],
+    mappingCandidates: [
+      {
+        id: 'map-width',
+        label: 'Set element width',
+        intent: 'resize',
+        property: 'width',
+        value: 120,
+        confidence: 'inferred',
+      },
+    ],
+    status: 'resolved',
+    createdAt: '2026-08-29T00:00:00.000Z',
+    updatedAt: '2026-08-29T00:00:00.000Z',
+  });
+  const set = {
+    protocolVersion: PROTOCOL_VERSION,
+    sessionId: 'ses_1',
+    context: {
+      projectRoot: '/project',
+      platform: 'web' as const,
+      theme: 'light',
+      breakpoint: 'desktop',
+      state: 'default',
+    },
+    changes: [{ ...base, operationId: operation.id }],
+    operations: [operation],
+    screenshots: [],
+    createdAt: '2026-08-29T00:00:00.000Z',
+    updatedAt: '2026-08-29T00:00:00.000Z',
+  };
+  assert.equal(changeSetSchema.parse(set).operations[0]?.id, 'op-1');
+  assert.throws(
+    () => changeSetSchema.parse({ ...set, changes: [set.changes[0], set.changes[0]] }),
+    /Design change ids must be unique/,
+  );
+  assert.throws(
+    () => changeSetSchema.parse({ ...set, operations: [operation, operation] }),
+    /Design operation ids must be unique/,
+  );
+  assert.throws(
+    () =>
+      changeSetSchema.parse({
+        ...set,
+        operations: [{ ...operation, changeIds: [] }],
+      }),
+    /references an inconsistent operation/,
+  );
+  assert.throws(
+    () =>
+      designBranchSchema.parse({
+        id: 'branch-duplicate',
+        name: 'Duplicate operation',
+        status: 'exploring',
+        changes: set.changes,
+        operations: [operation, operation],
+        createdAt: set.createdAt,
+        updatedAt: set.updatedAt,
+      }),
+    /Design operation ids must be unique/,
+  );
+  assert.throws(
+    () =>
+      designBranchRecordSchema.parse({
+        version: 1,
+        id: 'record-duplicate',
+        branchId: 'branch-duplicate',
+        name: 'Duplicate operation record',
+        outcome: 'chosen',
+        context: set.context,
+        changes: set.changes,
+        operations: [operation, operation],
+        sourceRelationships: [],
+        compatibility: {
+          status: 'current',
+          matchedSources: 0,
+          totalSources: 0,
+          warnings: [],
+          checkedAt: set.updatedAt,
+        },
+        createdAt: set.createdAt,
+        updatedAt: set.updatedAt,
+      }),
+    /Design operation ids must be unique/,
+  );
 });
 
 test('preserves source-backed component variant authoring and operations', () => {

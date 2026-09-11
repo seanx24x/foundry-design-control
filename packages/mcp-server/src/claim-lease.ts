@@ -7,6 +7,7 @@ export interface ClaimLease {
   token?: string;
   runId: string;
   claimAttemptId: string;
+  claimCapability?: string;
   kind?: 'apply' | 'visual';
 }
 
@@ -52,6 +53,12 @@ export class ClaimLeaseKeeper {
     return this.claims.has(runId);
   }
 
+  capability(runId: string, claimAttemptId: string): string | undefined {
+    const active = this.claims.get(runId);
+    if (!active || active.claimAttemptId !== claimAttemptId) return undefined;
+    return active.claimCapability;
+  }
+
   async pulse(runId: string): Promise<void> {
     const active = this.claims.get(runId);
     if (!active || active.renewing) return;
@@ -63,7 +70,10 @@ export class ClaimLeaseKeeper {
           : `/v1/sessions/${encodeURIComponent(active.sessionId)}/apply-runs/${encodeURIComponent(active.runId)}/heartbeat`,
         {
           method: 'POST',
-          body: JSON.stringify({ claimAttemptId: active.claimAttemptId }),
+          body: JSON.stringify({
+            claimAttemptId: active.claimAttemptId,
+            ...(active.claimCapability ? { claimCapability: active.claimCapability } : {}),
+          }),
         },
         active.token,
       )) as {

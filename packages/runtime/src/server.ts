@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFile } from 'node:fs/promises';
 import { dirname, extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
   PROTOCOL_VERSION,
   previewCommandSchema,
@@ -10,16 +10,30 @@ import {
   renderChangePrompt,
   surfaceSnapshotSchema,
   type ApplyRunState,
+  type ApplyRun,
   type DesignChange,
+  type DesignChangeInput,
   type DesignOperationInput,
   type PreviewCommand,
+  type ProjectDesignGraphInput,
   type SessionContext,
   type SurfaceSnapshot,
+  type SourceFileSnapshot,
   type VerificationResult,
   type VisualAgentContext,
   type VisualAgentProposal,
+  type VisualAgentRequest,
 } from 'foundry-design-protocol';
-import { SessionStore, type StoredSession } from './store.js';
+import {
+  SessionStore,
+  previewCapabilityMatches,
+  reviewedSourceFiles,
+  reviewedSourceLocations,
+  type ApplySourceProof,
+  type ReviewedSourceLocation,
+  type SourceChangedRange,
+  type StoredSession,
+} from './store.js';
 import { GoogleFontsCatalog } from './google-fonts.js';
 
 export interface RuntimeOptions {
@@ -27,6 +41,38 @@ export interface RuntimeOptions {
   port?: number;
   store?: SessionStore;
   googleFontsCatalog?: GoogleFontsCatalog;
+  reindexProjectDesign?: (input: ReindexProjectDesignInput) => Promise<ProjectDesignGraphInput>;
+  resolveProjectRevision?: (input: {
+    sessionId: string;
+    projectRoot: string;
+    sourcePaths: string[];
+    sourceLocations: ReviewedSourceLocation[];
+  }) => Promise<{
+    supported: boolean;
+    scope?: 'git' | 'mapped-files';
+    revision: string | null;
+    headRevision?: string;
+    files?: SourceFileSnapshot[];
+    changedRanges?: SourceChangedRange[];
+    reason?: string;
+  }>;
+}
+
+export interface ReindexProjectDesignInput {
+  sessionId: string;
+  projectRoot: string;
+  revision?: string;
+  designGraphRevision?: string;
+}
+
+class RuntimeRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'RuntimeRequestError';
+  }
 }
 
 interface AgentPresence {
@@ -73,9 +119,21 @@ function tokenFrom(request: IncomingMessage, url: URL): string | undefined {
   return (Array.isArray(header) ? header[0] : header) ?? url.searchParams.get('token') ?? undefined;
 }
 
+function isLoopbackOrigin(value: string): boolean {
+  try {
+    const origin = new URL(value);
+    return (
+      (origin.protocol === 'http:' || origin.protocol === 'https:') &&
+      ['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function applyCors(request: IncomingMessage, response: ServerResponse): boolean {
   const origin = request.headers.origin;
-  if (origin && !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)) {
+  if (origin && !isLoopbackOrigin(origin)) {
     sendJson(response, 403, {
       error: 'Foundry accepts browser requests only from loopback origins.',
     });
@@ -88,21 +146,42 @@ function applyCors(request: IncomingMessage, response: ServerResponse): boolean 
   return true;
 }
 
-function publicSession(stored: StoredSession): Omit<StoredSession, 'token'> {
+function publicApplyRun(run: ApplyRun): Omit<ApplyRun, 'claimCapabilityHash'> {
+  const { claimCapabilityHash: _secret, ...visible } = run;
+  return visible;
+}
+
+function publicVisualAgentRequest(
+  request: VisualAgentRequest,
+): Omit<VisualAgentRequest, 'claimCapabilityHash'> {
+  const { claimCapabilityHash: _secret, ...visible } = request;
+  return visible;
+}
+
+function publicSession(
+  stored: Omit<StoredSession, 'token'>,
+): Omit<StoredSession, 'token' | 'previewCapabilityHash'> {
   return {
     changeSet: stored.changeSet,
     verifications: stored.verifications,
-    applyRuns: stored.applyRuns,
+    applyRuns: stored.applyRuns.map(publicApplyRun),
     designGraph: stored.designGraph,
     designBranches: stored.designBranches,
     designBranchRecords: stored.designBranchRecords,
     activeDesignBranchId: stored.activeDesignBranchId,
-    visualAgentRequests: stored.visualAgentRequests,
+    visualAgentRequests: stored.visualAgentRequests.map(publicVisualAgentRequest),
     deliveryRecords: stored.deliveryRecords,
     documentationPages: stored.documentationPages,
     designHistory: stored.designHistory,
     deliveryMilestones: stored.deliveryMilestones,
   };
+}
+
+function reviewedPreviewOrigin(run: ApplyRun | undefined): string | undefined {
+  const context = run?.reviewedChangeSet?.context;
+  if (!context) return undefined;
+  if (context.previewOrigin) return new URL(context.previewOrigin).origin;
+  return context.targetUrl ? new URL(context.targetUrl).origin : undefined;
 }
 
 async function staticFile(pathname: string, response: ServerResponse): Promise<boolean> {
@@ -137,9 +216,21 @@ export class FoundryRuntime {
   readonly port: number;
   readonly store: SessionStore;
   readonly googleFontsCatalog: GoogleFontsCatalog;
+  readonly reindexProjectDesign?: RuntimeOptions['reindexProjectDesign'];
+  readonly resolveProjectRevision?: RuntimeOptions['resolveProjectRevision'];
   private surfaces = new Map<string, SurfaceSnapshot>();
   private commands = new Map<string, PreviewCommand[]>();
   private agentPresence = new Map<string, AgentPresence>();
+  private verificationChallenges = new Map<
+    string,
+    {
+      sessionId: string;
+      runId: string;
+      claimAttemptId: string;
+      origin: string;
+      expiresAt: number;
+    }
+  >();
   private server = createServer((request, response) => void this.handle(request, response));
 
   constructor(options: RuntimeOptions = {}) {
@@ -147,6 +238,8 @@ export class FoundryRuntime {
     this.port = options.port ?? 4387;
     this.store = options.store ?? new SessionStore();
     this.googleFontsCatalog = options.googleFontsCatalog ?? new GoogleFontsCatalog();
+    this.reindexProjectDesign = options.reindexProjectDesign;
+    this.resolveProjectRevision = options.resolveProjectRevision;
   }
 
   async start(): Promise<void> {
@@ -164,6 +257,59 @@ export class FoundryRuntime {
     await new Promise<void>((resolveStop, reject) =>
       this.server.close((error) => (error ? reject(error) : resolveStop())),
     );
+  }
+
+  private async sourceProofForRun(stored: StoredSession, runId: string): Promise<ApplySourceProof> {
+    const run = stored.applyRuns.find((candidate) => candidate.id === runId);
+    if (!run) throw new RuntimeRequestError(`Unknown apply run: ${runId}`, 404);
+    if (!run.reviewedChangeSet) {
+      throw new RuntimeRequestError(
+        'The frozen reviewed contract is unavailable. Review the changes again.',
+        409,
+      );
+    }
+    const sourcePaths = [
+      ...reviewedSourceFiles(run.reviewedChangeSet),
+      ...run.baselineSourceFiles.map((file) => file.path),
+      ...run.appliedSourceFiles.map((file) => file.path),
+    ];
+    return this.resolveSourceProof(
+      stored,
+      sourcePaths,
+      reviewedSourceLocations(run.reviewedChangeSet),
+    );
+  }
+
+  private async resolveSourceProof(
+    stored: StoredSession,
+    sourcePaths: string[],
+    sourceLocations: ReviewedSourceLocation[] = [],
+  ): Promise<ApplySourceProof> {
+    if (!this.resolveProjectRevision) {
+      throw new RuntimeRequestError(
+        'Apply requires a live project source resolver. Restart Foundry from the project CLI.',
+        409,
+      );
+    }
+    const resolved = await this.resolveProjectRevision({
+      sessionId: stored.changeSet.sessionId,
+      projectRoot: stored.changeSet.context.projectRoot,
+      sourcePaths: [...new Set(sourcePaths)],
+      sourceLocations,
+    });
+    if (!resolved.supported || !resolved.scope || !resolved.revision || !resolved.files) {
+      throw new RuntimeRequestError(
+        resolved.reason ?? 'Live project source proof is unavailable.',
+        409,
+      );
+    }
+    return {
+      scope: resolved.scope,
+      revision: resolved.revision,
+      headRevision: resolved.headRevision,
+      files: resolved.files,
+      changedRanges: resolved.changedRanges,
+    };
   }
 
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -185,7 +331,9 @@ export class FoundryRuntime {
         return;
       }
       if (request.method === 'GET' && url.pathname === '/v1/sessions') {
-        sendJson(response, 200, { sessions: await this.store.list() });
+        sendJson(response, 200, {
+          sessions: (await this.store.list()).map(publicSession),
+        });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/sessions') {
@@ -256,13 +404,26 @@ export class FoundryRuntime {
           sendJson(response, 201, publicSession(updated));
           return;
         }
+        if (request.method === 'POST' && parts[3] === 'change-records') {
+          const input = (await body(request)) as {
+            operation: Omit<DesignOperationInput, 'id' | 'createdAt' | 'updatedAt' | 'changeIds'> &
+              Partial<Pick<DesignOperationInput, 'id' | 'createdAt' | 'updatedAt'>>;
+            change: Omit<DesignChangeInput, 'id' | 'createdAt' | 'updatedAt' | 'operationId'> &
+              Partial<Pick<DesignChangeInput, 'id' | 'createdAt' | 'updatedAt' | 'operationId'>>;
+          };
+          const updated = await this.store.addOperationWithChange(id, input);
+          sendJson(response, 201, publicSession(updated));
+          return;
+        }
         if (parts[3] === 'visual-agent-requests') {
           if (request.method === 'GET' && parts.length === 4) {
             const status = url.searchParams.get('status');
             sendJson(response, 200, {
               requests: status
-                ? stored.visualAgentRequests.filter((item) => item.status === status)
-                : stored.visualAgentRequests,
+                ? stored.visualAgentRequests
+                    .filter((item) => item.status === status)
+                    .map(publicVisualAgentRequest)
+                : stored.visualAgentRequests.map(publicVisualAgentRequest),
             });
             return;
           }
@@ -280,7 +441,7 @@ export class FoundryRuntime {
           if (requestId && request.method === 'GET' && parts.length === 5) {
             const visualRequest = stored.visualAgentRequests.find((item) => item.id === requestId);
             if (!visualRequest) throw new Error(`Unknown visual agent request: ${requestId}`);
-            sendJson(response, 200, { request: visualRequest });
+            sendJson(response, 200, { request: publicVisualAgentRequest(visualRequest) });
             return;
           }
           if (requestId && request.method === 'POST' && parts[5] === 'claim') {
@@ -288,13 +449,26 @@ export class FoundryRuntime {
               agent: { name: string; version?: string; taskId?: string };
               ttlMs?: number;
             };
-            const updated = await this.store.claimVisualAgentRequest(id, requestId, input);
-            sendJson(response, 200, publicSession(updated));
+            const visualRequest = stored.visualAgentRequests.find((item) => item.id === requestId);
+            if (!visualRequest) throw new Error(`Unknown visual agent request: ${requestId}`);
+            if (visualRequest.status !== 'queued') {
+              throw new RuntimeRequestError(
+                'Visual request is no longer queued. Fetch the current request before claiming it.',
+                409,
+              );
+            }
+            const claimCapability = randomBytes(32).toString('base64url');
+            const updated = await this.store.claimVisualAgentRequest(id, requestId, {
+              ...input,
+              claimCapability,
+            });
+            sendJson(response, 200, { ...publicSession(updated), claimCapability });
             return;
           }
           if (requestId && request.method === 'POST' && parts[5] === 'respond') {
             const input = (await body(request)) as {
               claimAttemptId: string;
+              claimCapability?: string;
               message: string;
               proposals: Array<
                 Omit<VisualAgentProposal, 'id' | 'createdAt' | 'updatedAt' | 'status'>
@@ -305,11 +479,15 @@ export class FoundryRuntime {
             return;
           }
           if (requestId && request.method === 'POST' && parts[5] === 'heartbeat') {
-            const input = (await body(request)) as { claimAttemptId: string };
+            const input = (await body(request)) as {
+              claimAttemptId: string;
+              claimCapability?: string;
+            };
             const updated = await this.store.heartbeatVisualAgentRequest(
               id,
               requestId,
               input.claimAttemptId,
+              input.claimCapability,
             );
             sendJson(response, 200, publicSession(updated));
             return;
@@ -320,14 +498,21 @@ export class FoundryRuntime {
             return;
           }
           if (requestId && parts[5] === 'proposals' && parts[6] && request.method === 'POST') {
-            const input = (await body(request)) as {
-              action: 'preview' | 'promote' | 'reject';
-            };
+            const input = (await body(request)) as { action?: unknown };
+            const action = input.action;
+            if (
+              action !== 'preview' &&
+              action !== 'previewed' &&
+              action !== 'promote' &&
+              action !== 'reject'
+            ) {
+              throw new Error(`Unknown visual proposal action: ${String(action)}`);
+            }
             const updated = await this.store.updateVisualAgentProposal(
               id,
               requestId,
               parts[6],
-              input.action,
+              action,
             );
             sendJson(response, 200, publicSession(updated));
             return;
@@ -396,7 +581,64 @@ export class FoundryRuntime {
             sendJson(response, 200, { designGraph: stored.designGraph });
             return;
           }
-          if (request.method === 'POST') {
+          if (request.method === 'POST' && parts[4] === 'reindex') {
+            if (!this.reindexProjectDesign) {
+              throw new RuntimeRequestError(
+                'Project design re-indexing is unavailable in this runtime.',
+                501,
+              );
+            }
+            const input = (await body(request)) as {
+              expectedRevision?: string | null;
+              expectedDesignGraphRevision?: string | null;
+            };
+            const revision = stored.changeSet.context.revision ?? null;
+            const designGraphRevision =
+              stored.designGraph?.revision ?? stored.designGraph?.indexedAt ?? null;
+            if (input.expectedRevision !== undefined && input.expectedRevision !== revision) {
+              throw new RuntimeRequestError(
+                `Revision conflict: expected ${input.expectedRevision ?? 'unrecorded'}, found ${revision ?? 'unrecorded'}`,
+                409,
+              );
+            }
+            if (
+              input.expectedDesignGraphRevision !== undefined &&
+              input.expectedDesignGraphRevision !== designGraphRevision
+            ) {
+              throw new RuntimeRequestError(
+                `Design graph revision conflict: expected ${input.expectedDesignGraphRevision ?? 'unrecorded'}, found ${designGraphRevision ?? 'unrecorded'}`,
+                409,
+              );
+            }
+            const graph = await this.reindexProjectDesign({
+              sessionId: id,
+              projectRoot: stored.changeSet.context.projectRoot,
+              revision: stored.changeSet.context.revision,
+              designGraphRevision: designGraphRevision ?? undefined,
+            });
+            let updated: StoredSession;
+            try {
+              updated = await this.store.setDesignGraph(id, graph, {
+                expectedRevision: revision,
+                expectedDesignGraphRevision: designGraphRevision,
+              });
+            } catch (error) {
+              if (error instanceof Error && /revision conflict/i.test(error.message)) {
+                throw new RuntimeRequestError(error.message, 409);
+              }
+              throw error;
+            }
+            sendJson(response, 200, {
+              ...publicSession(updated),
+              reindex: {
+                previousDesignGraphRevision: designGraphRevision,
+                designGraphRevision: updated.changeSet.designGraphRevision,
+                revision: updated.designGraph?.revision,
+              },
+            });
+            return;
+          }
+          if (request.method === 'POST' && parts.length === 4) {
             const graph = projectDesignGraphSchema.parse(await body(request));
             const updated = await this.store.setDesignGraph(id, graph);
             sendJson(response, 200, publicSession(updated));
@@ -427,8 +669,25 @@ export class FoundryRuntime {
           const input = (await body(request)) as {
             status: 'draft' | 'approved' | 'applied' | 'rejected' | 'unresolved';
           };
-          const updated = await this.store.setChangeStatus(id, parts[4], input.status);
-          sendJson(response, 200, publicSession(updated));
+          const legacyRun =
+            input.status === 'applied'
+              ? stored.applyRuns.filter(
+                  (run) =>
+                    run.legacyApplyCompatibility === true &&
+                    run.state === 'verifying' &&
+                    run.reviewedChangeSet?.changes.length === 1 &&
+                    run.changeIds[0] === parts[4],
+                )
+              : [];
+          const sourceProof =
+            legacyRun.length === 1
+              ? await this.sourceProofForRun(stored, legacyRun[0]!.id)
+              : undefined;
+          const updated = await this.store.setChangeStatus(id, parts[4], input.status, sourceProof);
+          sendJson(response, 200, {
+            ...publicSession(updated),
+            ...(input.status === 'applied' ? { legacyApplyResultAcknowledged: true } : {}),
+          });
           return;
         }
         if (request.method === 'DELETE' && parts[3] === 'changes' && parts[4]) {
@@ -440,8 +699,73 @@ export class FoundryRuntime {
           const input = (await body(request)) as {
             results: VerificationResult[];
             runId?: string;
+            claimAttemptId?: string;
+            claimCapability?: string;
+            source?: 'browser-preview' | 'native-agent';
+            challenge?: string;
           };
-          const updated = await this.store.addVerifications(id, input.results, input.runId);
+          if (!input.runId) {
+            throw new RuntimeRequestError('Apply verification requires an explicit runId', 400);
+          }
+          if (!input.claimAttemptId) {
+            throw new RuntimeRequestError(
+              'Apply verification requires an explicit claimAttemptId',
+              400,
+            );
+          }
+          const verificationRun = stored.applyRuns.find((run) => run.id === input.runId);
+          const requiresBrowserPreview =
+            verificationRun?.reviewedChangeSet?.changes.some(
+              (change) => change.target.platform === 'web',
+            ) ?? stored.changeSet.context.platform === 'web';
+          let authority: 'browser-preview' | 'native-agent' = 'native-agent';
+          if (requiresBrowserPreview) {
+            const targetUrl = verificationRun?.reviewedChangeSet?.context.targetUrl;
+            if (!targetUrl) {
+              throw new RuntimeRequestError(
+                'Web apply verification requires a configured preview URL',
+                409,
+              );
+            }
+            const expectedOrigin =
+              reviewedPreviewOrigin(verificationRun) ?? new URL(targetUrl).origin;
+            const requestOrigin = request.headers.origin;
+            if (input.source !== 'browser-preview' || requestOrigin !== expectedOrigin) {
+              throw new RuntimeRequestError(
+                `Web apply verification must come from the configured preview origin ${expectedOrigin}`,
+                403,
+              );
+            }
+            const challenge = input.challenge
+              ? this.verificationChallenges.get(input.challenge)
+              : undefined;
+            if (
+              !input.challenge ||
+              !challenge ||
+              challenge.sessionId !== id ||
+              challenge.runId !== input.runId ||
+              challenge.claimAttemptId !== input.claimAttemptId ||
+              challenge.origin !== requestOrigin ||
+              challenge.expiresAt < Date.now()
+            ) {
+              throw new RuntimeRequestError(
+                'Web apply verification requires a fresh one-use preview challenge',
+                403,
+              );
+            }
+            this.verificationChallenges.delete(input.challenge);
+            authority = 'browser-preview';
+          }
+          const sourceProof = await this.sourceProofForRun(stored, input.runId);
+          const updated = await this.store.addVerifications(
+            id,
+            input.results,
+            input.runId,
+            input.claimAttemptId,
+            authority,
+            sourceProof,
+            input.claimCapability,
+          );
           sendJson(response, 200, publicSession(updated));
           return;
         }
@@ -511,8 +835,44 @@ export class FoundryRuntime {
             const state = url.searchParams.get('state');
             sendJson(response, 200, {
               runs: state
-                ? stored.applyRuns.filter((run) => run.state === state)
-                : stored.applyRuns,
+                ? stored.applyRuns.filter((run) => run.state === state).map(publicApplyRun)
+                : stored.applyRuns.map(publicApplyRun),
+            });
+            return;
+          }
+          if (request.method === 'POST' && parts[4] === 'apply-result' && parts.length === 5) {
+            const input = (await body(request)) as { changeIds?: string[] };
+            if (!input.changeIds?.length) {
+              throw new RuntimeRequestError('Apply result requires reviewed change ids', 400);
+            }
+            const matches = stored.applyRuns.filter(
+              (run) =>
+                run.legacyApplyCompatibility === true &&
+                ['rebuilding', 'verifying'].includes(run.state) &&
+                run.changeIds.length === input.changeIds!.length &&
+                run.changeIds.every((changeId) => input.changeIds!.includes(changeId)),
+            );
+            if (matches.length !== 1) {
+              throw new RuntimeRequestError(
+                'Legacy apply result must resolve to exactly one pre-1.3 active run.',
+                409,
+              );
+            }
+            const sourceProof = await this.sourceProofForRun(stored, matches[0]!.id);
+            const resolved = await this.store.recordLegacyApplyResult(
+              id,
+              input.changeIds,
+              sourceProof,
+            );
+            sendJson(response, 200, {
+              ...publicSession(resolved.stored),
+              applyResult: {
+                acknowledged: true,
+                runId: resolved.runId,
+                claimAttemptId: resolved.claimAttemptId,
+                changeIds: input.changeIds,
+                resolvedFromLegacyInput: true,
+              },
             });
             return;
           }
@@ -523,10 +883,54 @@ export class FoundryRuntime {
                 approved: boolean;
                 after?: DesignChange['after'];
               }>;
-              revision?: string;
+              revision?: string | null;
+              designGraphRevision?: string | null;
               retryOf?: string;
             };
-            const updated = await this.store.createApplyRun(id, input);
+            const approvedIds = input.reviews
+              .filter((review) => review.approved)
+              .map((review) => review.changeId);
+            const approved = stored.changeSet.changes.filter((change) =>
+              approvedIds.includes(change.id),
+            );
+            const operationIds = new Set(
+              approved
+                .map((change) => change.operationId)
+                .filter((operationId): operationId is string => Boolean(operationId)),
+            );
+            const sourcePaths = reviewedSourceFiles({
+              ...stored.changeSet,
+              changes: approved,
+              operations: stored.changeSet.operations.filter((operation) =>
+                operationIds.has(operation.id),
+              ),
+            });
+            const reviewedSubset = {
+              ...stored.changeSet,
+              changes: approved,
+              operations: stored.changeSet.operations.filter((operation) =>
+                operationIds.has(operation.id),
+              ),
+            };
+            const currentSource = await this.resolveSourceProof(
+              stored,
+              sourcePaths,
+              reviewedSourceLocations(reviewedSubset),
+            );
+            if (
+              stored.changeSet.context.revision &&
+              stored.changeSet.context.revision !== currentSource.revision
+            ) {
+              throw new RuntimeRequestError(
+                'Project source changed after capture. Refresh the session before reviewing Apply.',
+                409,
+              );
+            }
+            const updated = await this.store.createApplyRun(id, {
+              ...input,
+              revision: currentSource.revision,
+              designGraphRevision: stored.changeSet.designGraphRevision ?? null,
+            });
             sendJson(response, 201, publicSession(updated));
             return;
           }
@@ -534,39 +938,185 @@ export class FoundryRuntime {
           if (runId && request.method === 'GET' && parts.length === 5) {
             const run = stored.applyRuns.find((candidate) => candidate.id === runId);
             if (!run) throw new Error(`Unknown apply run: ${runId}`);
-            sendJson(response, 200, { run });
+            sendJson(response, 200, { run: publicApplyRun(run) });
             return;
           }
           if (runId && request.method === 'POST' && parts[5] === 'claim') {
             const input = (await body(request)) as {
               agent: { name: string; version?: string; taskId?: string };
-              revision?: string;
-              designGraphRevision?: string;
+              revision?: string | null;
+              designGraphRevision?: string | null;
             };
-            const updated = await this.store.claimApplyRun(id, runId, input);
-            sendJson(response, 200, publicSession(updated));
+            const queued = stored.applyRuns.find((candidate) => candidate.id === runId);
+            if (!queued) throw new Error(`Unknown apply run: ${runId}`);
+            if (queued.state !== 'queued') {
+              throw new RuntimeRequestError('Apply run is no longer available to claim', 409);
+            }
+            const currentSource = await this.sourceProofForRun(stored, runId);
+            const claimCapability = randomBytes(32).toString('base64url');
+            const updated = await this.store.claimApplyRun(id, runId, {
+              agent: input.agent,
+              revision: currentSource.revision,
+              designGraphRevision: stored.changeSet.designGraphRevision ?? null,
+              sourceProof: currentSource,
+              claimCapability,
+            });
+            sendJson(response, 200, {
+              ...publicSession(updated),
+              claimCapability,
+              claimAuthority: {
+                revision: 'server',
+                designGraphRevision: 'server',
+                callerRevisionFieldsDeprecated: true,
+                callerRevision: input.revision ?? null,
+                callerDesignGraphRevision: input.designGraphRevision ?? null,
+              },
+            });
             return;
           }
           if (runId && request.method === 'POST' && parts[5] === 'heartbeat') {
-            const input = (await body(request)) as { claimAttemptId: string };
-            const updated = await this.store.heartbeatApplyRun(id, runId, input.claimAttemptId);
+            const input = (await body(request)) as {
+              claimAttemptId: string;
+              claimCapability: string;
+            };
+            const updated = await this.store.heartbeatApplyRun(
+              id,
+              runId,
+              input.claimAttemptId,
+              input.claimCapability,
+            );
             sendJson(response, 200, publicSession(updated));
             return;
           }
+          if (runId && request.method === 'POST' && parts[5] === 'verification-challenge') {
+            const input = (await body(request)) as {
+              claimAttemptId?: string;
+              previewCapability?: string;
+            };
+            const run = stored.applyRuns.find((candidate) => candidate.id === runId);
+            if (
+              !run ||
+              run.state !== 'verifying' ||
+              !input.claimAttemptId ||
+              run.claimAttemptId !== input.claimAttemptId ||
+              run.applyResultClaimAttemptId !== input.claimAttemptId ||
+              !run.applyResultAcknowledgedAt
+            ) {
+              throw new RuntimeRequestError(
+                'Verification challenge requires the acknowledged active Apply claim',
+                409,
+              );
+            }
+            const expectedOrigin = reviewedPreviewOrigin(run);
+            if (
+              !run.reviewedChangeSet?.changes.some((change) => change.target.platform === 'web') ||
+              !expectedOrigin ||
+              request.headers.origin !== expectedOrigin
+            ) {
+              throw new RuntimeRequestError(
+                'Verification challenge is available only to the configured live preview origin',
+                403,
+              );
+            }
+            if (!previewCapabilityMatches(stored.previewCapabilityHash, input.previewCapability)) {
+              throw new RuntimeRequestError(
+                'Verification challenge requires the private capability issued to the live preview.',
+                403,
+              );
+            }
+            const challenge = `verify_${randomUUID().replaceAll('-', '')}`;
+            this.verificationChallenges.set(challenge, {
+              sessionId: id,
+              runId,
+              claimAttemptId: input.claimAttemptId,
+              origin: expectedOrigin,
+              expiresAt: Date.now() + 60_000,
+            });
+            sendJson(response, 201, { challenge, expiresInMs: 60_000 });
+            return;
+          }
+          if (runId && request.method === 'POST' && parts[5] === 'apply-result') {
+            const input = (await body(request)) as {
+              claimAttemptId?: string;
+              claimCapability?: string;
+              changeIds?: string[];
+            };
+            if (!input.claimAttemptId) {
+              throw new RuntimeRequestError(
+                'Apply result requires an explicit claimAttemptId',
+                400,
+              );
+            }
+            if (!input.changeIds?.length) {
+              throw new RuntimeRequestError('Apply result requires reviewed change ids', 400);
+            }
+            const sourceProof = await this.sourceProofForRun(stored, runId);
+            const updated = await this.store.recordApplyResult(
+              id,
+              runId,
+              input.claimAttemptId,
+              input.changeIds,
+              sourceProof,
+              input.claimCapability ?? '',
+            );
+            sendJson(response, 200, {
+              ...publicSession(updated),
+              applyResult: {
+                acknowledged: true,
+                runId,
+                claimAttemptId: input.claimAttemptId,
+                changeIds: input.changeIds,
+              },
+            });
+            return;
+          }
           if (runId && request.method === 'POST' && parts[5] === 'retry') {
-            const updated = await this.store.retryApplyRun(id, runId);
+            if (!this.resolveProjectRevision) {
+              throw new RuntimeRequestError(
+                'Retry requires a live project revision resolver. Restart Foundry from the project CLI.',
+                409,
+              );
+            }
+            const currentRevision = await this.sourceProofForRun(stored, runId);
+            const updated = await this.store.retryApplyRun(id, runId, {
+              revision: currentRevision.revision,
+              designGraphRevision: stored.changeSet.designGraphRevision ?? null,
+            });
             sendJson(response, 201, publicSession(updated));
             return;
           }
           if (runId && request.method === 'POST' && parts[5] === 'resume') {
-            const updated = await this.store.authorizeApplyRunResume(id, runId);
+            const input = (await body(request)) as {
+              expectedRevision: string | null;
+              expectedDesignGraphRevision: string | null;
+            };
+            if (
+              !Object.hasOwn(input, 'expectedRevision') ||
+              !Object.hasOwn(input, 'expectedDesignGraphRevision')
+            ) {
+              throw new RuntimeRequestError(
+                'Apply resume requires explicit expected source and design graph revisions',
+                400,
+              );
+            }
+            if (!this.resolveProjectRevision) {
+              throw new RuntimeRequestError(
+                'Resume requires a live project revision resolver. Restart Foundry from the project CLI.',
+                409,
+              );
+            }
+            const currentRevision = await this.sourceProofForRun(stored, runId);
+            const updated = await this.store.authorizeApplyRunResume(id, runId, {
+              ...input,
+              currentRevision: currentRevision.revision,
+              currentDesignGraphRevision: stored.changeSet.designGraphRevision ?? null,
+            });
             sendJson(response, 200, publicSession(updated));
             return;
           }
           if (runId && request.method === 'POST' && parts[5] === 'cancel') {
             const updated = await this.store.updateApplyRun(id, runId, {
               state: 'cancelled',
-              message: 'Apply run cancelled by the user.',
             });
             sendJson(response, 200, publicSession(updated));
             return;
@@ -583,8 +1133,17 @@ export class FoundryRuntime {
               }>;
               error?: string;
               claimAttemptId?: string;
+              claimCapability?: string;
             };
-            const updated = await this.store.updateApplyRun(id, runId, input);
+            const validationSourceProof = input.validationResults
+              ? await this.sourceProofForRun(stored, runId)
+              : undefined;
+            const updated = await this.store.updateApplyRun(
+              id,
+              runId,
+              input,
+              validationSourceProof,
+            );
             sendJson(response, 200, publicSession(updated));
             return;
           }
@@ -650,11 +1209,14 @@ export class FoundryRuntime {
       sendJson(response, 404, { error: 'Not found' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown runtime error';
-      const status = /token|Invalid session/.test(message)
-        ? 401
-        : /ENOENT/.test(message)
-          ? 404
-          : 400;
+      const status =
+        error instanceof RuntimeRequestError
+          ? error.status
+          : /token|Invalid session/.test(message)
+            ? 401
+            : /ENOENT/.test(message)
+              ? 404
+              : 400;
       sendJson(response, status, { error: message });
     }
   }

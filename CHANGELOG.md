@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0-beta.21 - 2026-09-10
+
+- Added an acknowledged preview-context engine for real authored viewport, theme, state, and motion behavior across Canvas, State Workbench, Responsive Lab, Review, Delivery, and rebuilt verification.
+- Replaced simulated State Workbench options with indexed project states, isolated preview liveness, atomic restoration, and measured Matrix v2 exports that distinguish tested, untested, and unsupported contexts.
+- Connected Responsive Edit Scope to staged context sets and added acknowledged per-frame audits with stable-layout evidence, partial failures, and cross-frame clipping, overflow, wrapping, and layout-jump findings.
+- Added authenticated project re-indexing with atomic graph replacement, revision conflict protection, and live adapter hydration from the authoritative stored graph.
+- Added two-up Typography comparison with matching specimens, loaded-face and geometry evidence, temporary candidate previews, and reviewed project or Google font adoption.
+- Made Visual Agent and every durable preview action connection-aware, correlated, and explicit about queued, claimed, acknowledged, offline, and partial-success states.
+- Froze the exact reviewed Apply contract per run and bound rendered verification to its active claim attempt, requested property, value, and context so stale or manual evidence cannot satisfy a later handoff.
+- Upgraded the local protocol to 1.3.0 with backward-compatible 1.2.0 migration, context sets, preview capabilities, current context, and last successful application evidence.
+- Rebuilt the Morrow fixture as a truthful source-mapped demonstration with current fixture-relative annotations, one deterministic 40px-to-44px touch-target correction, authored loading state, and a complete semantic dark theme.
+- Added a real packed and registry golden-path harness covering the public CLI, live MCP listener, source edit, deterministic rebuild, 44px rendered verification, delivery history, and offline, disconnected, and mismatch failures.
+- Sealed all seven release tarballs with immutable integrity metadata and hardened publication, registry verification, tag promotion, and Claude Desktop bundle sequencing.
+
 ## 0.2.0-beta.20 - 2026-09-10
 
 - Added Foundry Delivery with versioned handoff records, editable engineering intent, deterministic evidence, acceptance criteria, risks, and questions created at the reviewed Apply boundary.

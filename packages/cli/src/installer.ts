@@ -33,14 +33,21 @@ export interface FoundryProjectConfig {
       selector?: string;
       attribute?: string;
       value?: string;
+      source?: { file: string; line?: number; column?: number; symbol?: string };
+      confidence?: 'measured' | 'instrumented' | 'inferred' | 'unresolved';
+      evidence?: string[];
     }>;
     states?: Array<{
       id: string;
       label: string;
+      viewport?: { width: number; height: number };
       theme?: string;
+      variant?: Record<string, unknown>;
       pseudoStates?: Array<'hover' | 'focus' | 'active' | 'disabled'>;
       reducedMotion?: boolean;
       query?: Record<string, string>;
+      confidence?: 'measured' | 'instrumented' | 'inferred' | 'unresolved';
+      evidence?: string[];
     }>;
   };
 }

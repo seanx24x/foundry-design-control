@@ -52,7 +52,7 @@ test('embedded mode keeps canvas measurement visible and moves chrome to the wor
   assert.match(source, /foundry:canvas-input/);
   assert.match(source, /workspaceCanvasTool/);
   assert.match(source, /handleEmbeddedCanvasWheel/);
-  assert.match(source, /event\.origin !== runtimeOrigin/);
+  assert.match(source, /event\.origin !== workspaceParentOrigin/);
   assert.match(source, /if \(!selector\.trim\(\)\) return null/);
   assert.match(source, /data-add-effect="drop-shadow"/);
   assert.match(source, /data-shadow-part=/);
@@ -155,6 +155,14 @@ test('the review flow queues approved changes when the coding agent is offline',
   assert.match(source, /Queue \$\{selectedCount\} for agent/);
   assert.match(source, /will claim it when the Foundry listener reconnects/);
   assert.doesNotMatch(source, /selectedCount === 0 \|\| !activeAgentPresence\.connected/);
+});
+
+test('review and apply expose context-set scope and exact verification context', () => {
+  const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  assert.match(source, /const contextSetLabel = reviewContextSetLabel\(change\)/);
+  assert.match(source, /class="review-context"/);
+  assert.match(source, /class="verification-context"/);
+  assert.match(source, /verificationContextLabel\(result\)/);
 });
 
 test('the apply handoff exposes recovery and verifies independently of review visibility', () => {

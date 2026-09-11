@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "node build.mjs",
     "dev": "node server.mjs",
-    "test": "node --test smoke.test.mjs"
+    "foundry:configure": "node configure-foundry.mjs",
+    "test": "node --test smoke.test.mjs && node validate-source-annotations.mjs"
   }
 }

@@ -10,20 +10,50 @@ const root = resolve(import.meta.dirname, '..');
 const runtimePort = 47_000 + Math.floor(Math.random() * 500);
 const previewPort = runtimePort + 500;
 const store = new SessionStore(await mkdtemp(join(tmpdir(), 'foundry-workspace-e2e-')));
-const runtime = new FoundryRuntime({ port: runtimePort, store });
+let reindexCount = 0;
+const runtime = new FoundryRuntime({
+  port: runtimePort,
+  store,
+  reindexProjectDesign: async ({ sessionId: activeSessionId }) => {
+    reindexCount += 1;
+    const current = await store.read(activeSessionId);
+    const graph = current.designGraph;
+    return {
+      ...graph,
+      revision: `workspace-e2e-reindex-${reindexCount}`,
+      indexedAt: new Date().toISOString(),
+      tokens: [
+        ...graph.tokens.filter((token) => token.id !== 'token-space-panel'),
+        {
+          id: 'token-space-panel',
+          name: '--space-panel',
+          value: '16px',
+          category: 'spacing',
+          confidence: 'instrumented',
+          evidence: ['Fresh CLI index'],
+          cssVariable: '--space-panel',
+          resolvedValue: '16px',
+          aliasChain: ['--space-panel'],
+          aliasStatus: 'direct',
+          source: { file: 'style.css', line: 2 },
+        },
+      ],
+    };
+  },
+});
 let sessionId = '';
 const preview = createServer((_request, response) => {
   response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   response.end(
-    `<!doctype html><html><body style="margin:0"><main data-foundry-container="signup-shell" style="container:signup-shell / inline-size;width:640px"><button data-foundry-component="Signup/PrimaryAction" data-story="Primary" style="width:100px;height:40px">Create workspace</button><button data-foundry-component="Signup/PrimaryAction" data-story="Quiet" style="width:100px;height:40px">Save draft</button></main><script>
+    `<!doctype html><html><head><style>html,body{background:rgb(255,255,255);color:rgb(17,17,17)}html[data-theme="dark"],html[data-theme="dark"] body{background:rgb(17,20,17);color:rgb(244,245,242)}button[data-foundry-state="focus"]{outline:4px solid rgb(120,169,154);outline-offset:2px}</style></head><body style="margin:0"><main data-foundry-container="signup-shell" style="container:signup-shell / inline-size;width:640px"><button data-foundry-component="Signup/PrimaryAction" data-story="Primary" style="box-sizing:border-box;width:100px;height:40px;padding:2px 6px;font-family:Inter,sans-serif;font-size:12px;font-weight:600;font-style:italic;font-variation-settings:'wght' 600;line-height:16px;letter-spacing:1px;white-space:normal;overflow-wrap:anywhere;word-break:normal;text-align:center;overflow:hidden">Create workspace</button><button data-foundry-component="Signup/PrimaryAction" data-story="Quiet" style="width:100px;height:40px">Save draft</button></main><script>
       let stressConditions = [];
       let stressScope = 'selection';
       const publish = () => parent.postMessage({ type: 'foundry:workspace-state', sessionId: '${sessionId}', payload: {
-        context: { scope: 'instance', breakpoint: 'current', theme: 'current', state: 'current' },
+        context: { scope: 'instance', breakpoint: workspaceContext?.viewport?.id ?? 'current', theme: workspaceContext?.theme ?? 'current', state: workspaceContext?.state ?? 'current' },
         selection: { id: 'create-workspace', label: 'Create workspace', kind: 'button', selector: 'button', source: { file: 'PrimaryAction.tsx', line: 1 }, component: 'Signup/PrimaryAction', confidence: 'instrumented', width: 100, height: 40, count: 1, targets: [{ id: 'create-workspace', label: 'Create workspace', kind: 'button', selector: 'button', source: 'PrimaryAction.tsx:1', component: 'Signup/PrimaryAction', confidence: 'instrumented', geometry: { x: 20, y: 20, width: 100, height: 40, scale: 1 }, measurements: { fontSize: '16px', borderRadius: '8px' } }] },
         visualAgent: { region: null, capturingRegion: false },
         layers: [{ id: 'create-workspace', selector: 'button:first-of-type', label: 'Create workspace', kind: 'component', component: 'Signup/PrimaryAction', source: { file: 'PrimaryAction.tsx', line: 1 }, width: 100, height: 40, depth: 0, instrumented: true, hasChildren: false, selected: true, variantProps: { story: document.querySelector('button:first-of-type').dataset.story } }, { id: 'save-draft', selector: 'button:last-of-type', label: 'Save draft', kind: 'component', component: 'Signup/PrimaryAction', source: { file: 'PrimaryAction.tsx', line: 2 }, width: 100, height: 40, depth: 0, instrumented: true, hasChildren: false, selected: false, variantProps: { story: document.querySelector('button:last-of-type').dataset.story } }],
-        controls: [{ index: 0, category: 'typography', property: 'fontFamily', label: 'Font family', kind: 'text', value: 'Inter, sans-serif' }, { index: 1, category: 'typography', property: 'fontSize', label: 'Font size', kind: 'number', value: '16px' }], typography: { selection: { family: 'Inter, sans-serif', primaryFamily: 'Inter', weight: '600', style: 'normal', size: '16px', lineHeight: '20px', letterSpacing: '0px', variationSettings: 'normal', text: 'Create workspace' }, projectFonts: [{ family: 'Inter', weights: ['400', '600'], styles: ['normal'], origins: ['active', 'project'] }, { family: 'Foundry JetBrains Mono', weights: ['400'], styles: ['normal'], origins: ['project'] }], savedStyles: [], diagnostics: [], metrics: { lineCount: 1, charactersPerLine: 16, faceStatus: 'loaded' }, usages: [{ family: 'Inter', count: 4, weights: ['400', '600'], sizes: ['12px', '16px'], examples: ['Create workspace'] }], preview: null, treatments: [{ id: 'tight', label: 'Tight', detail: 'Compact display rhythm', lineHeight: 1.1, letterSpacing: '-0.02em' }, { id: 'balanced', label: 'Balanced', detail: 'Default interface rhythm', lineHeight: 1.25, letterSpacing: '0em' }, { id: 'open', label: 'Open', detail: 'Relaxed reading rhythm', lineHeight: 1.5, letterSpacing: '0.01em' }], scale: { base: 16, ratio: 1.25, step: 1, fluid: false, value: '20px' }, strategies: [{ id: 'framework', label: 'Framework native' }, { id: 'stylesheet', label: 'Stylesheet' }], googleSelection: null, validation: { breakpoints: [{ id: 'current', label: 'Current' }], themes: [{ id: 'light', label: 'Light' }], states: [{ id: 'current', label: 'Current' }] }, capabilities: { localFontAccess: false } }, motions: [{ id: 'motion_primary', label: 'Primary action entrance', kind: 'motion-react', authoring: { adapter: 'motion', label: 'Motion for React', source: { file: 'src/PrimaryAction.tsx', line: 18 }, sourceProperties: { duration: 'transition.duration', delay: 'transition.delay', easing: 'transition.ease', keyframes: 'animate / variants' }, evidence: ['motion source import', 'transition authoring site'] }, properties: ['opacity', 'transform'], timing: { duration: 480, delay: 0, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', iterations: 1, direction: 'normal', fill: 'both' }, curve: { kind: 'cubic-bezier', sourceValue: 'cubic-bezier(0.2, 0.8, 0.2, 1)', previewValue: 'cubic-bezier(0.2, 0.8, 0.2, 1)', cubicBezier: { x1: 0.2, y1: 0.8, x2: 0.2, y2: 1 }, points: [{ x: 0, y: 0 }, { x: 0.1, y: 0.3 }, { x: 0.25, y: 0.68 }, { x: 0.5, y: 0.94 }, { x: 0.75, y: 0.99 }, { x: 1, y: 1 }], diagnostics: { duration: 0, overshoot: 0, sampleCount: 61 } }, keyframes: [{ index: 0, offset: 0, easing: 'ease-out', values: { opacity: '0', transform: 'translateY(12px)' } }, { index: 1, offset: 1, easing: 'linear', values: { opacity: '1', transform: 'translateY(0px)' } }], path: { supported: true, property: 'transform', points: [{ index: 0, offset: 0, x: 0, y: 12, sourceValue: 'translateY(12px)' }, { index: 1, offset: 1, x: 0, y: 0, sourceValue: 'translateY(0px)' }], bounds: { minX: 0, maxX: 0, minY: 0, maxY: 12, width: 0, height: 12 }, distance: 12 }, comparison: { changed: true, before: { timing: { duration: 560 }, curve: { points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }, path: { supported: true, points: [{ index: 0, offset: 0, x: -16, y: 16 }, { index: 1, offset: 1, x: 0, y: 0 }], distance: 22.6 } }, after: { timing: { duration: 480 }, curve: { points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }, path: { supported: true, points: [{ index: 0, offset: 0, x: 0, y: 12 }, { index: 1, offset: 1, x: 0, y: 0 }], distance: 12 } }, diagnostics: { durationDelta: -80, distanceDelta: -10.6, pointDelta: 0 } }, performance: { tier: 'compositor', label: 'Compositor', detail: 'Transform and opacity stay on the compositor.' }, active: true, playState: 'paused', currentTime: 160, playbackRate: 1, looping: false, reducedMotionProtected: true }], history: { canUndo: false, canRedo: false },
+        controls: [{ index: 0, category: 'typography', property: 'fontFamily', label: 'Font family', kind: 'text', value: 'Inter, sans-serif' }, { index: 1, category: 'typography', property: 'fontSize', label: 'Font size', kind: 'number', value: '12px' }], typography: { selection: { family: 'Inter, sans-serif', primaryFamily: 'Inter', weight: '600', style: 'italic', size: '12px', lineHeight: '16px', letterSpacing: '1px', variationSettings: '"wght" 600', text: 'Create workspace' }, projectFonts: [{ family: 'Inter', weights: ['400', '600'], styles: ['normal', 'italic'], origins: ['active', 'project'] }, { family: 'Foundry JetBrains Mono', weights: ['400', '600'], styles: ['normal', 'italic'], origins: ['project'] }], savedStyles: [], diagnostics: [], metrics: { lineCount: 1, charactersPerLine: 16, faceStatus: 'loaded' }, usages: [{ family: 'Inter', count: 4, weights: ['400', '600'], sizes: ['12px', '16px'], examples: ['Create workspace'] }], preview: null, treatments: [{ id: 'tight', label: 'Tight', detail: 'Compact display rhythm', lineHeight: 1.1, letterSpacing: '-0.02em' }, { id: 'balanced', label: 'Balanced', detail: 'Default interface rhythm', lineHeight: 1.25, letterSpacing: '0em' }, { id: 'open', label: 'Open', detail: 'Relaxed reading rhythm', lineHeight: 1.5, letterSpacing: '0.01em' }], scale: { base: 12, ratio: 1.25, step: 1, fluid: false, value: '15px' }, strategies: [{ id: 'framework', label: 'Framework native' }, { id: 'stylesheet', label: 'Stylesheet' }], googleSelection: null, validation: { breakpoints: [{ id: 'current', label: 'Current' }], themes: [{ id: 'light', label: 'Light' }], states: [{ id: 'current', label: 'Current' }] }, capabilities: { localFontAccess: false } }, motions: [{ id: 'motion_primary', label: 'Primary action entrance', kind: 'motion-react', authoring: { adapter: 'motion', label: 'Motion for React', source: { file: 'src/PrimaryAction.tsx', line: 18 }, sourceProperties: { duration: 'transition.duration', delay: 'transition.delay', easing: 'transition.ease', keyframes: 'animate / variants' }, evidence: ['motion source import', 'transition authoring site'] }, properties: ['opacity', 'transform'], timing: { duration: 480, delay: 0, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', iterations: 1, direction: 'normal', fill: 'both' }, curve: { kind: 'cubic-bezier', sourceValue: 'cubic-bezier(0.2, 0.8, 0.2, 1)', previewValue: 'cubic-bezier(0.2, 0.8, 0.2, 1)', cubicBezier: { x1: 0.2, y1: 0.8, x2: 0.2, y2: 1 }, points: [{ x: 0, y: 0 }, { x: 0.1, y: 0.3 }, { x: 0.25, y: 0.68 }, { x: 0.5, y: 0.94 }, { x: 0.75, y: 0.99 }, { x: 1, y: 1 }], diagnostics: { duration: 0, overshoot: 0, sampleCount: 61 } }, keyframes: [{ index: 0, offset: 0, easing: 'ease-out', values: { opacity: '0', transform: 'translateY(12px)' } }, { index: 1, offset: 1, easing: 'linear', values: { opacity: '1', transform: 'translateY(0px)' } }], path: { supported: true, property: 'transform', points: [{ index: 0, offset: 0, x: 0, y: 12, sourceValue: 'translateY(12px)' }, { index: 1, offset: 1, x: 0, y: 0, sourceValue: 'translateY(0px)' }], bounds: { minX: 0, maxX: 0, minY: 0, maxY: 12, width: 0, height: 12 }, distance: 12 }, comparison: { changed: true, before: { timing: { duration: 560 }, curve: { points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }, path: { supported: true, points: [{ index: 0, offset: 0, x: -16, y: 16 }, { index: 1, offset: 1, x: 0, y: 0 }], distance: 22.6 } }, after: { timing: { duration: 480 }, curve: { points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }, path: { supported: true, points: [{ index: 0, offset: 0, x: 0, y: 12 }, { index: 1, offset: 1, x: 0, y: 0 }], distance: 12 } }, diagnostics: { durationDelta: -80, distanceDelta: -10.6, pointDelta: 0 } }, performance: { tier: 'compositor', label: 'Compositor', detail: 'Transform and opacity stay on the compositor.' }, active: true, playState: 'paused', currentTime: 160, playbackRate: 1, looping: false, reducedMotionProtected: true }], history: { canUndo: false, canRedo: false },
         responsive: { viewportWidth: innerWidth, viewportHeight: innerHeight, documentScrollWidth: document.documentElement.scrollWidth, documentScrollHeight: document.documentElement.scrollHeight, container: { name: 'signup-shell', type: 'inline-size', width: document.querySelector('main').getBoundingClientRect().width, height: document.querySelector('main').getBoundingClientRect().height, selector: 'main', previewed: Boolean(document.querySelector('main').style.inlineSize) }, selection: { width: 100, height: 40, scrollWidth: 100, scrollHeight: 40, clientWidth: 100, clientHeight: 40, lineCount: 1 } },
         stressTesting: { profiles: [
           { id: 'long-content', category: 'content', label: 'Long content', description: 'Expands rendered labels.', combination: 'content' },
@@ -34,24 +64,204 @@ const preview = createServer((_request, response) => {
         visualRecipes: { canSave: true, recipes: [{ id: 'recipe-focus', name: 'Accessible focus treatment', sourceLabel: 'Primary action', intent: 'Keep keyboard focus visible in every theme.', component: 'Signup/PrimaryAction', categories: ['color', 'effects'], conditions: { components: ['Signup/PrimaryAction'], elementKinds: ['button'], requiredProperties: ['fontSize'] }, values: [{ property: 'fontSize', value: '16px', category: 'typography' }], createdAt: '2026-09-05T00:00:00.000Z' }], assessment: { 'recipe-focus': { compatibility: 'exact', score: 100, matched: 1, total: 1, ambiguous: 0, mappings: [{ property: 'fontSize', category: 'typography', sourceValue: '16px', currentValue: '16px', resolvedValue: '16px', status: 'mapped', detail: 'Uses the saved literal because no compatible destination token was found.' }], reasons: ['1 of 1 properties map to this target.'] } } },
         health: [{ id: 'button:target-size', kind: 'target-size', title: 'Touch target is too small', detail: 'Create workspace: Increase the interactive area.', description: 'Increase the interactive area.', evidence: '100 × 40 px measured; 44 px height recommended', severity: 'medium', source: 'PrimaryAction.tsx:1', viewport: '1440 × 900', stressConditions, canFix: true, previewed: false }]
       }}, 'http://127.0.0.1:${runtimePort}');
+      let workspaceContext = { version: 1, requestRevision: 0, viewport: { id: 'current', width: innerWidth, height: innerHeight }, theme: 'current', state: 'current', motionPreference: 'system' };
+      const reply = (event, payload, error = '') => {
+        if (!event.data.requestId) return;
+        parent.postMessage({ type: 'foundry:workspace-result', sessionId: '${sessionId}', requestId: event.data.requestId, ok: !error, ...(error ? { error } : { payload }) }, 'http://127.0.0.1:${runtimePort}');
+      };
+      const axis = (status, method) => ({ status, method, evidence: [] });
+      const typographyMetrics = (family) => {
+        const target = document.querySelector('button:first-of-type');
+        const style = getComputedStyle(target);
+        const rect = target.getBoundingClientRect();
+        const visibleSpecimen = {
+          version: 1,
+          text: target.textContent,
+          width: rect.width,
+          height: rect.height,
+          boxSizing: style.boxSizing,
+          paddingTop: style.paddingTop,
+          paddingRight: style.paddingRight,
+          paddingBottom: style.paddingBottom,
+          paddingLeft: style.paddingLeft,
+          borderTopWidth: style.borderTopWidth,
+          borderRightWidth: style.borderRightWidth,
+          borderBottomWidth: style.borderBottomWidth,
+          borderLeftWidth: style.borderLeftWidth,
+          borderTopStyle: style.borderTopStyle,
+          borderRightStyle: style.borderRightStyle,
+          borderBottomStyle: style.borderBottomStyle,
+          borderLeftStyle: style.borderLeftStyle,
+          fontFamily: family,
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          fontStyle: style.fontStyle,
+          fontVariationSettings: style.fontVariationSettings,
+          lineHeight: style.lineHeight,
+          letterSpacing: style.letterSpacing,
+          whiteSpace: style.whiteSpace,
+          overflowWrap: style.overflowWrap,
+          wordBreak: style.wordBreak,
+          textAlign: style.textAlign,
+          textTransform: style.textTransform,
+          textIndent: style.textIndent,
+          direction: style.direction,
+          writingMode: style.writingMode,
+          overflowX: style.overflowX,
+          overflowY: style.overflowY,
+        };
+        return { text: target.textContent, family, primaryFamily: family.split(',')[0], weight: style.fontWeight, style: style.fontStyle, variationSettings: style.fontVariationSettings, fontSize: style.fontSize, lineHeight: style.lineHeight, letterSpacing: style.letterSpacing, loadedFaceStatus: 'loaded', fontCheck: true, lineCount: 1, width: rect.width, height: rect.height, scrollWidth: target.scrollWidth, scrollHeight: target.scrollHeight, clientWidth: target.clientWidth, clientHeight: target.clientHeight, clipped: false, visibleSpecimen };
+      };
+      const knownCommands = new Set(['preview-ping', 'interface-theme', 'set-mode', 'request-state', 'apply-preview-context', 'set-context', 'select', 'select-component-instance', 'preview-component-variant', 'stage-component-variant', 'stage-token-promotion', 'repair-component-variant-drift', 'preview-component-state', 'set-responsive-edit-scope', 'preview-responsive-stress', 'preview-responsive-container', 'audit-responsive', 'replace-design-graph', 'apply-health-stress', 'clear-health-stress', 'scan-health', 'preview-health-fix', 'select-health-issue', 'apply-visual-recipe', 'remove-visual-recipe', 'save-visual-recipe', 'duplicate-visual-recipe', 'import-visual-recipes', 'save-design-decision', 'update-design-decision', 'remove-design-decision', 'import-design-decisions', 'motion-action', 'typography-action', 'typography-compare', 'typography-use-font', 'switch-design-branch', 'preview-design-branch', 'arm-agent-region', 'capture-agent-region', 'clear-agent-region', 'compare', 'undo', 'redo', 'set-control']);
       addEventListener('message', (event) => {
         if (event.data?.type !== 'foundry:workspace-command') return;
-        if (event.data.command === 'set-context') event.data.payload && publish();
-        if (event.data.command === 'preview-component-variant') document.querySelector('button').dataset.story = event.data.payload.variantId.includes('quiet') ? 'Quiet' : 'Primary';
-        if (event.data.command === 'stage-component-variant') { document.documentElement.dataset.stagedVariant = event.data.payload.value; publish(); }
-        if (event.data.command === 'stage-token-promotion') { document.documentElement.dataset.stagedTokenPromotion = event.data.payload.candidateId; publish(); }
-        if (event.data.command === 'repair-component-variant-drift') { document.querySelector('button:last-of-type').dataset.story = event.data.payload.variantId.includes('quiet') ? 'Quiet' : 'Primary'; publish(); }
-        if (event.data.command === 'preview-component-state') document.querySelector('button').dataset.foundryState = event.data.payload.stateId;
-        if (event.data.command === 'preview-responsive-stress') { document.documentElement.dataset.foundryResponsiveStress = event.data.payload.mode; publish(); }
-        if (event.data.command === 'preview-responsive-container') { const main = document.querySelector('main'); main.style.inlineSize = event.data.payload.width ? event.data.payload.width + 'px' : ''; main.style.maxInlineSize = event.data.payload.width ? 'none' : ''; publish(); }
-        if (event.data.command === 'apply-health-stress') { stressConditions = event.data.payload.conditions; stressScope = event.data.payload.scope; document.documentElement.dataset.foundryStress = stressConditions.join(' '); publish(); }
-        if (event.data.command === 'clear-health-stress') { stressConditions = []; delete document.documentElement.dataset.foundryStress; publish(); }
-        if (event.data.command === 'scan-health') publish();
-        if (event.data.command === 'preview-health-fix') publish();
-        if (event.data.command === 'apply-visual-recipe') { document.documentElement.dataset.foundryRecipe = event.data.payload.recipeId; publish(); }
-        if (event.data.command === 'save-design-decision') { document.documentElement.dataset.foundryDecision = event.data.payload.outcome; publish(); }
-        if (event.data.command === 'motion-action') document.documentElement.dataset.lastMotionAction = event.data.payload.action;
-        if (event.data.command === 'typography-action') document.documentElement.dataset.lastTypographyAction = event.data.payload.action;
+        const command = event.data.command;
+        const payload = event.data.payload ?? {};
+        try {
+          if (!knownCommands.has(command)) throw new Error('Unknown workspace command: ' + command);
+          let result = { acknowledged: true, command };
+          if (command === 'preview-ping') {
+            result = { alive: true, receivedAt: Date.now(), sentAt: payload.sentAt, snapshot: { version: 1, currentPreviewContext: workspaceContext, lastPreviewApplication: null }, selection: { id: 'create-workspace', selector: 'button' } };
+          } else if (command === 'interface-theme') {
+            result = { preference: payload.value, resolved: payload.value === 'system' ? 'light' : payload.value };
+          } else if (command === 'set-mode') {
+            result = { mode: payload.mode };
+          } else if (command === 'request-state') {
+            publish();
+            result = {
+              version: 1,
+              currentPreviewContext: workspaceContext,
+              lastPreviewApplication: {
+                applied: true,
+                context: workspaceContext,
+                requestRevision: workspaceContext.requestRevision,
+              },
+              selection: {
+                id: 'create-workspace',
+                selector: 'button:first-of-type',
+                width: document.querySelector('button:first-of-type').getBoundingClientRect().width,
+                height: document.querySelector('button:first-of-type').getBoundingClientRect().height,
+              },
+            };
+          } else if (command === 'apply-preview-context') {
+            const context = payload.context ?? payload;
+            workspaceContext = context;
+            document.documentElement.dataset.foundryViewport = context.viewport.id;
+            document.documentElement.dataset.foundryMotion = context.motionPreference;
+            document.documentElement.dataset.foundryRequestRevision = String(context.requestRevision);
+            if (context.theme === 'current') delete document.documentElement.dataset.theme;
+            else document.documentElement.dataset.theme = context.theme;
+            const contextTarget = document.querySelector('button:first-of-type');
+            if (context.state === 'current') {
+              delete contextTarget.dataset.foundryState;
+              contextTarget.disabled = false;
+            } else {
+              contextTarget.dataset.foundryState = context.state;
+              contextTarget.disabled = context.state === 'disabled';
+            }
+            result = { version: 1, requestRevision: context.requestRevision, applied: true, context, axes: { viewport: axis('applied', 'frame'), theme: axis(context.theme === 'current' ? 'current' : 'applied', 'root-attribute'), state: axis(context.state === 'current' ? 'current' : 'applied', 'authored-state'), motion: axis(context.motionPreference === 'system' ? 'current' : 'applied', 'system-media-query') } };
+            publish();
+          } else if (command === 'preview-component-variant') {
+            document.querySelector('button').dataset.story = payload.variantId.includes('quiet') ? 'Quiet' : 'Primary';
+            result = { completed: true, componentId: payload.componentId, variantId: payload.variantId };
+          } else if (command === 'stage-component-variant') {
+            document.documentElement.dataset.stagedVariant = payload.value;
+            result = { staged: true, componentId: payload.componentId };
+            publish();
+          } else if (command === 'stage-token-promotion') {
+            document.documentElement.dataset.stagedTokenPromotion = payload.candidateId;
+            result = { staged: true, candidateId: payload.candidateId };
+            publish();
+          } else if (command === 'repair-component-variant-drift') {
+            document.querySelector('button:last-of-type').dataset.story = payload.variantId.includes('quiet') ? 'Quiet' : 'Primary';
+            result = { completed: true, componentId: payload.componentId, variantId: payload.variantId };
+            publish();
+          } else if (command === 'preview-component-state') {
+            const target = document.querySelector('button:first-of-type');
+            document.documentElement.dataset.lastWorkshopState = payload.stateId;
+            if (payload.stateId === 'current') delete target.dataset.foundryState;
+            else target.dataset.foundryState = payload.stateId;
+            result = { previewed: true, stateId: payload.stateId };
+            publish();
+          } else if (command === 'set-responsive-edit-scope') {
+            const activeBreakpoint = payload.breakpointId ?? 'current';
+            result = { scope: payload.scope, activeBreakpoint, breakpoints: [activeBreakpoint], sourceMapped: true };
+          } else if (command === 'preview-responsive-stress') {
+            document.documentElement.dataset.foundryResponsiveStress = payload.mode;
+            result = { previewed: payload.mode !== 'none', mode: payload.mode };
+            publish();
+          } else if (command === 'preview-responsive-container') {
+            const main = document.querySelector('main'); main.style.inlineSize = payload.width ? payload.width + 'px' : ''; main.style.maxInlineSize = payload.width ? 'none' : '';
+            result = { previewed: payload.width != null, width: payload.width ?? null };
+            publish();
+          } else if (command === 'audit-responsive') {
+            if (payload.frameId === 'custom') throw new Error('Responsive audit timed out while waiting for stable layout');
+            const button = document.querySelector('button');
+            const rect = button.getBoundingClientRect();
+            const reportedTop = payload.frameId === 'desktop' ? 160 : rect.top;
+            result = { frame: { id: payload.frameId ?? 'current', viewportId: payload.viewportId ?? 'current', width: innerWidth, height: innerHeight, dpr: devicePixelRatio, href: location.href }, fonts: { ready: true, status: 'loaded' }, stableLayout: { stable: payload.frameId !== 'current', samples: 2, durationMs: 32 }, document: { scrollWidth: document.documentElement.scrollWidth, scrollHeight: document.documentElement.scrollHeight }, elements: [{ selector: 'button', rect: { x: rect.x, y: reportedTop, top: reportedTop, width: rect.width, height: rect.height }, scrollWidth: button.scrollWidth, scrollHeight: button.scrollHeight, clientWidth: button.clientWidth, clientHeight: button.clientHeight, lineCount: 1 }], findings: [], summary: { scanned: 1, findings: 0, high: 0, medium: 0, low: 0 }, context: workspaceContext, auditedAt: new Date().toISOString() };
+          } else if (command === 'replace-design-graph') {
+            const graph = payload.graph ?? {};
+            result = { replaced: true, revision: graph.revision, counts: { tokens: graph.tokens?.length ?? 0, components: graph.components?.length ?? 0, breakpoints: graph.breakpoints?.length ?? 0, themes: graph.themes?.length ?? 0, states: graph.states?.length ?? 0 } };
+          } else if (command === 'apply-health-stress') {
+            stressConditions = payload.conditions; stressScope = payload.scope; document.documentElement.dataset.foundryStress = stressConditions.join(' ');
+            result = { applied: true, scope: stressScope, conditions: stressConditions };
+            publish();
+          } else if (command === 'clear-health-stress') {
+            stressConditions = []; delete document.documentElement.dataset.foundryStress;
+            result = { cleared: true };
+            publish();
+          } else if (command === 'scan-health' || command === 'preview-health-fix') {
+            publish();
+          } else if (command === 'apply-visual-recipe') {
+            document.documentElement.dataset.foundryRecipe = payload.recipeId;
+            result = { applied: true, recipeId: payload.recipeId };
+            publish();
+          } else if (command === 'save-design-decision') {
+            document.documentElement.dataset.foundryDecision = payload.outcome;
+            result = { saved: true };
+            publish();
+          } else if (command === 'motion-action') {
+            document.documentElement.dataset.lastMotionAction = payload.action;
+            result = { applied: true, action: payload.action, motionId: payload.id, currentTime: Number(payload.value ?? 0) };
+          } else if (command === 'typography-action') {
+            document.documentElement.dataset.lastTypographyAction = payload.action;
+            result = { completed: true, action: payload.action };
+          } else if (command === 'typography-compare') {
+            const candidateFamily = String(payload.family || 'Foundry candidate')
+              .replaceAll('"', '')
+              .replaceAll(String.fromCharCode(92), '');
+            result = {
+              current: typographyMetrics('Inter, sans-serif'),
+              candidate: typographyMetrics(candidateFamily),
+              origin: payload.origin,
+              context: workspaceContext,
+              temporary: true,
+              changeCountDelta: 0,
+              fontResources: {
+                cssText: '@font-face{font-family:"Inter";src:local("Arial");font-style:italic;font-weight:600}@font-face{font-family:"' + candidateFamily + '";src:local("Courier New");font-style:italic;font-weight:600}',
+                stylesheets: [],
+                faces: [
+                  { role: 'current', family: 'Inter', weight: '600', style: 'italic', size: '12px', text: 'Create workspace', renderable: true },
+                  { role: 'candidate', family: candidateFamily, weight: '600', style: 'italic', size: '12px', text: 'Create workspace', renderable: true },
+                ],
+              },
+            };
+          } else if (command === 'typography-use-font') {
+            result = payload.origin === 'local' ? { staged: false, previewOnly: true, changes: 0, reason: 'Local fonts cannot be mapped to portable project source' } : { staged: true, changes: 1, family: payload.family, origin: payload.origin };
+            document.documentElement.dataset.typographyUseChanges = String(result.changes);
+          } else if (command === 'switch-design-branch' || command === 'preview-design-branch') {
+            result = { switched: true, persisted: command === 'switch-design-branch' };
+          } else if (command === 'arm-agent-region' || command === 'capture-agent-region') {
+            document.documentElement.dataset.agentRegionArmed = 'true';
+            result = { armed: true };
+          } else if (command === 'clear-agent-region') {
+            result = { cleared: true };
+          }
+          reply(event, result);
+        } catch (error) {
+          reply(event, null, error instanceof Error ? error.message : String(error));
+        }
       });
       addEventListener('load', () => setTimeout(publish, 50));
     </script></body></html>`,
@@ -175,10 +385,25 @@ try {
       },
     ],
     themes: [
-      { id: 'light', label: 'Light' },
-      { id: 'dark', label: 'Dark' },
+      { id: 'light', label: 'Light', attribute: 'data-theme', value: 'light' },
+      { id: 'dark', label: 'Dark', attribute: 'data-theme', value: 'dark' },
     ],
-    states: [],
+    states: [
+      {
+        id: 'focus',
+        label: 'Focus',
+        pseudoStates: ['focus'],
+        confidence: 'instrumented',
+        evidence: ['Authored focus treatment'],
+      },
+      {
+        id: 'disabled',
+        label: 'Disabled',
+        pseudoStates: ['disabled'],
+        confidence: 'instrumented',
+        evidence: ['Native disabled state'],
+      },
+    ],
     motionPresets: [],
     tokenUsages: [
       {
@@ -641,6 +866,37 @@ try {
     document.documentElement.dataset.theme = 'light';
   });
 
+  await page.locator('#canvas-theme').selectOption('dark');
+  await page.frameLocator('#product-preview').locator('html[data-theme="dark"]').waitFor();
+  assert.equal(
+    await page
+      .frameLocator('#product-preview')
+      .locator('body')
+      .evaluate((element) => getComputedStyle(element).backgroundColor),
+    'rgb(17, 20, 17)',
+    'Canvas theme must change the rendered product, not only inspector metadata',
+  );
+  await page.locator('#canvas-state').selectOption('focus');
+  await page
+    .frameLocator('#product-preview')
+    .locator('button:first-of-type[data-foundry-state="focus"]')
+    .waitFor();
+  assert.equal(
+    await page
+      .frameLocator('#product-preview')
+      .locator('button:first-of-type')
+      .evaluate((element) => getComputedStyle(element).outlineWidth),
+    '4px',
+    'Canvas state must apply the authored focus treatment to the selected target',
+  );
+  await page.locator('#canvas-state').selectOption('current');
+  await page
+    .frameLocator('#product-preview')
+    .locator('button:first-of-type:not([data-foundry-state])')
+    .waitFor();
+  await page.locator('#canvas-theme').selectOption('current');
+  await page.frameLocator('#product-preview').locator('html:not([data-theme])').waitFor();
+
   await page.locator('.workspace-rail [data-workspace-mode="states"]').click();
   await page.getByRole('heading', { name: 'State Workbench' }).waitFor();
   await assertSharedRailSelection('states');
@@ -651,6 +907,22 @@ try {
     regionSelectors: ['.state-matrix-panel', '.state-preview-panel', '.state-verification-panel'],
   });
   await assertFullWidthSelectValues('.state-matrix-panel .foundry-select-trigger');
+  await page.waitForFunction(
+    () => document.querySelector('#state-verification-connection')?.textContent === 'Live',
+  );
+  await page.locator('[data-state-matrix-state="focus"]').click();
+  await page
+    .frameLocator('#state-live-preview')
+    .locator('button:first-of-type[data-foundry-state="focus"]')
+    .waitFor();
+  await page.waitForFunction(() =>
+    document.querySelector('#state-verification-title')?.textContent?.includes('Measured'),
+  );
+  assert.match(await page.locator('#state-verification-count').textContent(), /^[1-3] \/ 3$/);
+  assert.match(
+    (await page.locator('#state-verification-note').textContent()) ?? '',
+    /root-attribute|authored-state/,
+  );
   await assertNoInternalHorizontalOverflow('State Workbench at 1920px', [
     '[data-mode-surface="states"]',
     '.state-matrix-panel',
@@ -686,7 +958,40 @@ try {
   await page.getByRole('heading', { name: 'PrimaryAction' }).waitFor();
   assert.equal(await page.locator('.workshop-instance-row').count(), 2);
   assert.equal(await page.locator('.workshop-variant-row').count(), 2);
-  assert.equal(await page.locator('[data-workshop-state]').count(), 8);
+  const visibleWorkshopStates = await page
+    .locator('[data-workshop-state]')
+    .evaluateAll((buttons) => buttons.map((button) => button.dataset.workshopState));
+  assert.deepEqual(
+    visibleWorkshopStates,
+    ['current', 'focus', 'disabled'],
+    'Component Workshop must expose Current plus only the sparse authored state graph',
+  );
+  for (const stateId of visibleWorkshopStates) {
+    await page.locator(`[data-workshop-state="${stateId}"]`).click();
+    await page
+      .frameLocator('#product-preview')
+      .locator(`html[data-last-workshop-state="${stateId}"]`)
+      .waitFor();
+    assert.equal(
+      await page.locator('[data-workshop-state].is-active').getAttribute('data-workshop-state'),
+      stateId,
+      `Visible workshop state ${stateId} must become active only after acknowledgement`,
+    );
+  }
+  await page.locator('[data-workshop-state="current"]').click();
+  await page.locator('[data-workshop-state="current"].is-active').waitFor();
+  await page
+    .frameLocator('#product-preview')
+    .locator('button:first-of-type:not([data-foundry-state])')
+    .waitFor();
+  assert.equal(
+    await page
+      .frameLocator('#product-preview')
+      .locator('button:first-of-type')
+      .getAttribute('data-foundry-state'),
+    null,
+    'Current must acknowledge and restore the rendered source state',
+  );
   const workshopGeometry = await page.locator('.component-workshop-mode').evaluate((surface) => {
     const detail = surface.querySelector('.component-workshop-detail');
     const contract = surface.querySelector('.component-workshop-contract');
@@ -722,6 +1027,7 @@ try {
     '.component-workshop-contract',
   ]);
   await page.locator('.workshop-variant-row').filter({ hasText: 'Primary' }).click();
+  await page.locator('.workshop-drift[data-drift-count="1"]').waitFor();
   assert.equal(await page.locator('.workshop-drift').getAttribute('data-drift-count'), '1');
   assert.match((await page.locator('.workshop-drift-list').textContent()) ?? '', /Save draft/);
   await page.locator('[data-workshop-variant-label]').fill('Danger');
@@ -905,6 +1211,22 @@ try {
   ]);
   await captureWorkspace('visual-recipes-compact-light.png');
   await page.setViewportSize({ width: 1920, height: 1080 });
+  const agentPresenceResponse = await fetch(
+    `http://127.0.0.1:${runtimePort}/v1/sessions/${sessionId}/agent-presence`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-foundry-token': session.token,
+      },
+      body: JSON.stringify({
+        agent: { name: 'codex', taskId: 'workspace-e2e' },
+        listening: true,
+        ttlMs: 70_000,
+      }),
+    },
+  );
+  assert.equal(agentPresenceResponse.ok, true);
   await page.locator('.workspace-rail [data-workspace-mode="agent"]').click();
   await page.getByRole('heading', { name: 'Visual agent' }).waitFor();
   await assertConnectedWorkspaceBrowser('.visual-agent-threads');
@@ -913,11 +1235,12 @@ try {
     /Create workspace/,
   );
   assert.match((await page.locator('#visual-agent-context').textContent()) ?? '', /100 × 40/);
+  await page.getByRole('button', { name: 'Ask visual agent' }).waitFor();
   await page.locator('#visual-agent-comment').fill('The primary action feels detached.');
   await page
     .locator('#visual-agent-prompt')
     .fill('Why does this action feel inconsistent? Give me one exact source-safe direction.');
-  await page.getByRole('button', { name: 'Ask active agent' }).click();
+  await page.getByRole('button', { name: 'Ask visual agent' }).click();
   await page.locator('.visual-agent-thread').waitFor();
   const visualStored = await store.read(sessionId);
   const visualRequest = visualStored.visualAgentRequests.at(-1);
@@ -957,6 +1280,40 @@ try {
     /border-radius: 8px/,
   );
   assert.equal(await page.getByRole('button', { name: 'Preview direction' }).isEnabled(), true);
+  assert.equal(await page.getByRole('button', { name: 'Move to Review' }).isEnabled(), false);
+  await page.getByRole('button', { name: 'Preview direction' }).click();
+  await page.waitForFunction(
+    () => document.querySelector('.visual-agent-proposal')?.dataset.status === 'previewing',
+  );
+  assert.equal(await page.getByRole('button', { name: 'Move to Review' }).isEnabled(), true);
+  const previewedAgentSession = await store.read(sessionId);
+  const previewedAgentRequest = previewedAgentSession.visualAgentRequests.find(
+    (request) => request.id === visualRequestId,
+  );
+  assert.ok(
+    previewedAgentRequest?.proposals[0]?.branchId,
+    'Preview direction must persist its branch before reporting success',
+  );
+  assert.equal(previewedAgentRequest?.proposals[0]?.status, 'previewing');
+  assert.equal(
+    previewedAgentSession.activeDesignBranchId,
+    previewedAgentRequest?.proposals[0]?.branchId,
+  );
+  const restoreMainDirection = await fetch(
+    `http://127.0.0.1:${runtimePort}/v1/sessions/${sessionId}/design-branches/activate`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-foundry-token': session.token,
+      },
+      body: '{}',
+    },
+  );
+  assert.equal(restoreMainDirection.ok, true);
+  await page.waitForFunction(
+    () => document.querySelector('#change-count')?.textContent === '1 change · Main direction',
+  );
   const visualAgentGeometry = await page.evaluate(() => {
     const shell = document.querySelector('.visual-agent-shell');
     const threads = document.querySelector('.visual-agent-threads');
@@ -1050,6 +1407,50 @@ try {
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
+  await page.getByRole('button', { name: 'Draw region' }).click();
+  await page.locator('[data-mode-surface="canvas"]:not([hidden])').waitFor();
+  await page
+    .frameLocator('#product-preview')
+    .locator('html[data-agent-region-armed="true"]')
+    .waitFor();
+  await page.locator('.workspace-rail [data-workspace-mode="agent"]').click();
+  await page.getByRole('heading', { name: 'Visual agent' }).waitFor();
+  const offlinePresenceResponse = await fetch(
+    `http://127.0.0.1:${runtimePort}/v1/sessions/${sessionId}/agent-presence`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-foundry-token': session.token,
+      },
+      body: JSON.stringify({ agent: { name: 'codex' }, listening: false }),
+    },
+  );
+  assert.equal(offlinePresenceResponse.ok, true);
+  await page.getByRole('button', { name: 'Queue for agent' }).waitFor({ timeout: 5000 });
+  await page.locator('#visual-agent-prompt').fill('Check this direction when you reconnect.');
+  await page.getByRole('button', { name: 'Queue for agent' }).click();
+  await page.waitForFunction(() =>
+    document.querySelector('.visual-agent-thinking.is-queued')?.textContent?.includes('Waiting'),
+  );
+  const queuedAgentSession = await store.read(sessionId);
+  assert.equal(queuedAgentSession.visualAgentRequests.at(-1)?.status, 'queued');
+  const restoredPresenceResponse = await fetch(
+    `http://127.0.0.1:${runtimePort}/v1/sessions/${sessionId}/agent-presence`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-foundry-token': session.token,
+      },
+      body: JSON.stringify({
+        agent: { name: 'codex', taskId: 'workspace-e2e' },
+        listening: true,
+        ttlMs: 70_000,
+      }),
+    },
+  );
+  assert.equal(restoredPresenceResponse.ok, true);
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.locator('.workspace-rail [data-workspace-mode="system"]').click();
   await page.getByRole('heading', { name: 'Design System', exact: true }).waitFor();
@@ -1072,6 +1473,35 @@ try {
     /near-duplicate literal/,
   );
   assert.match((await page.locator('#design-system-detail').textContent()) ?? '', /Alias chain/);
+  await page.locator('#design-system-reindex').click();
+  await page.waitForFunction(() =>
+    document.querySelector('#design-system-status')?.textContent?.includes('2 tokens'),
+  );
+  assert.equal(reindexCount, 1, 'Design System refresh must invoke the real re-index callback');
+  assert.equal(await page.locator('.design-token-row').count(), 2);
+  assert.match(
+    (await page.locator('#design-system-token-list').textContent()) ?? '',
+    /--space-panel/,
+  );
+  const reindexedSession = await store.read(sessionId);
+  const reindexedRevision = reindexedSession.designGraph.revision;
+  const staleReindexResponse = await fetch(
+    `http://127.0.0.1:${runtimePort}/v1/sessions/${sessionId}/design-graph/reindex`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-foundry-token': session.token,
+      },
+      body: JSON.stringify({ expectedDesignGraphRevision: 'stale-workspace-index' }),
+    },
+  );
+  assert.equal(staleReindexResponse.status, 409);
+  assert.equal(
+    (await store.read(sessionId)).designGraph.revision,
+    reindexedRevision,
+    'A failed re-index must preserve the last authoritative graph',
+  );
   const usageKindGeometry = await page
     .locator('.usage-kind')
     .first()
@@ -1153,6 +1583,14 @@ try {
     'responsive scrub controls must hug their content',
   );
   await page.locator('[data-responsive-frame="mobile"]').waitFor();
+  await page
+    .frameLocator('[data-responsive-frame="mobile"]')
+    .locator('html[data-foundry-viewport="mobile"][data-foundry-motion="system"]')
+    .waitFor();
+  await page
+    .frameLocator('[data-responsive-frame="desktop"]')
+    .locator('html[data-foundry-viewport="desktop"][data-foundry-motion="system"]')
+    .waitFor();
   assert.equal(await page.locator('[data-responsive-frame="mobile"]').getAttribute('width'), '390');
   assert.equal(
     await page.locator('[data-responsive-frame="desktop"]').getAttribute('width'),
@@ -1211,6 +1649,37 @@ try {
   await page.locator('.responsive-comparison-delta').getByText('+220px container').waitFor();
   await page.locator('[data-responsive-stress="dynamic-type"]').click();
   assert.equal(await page.locator('#change-count').textContent(), '1 change · Main direction');
+  await page.getByRole('button', { name: 'Run responsive audit' }).click();
+  await page.waitForFunction(() =>
+    document
+      .querySelector('#responsive-lab-status')
+      ?.textContent?.includes('2 of 4 frames measured'),
+  );
+  assert.match(
+    (await page.locator('#responsive-lab-status').textContent()) ?? '',
+    /2 of 4 frames measured · [1-9]\d* findings · 2 incomplete/,
+  );
+  assert.equal(
+    await page
+      .locator('.responsive-viewport-card footer')
+      .filter({ hasText: 'Audit passed' })
+      .count(),
+    2,
+  );
+  assert.equal(
+    await page
+      .locator('.responsive-viewport-card footer')
+      .filter({ hasText: 'layout did not stabilize' })
+      .count(),
+    1,
+  );
+  assert.equal(
+    await page
+      .locator('.responsive-viewport-card footer')
+      .filter({ hasText: 'Audit timed out' })
+      .count(),
+    1,
+  );
   const responsiveDarkSelection = await page
     .locator('.responsive-viewport-card.is-active')
     .evaluate((element) => {
@@ -1258,6 +1727,21 @@ try {
   await page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
   });
+  await page.locator('[data-responsive-open="mobile"]').click();
+  await page.locator('[data-responsive-scope="all"]').click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-responsive-scope="all"]')?.getAttribute('aria-pressed') ===
+      'true',
+  );
+  await page.locator('#responsive-open-canvas').click();
+  await page.locator('[data-mode-surface="canvas"]:not([hidden])').waitFor();
+  await page.locator('#canvas-responsive-scope:not([hidden])').waitFor();
+  assert.equal(
+    await page.locator('#canvas-responsive-scope').textContent(),
+    'Scope: all breakpoints',
+  );
+  assert.equal(await page.locator('#canvas-viewport').inputValue(), 'mobile');
   await page.locator('.workspace-rail [data-workspace-mode="health"]').click();
   await page.getByRole('heading', { name: 'Content Stress Lab' }).waitFor();
   await assertConnectedWorkspaceBrowser('.stress-lab-browser', { matchesCanvasHeader: true });
@@ -1546,18 +2030,140 @@ try {
     'true',
   );
   assert.equal(await page.locator('.typography-treatment-grid button').count(), 3);
+  const typographyChangeCountBefore = await page.locator('#change-count').textContent();
+  await page.locator('.typography-font-row').filter({ hasText: 'Foundry JetBrains Mono' }).click();
+  await page.waitForFunction(() => {
+    const text = document.querySelector('.typography-comparison-card.is-candidate')?.textContent;
+    return text?.includes('loaded') && text.includes('100 × 40');
+  });
+  assert.equal(
+    await page.locator('#change-count').textContent(),
+    typographyChangeCountBefore,
+    'Comparing a candidate font must not create a design change',
+  );
+  assert.equal(await page.locator('.typography-comparison-card').count(), 2);
+  assert.match(
+    (await page.locator('.typography-comparison-card.is-candidate').textContent()) ?? '',
+    /Candidate.*Foundry JetBrains Mono.*loaded.*1.*100 × 40.*Clear/s,
+  );
+  const sourceSpecimen = await page
+    .frameLocator('#product-preview')
+    .locator('button:first-of-type')
+    .evaluate((element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return {
+        text: element.textContent,
+        width: rect.width,
+        height: rect.height,
+        boxSizing: style.boxSizing,
+        paddingTop: style.paddingTop,
+        paddingRight: style.paddingRight,
+        paddingBottom: style.paddingBottom,
+        paddingLeft: style.paddingLeft,
+        borderTopWidth: style.borderTopWidth,
+        borderRightWidth: style.borderRightWidth,
+        borderBottomWidth: style.borderBottomWidth,
+        borderLeftWidth: style.borderLeftWidth,
+        borderTopStyle: style.borderTopStyle,
+        borderRightStyle: style.borderRightStyle,
+        borderBottomStyle: style.borderBottomStyle,
+        borderLeftStyle: style.borderLeftStyle,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        fontStyle: style.fontStyle,
+        fontVariationSettings: style.fontVariationSettings,
+        lineHeight: style.lineHeight,
+        letterSpacing: style.letterSpacing,
+        whiteSpace: style.whiteSpace,
+        overflowWrap: style.overflowWrap,
+        wordBreak: style.wordBreak,
+        textAlign: style.textAlign,
+        textTransform: style.textTransform,
+        textIndent: style.textIndent,
+        direction: style.direction,
+        writingMode: style.writingMode,
+        overflowX: style.overflowX,
+        overflowY: style.overflowY,
+      };
+    });
+  const renderedSpecimens = await page
+    .locator('.typography-comparison-specimen')
+    .evaluateAll((specimens) =>
+      specimens.map((specimen) => {
+        const style = getComputedStyle(specimen);
+        const rect = specimen.getBoundingClientRect();
+        return {
+          contract: specimen.dataset.specimenContract,
+          text: specimen.textContent,
+          width: rect.width,
+          height: rect.height,
+          family: style.fontFamily,
+          boxSizing: style.boxSizing,
+          paddingTop: style.paddingTop,
+          paddingRight: style.paddingRight,
+          paddingBottom: style.paddingBottom,
+          paddingLeft: style.paddingLeft,
+          borderTopWidth: style.borderTopWidth,
+          borderRightWidth: style.borderRightWidth,
+          borderBottomWidth: style.borderBottomWidth,
+          borderLeftWidth: style.borderLeftWidth,
+          borderTopStyle: style.borderTopStyle,
+          borderRightStyle: style.borderRightStyle,
+          borderBottomStyle: style.borderBottomStyle,
+          borderLeftStyle: style.borderLeftStyle,
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          fontStyle: style.fontStyle,
+          fontVariationSettings: style.fontVariationSettings,
+          lineHeight: style.lineHeight,
+          letterSpacing: style.letterSpacing,
+          whiteSpace: style.whiteSpace,
+          overflowWrap: style.overflowWrap,
+          wordBreak: style.wordBreak,
+          textAlign: style.textAlign,
+          textTransform: style.textTransform,
+          textIndent: style.textIndent,
+          direction: style.direction,
+          writingMode: style.writingMode,
+          overflowX: style.overflowX,
+          overflowY: style.overflowY,
+        };
+      }),
+    );
+  assert.equal(renderedSpecimens.length, 2);
+  for (const { contract, family: _family, ...specimen } of renderedSpecimens) {
+    assert.equal(contract, '1', 'Both comparison cards must use the versioned specimen contract');
+    assert.deepEqual(
+      specimen,
+      sourceSpecimen,
+      'Current and Candidate must preserve the selected copy, geometry, type settings, and wrapping',
+    );
+  }
+  assert.notEqual(
+    renderedSpecimens[0].family,
+    renderedSpecimens[1].family,
+    'Current and Candidate cards must render with their independently transferred faces',
+  );
+  assert.ok(await page.locator('#typography-use-candidate').isEnabled());
+  await page.locator('#typography-use-candidate').click();
+  await page
+    .frameLocator('#product-preview')
+    .locator('html[data-typography-use-changes="1"]')
+    .waitFor();
   const typographyGeometry = await page.locator('.typography-studio-mode').evaluate((surface) => {
     const shell = surface.querySelector('.typography-studio-shell');
     const browserPanel = surface.querySelector('.typography-studio-browser');
     const stage = surface.querySelector('.typography-studio-stage');
     const properties = surface.querySelector('.typography-studio-properties');
-    const specimen = surface.querySelector('.typography-specimen');
-    const specimenText = surface.querySelector('.typography-specimen-text');
+    const comparison = surface.querySelector('.typography-comparison');
+    const specimenStages = [...surface.querySelectorAll('.typography-comparison-specimen-stage')];
+    const comparisonCards = [...surface.querySelectorAll('.typography-comparison-card')];
     const selectionSummary = surface.querySelector('.typography-selection-summary');
     const selectionLabel = selectionSummary.querySelector('strong');
     const sectionCards = [
       ...surface.querySelectorAll(
-        '.typography-specimen, .typography-treatment-panel, .typography-usage-panel, .typography-rendered-section, .typography-audit, .typography-google-review, .typography-saved-styles',
+        '.typography-comparison, .typography-treatment-panel, .typography-usage-panel, .typography-rendered-section, .typography-audit, .typography-google-review, .typography-saved-styles',
       ),
     ];
     const browserRect = browserPanel.getBoundingClientRect();
@@ -1575,11 +2181,16 @@ try {
       selectionInset: Math.round(selectionLabel.getBoundingClientRect().left - browserRect.left),
       selectionLabelWidth: Math.round(selectionLabel.getBoundingClientRect().width),
       stageRadius: getComputedStyle(stage).borderRadius,
-      specimenRadius: getComputedStyle(specimen).borderRadius,
-      specimenHeight: Math.round(specimen.getBoundingClientRect().height),
-      specimenAlign: getComputedStyle(specimenText).alignItems,
-      specimenJustify: getComputedStyle(specimenText).justifyContent,
-      specimenTextAlign: getComputedStyle(specimenText).textAlign,
+      comparisonRadius: getComputedStyle(comparison).borderRadius,
+      comparisonHeight: Math.round(comparison.getBoundingClientRect().height),
+      specimenAlignments: specimenStages.map((item) => ({
+        align: getComputedStyle(item).alignItems,
+        justify: getComputedStyle(item).justifyItems,
+      })),
+      comparisonCardSizes: comparisonCards.map((card) => ({
+        width: Math.round(card.getBoundingClientRect().width),
+        height: Math.round(card.getBoundingClientRect().height),
+      })),
       sectionRadii: sectionCards.map((section) => getComputedStyle(section).borderRadius),
     };
   });
@@ -1592,11 +2203,18 @@ try {
   assert.equal(typographyGeometry.selectionInset, 16);
   assert.ok(typographyGeometry.selectionLabelWidth > 200);
   assert.equal(typographyGeometry.stageRadius, '0px');
-  assert.equal(typographyGeometry.specimenRadius, '0px');
-  assert.equal(typographyGeometry.specimenHeight, 280);
-  assert.equal(typographyGeometry.specimenAlign, 'center');
-  assert.equal(typographyGeometry.specimenJustify, 'center');
-  assert.equal(typographyGeometry.specimenTextAlign, 'center');
+  assert.equal(typographyGeometry.comparisonRadius, '0px');
+  assert.ok(typographyGeometry.comparisonHeight >= 304);
+  assert.deepEqual(
+    typographyGeometry.comparisonCardSizes[0],
+    typographyGeometry.comparisonCardSizes[1],
+    'Current and Candidate specimens must use identical geometry',
+  );
+  assert.ok(
+    typographyGeometry.specimenAlignments.every(
+      ({ align, justify }) => align === 'center' && justify === 'center',
+    ),
+  );
   assert.ok(typographyGeometry.sectionRadii.every((radius) => radius === '0px'));
   await assertSearchFieldThemeSurface('.typography-studio-browser > .search-field');
   await assertNoInternalHorizontalOverflow('Typography Studio at 1920px', [
@@ -1634,8 +2252,8 @@ try {
         stagePropertiesGap: Math.round(propertiesRect.left - stageRect.right),
         stageOverflow: stage.scrollWidth - stage.clientWidth,
         propertiesOverflow: properties.scrollWidth - properties.clientWidth,
-        specimenHeight: Math.round(
-          surface.querySelector('.typography-specimen').getBoundingClientRect().height,
+        comparisonHeight: Math.round(
+          surface.querySelector('.typography-comparison').getBoundingClientRect().height,
         ),
         treatmentColumns: getComputedStyle(
           surface.querySelector('.typography-treatment-grid'),
@@ -1648,7 +2266,7 @@ try {
   assert.equal(compactTypographyGeometry.stagePropertiesGap, 0);
   assert.ok(compactTypographyGeometry.stageOverflow <= 1);
   assert.ok(compactTypographyGeometry.propertiesOverflow <= 1);
-  assert.equal(compactTypographyGeometry.specimenHeight, 240);
+  assert.ok(compactTypographyGeometry.comparisonHeight >= 304);
   assert.equal(compactTypographyGeometry.treatmentColumns, 3);
   await assertNoInternalHorizontalOverflow('Typography Studio at 1280px', [
     '.typography-studio-mode',
@@ -1668,7 +2286,7 @@ try {
   await page.locator('.workspace-rail [data-workspace-mode="branches"]').click();
   await page.getByRole('heading', { name: 'Design branches' }).waitFor();
   await assertConnectedWorkspaceBrowser('.design-branch-browser');
-  assert.equal(await page.locator('.design-branch-row').count(), 2);
+  assert.equal(await page.locator('.design-branch-row').count(), 3);
   assert.equal(await page.locator('.design-branch-preview-card').count(), 2);
   assert.equal(await page.locator('.design-branch-decision-row').count(), 2);
   await page.locator('.design-branch-row').filter({ hasText: 'Editorial scale' }).click();
@@ -1697,7 +2315,7 @@ try {
       .querySelector('#design-branch-status')
       ?.textContent?.includes('Editorial scale (restored)'),
   );
-  assert.equal(await page.locator('.design-branch-row').count(), 3);
+  assert.equal(await page.locator('.design-branch-row').count(), 4);
   const branchGeometry = await page.locator('.design-branches-mode').evaluate((surface) => {
     const shell = surface.querySelector('.design-branches-shell');
     const browserPanel = surface.querySelector('.design-branch-browser');
@@ -1869,23 +2487,67 @@ try {
   await page.setViewportSize({ width: 1920, height: 1080 });
   let deliverySession = await store.read(sessionId);
   const deliveryRun = deliverySession.applyRuns.at(-1);
+  const baselineSourceHash = 'a'.repeat(64);
+  const appliedSourceHash = 'b'.repeat(64);
+  const baselineSourceProof = {
+    scope: 'mapped-files',
+    revision: deliverySession.changeSet.context.revision,
+    files: [
+      {
+        path: 'PrimaryAction.tsx',
+        exists: true,
+        sha256: baselineSourceHash,
+        lineAnchors: [{ line: 1, sha256: baselineSourceHash }],
+      },
+    ],
+  };
+  const appliedSourceProof = {
+    ...baselineSourceProof,
+    revision: `${baselineSourceProof.revision}-applied`,
+    files: [
+      {
+        path: 'PrimaryAction.tsx',
+        exists: true,
+        sha256: appliedSourceHash,
+        lineAnchors: [{ line: 1, sha256: appliedSourceHash }],
+      },
+    ],
+  };
   deliverySession = await store.claimApplyRun(sessionId, deliveryRun.id, {
     agent: { name: 'codex', version: 'e2e' },
-    revision: 'workspace-e2e',
-    designGraphRevision: 'workspace-e2e',
+    revision: deliverySession.changeSet.context.revision,
+    designGraphRevision: deliverySession.designGraph.revision,
+    sourceProof: baselineSourceProof,
   });
-  const deliveryClaim = deliverySession.applyRuns.at(-1).claimAttemptId;
+  const claimedDeliveryRun = deliverySession.applyRuns.at(-1);
+  assert.equal(claimedDeliveryRun.state, 'claimed');
+  assert.equal(claimedDeliveryRun.revision, deliveryRun.revision);
+  assert.equal(claimedDeliveryRun.designGraphRevision, deliveryRun.designGraphRevision);
+  assert.ok(claimedDeliveryRun.claimAttemptId);
+  const deliveryClaim = claimedDeliveryRun.claimAttemptId;
   await store.updateApplyRun(sessionId, deliveryRun.id, {
     state: 'applying',
     message: 'Applying the reviewed delivery batch.',
     claimAttemptId: deliveryClaim,
   });
-  await store.updateApplyRun(sessionId, deliveryRun.id, {
-    state: 'rebuilding',
-    changedFiles: ['PrimaryAction.tsx'],
-    validationResults: [{ name: 'workspace build', passed: true }],
-    claimAttemptId: deliveryClaim,
-  });
+  await store.updateApplyRun(
+    sessionId,
+    deliveryRun.id,
+    {
+      state: 'rebuilding',
+      changedFiles: ['PrimaryAction.tsx'],
+      validationResults: [{ name: 'workspace build', passed: true }],
+      claimAttemptId: deliveryClaim,
+    },
+    appliedSourceProof,
+  );
+  await store.recordApplyResult(
+    sessionId,
+    deliveryRun.id,
+    deliveryClaim,
+    applyChanges.map((change) => change.id),
+    appliedSourceProof,
+  );
   await store.updateApplyRun(sessionId, deliveryRun.id, {
     state: 'verifying',
     claimAttemptId: deliveryClaim,
@@ -1893,15 +2555,22 @@ try {
   deliverySession = await store.addVerifications(
     sessionId,
     applyChanges.map((change) => ({
+      applyRunId: deliveryRun.id,
+      claimAttemptId: deliveryClaim,
       changeId: change.id,
       property: change.property,
       requested: change.after,
       rendered: change.after,
       passed: true,
       reason: 'Rendered value matches the reviewed value.',
+      geometry: change.target.geometry,
+      evidence: ['The workspace fixture returned the reviewed rendered value.'],
       verifiedAt: new Date().toISOString(),
     })),
     deliveryRun.id,
+    deliveryClaim,
+    'browser-preview',
+    appliedSourceProof,
   );
   await store.createDeliveryMilestone(sessionId, {
     name: 'Workspace refinement',

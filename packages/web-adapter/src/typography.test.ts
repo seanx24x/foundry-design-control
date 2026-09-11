@@ -302,6 +302,22 @@ test('matches rendered typography semantically instead of comparing browser form
   assert.equal(typographyPropertyMatches('fontStyle', 'normal', 'italic'), false);
 });
 
+test('verifies scalar typography values without accepting numeric-prefix mismatches', () => {
+  assert.equal(typographyPropertyMatches('fontSize', '16rem', '16px'), false);
+  assert.equal(typographyPropertyMatches('fontSize', '16px 20px', '16px'), false);
+  assert.equal(typographyPropertyMatches('textIndent', '8px hanging', '8px'), false);
+  assert.equal(typographyPropertyMatches('fontSize', '96px', '1in'), true);
+  assert.equal(typographyPropertyMatches('letterSpacing', '0.01em', '0.010001em'), true);
+  assert.equal(typographyPropertyMatches('wordSpacing', '4.006px', '4px'), true);
+});
+
+test('keeps unitless line-height comparisons explicit', () => {
+  assert.equal(typographyPropertyMatches('lineHeight', '1.5', '1.50001'), true);
+  assert.equal(typographyPropertyMatches('lineHeight', '24px', '1.5'), false);
+  assert.equal(typographyPropertyMatches('lineHeight', 'normal', 'normal'), true);
+  assert.equal(typographyPropertyMatches('lineHeight', 'normal', '1.5'), false);
+});
+
 test('stores project typography styles locally and replaces matching names deterministically', () => {
   const values = {
     fontFamily: 'Inter, sans-serif',

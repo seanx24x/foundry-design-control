@@ -38,7 +38,10 @@ export function sanitizeDeliveryText(value: string, projectRoot: string): string
   let sanitized = value;
   for (const path of projectPaths) sanitized = sanitized.replaceAll(path, '.');
   return sanitized
-    .replace(/([?&](?:token|__foundry_token|session|__foundry_session)=)[^&\s)]+/gi, '$1[redacted]')
+    .replace(
+      /([?&](?:token|__foundry_token|session|__foundry_session|__foundry_preview_capability)=)[^&\s)]+/gi,
+      '$1[redacted]',
+    )
     .replace(/(x-foundry-token\s*[:=]\s*)[^\s,;]+/gi, '$1[redacted]');
 }
 
@@ -49,6 +52,14 @@ function unique(values: Array<string | undefined>): string[] {
 function renderValue(value: unknown, unit?: string): string {
   const rendered = typeof value === 'string' ? value : JSON.stringify(value);
   return `${rendered}${unit ?? ''}`;
+}
+
+function changeContexts(change: DesignChange): DeliveryRecord['contexts'] {
+  return change.contextSet.breakpoints.flatMap((breakpoint) =>
+    change.contextSet.themes.flatMap((theme) =>
+      change.contextSet.states.map((state) => ({ breakpoint, theme, state })),
+    ),
+  );
 }
 
 export function deliveryBlockers(
@@ -77,21 +88,39 @@ export function createDeliveryRecord(
   run: ApplyRun,
   now: string,
 ): DeliveryRecord {
-  const changes = changeSet.changes.filter((change) => run.changeIds.includes(change.id));
+  const reviewedChangeSet = run.reviewedChangeSet ?? changeSet;
+  const changes = reviewedChangeSet.changes.filter((change) => run.changeIds.includes(change.id));
   const operationIds = unique(changes.map((change) => change.operationId));
   const components = unique(changes.flatMap((change) => change.target.componentPath));
-  const files = unique(changes.map((change) => change.target.source?.file)).map((path) =>
-    sanitizeProjectPath(changeSet.context.projectRoot, path),
-  );
+  const files = unique([
+    ...changes.flatMap((change) => {
+      const mapping =
+        change.mappingCandidates.find((candidate) => candidate.id === change.selectedMappingId) ??
+        (change.mappingCandidates.length === 1 ? change.mappingCandidates[0] : undefined);
+      return [change.target.source?.file, mapping?.source?.file];
+    }),
+    ...reviewedChangeSet.operations
+      .filter((operation) => operationIds.includes(operation.id))
+      .flatMap((operation) => {
+        const mapping =
+          operation.mappingCandidates.find(
+            (candidate) => candidate.id === operation.selectedMappingId,
+          ) ??
+          (operation.mappingCandidates.length === 1 ? operation.mappingCandidates[0] : undefined);
+        return [mapping?.source?.file];
+      }),
+  ]).map((path) => sanitizeProjectPath(reviewedChangeSet.context.projectRoot, path));
   const contexts = Array.from(
     new Map(
-      changes.map((change) => [
-        `${change.context.breakpoint}:${change.context.theme}:${change.context.state}`,
-        change.context,
-      ]),
+      changes
+        .flatMap(changeContexts)
+        .map((context) => [
+          JSON.stringify([context.breakpoint, context.theme, context.state]),
+          context,
+        ]),
     ).values(),
   );
-  const blockers = deliveryBlockers(changes, changeSet.operations);
+  const blockers = deliveryBlockers(changes, reviewedChangeSet.operations);
   const title =
     changes.length === 1
       ? `${changes[0]!.target.label}: ${changes[0]!.property}`
@@ -106,7 +135,7 @@ export function createDeliveryRecord(
   return {
     version: 1,
     id: deliveryId('delivery', `${changeSet.sessionId}:${run.id}`),
-    sessionId: changeSet.sessionId,
+    sessionId: reviewedChangeSet.sessionId,
     applyRunId: run.id,
     title,
     summary,
@@ -123,20 +152,30 @@ export function createDeliveryRecord(
       ? ['Component-scoped changes can affect more than the selected instance.']
       : [],
     questions: [],
-    acceptanceCriteria: changes.map((change) => ({
-      id: `criterion_${change.id}`,
-      label: `${change.target.label} renders ${change.property} as ${renderValue(change.after, change.unit)}`,
-      status: 'pending',
-      evidence: change.evidence,
-    })),
+    acceptanceCriteria: changes.map((change) => {
+      const affectedContexts = changeContexts(change);
+      return {
+        id: `criterion_${change.id}`,
+        label: `${change.target.label} renders ${change.property} as ${renderValue(change.after, change.unit)}${affectedContexts.length > 1 ? ` in all ${affectedContexts.length} reviewed contexts` : ''}`,
+        status: 'pending',
+        evidence: [
+          ...change.evidence,
+          ...affectedContexts.map(
+            (context) => `Context: ${context.breakpoint} / ${context.theme} / ${context.state}`,
+          ),
+        ],
+      };
+    }),
     blockers,
     validationResults: [],
     verificationResults: [],
-    evidence: changeSet.screenshots.map((item) => ({
+    evidence: reviewedChangeSet.screenshots.map((item) => ({
       ...item,
-      path: sanitizeProjectPath(changeSet.context.projectRoot, item.path),
+      path: sanitizeProjectPath(reviewedChangeSet.context.projectRoot, item.path),
     })),
     revision: run.revision,
+    baselineRevision: run.revision,
+    appliedRevision: run.appliedRevision,
     designGraphRevision: run.designGraphRevision,
     createdAt: now,
     updatedAt: now,
@@ -157,15 +196,19 @@ export function syncDeliveryRecord(
         : record.status === 'implementing'
           ? 'ready'
           : record.status;
-  const verificationByChange = new Map(
-    run.verificationResults.map((item) => [item.changeId, item]),
-  );
+  const verificationByChange = new Map<string, typeof run.verificationResults>();
+  for (const result of run.verificationResults) {
+    const results = verificationByChange.get(result.changeId) ?? [];
+    results.push(result);
+    verificationByChange.set(result.changeId, results);
+  }
   return {
     ...record,
     status,
-    affectedFiles: unique([...record.affectedFiles, ...run.changedFiles]).map((path) =>
-      sanitizeProjectPath(projectRoot, path),
-    ),
+    affectedFiles: (run.applyResultAcknowledgedAt
+      ? run.appliedChangedFiles
+      : record.affectedFiles
+    ).map((path) => sanitizeProjectPath(projectRoot, path)),
     validationResults: run.validationResults,
     verificationResults: run.verificationResults.map((result) => ({
       ...result,
@@ -175,22 +218,33 @@ export function syncDeliveryRecord(
     })),
     acceptanceCriteria: record.acceptanceCriteria.map((criterion) => {
       const changeId = criterion.id.replace(/^criterion_/, '');
-      const result = verificationByChange.get(changeId);
-      return result
+      const results = verificationByChange.get(changeId) ?? [];
+      const complete = ['passed', 'needs_attention'].includes(run.state) && results.length > 0;
+      return complete
         ? {
             ...criterion,
-            status: result.passed ? ('passed' as const) : ('failed' as const),
+            status: results.every((result) => result.passed)
+              ? ('passed' as const)
+              : ('failed' as const),
             evidence: unique([
               ...criterion.evidence,
-              result.reason,
-              result.screenshotPath
-                ? sanitizeProjectPath(projectRoot, result.screenshotPath)
-                : undefined,
+              ...results.flatMap((result) => [
+                result.reason,
+                result.context
+                  ? `Verified context: ${result.context.breakpoint} / ${result.context.theme} / ${result.context.state}`
+                  : undefined,
+                result.screenshotPath
+                  ? sanitizeProjectPath(projectRoot, result.screenshotPath)
+                  : undefined,
+              ]),
             ]),
           }
         : criterion;
     }),
     updatedAt: now,
+    revision: run.appliedRevision ?? record.revision,
+    baselineRevision: record.baselineRevision ?? run.revision,
+    appliedRevision: run.appliedRevision ?? record.appliedRevision,
     verifiedAt: run.state === 'passed' ? now : record.verifiedAt,
   };
 }
@@ -210,6 +264,8 @@ export function createHistoryEntry(record: DeliveryRecord, now: string): DesignH
     validationResults: record.validationResults,
     verificationResults: record.verificationResults,
     revision: record.revision,
+    baselineRevision: record.baselineRevision,
+    appliedRevision: record.appliedRevision,
     createdAt: now,
   };
 }
@@ -404,6 +460,13 @@ export function renderDeliveryMarkdown(record: DeliveryRecord, projectRoot = '')
     '',
     list(record.affectedTokens),
     '',
+    '## Contexts',
+    '',
+    ...record.contexts.map(
+      (context) =>
+        `- ${safe(context.breakpoint)} / ${safe(context.theme)} / ${safe(context.state)}`,
+    ),
+    '',
     '## Risks',
     '',
     list(record.risks),
@@ -429,7 +492,7 @@ export function renderDeliveryMarkdown(record: DeliveryRecord, projectRoot = '')
     '',
     ...record.verificationResults.map(
       (item) =>
-        `- ${item.passed ? 'Passed' : 'Failed'}: ${safe(item.property)}${item.reason ? ` — ${safe(item.reason)}` : ''}`,
+        `- ${item.passed ? 'Passed' : 'Failed'}: ${safe(item.property)}${item.context ? ` (${safe(item.context.breakpoint)} / ${safe(item.context.theme)} / ${safe(item.context.state)})` : ''}${item.reason ? ` — ${safe(item.reason)}` : ''}`,
     ),
     '',
   ].join('\n');

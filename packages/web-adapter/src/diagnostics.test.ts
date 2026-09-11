@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { createSafeDiagnostics } from './diagnostics.js';
+import { createSafeDiagnostics, DIAGNOSTICS_PROTOCOL_VERSION } from './diagnostics.js';
 
 test('safe diagnostics contain only product state and counts', () => {
   const diagnostics = createSafeDiagnostics({
@@ -20,6 +21,13 @@ test('safe diagnostics contain only product state and counts', () => {
   });
   assert.equal(diagnostics.workspace.selectedElementCount, 2);
   assert.equal(diagnostics.workspace.recordedChangeCount, 3);
+  assert.equal(DIAGNOSTICS_PROTOCOL_VERSION, '1.3.0');
+  assert.equal(diagnostics.protocolVersion, DIAGNOSTICS_PROTOCOL_VERSION);
+});
+
+test('production diagnostics use the current protocol version explicitly', () => {
+  const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+  assert.match(source, /protocolVersion: DIAGNOSTICS_PROTOCOL_VERSION/);
 });
 
 test('safe diagnostics cannot carry project or session details', () => {

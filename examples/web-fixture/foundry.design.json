@@ -1,0 +1,15 @@
+{
+  "states": [
+    {
+      "id": "loading",
+      "label": "Loading",
+      "query": {
+        "morrow-state": "loading"
+      },
+      "confidence": "instrumented",
+      "evidence": [
+        "The Morrow fixture reads ?morrow-state=loading and applies its authored loading treatment."
+      ]
+    }
+  ]
+}

@@ -1,116 +1,169 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { verifyReleaseArtifacts } from './release-artifacts.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const { version } = JSON.parse(readFileSync(join(root, 'release.json'), 'utf8'));
-const packageDirectories = [
-  'apps/inspector',
-  'packages/protocol',
-  'packages/web-adapter',
-  'packages/runtime',
-  'packages/cli',
-  'packages/mcp-server',
-  'packages/react-native-adapter',
-];
 const registry = 'https://registry.npmjs.org';
-const promoteLatest = process.argv.includes('--promote-latest');
 const supportsProvenance = process.env.GITHUB_ACTIONS === 'true';
 const artifactDirectory = join(root, 'artifacts', 'npm');
 
+if (process.argv.includes('--promote-latest')) {
+  console.error(
+    'release:publish no longer promotes latest. Verify the public beta, run the registry golden path, then run release:promote.',
+  );
+  process.exit(1);
+}
+
 function run(command, args, options = {}) {
   return spawnSync(command, args, {
-    cwd: options.cwd ?? root,
+    cwd: root,
     encoding: 'utf8',
     stdio: options.capture ? 'pipe' : 'inherit',
   });
-}
-
-function published(packageName) {
-  const result = run(
-    'npm',
-    ['view', `${packageName}@${version}`, 'version', '--registry', registry],
-    { capture: true },
-  );
-  return result.status === 0 && result.stdout.trim() === version;
 }
 
 function wait(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-const packages = packageDirectories.map((directory) => ({
-  directory,
-  name: JSON.parse(readFileSync(join(root, directory, 'package.json'), 'utf8')).name,
-}));
-
-// Never publish source metadata with stale compiled artifacts. Package manifests
-// are cheap to update, so the release command itself must rebuild and validate
-// the exact files that npm will receive before it mutates the registry.
-for (const [command, args, label] of [
-  ['pnpm', ['build'], 'release build'],
-  ['pnpm', ['release:check'], 'release metadata check'],
-  ['pnpm', ['release:pack'], 'release package build'],
-  ['pnpm', ['distribution:check'], 'agent distribution check'],
-]) {
-  const result = run(command, args);
+function registryState(entry) {
+  const spec = `${entry.name}@${entry.version}`;
+  const result = run(
+    'npm',
+    ['view', spec, 'name', 'version', 'dist.integrity', '--json', '--registry', registry],
+    { capture: true },
+  );
   if (result.status !== 0) {
-    console.error(`Cannot publish: ${label} failed.`);
-    process.exit(result.status ?? 1);
+    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+    if (/\bE404\b|404 Not Found|No match found for version/i.test(output)) {
+      return { status: 'missing' };
+    }
+    throw new Error(`Could not safely inspect ${spec} before publication.\n${output.trim()}`);
+  }
+
+  let metadata;
+  try {
+    metadata = JSON.parse(result.stdout);
+  } catch {
+    throw new Error(`npm returned invalid metadata for ${spec}: ${result.stdout.trim()}`);
+  }
+  const name = metadata.name;
+  const version = metadata.version;
+  const integrity = metadata['dist.integrity'] ?? metadata.dist?.integrity;
+  if (name !== entry.name || version !== entry.version || typeof integrity !== 'string') {
+    throw new Error(
+      `Public metadata for ${spec} is incomplete or has the wrong npm identity (${name}@${version}, ${integrity ?? 'no integrity'}).`,
+    );
+  }
+  return { status: 'published', integrity };
+}
+
+function assertMatchingPublicIntegrity(entry, state) {
+  if (state.status !== 'published') return;
+  if (state.integrity !== entry.npmIntegrity) {
+    throw new Error(
+      [
+        `Immutable package mismatch for ${entry.name}@${entry.version}.`,
+        `Registry: ${state.integrity}`,
+        `Gated tarball: ${entry.npmIntegrity}`,
+        'Refusing to skip or overwrite a version whose bytes differ.',
+      ].join('\n'),
+    );
   }
 }
 
-for (const entry of packages) {
-  if (published(entry.name)) {
-    console.log(`✓ ${entry.name}@${version} already exists; skipping immutable publication.`);
-    continue;
+function waitForPublishedEntry(entry) {
+  for (let attempt = 1; attempt <= 12; attempt += 1) {
+    const state = registryState(entry);
+    assertMatchingPublicIntegrity(entry, state);
+    if (state.status === 'published') return;
+    if (attempt < 12) {
+      console.log(
+        `Waiting for npm to expose ${entry.name}@${entry.version} before continuing (${attempt}/12).`,
+      );
+      wait(10_000);
+    }
   }
-  const tarball = join(artifactDirectory, `${entry.name}-${version}.tgz`);
-  if (!existsSync(tarball)) {
-    console.error(`Cannot publish: missing ${tarball}.`);
-    process.exit(1);
-  }
-  const publishArgs = ['publish', tarball, '--tag', 'beta', '--registry', registry];
-  if (supportsProvenance) publishArgs.push('--provenance');
-  const result = run('npm', publishArgs);
-  if (result.status !== 0) process.exit(result.status ?? 1);
-}
-
-let missing = packages.filter((entry) => !published(entry.name));
-for (let attempt = 1; missing.length && attempt <= 12; attempt += 1) {
-  console.log(
-    `Waiting for npm to finish processing ${missing.map((entry) => entry.name).join(', ')} (${attempt}/12).`,
+  throw new Error(
+    `npm did not expose ${entry.name}@${entry.version}; refusing to publish packages that may depend on it.`,
   );
-  wait(10_000);
-  missing = missing.filter((entry) => !published(entry.name));
-}
-if (missing.length) {
-  console.error(`Publication incomplete: ${missing.map((entry) => entry.name).join(', ')}`);
-  process.exit(1);
 }
 
-if (promoteLatest && supportsProvenance && !process.env.NODE_AUTH_TOKEN) {
-  console.error(
-    'All packages were published under beta with trusted publishing. Moving latest requires an npm token because OIDC currently authorizes publish, not dist-tag changes. Re-run with NODE_AUTH_TOKEN or promote latest in npm.',
-  );
+let manifest;
+try {
+  manifest = verifyReleaseArtifacts(root, artifactDirectory);
+} catch (error) {
+  console.error(`Cannot publish: ${error.message}`);
   process.exit(1);
-}
-
-for (const entry of packages) {
-  const tags = promoteLatest ? ['latest'] : [];
-  for (const tag of tags) {
-    const result = run('npm', [
-      'dist-tag',
-      'add',
-      `${entry.name}@${version}`,
-      tag,
-      '--registry',
-      registry,
-    ]);
-    if (result.status !== 0) process.exit(result.status ?? 1);
-  }
 }
 
 console.log(
-  `Published and verified ${packages.length} packages at ${version}; beta${promoteLatest ? ' and latest' : ''} now resolve to this release.`,
+  `Publishing only the ${manifest.packages.length} tarballs sealed by the ${manifest.releaseVersion} integrity manifest; no build or repack will run.`,
+);
+
+for (const entry of manifest.packages) {
+  let state;
+  try {
+    state = registryState(entry);
+    assertMatchingPublicIntegrity(entry, state);
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+
+  if (state.status === 'published') {
+    console.log(
+      `✓ ${entry.name}@${entry.version} already exists with the gated npm integrity; skipping immutable publication.`,
+    );
+  } else {
+    const publishArgs = [
+      'publish',
+      join(artifactDirectory, entry.filename),
+      '--tag',
+      'beta',
+      '--registry',
+      registry,
+    ];
+    if (supportsProvenance) publishArgs.push('--provenance');
+    const result = run('npm', publishArgs);
+    if (result.status !== 0) process.exit(result.status ?? 1);
+  }
+
+  try {
+    waitForPublishedEntry(entry);
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+}
+
+let missing = [...manifest.packages];
+for (let attempt = 1; missing.length && attempt <= 12; attempt += 1) {
+  const nextMissing = [];
+  for (const entry of missing) {
+    try {
+      const state = registryState(entry);
+      assertMatchingPublicIntegrity(entry, state);
+      if (state.status === 'missing') nextMissing.push(entry);
+    } catch (error) {
+      console.error(error.message);
+      process.exit(1);
+    }
+  }
+  missing = nextMissing;
+  if (missing.length && attempt < 12) {
+    console.log(
+      `Waiting for npm to expose the gated bytes for ${missing.map(({ name }) => name).join(', ')} (${attempt}/12).`,
+    );
+    wait(10_000);
+  }
+}
+
+if (missing.length) {
+  console.error(`Publication incomplete: ${missing.map(({ name }) => name).join(', ')}`);
+  process.exit(1);
+}
+
+console.log(
+  `Published and integrity-verified ${manifest.packages.length} packages at ${manifest.releaseVersion}; beta is ready.`,
 );

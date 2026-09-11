@@ -13,6 +13,7 @@ import {
   type MotionPreset,
   type ProjectDesignGraph,
   type TokenPromotionCandidate,
+  type ThemeDefinition,
 } from 'foundry-design-protocol';
 import type { FoundryProjectConfig } from './installer.js';
 
@@ -426,7 +427,7 @@ export async function indexProjectDesign(
   const components = new Map<string, ComponentDefinition>();
   const breakpoints = new Map<number, { width: number; source?: { file: string; line: number } }>();
   const containerQueries = new Map<string, ContainerQueryDefinition>();
-  const themes = new Set<string>();
+  const themes = new Map<string, ThemeDefinition>();
   const motion = new Map<string, MotionPreset>();
   const storyVariants = new Map<string, ComponentDefinition['variants']>();
   const axesByFile = new Map<string, ComponentVariantAxis[]>();
@@ -523,10 +524,43 @@ export async function indexProjectDesign(
         });
       }
     }
-    for (const match of content.matchAll(/(?:data-theme=["']|\[data-theme=["'])([\w-]+)/g)) {
-      themes.add(match[1]!);
+    for (const match of content.matchAll(/\[data-theme\s*=\s*["']?([\w-]+)["']?\]/g)) {
+      const id = match[1]!;
+      themes.set(id, {
+        id,
+        label: id[0]!.toUpperCase() + id.slice(1),
+        selector: `[data-theme="${id}"]`,
+        attribute: 'data-theme',
+        value: id,
+        source: { file, line: lineAt(content, match.index ?? 0) },
+        confidence: 'instrumented',
+        evidence: ['Indexed CSS data-theme selector'],
+      });
     }
-    if (/(?:^|\s)\.dark(?:\s|[{,:])/.test(content)) themes.add('dark');
+    for (const match of content.matchAll(/\bdata-theme\s*=\s*["']([\w-]+)["']/g)) {
+      const id = match[1]!;
+      if (themes.has(id)) continue;
+      themes.set(id, {
+        id,
+        label: id[0]!.toUpperCase() + id.slice(1),
+        attribute: 'data-theme',
+        value: id,
+        source: { file, line: lineAt(content, match.index ?? 0) },
+        confidence: 'instrumented',
+        evidence: ['Indexed HTML data-theme attribute'],
+      });
+    }
+    for (const match of content.matchAll(/(?:^|\s)(\.dark)(?=\s|[{,:])/gm)) {
+      if (themes.has('dark')) continue;
+      themes.set('dark', {
+        id: 'dark',
+        label: 'Dark',
+        selector: '.dark',
+        source: { file, line: lineAt(content, match.index ?? 0) },
+        confidence: 'instrumented',
+        evidence: ['Indexed CSS class theme selector'],
+      });
+    }
 
     if (/\.(?:tsx?|jsx?|mjs|cjs)$/.test(path)) {
       axesByFile.set(file, sourceVariantAxes(file, content));
@@ -895,8 +929,12 @@ export async function indexProjectDesign(
 
   const configuredThemes = config?.design?.themes ?? [];
   const graphThemes = configuredThemes.length
-    ? configuredThemes
-    : [...themes].map((id) => ({ id, label: id[0]!.toUpperCase() + id.slice(1) }));
+    ? configuredThemes.map((theme) => ({
+        ...theme,
+        confidence: theme.confidence ?? 'instrumented',
+        evidence: theme.evidence ?? ['Configured Foundry theme hook'],
+      }))
+    : [...themes.values()];
 
   return projectDesignGraphSchema.parse({
     protocolVersion: PROTOCOL_VERSION,

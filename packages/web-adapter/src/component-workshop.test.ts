@@ -43,19 +43,29 @@ test('preserves richer runtime variant props', () => {
   assert.deepEqual(component?.variants[0]?.props, { tone: 'quiet', loading: false });
 });
 
-test('combines standard interaction states with configured product states', () => {
+test('exposes only authored project states', () => {
   const states = componentWorkshopStates([
     {
       id: 'destructive',
       label: 'Destructive',
       evidence: ['Configured in Foundry'],
     },
+    {
+      id: 'focus-visible',
+      label: 'Keyboard focus',
+      pseudoStates: ['focus'],
+      confidence: 'instrumented',
+      evidence: ['Authored :focus-visible selector'],
+    },
   ]);
   assert.deepEqual(
-    states.slice(0, 8).map(({ id }) => id),
-    ['current', 'hover', 'focus', 'active', 'disabled', 'loading', 'empty', 'error'],
+    states.map(({ id }) => id),
+    ['destructive', 'focus-visible'],
   );
-  assert.equal(states.at(-1)?.id, 'destructive');
+  assert.equal(states[0]?.kind, 'semantic');
+  assert.equal(states[1]?.kind, 'pseudo');
+  assert.equal(states[1]?.pseudoState, 'focus');
+  assert.deepEqual(componentWorkshopStates(undefined), []);
 });
 
 test('keeps broader scopes read-only until source mapping is available', () => {

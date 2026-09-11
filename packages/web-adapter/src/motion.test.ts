@@ -287,8 +287,8 @@ test('builds measurable motion paths from transform keyframes', () => {
 
 test('keeps playback transport out of the source-bound change ledger', () => {
   const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
-  const commandStart = source.indexOf("message.command === 'motion-action'");
-  const commandEnd = source.indexOf("message.command === 'set-context'", commandStart);
+  const commandStart = source.indexOf("command === 'motion-action'");
+  const commandEnd = source.indexOf("command === 'typography-compare'", commandStart);
   assert.ok(commandStart > 0 && commandEnd > commandStart);
   const workspaceTransport = source.slice(commandStart, commandEnd);
   assert.match(workspaceTransport, /animation\.playbackRate =/);
@@ -299,12 +299,12 @@ test('keeps playback transport out of the source-bound change ledger', () => {
 test('workspace bridge serializes and accepts motion studio commands', () => {
   const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
   assert.match(source, /motions: selected \? workspaceMotionSnapshot\(selected\) : \[\]/);
-  assert.match(source, /message\.command === 'motion-action'/);
+  assert.match(source, /command === 'motion-action'/);
   assert.match(source, /action === 'scrub'/);
-  assert.match(source, /action === 'duration'/);
-  assert.match(source, /action === 'iterations'/);
-  assert.match(source, /action === 'direction'/);
-  assert.match(source, /action === 'fill'/);
+  assert.match(
+    source,
+    /\['duration', 'delay', 'easing', 'iterations', 'direction', 'fill'\]\.includes\(action\)/,
+  );
   assert.match(source, /action === 'curve'/);
   assert.match(source, /action === 'path-point'/);
   assert.match(source, /motionPathSnapshot/);
@@ -312,10 +312,10 @@ test('workspace bridge serializes and accepts motion studio commands', () => {
   assert.match(source, /applyMotionCurve\(motion, requestedMotionCurve\(payload\)\)/);
   assert.match(source, /curve:/);
   assert.match(source, /previewMotionCurves/);
-  assert.match(source, /applyMotionTiming\(motion, action, after\)/);
+  assert.match(source, /applyMotionTiming\([\s\S]*?motion,[\s\S]*?action as/);
   assert.match(source, /reducedMotionProtected:/);
   assert.match(source, /action === 'keyframe-value'/);
-  assert.match(source, /applyMotionKeyframe\(motion, Number\(payload\.index\), property, after\)/);
+  assert.match(source, /applyMotionKeyframe\([\s\S]*?Number\(payload\.index\),[\s\S]*?property,/);
   assert.match(source, /motionKeyframeValue\(/);
   assert.match(source, /function nativeMotionAuthoring\(/);
   assert.match(source, /Project motion preset:/);
