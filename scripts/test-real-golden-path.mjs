@@ -455,6 +455,24 @@ function prepareProject(name, tooling) {
   mkdirSync(scenarioRoot, { recursive: true });
   mkdirSync(home, { recursive: true });
   cpSync(fixtureSource, project, { recursive: true });
+  // The repository fixture may be instrumented or built during local
+  // development. A golden-path project must contain only authored fixture
+  // sources so the public CLI proves a genuinely fresh installation.
+  for (const localPath of [
+    '.foundry',
+    '.agents',
+    '.codex',
+    '.cursor',
+    '.claude',
+    '.mcp.json',
+    'dist',
+    'node_modules',
+    '.git',
+  ]) {
+    rmSync(join(project, localPath), { recursive: true, force: true });
+  }
+  assert.equal(existsSync(join(project, '.foundry', 'install-manifest.json')), false);
+  assert.equal(existsSync(join(project, '.foundry', 'foundry.config.json')), false);
   initializeGit(project);
   const nodeModules = join(project, 'node_modules');
   if (!existsSync(nodeModules)) symlinkSync(join(root, 'node_modules'), nodeModules, 'dir');
