@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { normalizeNpmPackMetadata } from './public-package-archive.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const { version } = JSON.parse(readFileSync(join(root, 'release.json'), 'utf8'));
@@ -67,7 +68,7 @@ function inspectPublicTarball(packageName) {
   } catch {
     throw new Error(`npm returned invalid archive metadata for ${spec}: ${result.stdout.trim()}`);
   }
-  const entry = Array.isArray(output) ? output[0] : output;
+  const entry = normalizeNpmPackMetadata(output, spec, packageName);
   if (entry?.name !== packageName || entry?.version !== version) {
     throw new Error(
       `npm returned the wrong archive identity for ${spec}: ${entry?.name ?? 'unknown'}@${entry?.version ?? 'unknown'}.`,

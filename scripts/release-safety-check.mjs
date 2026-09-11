@@ -99,6 +99,7 @@ for (const fragment of [
 
 for (const fragment of [
   'inspectPublicTarball(packageName)',
+  'normalizeNpmPackMetadata(output, spec, packageName)',
   "'pack'",
   "'--dry-run'",
   "'--ignore-scripts'",
