@@ -4,6 +4,8 @@ import { verifyReleaseArtifacts } from './release-artifacts.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const registry = 'https://registry.npmjs.org';
+const registryAttempts = 37;
+const registryWaitMilliseconds = 10_000;
 const supportsProvenance = process.env.GITHUB_ACTIONS === 'true';
 const artifactDirectory = join(root, 'artifacts', 'npm');
 
@@ -30,7 +32,17 @@ function registryState(entry, { allowIncomplete = false } = {}) {
   const spec = `${entry.name}@${entry.version}`;
   const result = run(
     'npm',
-    ['view', spec, 'name', 'version', 'dist.integrity', '--json', '--registry', registry],
+    [
+      'view',
+      spec,
+      'name',
+      'version',
+      'dist.integrity',
+      '--json',
+      '--prefer-online',
+      '--registry',
+      registry,
+    ],
     { capture: true },
   );
   if (result.status !== 0) {
@@ -82,16 +94,16 @@ function assertMatchingPublicIntegrity(entry, state) {
 
 function waitForPublishedEntry(entry) {
   let lastPendingMessage = '';
-  for (let attempt = 1; attempt <= 12; attempt += 1) {
+  for (let attempt = 1; attempt <= registryAttempts; attempt += 1) {
     const state = registryState(entry, { allowIncomplete: true });
     assertMatchingPublicIntegrity(entry, state);
     if (state.status === 'published') return;
     if (state.status === 'pending') lastPendingMessage = state.message;
-    if (attempt < 12) {
+    if (attempt < registryAttempts) {
       console.log(
-        `Waiting for npm to expose complete metadata for ${entry.name}@${entry.version} before continuing (${attempt}/12).`,
+        `Waiting for npm to expose complete metadata for ${entry.name}@${entry.version} before continuing (${attempt}/${registryAttempts}).`,
       );
-      wait(10_000);
+      wait(registryWaitMilliseconds);
     }
   }
   throw new Error(
@@ -153,7 +165,7 @@ for (const entry of manifest.packages) {
 }
 
 let missing = [...manifest.packages];
-for (let attempt = 1; missing.length && attempt <= 12; attempt += 1) {
+for (let attempt = 1; missing.length && attempt <= registryAttempts; attempt += 1) {
   const nextMissing = [];
   for (const entry of missing) {
     try {
@@ -166,11 +178,11 @@ for (let attempt = 1; missing.length && attempt <= 12; attempt += 1) {
     }
   }
   missing = nextMissing;
-  if (missing.length && attempt < 12) {
+  if (missing.length && attempt < registryAttempts) {
     console.log(
-      `Waiting for npm to expose the gated bytes for ${missing.map(({ name }) => name).join(', ')} (${attempt}/12).`,
+      `Waiting for npm to expose the gated bytes for ${missing.map(({ name }) => name).join(', ')} (${attempt}/${registryAttempts}).`,
     );
-    wait(10_000);
+    wait(registryWaitMilliseconds);
   }
 }
 
