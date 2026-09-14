@@ -3609,12 +3609,15 @@ function renderHealth() {
     stressSelectionInitialized = true;
   }
   const active = stress.active ?? [];
+  const stressError = typeof stress.error === 'string' ? stress.error : '';
   const high = issues.filter((issue) => issue.severity === 'high').length;
   const accessibility = issues.filter((issue) => issue.kind === 'accessibility').length;
   const temporary = active.length;
-  $('#stress-lab-status').textContent = temporary
-    ? `${temporary} ${temporary === 1 ? 'condition' : 'conditions'} active`
-    : 'No temporary conditions';
+  $('#stress-lab-status').textContent = stressError
+    ? 'Selection unavailable'
+    : temporary
+      ? `${temporary} ${temporary === 1 ? 'condition' : 'conditions'} active`
+      : 'No temporary conditions';
   $('#stress-summary-grid').innerHTML = [
     [issues.length, 'Findings', active.length ? 'Under active stress' : 'Current rendered state'],
     [high, 'High severity', high ? 'Review first' : 'No critical failures'],
@@ -3707,10 +3710,12 @@ function renderHealth() {
             .join('')}</section>`;
         })
         .join('')
-    : `<div class="stress-empty foundry-empty-state"><i data-icon="${issues.length ? 'search' : 'check'}"></i><strong>${issues.length ? 'No findings match this filter' : 'No issues found'}</strong><p>${issues.length ? 'Choose another severity to continue reviewing.' : active.length ? 'The rendered product passed under the active stress conditions.' : 'Apply temporary conditions or scan the current state.'}</p></div>`;
-  $('#stress-lab-footnote').textContent = active.length
-    ? `${active.length} temporary ${active.length === 1 ? 'condition is' : 'conditions are'} active on ${stress.target ?? 'the canvas'}. Clearing them restores the original rendered state.`
-    : 'Temporary conditions remain outside the design change history.';
+    : `<div class="stress-empty foundry-empty-state"><i data-icon="${stressError || issues.length ? 'triangle-alert' : 'check'}"></i><strong>${stressError ? 'Selection unavailable' : issues.length ? 'No findings match this filter' : 'No issues found'}</strong><p>${stressError ? escapeText(stressError) : issues.length ? 'Choose another severity to continue reviewing.' : active.length ? 'The rendered product passed under the active stress conditions.' : 'Apply temporary conditions or scan the current state.'}</p></div>`;
+  $('#stress-lab-footnote').textContent = stressError
+    ? stressError
+    : active.length
+      ? `${active.length} temporary ${active.length === 1 ? 'condition is' : 'conditions are'} active on ${stress.target ?? 'the canvas'}. Clearing them restores the original rendered state.`
+      : 'Temporary conditions remain outside the design change history.';
   $('#stress-review').disabled = !(activeSession?.changeSet?.changes ?? []).length;
 
   $$('[data-stress-condition]').forEach((button) =>

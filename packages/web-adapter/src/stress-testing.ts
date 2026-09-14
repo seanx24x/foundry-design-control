@@ -154,6 +154,16 @@ export function normalizeStressConditions(values: readonly unknown[]): StressCon
   return normalized;
 }
 
+export function validateStressConditions(values: readonly unknown[]): StressConditionId[] {
+  const unsupportedIndex = values.findIndex((value) => !stressIds.has(value as StressConditionId));
+  if (unsupportedIndex >= 0) {
+    throw new Error(`Unsupported stress test: ${String(values[unsupportedIndex])}`);
+  }
+  const normalized = normalizeStressConditions(values);
+  if (!normalized.length) throw new Error('Select at least one supported stress test');
+  return normalized;
+}
+
 export function toggleStressCondition(
   active: readonly StressConditionId[],
   id: StressConditionId,
@@ -169,6 +179,13 @@ export function stressConditionSummary(active: readonly StressConditionId[]): st
     return STRESS_CONDITIONS.find((condition) => condition.id === normalized[0])?.label ?? '';
   }
   return `${normalized.length} temporary conditions`;
+}
+
+export function designHealthScope(
+  active: readonly StressConditionId[],
+  requestedScope: StressScope,
+): StressScope {
+  return normalizeStressConditions(active).length ? requestedScope : 'canvas';
 }
 
 export function groupStressFindings<T extends StressFindingContext>(

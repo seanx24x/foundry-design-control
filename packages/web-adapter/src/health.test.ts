@@ -72,8 +72,28 @@ test('finds viewport and content overflow', () => {
   const viewport = auditHealthSnapshot({ ...baseline, width: 1400, right: 1400 });
   assert.equal(viewport[0]?.ruleId, 'viewport-overflow');
   assert.equal(viewport[0]?.fix?.changes[0]?.property, 'maxWidth');
+  assert.equal(
+    auditHealthSnapshot({ ...baseline, top: 900, bottom: 980 }).length,
+    0,
+    'content below the fold remains reachable through normal vertical scrolling',
+  );
+  assert.equal(
+    auditHealthSnapshot({ ...baseline, top: -100, bottom: -20 }).length,
+    0,
+    'vertical scroll position alone is not horizontal overflow',
+  );
   const clipped = auditHealthSnapshot({ ...baseline, scrollWidth: 260, overflowX: 'hidden' });
   assert.equal(clipped[0]?.ruleId, 'content-overflow');
+  assert.equal(
+    auditHealthSnapshot({ ...baseline, scrollWidth: 260, overflowX: 'auto' }).length,
+    0,
+    'an intentionally scrollable region is not clipped content',
+  );
+  assert.equal(
+    auditHealthSnapshot({ ...baseline, scrollHeight: 160, overflowY: 'scroll' }).length,
+    0,
+    'an intentional vertical scroll region remains reachable',
+  );
   assert.equal(auditHealthSnapshot({ ...baseline, scrollHeight: 100 }).length, 0);
 });
 

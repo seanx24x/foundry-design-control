@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0-beta.22 - 2026-09-13
+
+- Scoped Content Stress Lab findings to the exact stressed selection and stopped honestly when that rendered target disconnects or is replaced.
+- Made stress application and design-health scans return success only after the requested rendered state has been measured.
+- Removed false overflow findings for content below the fold and intentional scroll containers while preserving actionable horizontal viewport leakage and clipped-content checks.
+- Corrected keyboard focus evidence so authored focus treatments are measured against the unfocused baseline without inventing unsupported failures.
+- Added a canonical Cursor installer contract that synchronizes and validates the exact current MCP package across release documentation.
+- Strengthened the real Morrow golden path to require one selection-scoped, source-mapped 40px-to-44px touch-target correction before Apply.
+
 ## 0.2.0-beta.21 - 2026-09-10
 
 - Added an acknowledged preview-context engine for real authored viewport, theme, state, and motion behavior across Canvas, State Workbench, Responsive Lab, Review, Delivery, and rebuilt verification.

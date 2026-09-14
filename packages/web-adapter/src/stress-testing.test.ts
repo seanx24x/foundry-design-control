@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  designHealthScope,
   groupStressFindings,
   normalizeStressConditions,
   stressConditionSummary,
   toggleStressCondition,
+  validateStressConditions,
 } from './stress-testing.js';
+
+test('scopes health findings to a stressed selection without narrowing ordinary scans', () => {
+  assert.equal(designHealthScope([], 'selection'), 'canvas');
+  assert.equal(designHealthScope(['keyboard-only'], 'selection'), 'selection');
+  assert.equal(designHealthScope(['long-content'], 'canvas'), 'canvas');
+});
 
 test('normalizes known conditions, removes duplicates, and keeps one requested product state', () => {
   assert.deepEqual(
@@ -19,6 +27,12 @@ test('normalizes known conditions, removes duplicates, and keeps one requested p
     ]),
     ['long-content', 'error-state', 'text-200'],
   );
+});
+
+test('rejects unsupported and empty durable stress requests', () => {
+  assert.throws(() => validateStressConditions(['unknown']), /Unsupported stress test: unknown/);
+  assert.throws(() => validateStressConditions([]), /Select at least one supported stress test/);
+  assert.deepEqual(validateStressConditions(['keyboard-only']), ['keyboard-only']);
 });
 
 test('toggles temporary conditions without losing compatible combinations', () => {

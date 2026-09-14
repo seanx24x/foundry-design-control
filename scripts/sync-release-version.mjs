@@ -1,8 +1,18 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { replaceCursorInstallUrl } from './cursor-install-link.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const release = JSON.parse(readFileSync(join(root, 'release.json'), 'utf8'));
+
+function replaceFirstJsonStringProperty(source, property, value, label) {
+  const pattern = new RegExp(`("${property}"\\s*:\\s*")[^"]*(")`);
+  if (!pattern.test(source)) throw new Error(`${label} is missing ${property}.`);
+  const updated = source.replace(pattern, `$1${value}$2`);
+  JSON.parse(updated);
+  return updated;
+}
+
 const manifestPaths = [
   'package.json',
   'apps/inspector/package.json',
@@ -22,9 +32,11 @@ const manifestPaths = [
 
 for (const relativePath of manifestPaths) {
   const path = join(root, relativePath);
-  const manifest = JSON.parse(readFileSync(path, 'utf8'));
-  manifest.version = release.version;
-  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+  const source = readFileSync(path, 'utf8');
+  writeFileSync(
+    path,
+    replaceFirstJsonStringProperty(source, 'version', release.version, relativePath),
+  );
 }
 
 writeFileSync(
@@ -45,13 +57,16 @@ for (const relativePath of [
   'plugins/foundry-design-control/mcp.json',
 ]) {
   const path = join(root, relativePath);
-  const config = JSON.parse(readFileSync(path, 'utf8'));
-  config.mcpServers['foundry-design-control'].args = [
-    '-y',
-    '--prefer-online',
-    `foundry-design-mcp-server@${release.version}`,
-  ];
-  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+  const source = readFileSync(path, 'utf8');
+  const config = JSON.parse(source);
+  const args = config.mcpServers?.['foundry-design-control']?.args;
+  const currentSpec = Array.isArray(args)
+    ? args.find((argument) => String(argument).startsWith('foundry-design-mcp-server@'))
+    : undefined;
+  if (!currentSpec) throw new Error(`${relativePath} is missing the Foundry MCP package spec.`);
+  const updated = source.replace(currentSpec, `foundry-design-mcp-server@${release.version}`);
+  JSON.parse(updated);
+  writeFileSync(path, updated);
 }
 
 for (const relativePath of [
@@ -60,11 +75,20 @@ for (const relativePath of [
   '.claude-plugin/marketplace.json',
 ]) {
   const path = join(root, relativePath);
-  const marketplace = JSON.parse(readFileSync(path, 'utf8'));
+  const source = readFileSync(path, 'utf8');
+  const marketplace = JSON.parse(source);
   const plugin = marketplace.plugins?.find((entry) => entry.name === 'foundry-design-control');
   if (!plugin) throw new Error(`${relativePath} is missing the Foundry plugin entry.`);
-  plugin.version = release.version;
-  writeFileSync(path, `${JSON.stringify(marketplace, null, 2)}\n`);
+  writeFileSync(
+    path,
+    replaceFirstJsonStringProperty(source, 'version', release.version, relativePath),
+  );
+}
+
+for (const relativePath of ['README.md', 'DISTRIBUTION.md']) {
+  const path = join(root, relativePath);
+  const markdown = readFileSync(path, 'utf8');
+  writeFileSync(path, replaceCursorInstallUrl(markdown, release.version, relativePath));
 }
 
 console.log(`Synchronized Foundry release metadata at ${release.version}.`);

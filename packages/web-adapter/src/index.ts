@@ -59,7 +59,9 @@ import { rebuiltPropertyValueMatches } from './rebuilt-value.js';
 import { rebuiltTargetIdentityMatches } from './rebuilt-identity.js';
 import {
   STRESS_CONDITIONS,
+  designHealthScope,
   normalizeStressConditions,
+  validateStressConditions,
   type StressConditionId,
   type StressScope,
 } from './stress-testing.js';
@@ -2210,6 +2212,7 @@ export function installFoundryInspector(
   let draggedLayer: HTMLElement | null = null;
   let layerScrollFrame = 0;
   let healthIssues: BrowserHealthIssue[] = [];
+  let healthScanError = '';
   let healthFilter = 'all';
   const ignoredHealthIssues = new Set<string>();
   try {
@@ -2256,6 +2259,7 @@ export function installFoundryInspector(
   } | null = null;
   let activeStressConditions: StressConditionId[] = [];
   let activeStressScope: StressScope = 'selection';
+  let activeStressTarget: { element: HTMLElement; label: string } | null = null;
   let stressDraftConditions: StressConditionId[] = [];
   let stressDraftScope: StressScope = 'selection';
   let stressAppliedAt = '';
@@ -2520,8 +2524,11 @@ export function installFoundryInspector(
         active: activeStressConditions,
         scope: activeStressScope,
         appliedAt: stressAppliedAt || null,
+        error: healthScanError || null,
         target:
-          activeStressScope === 'selection' && selected ? layerLabel(selected) : 'Entire canvas',
+          activeStressScope === 'selection'
+            ? (activeStressTarget?.label ?? (selected ? layerLabel(selected) : 'No selection'))
+            : 'Entire canvas',
       },
       memory: designMemory,
       decisionMemory: {
@@ -2787,7 +2794,7 @@ export function installFoundryInspector(
   }
 
   function stressRoots(scope: StressScope): HTMLElement[] {
-    if (scope === 'selection' && selected?.isConnected) return [selected];
+    if (scope === 'selection') return selected?.isConnected ? [selected] : [];
     return [document.body];
   }
 
@@ -2813,6 +2820,8 @@ export function installFoundryInspector(
     for (const restore of stressRestore.reverse()) restore();
     stressRestore = [];
     activeStressConditions = [];
+    activeStressTarget = null;
+    healthScanError = '';
     stressAppliedAt = '';
     document.documentElement.removeAttribute('data-foundry-stress');
     window.dispatchEvent(
@@ -2828,13 +2837,25 @@ export function installFoundryInspector(
     }
   }
 
-  function applyStressConditions(conditions: readonly unknown[], scope: StressScope): void {
+  function applyStressConditions(conditions: readonly unknown[], scope: StressScope): number {
+    const normalizedConditions = validateStressConditions(conditions);
+    const roots = stressRoots(scope);
+    if (scope === 'selection' && !roots[0]) {
+      throw new Error('The selected stress target is no longer available. Select it again.');
+    }
     restoreStressConditions(false);
     activeStressScope = scope;
-    activeStressConditions = normalizeStressConditions(conditions);
+    activeStressConditions = normalizedConditions;
     stressDraftScope = scope;
     stressDraftConditions = [...activeStressConditions];
-    const roots = stressRoots(scope);
+    activeStressTarget =
+      scope === 'selection' && roots[0]
+        ? {
+            element: roots[0],
+            label: layerLabel(roots[0]),
+          }
+        : null;
+    healthScanError = '';
     const textNodes = roots.flatMap(textNodesInside);
     const saveStyle = (
       element: HTMLElement,
@@ -2933,10 +2954,7 @@ export function installFoundryInspector(
         },
       }),
     );
-    window.setTimeout(() => {
-      scanDesignHealth();
-      publishWorkspaceState();
-    }, 0);
+    return scanDesignHealthOrThrow();
   }
 
   function applyResponsiveStress(mode: string): void {
@@ -4119,12 +4137,19 @@ export function installFoundryInspector(
     }
     if (command === 'apply-health-stress') {
       const stressScope: StressScope = payload.scope === 'canvas' ? 'canvas' : 'selection';
-      if (stressScope === 'selection' && !selected) throw new Error('Select a target first');
-      applyStressConditions(
+      if (stressScope === 'selection' && !selected?.isConnected) {
+        throw new Error('Select a connected target first');
+      }
+      const findings = applyStressConditions(
         Array.isArray(payload.conditions) ? payload.conditions : [],
         stressScope,
       );
-      return { applied: true, scope: stressScope, conditions: activeStressConditions };
+      return {
+        applied: true,
+        scope: stressScope,
+        conditions: activeStressConditions,
+        findings,
+      };
     }
     if (command === 'clear-health-stress') {
       stressDraftConditions = [];
@@ -4482,9 +4507,7 @@ export function installFoundryInspector(
       return { preference, resolved: resolvedInterfaceTheme() };
     }
     if (command === 'scan-health') {
-      scanDesignHealth();
-      publishWorkspaceState();
-      return { scanned: true, findings: healthIssues.length };
+      return { scanned: true, findings: scanDesignHealthOrThrow() };
     }
     throw new Error(`Unknown workspace command: ${command}`);
   }
@@ -10666,6 +10689,7 @@ export function installFoundryInspector(
     if (!activeStressConditions.includes('keyboard-only') || !keyboardReachable(element))
       return undefined;
     const previousFocus = document.activeElement as HTMLElement | null;
+    element.blur();
     const before = getComputedStyle(element);
     const baseline = {
       outlineStyle: before.outlineStyle,
@@ -10674,7 +10698,10 @@ export function installFoundryInspector(
       borderColor: before.borderColor,
       backgroundColor: before.backgroundColor,
     };
-    element.focus({ preventScroll: true });
+    element.focus({ preventScroll: true, focusVisible: true } as FocusOptions & {
+      focusVisible: boolean;
+    });
+    const forcedFocusVisible = element.matches(':focus-visible');
     const focused = getComputedStyle(element);
     const outlineVisible =
       focused.outlineStyle !== 'none' && Number.parseFloat(focused.outlineWidth) > 0;
@@ -10686,7 +10713,22 @@ export function installFoundryInspector(
       focused.outlineWidth !== baseline.outlineWidth;
     if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     else element.blur();
-    return outlineVisible || treatmentChanged;
+    const treatmentVisible = outlineVisible || treatmentChanged;
+    return forcedFocusVisible ? treatmentVisible : treatmentVisible || undefined;
+  }
+
+  function resolveActiveStressTarget(): HTMLElement | null {
+    if (!activeStressTarget) return null;
+    return activeStressTarget.element.isConnected ? activeStressTarget.element : null;
+  }
+
+  function belongsToHealthRoot(element: HTMLElement, root: HTMLElement): boolean {
+    let candidate: HTMLElement | null = element;
+    while (candidate) {
+      if (candidate === root) return true;
+      candidate = composedParent(candidate);
+    }
+    return false;
   }
 
   function scanDesignHealth(): void {
@@ -10694,13 +10736,20 @@ export function installFoundryInspector(
       (token) => token.category === 'spacing',
     );
     const nextIssues: BrowserHealthIssue[] = [];
+    const healthScope = designHealthScope(activeStressConditions, activeStressScope);
+    const healthRoot = healthScope === 'selection' ? resolveActiveStressTarget() : null;
+    healthScanError =
+      healthScope === 'selection' && !healthRoot
+        ? 'The selected stress target is no longer available. Clear the test and select it again.'
+        : '';
     const elements = collectLayerElements(document)
       .filter(
         (element) =>
           element.getAttribute('aria-hidden') !== 'true' &&
           isVisibleLayer(element) &&
           element !== document.documentElement &&
-          element !== document.body,
+          element !== document.body &&
+          (healthScope === 'canvas' || (healthRoot && belongsToHealthRoot(element, healthRoot))),
       )
       .slice(0, 10_000);
     for (const element of elements) {
@@ -10779,6 +10828,13 @@ export function installFoundryInspector(
     renderHealthPanel();
   }
 
+  function scanDesignHealthOrThrow(): number {
+    scanDesignHealth();
+    publishWorkspaceState();
+    if (healthScanError) throw new Error(healthScanError);
+    return healthIssues.length;
+  }
+
   function renderHealthPanel(): void {
     const visibleIssues = healthIssues.filter((issue) => !ignoredHealthIssues.has(issue.id));
     const filtered = visibleIssues.filter(
@@ -10786,7 +10842,7 @@ export function installFoundryInspector(
     );
     const score = healthScore(visibleIssues);
     const scoreColor = score >= 90 ? '#2b9a76' : score >= 70 ? '#d69b3c' : '#d15d43';
-    healthSummary.innerHTML = `<div class="health-score" style="--score:${score};--score-color:${scoreColor}"><strong>${score}</strong></div><div class="health-summary-copy"><strong>${visibleIssues.length ? `${visibleIssues.length} issue${visibleIssues.length === 1 ? '' : 's'} found` : 'No issues found'}</strong><span>${visibleIssues.length ? 'Review evidence before previewing a correction.' : 'The current viewport passed this health scan.'}</span></div>`;
+    healthSummary.innerHTML = `<div class="health-score" style="--score:${healthScanError ? 0 : score};--score-color:${healthScanError ? '#d69b3c' : scoreColor}"><strong>${healthScanError ? '–' : score}</strong></div><div class="health-summary-copy"><strong>${healthScanError ? 'Selection unavailable' : visibleIssues.length ? `${visibleIssues.length} issue${visibleIssues.length === 1 ? '' : 's'} found` : 'No issues found'}</strong><span>${healthScanError || (visibleIssues.length ? 'Review evidence before previewing a correction.' : 'The current viewport passed this health scan.')}</span></div>`;
     healthStress.innerHTML = `<div class="health-stress-head"><strong>Temporary stress</strong><span>${activeStressConditions.length ? `${activeStressConditions.length} active` : 'Preview only'}</span></div><div class="health-stress-scope" role="group" aria-label="Stress test scope"><button class="${stressDraftScope === 'selection' ? 'active' : ''}" data-health-stress-scope="selection" aria-pressed="${stressDraftScope === 'selection'}">Selection</button><button class="${stressDraftScope === 'canvas' ? 'active' : ''}" data-health-stress-scope="canvas" aria-pressed="${stressDraftScope === 'canvas'}">Canvas</button></div><div class="health-stress-options">${STRESS_CONDITIONS.map((condition) => `<button class="${stressDraftConditions.includes(condition.id) ? 'active' : ''}" data-health-stress-condition="${condition.id}" aria-pressed="${stressDraftConditions.includes(condition.id)}" title="${escapeHtml(condition.description)}">${escapeHtml(condition.label)}</button>`).join('')}</div><div class="health-stress-actions"><button data-health-stress-clear>Clear</button><button data-health-stress-apply ${stressDraftConditions.length ? '' : 'disabled'}>Apply and scan</button></div>`;
     const filters = ['all', 'high', 'medium', 'low'];
     healthFilters.innerHTML = filters
@@ -10806,7 +10862,7 @@ export function installFoundryInspector(
               `<article class="health-card" data-health-issue="${escapeHtml(issue.id)}"><div class="health-card-top"><span class="health-severity ${issue.severity}"></span><strong>${escapeHtml(issue.title)}</strong><span>${escapeHtml(issue.severity)}</span></div><p>${escapeHtml(issue.description)}</p><div class="health-evidence"><strong>${escapeHtml(issue.elementLabel)}</strong><br/>${escapeHtml(issue.evidence)}</div><div class="health-actions"><button data-health-select="${escapeHtml(issue.id)}">Select</button><button class="health-ignore" data-health-ignore="${escapeHtml(issue.id)}">Ignore</button>${issue.fix ? `<button class="health-fix ${issue.previewed ? 'previewed' : ''}" data-health-fix="${escapeHtml(issue.id)}" ${issue.previewed ? 'disabled' : ''}>${issue.previewed ? '<i data-foundry-icon="check"></i> Added to review' : escapeHtml(issue.fix.label)}</button>` : ''}</div></article>`,
           )
           .join('')
-      : `<div class="health-empty"><i data-foundry-icon="${visibleIssues.length ? 'triangle-alert' : 'check'}"></i>${visibleIssues.length ? 'No issues match this filter.' : 'This viewport is looking healthy.'}</div>`;
+      : `<div class="health-empty"><i data-foundry-icon="${healthScanError || visibleIssues.length ? 'triangle-alert' : 'check'}"></i>${healthScanError || (visibleIssues.length ? 'No issues match this filter.' : 'This viewport is looking healthy.')}</div>`;
     const ignoredCount = healthIssues.filter((issue) => ignoredHealthIssues.has(issue.id)).length;
     const ignoredButton = shadow.querySelector<HTMLButtonElement>('.health-show-ignored')!;
     ignoredButton.hidden = ignoredCount === 0;
@@ -10853,12 +10909,16 @@ export function installFoundryInspector(
     healthStress
       .querySelector<HTMLButtonElement>('[data-health-stress-apply]')
       ?.addEventListener('click', () => {
-        if (stressDraftScope === 'selection' && !selected) {
+        if (stressDraftScope === 'selection' && !selected?.isConnected) {
           showToast('Select a layer before applying selection stress');
           return;
         }
-        applyStressConditions(stressDraftConditions, stressDraftScope);
-        showToast('Temporary stress applied');
+        try {
+          applyStressConditions(stressDraftConditions, stressDraftScope);
+          showToast('Temporary stress applied and measured');
+        } catch (error) {
+          showToast(error instanceof Error ? error.message : 'Could not apply temporary stress');
+        }
       });
     healthFilters.querySelectorAll<HTMLButtonElement>('[data-health-filter]').forEach((button) =>
       button.addEventListener('click', () => {

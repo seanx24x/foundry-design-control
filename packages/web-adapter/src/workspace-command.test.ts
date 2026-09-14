@@ -194,3 +194,32 @@ test('legacy overlay exposes only authored product themes and states', () => {
   assert.match(source, /const methods = previewStateMethods/);
   assert.match(source, /No authored preview method/);
 });
+
+test('keeps selection stress findings on the captured target subtree', () => {
+  const scanStart = source.indexOf('function resolveActiveStressTarget');
+  const scanEnd = source.indexOf('function renderHealthPanel', scanStart);
+  const scan = source.slice(scanStart, scanEnd);
+  assert.ok(scanStart > 0);
+  assert.match(source, /activeStressTarget =\s*scope === 'selection'/);
+  assert.match(
+    source,
+    /scope === 'selection'\) return selected\?\.isConnected \? \[selected\] : \[\]/,
+  );
+  assert.match(source, /stressScope === 'selection' && !selected\?\.isConnected/);
+  assert.match(source, /const normalizedConditions = validateStressConditions\(conditions\)/);
+  assert.match(source, /return scanDesignHealthOrThrow\(\)/);
+  assert.match(source, /const findings = applyStressConditions/);
+  assert.match(source, /findings: scanDesignHealthOrThrow\(\)/);
+  assert.match(
+    source,
+    /scanDesignHealth\(\);\s*publishWorkspaceState\(\);\s*if \(healthScanError\) throw new Error\(healthScanError\)/,
+  );
+  assert.match(
+    scan,
+    /return activeStressTarget\.element\.isConnected \? activeStressTarget\.element : null/,
+  );
+  assert.doesNotMatch(scan, /resolveFoundrySelector/);
+  assert.match(scan, /const healthScope = designHealthScope/);
+  assert.match(scan, /healthScope === 'canvas' \|\| \(healthRoot && belongsToHealthRoot/);
+  assert.match(source, /activeStressTarget = null/);
+});

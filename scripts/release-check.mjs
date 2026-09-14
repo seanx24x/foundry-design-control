@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { validateCursorInstallDocument } from './cursor-install-link.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const release = JSON.parse(readFileSync(join(root, 'release.json'), 'utf8'));
@@ -41,6 +42,7 @@ const rootReadmeDigest = createHash('sha256')
   .update(readFileSync(join(root, 'README.md')))
   .digest('hex');
 const rootReadme = readFileSync(join(root, 'README.md'), 'utf8');
+const distributionGuide = readFileSync(join(root, 'DISTRIBUTION.md'), 'utf8');
 const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
 
 const currentChangelogVersion = changelog.match(/^## (\S+) /m)?.[1];
@@ -57,21 +59,14 @@ if (!rootReadme.includes(`--package=foundry-design@${version} foundry-design`)) 
   failures.push(`README.md recovery command does not pin foundry-design@${version}`);
 }
 
-const cursorConfigMatch = rootReadme.match(
-  /cursor:\/\/anysphere\.cursor-deeplink\/mcp\/install\?name=foundry-design-control&config=([^),]+)/,
-);
-if (!cursorConfigMatch) {
-  failures.push('README.md is missing the Cursor one-click MCP configuration');
-} else {
+for (const [owner, markdown] of [
+  ['README.md', rootReadme],
+  ['DISTRIBUTION.md', distributionGuide],
+]) {
   try {
-    const cursorConfig = JSON.parse(
-      Buffer.from(decodeURIComponent(cursorConfigMatch[1]), 'base64').toString('utf8'),
-    );
-    if (!cursorConfig.args?.includes(`foundry-design-mcp-server@${version}`)) {
-      failures.push(`README.md Cursor configuration does not pin the MCP server to ${version}`);
-    }
-  } catch {
-    failures.push('README.md Cursor one-click MCP configuration is not valid encoded JSON');
+    validateCursorInstallDocument(markdown, version, owner);
+  } catch (error) {
+    failures.push(error instanceof Error ? error.message : `${owner} Cursor link is invalid`);
   }
 }
 

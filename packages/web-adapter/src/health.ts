@@ -88,13 +88,13 @@ export function auditHealthSnapshot(snapshot: HealthSnapshot): HealthFinding[] {
     }
   }
 
-  const outsideViewport =
-    snapshot.left < -1 ||
-    snapshot.right > snapshot.viewportWidth + 1 ||
-    snapshot.top < -1 ||
-    snapshot.bottom > snapshot.viewportHeight + 1;
-  const clipsX = ['auto', 'scroll', 'hidden', 'clip'].includes(snapshot.overflowX);
-  const clipsY = ['auto', 'scroll', 'hidden', 'clip'].includes(snapshot.overflowY);
+  // A document can be taller than the visual viewport by design. Elements below
+  // the fold remain reachable through normal page scrolling and are not
+  // overflow. Horizontal leakage, however, expands or escapes the layout
+  // viewport and is actionable at the current breakpoint.
+  const outsideViewport = snapshot.left < -1 || snapshot.right > snapshot.viewportWidth + 1;
+  const clipsX = ['hidden', 'clip'].includes(snapshot.overflowX);
+  const clipsY = ['hidden', 'clip'].includes(snapshot.overflowY);
   const contentOverflow =
     (clipsX && snapshot.scrollWidth > snapshot.clientWidth + 1) ||
     (clipsY && snapshot.scrollHeight > snapshot.clientHeight + 1);
@@ -105,7 +105,7 @@ export function auditHealthSnapshot(snapshot: HealthSnapshot): HealthFinding[] {
       severity: outsideViewport ? 'high' : 'medium',
       title: outsideViewport ? 'Content leaves the viewport' : 'Content is being clipped',
       description: outsideViewport
-        ? 'Keep this element inside the current viewport or add an intentional scrolling container.'
+        ? 'Keep this element inside the current viewport width or add an intentional horizontal scrolling container.'
         : 'The rendered content is larger than its available box.',
       evidence: outsideViewport
         ? `${Math.round(snapshot.left)}–${Math.round(snapshot.right)} px across a ${snapshot.viewportWidth} px viewport`

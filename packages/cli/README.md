@@ -10,7 +10,7 @@ Design Branches keeps parallel visual directions isolated inside one local sessi
 
 Foundry is distributed through npm, so testers do not need GitHub access.
 
-> **Current beta release:** `0.2.0-beta.21`. After publication, both npm `latest` and `beta` resolve to this release.
+> **Current beta release:** `0.2.0-beta.22`. After publication, both npm `latest` and `beta` resolve to this release.
 
 Full documentation is available at [withfoundry.ai](https://withfoundry.ai).
 
@@ -141,7 +141,7 @@ If an npm mirror or existing `npx` cache reports an old tag, bypass it with a te
 
 ```bash
 FOUNDRY_NPX_CACHE="$(mktemp -d)"
-npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.21 foundry-design
+npx --yes --prefer-online --registry=https://registry.npmjs.org --cache "$FOUNDRY_NPX_CACHE" --package=foundry-design@0.2.0-beta.22 foundry-design
 ```
 
 The beta supports Node.js 20 or newer. Read the [local-first safety model](https://withfoundry.ai/#safety) before using it with sensitive work.
@@ -158,7 +158,7 @@ Foundry remains local-first. Installing the plugin does not create an account, e
 
 ### Cursor one-click connection
 
-[Add the Foundry MCP bridge to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=foundry-design-control&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9ubGluZSIsImZvdW5kcnktZGVzaWduLW1jcC1zZXJ2ZXJAMC4yLjAtYmV0YS4yMSJdLCJlbnYiOnsiRk9VTkRSWV9ERVNJR05fUlVOVElNRV9VUkwiOiJodHRwOi8vMTI3LjAuMC4xOjQzODcifX0%3D), then run `npx foundry-design` inside the project. The repository's Cursor plugin additionally bundles the Foundry skill and session-start hook for marketplace distribution.
+[Add the Foundry MCP bridge to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=foundry-design-control&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIi0tcHJlZmVyLW9ubGluZSIsImZvdW5kcnktZGVzaWduLW1jcC1zZXJ2ZXJAMC4yLjAtYmV0YS4yMiJdLCJlbnYiOnsiRk9VTkRSWV9ERVNJR05fUlVOVElNRV9VUkwiOiJodHRwOi8vMTI3LjAuMC4xOjQzODcifX0%3D), then run `npx foundry-design` inside the project. The repository's Cursor plugin additionally bundles the Foundry skill and session-start hook for marketplace distribution.
 
 ## Current capabilities
 

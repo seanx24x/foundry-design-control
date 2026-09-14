@@ -892,6 +892,40 @@ async function stageTouchTargetCorrection(session, browserState) {
   if ((await keyboardProfile.getAttribute('aria-pressed')) !== 'true')
     await keyboardProfile.click();
   await page.locator('#apply-stress').click();
+  try {
+    await page.waitForFunction(() => {
+      const findings = [...document.querySelectorAll('.stress-finding-card')];
+      return (
+        findings.length === 1 &&
+        findings[0]?.textContent?.includes('Touch target is too small') &&
+        findings[0]?.textContent?.includes('style.css:')
+      );
+    });
+  } catch (error) {
+    const renderedState = await page.evaluate(() => ({
+      status: document.querySelector('#stress-lab-status')?.textContent?.trim() ?? '',
+      summary: document.querySelector('#stress-summary-grid')?.textContent?.trim() ?? '',
+      empty: document.querySelector('.stress-empty')?.textContent?.trim() ?? '',
+      findings: [...document.querySelectorAll('.stress-finding-card')].map((finding) =>
+        finding.textContent?.replace(/\s+/g, ' ').trim(),
+      ),
+      toast: document.querySelector('.toast')?.textContent?.trim() ?? '',
+    }));
+    throw new Error(
+      `Selection-scoped health scan did not render its single mapped touch-target finding: ${JSON.stringify(renderedState)}\n${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const scopedFindings = page.locator('.stress-finding-card');
+  assert.equal(
+    await scopedFindings.count(),
+    1,
+    'Selection stress must exclude findings from outside the selected target.',
+  );
+  assert.match(
+    (await scopedFindings.locator('[data-stress-select]').getAttribute('data-stress-select')) ?? '',
+    /password-reveal/,
+    'The selection-scoped finding must remain attached to password-reveal.',
+  );
   const revealFinding = page
     .locator('.stress-finding-card')
     .filter({ hasText: 'Touch target is too small' })

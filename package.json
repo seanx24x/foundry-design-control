@@ -1,7 +1,7 @@
 {
   "name": "foundry-design-control",
   "private": true,
-  "version": "0.2.0-beta.21",
+  "version": "0.2.0-beta.22",
   "description": "Local-first visual design control plane for coding agents",
   "packageManager": "pnpm@10.30.3",
   "engines": {
@@ -15,7 +15,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "release:sync": "node scripts/sync-release-version.mjs",
-    "release:artifact-contract": "node --test scripts/release-artifacts.test.mjs",
+    "release:artifact-contract": "node --test scripts/release-artifacts.test.mjs scripts/cursor-install-link.test.mjs",
     "release:trust-check": "node scripts/trusted-publisher-check.mjs",
     "release:trust-contract": "node scripts/trusted-publisher-check.mjs --contract-only",
     "readme:sync": "node scripts/sync-package-readmes.mjs",
