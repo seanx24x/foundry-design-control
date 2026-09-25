@@ -102,3 +102,11 @@ required by CI and the release workflow. Legacy layout suites explicitly request
 
 Hosted CI, merge, public registry verification, and channel promotion are separate
 release steps and are not asserted by this local preparation record.
+
+Release checks subsequently caught and fixed two readiness races: client-rendered
+targets mounting after DOMContentLoaded, and a delayed Responsive Lab response
+reapplying container width after navigation. Both were reproduced before the fixes;
+the capture regression and complete browser suite pass afterward. Fresh packed
+Morrow, React/Vite, Next.js, and Storybook source-Apply checks also passed after
+pinning the CLI and test harness to the same exact Playwright version. Hosted CI
+and publication must still run against the final release commit.

@@ -9,6 +9,7 @@
 - Improved Visual Agent preview navigation and cancellation, queued-agent guidance, pending Review priority after completed Apply, and reconnection of saved local edits.
 - Preserved inspector selections and pending variant candidates when the preview disconnects, without reporting failed previews as accepted.
 - Expanded source-backed delivery evidence, exact source anchors, session recovery, local visual checks, isolated browser regressions, and packed framework/install verification.
+- Waited for client-rendered targets before screenshot capture, pinned capture and test browser versions, and prevented late Responsive Lab updates from restoring temporary widths after navigation.
 
 ## 0.2.0-beta.22 - 2026-09-13
 

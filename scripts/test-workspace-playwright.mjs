@@ -260,6 +260,10 @@ const preview = createServer((_request, response) => {
           } else if (command === 'clear-agent-region') {
             result = { cleared: true };
           }
+          if (command === 'set-responsive-edit-scope' && window.__holdResponsiveScope) {
+            window.__releaseResponsiveScope = () => reply(event, result);
+            return;
+          }
           reply(event, result);
         } catch (error) {
           reply(event, null, error instanceof Error ? error.message : String(error));
@@ -1747,6 +1751,24 @@ try {
       document.querySelector('[data-responsive-scope="all"]')?.getAttribute('aria-pressed') ===
       'true',
   );
+  // Hold a frame synchronization acknowledgement across navigation. A stale sync
+  // must not reapply its container width after the exit cleanup has completed.
+  const customResponsiveFrame = page.frameLocator('[data-responsive-frame="custom"]');
+  await customResponsiveFrame.locator('html').evaluate(() => {
+    window.__holdResponsiveScope = true;
+  });
+  await page.locator('[data-responsive-frame="custom"]').evaluate((frame, sessionId) => {
+    frame.dataset.responsiveNeedsSync = 'true';
+    frame.contentWindow.postMessage(
+      { type: 'foundry:workspace-command', sessionId, command: 'request-state' },
+      new URL(frame.src).origin,
+    );
+  }, sessionId);
+  await expect
+    .poll(() =>
+      customResponsiveFrame.locator('html').evaluate(() => typeof window.__releaseResponsiveScope),
+    )
+    .toBe('function');
   await page.locator('#responsive-open-canvas').click();
   await page.locator('[data-mode-surface="canvas"]:not([hidden])').waitFor();
   await page.locator('#canvas-responsive-scope:not([hidden])').waitFor();
@@ -1773,6 +1795,18 @@ try {
       { timeout: 10_000, message: 'Leaving Responsive must clear its temporary container width' },
     )
     .toBe('');
+  await customResponsiveFrame.locator('html').evaluate(() => {
+    window.__holdResponsiveScope = false;
+    window.__releaseResponsiveScope();
+  });
+  // Give the released acknowledgement and any incorrectly continued commands
+  // time to cross the frame boundary before checking the restored state again.
+  await page.waitForTimeout(300);
+  assert.equal(
+    await customResponsiveFrame.locator('main').evaluate((element) => element.style.inlineSize),
+    '',
+    'A late responsive sync must not reapply temporary width after navigation',
+  );
   assert.equal(await page.locator('.stress-profile').count(), 3);
   const stressScopeGeometry = await page.evaluate(() => {
     const scope = document.querySelector('.stress-scope');

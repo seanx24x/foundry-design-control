@@ -841,8 +841,10 @@ function pingPreviewFrames() {
 }
 
 async function resetResponsiveFramePreview(frame) {
+  const navigationRevision = workspaceNavigationRevision;
   try {
     await requestFrameCommand(frame, 'preview-responsive-stress', { mode: 'none' });
+    if (navigationRevision !== workspaceNavigationRevision && activeMode === 'responsive') return;
     await requestFrameCommand(frame, 'preview-responsive-container', { width: null });
   } catch (error) {
     toast(error instanceof Error ? error.message : 'A responsive preview could not be restored.');
@@ -861,6 +863,7 @@ function setMode(mode, restoreFocus = true, returnFocus = null) {
     motionStudioResetPropertiesScroll = true;
   }
   if (previousMode === 'responsive' && mode !== 'responsive') {
+    window.clearTimeout(scrubResponsiveCustomFrame.timer);
     responsiveStressMode = 'none';
     $$('[data-responsive-stress]').forEach((button) => {
       const active = button.dataset.responsiveStress === 'none';
@@ -3509,6 +3512,13 @@ async function applyResponsiveFrameContext(frame, viewportId) {
 
 async function syncResponsiveFrame(frame) {
   const viewportId = frame.dataset.responsiveFrame;
+  const navigationRevision = workspaceNavigationRevision;
+  const isCurrent = () =>
+    activeMode === 'responsive' &&
+    navigationRevision === workspaceNavigationRevision &&
+    frame.isConnected &&
+    responsiveFrames.get(frame.contentWindow) === viewportId;
+  if (!isCurrent()) return;
   responsiveFrameStates.set(viewportId, {
     ...(responsiveFrameStates.get(viewportId) ?? {}),
     connection: 'connecting',
@@ -3517,16 +3527,19 @@ async function syncResponsiveFrame(frame) {
   const selector = bridgeState?.selection?.selector;
   try {
     const contextApplication = await applyResponsiveFrameContext(frame, viewportId);
-    if (contextApplication.reloading) return;
+    if (contextApplication.reloading || !isCurrent()) return;
     if (selector) await requestFrameCommand(frame, 'select', { selector });
+    if (!isCurrent()) return;
     await requestFrameCommand(
       frame,
       'set-responsive-edit-scope',
       responsiveScopePayload(responsiveEditScope, viewportId),
     );
+    if (!isCurrent()) return;
     await requestFrameCommand(frame, 'preview-responsive-stress', {
       mode: responsiveStressMode,
     });
+    if (!isCurrent()) return;
     await requestFrameCommand(frame, 'preview-responsive-container', {
       width:
         responsiveScrubTarget === 'container' && viewportId === 'custom'
@@ -3937,7 +3950,9 @@ function scrubResponsiveCustomFrame() {
     if (dimensions) dimensions.textContent = `${responsiveCustomWidth} × ${height}`;
   }
   window.clearTimeout(scrubResponsiveCustomFrame.timer);
+  const navigationRevision = workspaceNavigationRevision;
   scrubResponsiveCustomFrame.timer = window.setTimeout(() => {
+    if (activeMode !== 'responsive' || navigationRevision !== workspaceNavigationRevision) return;
     sendResponsiveTransientCommand(frame, 'preview-responsive-stress', {
       mode: responsiveStressMode,
     });
