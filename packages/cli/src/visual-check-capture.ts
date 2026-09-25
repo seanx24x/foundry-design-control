@@ -299,6 +299,25 @@ export async function captureVisualScreen(
     if (!response?.ok())
       throw new Error(`Preview returned HTTP ${response?.status() ?? 'no response'}.`);
     validateVisualUrl(page.url());
+    // Client-rendered previews can mount after DOMContentLoaded (notably Storybook).
+    // Wait for the registered content before applying hooks or measuring its assets.
+    const selectors = new Set([
+      ...screen.targets,
+      ...screen.masks,
+      ...(screen.themeHook ? [screen.themeHook.selector] : []),
+      ...(screen.stateHook ? [screen.stateHook.selector] : []),
+    ]);
+    await Promise.all(
+      [...selectors].map(async (selector) => {
+        try {
+          await page.locator(selector).first().waitFor({ state: 'attached', timeout: 10000 });
+        } catch {
+          throw new UnsupportedVisualContextError(
+            `Registered selector did not become available: ${selector}`,
+          );
+        }
+      }),
+    );
     await evaluateInPage(
       page,
       async () => {
@@ -390,6 +409,7 @@ export async function captureVisualScreen(
       geometry: measured.geometry,
       findings: measured.findings,
       evidence: [
+        'Waited for registered targets, masks and authored hook elements before capture.',
         'Waited for document.fonts.ready.',
         'Geometry stable across four samples before and after capture.',
         'Fresh isolated browser context; locale en-US, timezone UTC.',

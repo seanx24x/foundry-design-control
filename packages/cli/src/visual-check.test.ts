@@ -106,6 +106,54 @@ test('comparison measures pixel, geometry and new findings without changing a ba
 });
 
 test(
+  'capture waits for client-rendered targets, masks and authored hooks',
+  { timeout: 30000 },
+  async () => {
+    const project = await mkdtemp(join(tmpdir(), 'foundry-visual-client-render-'));
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { 'Content-Type': 'text/html' });
+      response.end(`<!doctype html><html><head><style>
+      #button{width:100px;height:44px}
+      #card[data-state="error"] #button{width:120px}
+      #dynamic{width:100px;height:20px}
+    </style></head><body><script>
+      document.addEventListener('DOMContentLoaded', () => setTimeout(() => {
+        document.body.insertAdjacentHTML('beforeend', '<main id="card"><button id="button">Save</button><div id="dynamic">Dynamic content</div></main>');
+      }, 300));
+    </script></body></html>`);
+    });
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    try {
+      const address = server.address();
+      assert.ok(address && typeof address === 'object');
+      await registerVisualScreen(project, {
+        version: 1,
+        name: 'client-rendered',
+        url: `http://127.0.0.1:${address.port}`,
+        viewport: { width: 1280, height: 720 },
+        targets: ['#button'],
+        masks: ['#dynamic'],
+        state: 'error',
+        stateHook: { selector: '#card', attribute: 'data-state', value: 'error' },
+      });
+      const report = await runVisualChecks(project);
+      assert.equal(report.results[0]!.status, 'unbaselined', JSON.stringify(report.results));
+      const capture = report.results[0]!.capture!;
+      assert.equal(capture.geometry[0]!.selector, '#button');
+      assert.equal(capture.geometry[0]!.width, 120);
+      assert.equal(capture.geometry[0]!.height, 44);
+      assert.ok(
+        (await readFile(join(project, '.foundry/visual-checks', capture.screenshot))).length > 0,
+      );
+    } finally {
+      await new Promise<void>((done, reject) =>
+        server.close((error) => (error ? reject(error) : done())),
+      );
+    }
+  },
+);
+
+test(
   'real browser pipeline: approve, unchanged, regression, masks, authored contexts and unavailable preview',
   { timeout: 90000 },
   async () => {
