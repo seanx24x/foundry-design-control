@@ -1745,6 +1745,15 @@ try {
     document.documentElement.dataset.theme = 'light';
   });
   await page.locator('[data-responsive-open="mobile"]').click();
+  // The legacy layout rebuilds its frames after the context change is accepted.
+  // Wait for those replacement frames before starting a separate scope transaction.
+  await page.locator('[data-responsive-card="mobile"].is-active').waitFor();
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('[data-responsive-frame]')].every(
+      (frame) =>
+        frame.dataset.responsiveLoaded === 'true' && frame.dataset.responsiveReady === 'true',
+    ),
+  );
   await page.locator('[data-responsive-scope="all"]').click();
   await page.waitForFunction(
     () =>
