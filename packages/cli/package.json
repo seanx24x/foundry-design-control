@@ -42,7 +42,7 @@
   "dependencies": {
     "foundry-design-protocol": "workspace:*",
     "foundry-design-runtime": "workspace:*",
-    "playwright": "^1.62.1",
+    "playwright": "1.62.1",
     "sharp": "0.35.4"
   }
 }

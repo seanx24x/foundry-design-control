@@ -47,7 +47,7 @@
     "mcpb:build": "node scripts/build-mcpb.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "1.62.1",
     "@types/node": "^24.0.0",
     "esbuild": "^0.25.0",
     "prettier": "^3.6.0",
