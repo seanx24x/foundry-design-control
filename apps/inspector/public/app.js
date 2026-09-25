@@ -1,4 +1,58 @@
 import activityIcon from '@iconify-icons/keyline-icons/activity';
+import { resolveWorkspaceUI } from './workspace-ui.js';
+import { recoverablePreviewChanges, previewRecoveryBlocked } from './preview-recovery.js';
+import { createNextWorkspace } from './next-workspace.js';
+import { createNextLayerTree } from './next-layer-tree.js';
+let nextLayerTree = null;
+import { createWorkshopGallery } from './next-workshop-gallery.js';
+import { createNextDesignSystem } from './next-design-system.js';
+import { createNextMotionStudio } from './next-motion-studio.js';
+import { createNextTypographyStudio } from './next-typography-studio.js';
+import { createNextRecipes } from './next-recipes.js';
+import { createNextStateWorkbench } from './next-state-workbench.js';
+import { createNextResponsiveLab } from './next-responsive-lab.js';
+import { createNextStressLab } from './next-stress-lab.js';
+import { createNextVisualAgent } from './next-visual-agent.js';
+import { createNextDesignMemory } from './next-design-memory.js';
+import { createNextDelivery, deliveryShellArgument } from './next-delivery.js';
+let nextDelivery = null;
+let deliveryGenerating = false;
+let deliveryActionError = '';
+let nextDesignMemory = null;
+let memoryCaptureBusy = false;
+let memoryCaptureError = '';
+import {
+  createNextDesignBranches,
+  branchComparisonDirections,
+  branchPreviewKey,
+  branchReviewableChanges,
+} from './next-design-branches.js';
+let nextDesignBranches = null;
+let designBranchPreviewRenderKey = '';
+const branchFrameTimers = new Map();
+let nextVisualAgent = null;
+let visualAgentNewQuestion = false;
+let visualAgentSubmitting = false;
+let visualAgentSubmitError = '';
+let visualAgentProposalBusy = false;
+let nextStressLab = null;
+let stressActionBusy = '';
+let stressActionError = '';
+let nextResponsiveLab = null;
+let nextStateWorkbench = null;
+let nextRecipes = null;
+let nextTypographyStudio = null;
+let nextMotionStudio = null;
+let nextDesignSystem = null;
+let workshopGallery = null;
+import { refineNextIcons, NEXT_ICON_SCOPE } from './next-icons.js';
+import {
+  nextWorkshopCatalog,
+  nextWorkshopPresentation,
+  rememberWorkshopDraft,
+  restoreWorkshopDraft,
+} from './next-component-workshop.js';
+let nextWorkspace = null;
 import arrowUpRightIcon from '@iconify-icons/keyline-icons/arrow-up-right';
 import bookmarkIcon from '@iconify-icons/keyline-icons/bookmark';
 import binIcon from '@iconify-icons/keyline-icons/bin';
@@ -35,6 +89,21 @@ import searchIcon from '@iconify-icons/keyline-icons/search';
 import sparklesIcon from '@iconify-icons/keyline-icons/star';
 import undoIcon from '@iconify-icons/keyline-icons/rotate-ccw';
 import xIcon from '@iconify-icons/keyline-icons/x';
+import { createReadinessUI } from './readiness-ui.js';
+import { createStudioNavigation, STUDIO_NAMES } from './experience.js';
+import {
+  deliveryNarrativeReadOnly,
+  engineeringEvidence,
+  visualAgentResponsePresentation,
+  previewFitScale,
+  isAccessibilityFinding,
+  reviewMappingIssue,
+  reviewBatchSummary,
+  reviewSource,
+  applyLifecyclePresentation,
+  shouldDisplayApplyRun,
+} from './workflow.js';
+import { createDeliveryEvidenceUI } from './delivery-evidence-ui.js';
 
 const ICONS = {
   activity: activityIcon,
@@ -80,6 +149,7 @@ const ICONS = {
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const params = new URLSearchParams(location.search);
+params.set('ui', resolveWorkspaceUI(location.search));
 const sessionId = params.get('session');
 const token = params.get('token');
 const previewUrl = params.get('preview');
@@ -97,10 +167,14 @@ let bridgeState = null;
 let bridgeConnected = false;
 let bridgeBranchSynced = false;
 let bridgeBranchSyncing = false;
+let previewRecoveryGeneration = 0;
+let previewRecoveryFailed = false;
+let previewConnectionTimer;
 let bridgeInterfaceThemeSynced = false;
 let bridgeInterfaceThemeSyncing = false;
 let structureTab = 'layers';
 let activeMode = sessionStorage.getItem(modeKey) ?? 'canvas';
+let workspaceNavigationRevision = 0;
 let lastReviewFocus = null;
 let reviewOriginMode = 'canvas';
 let lastModeFocus = null;
@@ -111,6 +185,15 @@ let lastRenderedSessionSnapshot = '';
 let latestSessionRequest = 0;
 let sessionPollInFlight = false;
 let lastSessionLoadError = '';
+let readinessUI;
+let applyRunActionError = null;
+const deliveryEvidenceUI = createDeliveryEvidenceUI({
+  readImage: (recordId, index) =>
+    api(
+      `/v1/sessions/${sessionId}/delivery-records/${encodeURIComponent(recordId)}/evidence/${index}`,
+      { responseType: 'blob', signal: AbortSignal.timeout(8000) },
+    ),
+});
 let comparisonMode = 'after';
 let canvasTool = 'select';
 let canvasViewportKey = '';
@@ -140,6 +223,7 @@ let dismissedApplyRunId = null;
 let cancelConfirmationRunId = null;
 let cancelConfirmationUntil = 0;
 let workshopComponentId = '';
+let workshopRenderDeferred = false;
 let workshopVariantId = '';
 let workshopStateId = 'current';
 let responsiveCustomWidth = 1280;
@@ -189,6 +273,10 @@ let visualAgentRegionPending = false;
 let deliveryTab = 'handoff';
 let deliveryRecordId = '';
 let deliveryDocumentId = '';
+let visualCheckReports = [];
+let visualChecksStatus = 'idle';
+let visualChecksError = '';
+let visualCheckReportId = '';
 const selectedStressConditions = new Set();
 const branchDecisionSelection = new Set();
 const designBranchFrames = new Map();
@@ -226,11 +314,12 @@ function scheduleEffectCommit(key, commit) {
 }
 
 function iconSvg(icon) {
+  const name = Object.keys(ICONS).find((key) => ICONS[key] === icon) ?? '';
   const body = icon.body.replace(
     /<(path|circle|rect|line|polyline|polygon|ellipse)\b(?![^>]*vector-effect)/g,
     '<$1 vector-effect="non-scaling-stroke"',
   );
-  return `<svg viewBox="0 0 ${icon.width ?? 24} ${icon.height ?? 24}" aria-hidden="true" focusable="false">${body}</svg>`;
+  return `<svg data-foundry-icon="${name}" viewBox="0 0 ${icon.width ?? 24} ${icon.height ?? 24}" aria-hidden="true" focusable="false">${body}</svg>`;
 }
 
 function renderIcons(root = document) {
@@ -238,6 +327,7 @@ function renderIcons(root = document) {
     const icon = ICONS[node.dataset.icon];
     if (icon) node.outerHTML = iconSvg(icon);
   });
+  if (params.get('ui') === 'next') refineNextIcons(root);
 }
 
 function closeCustomSelect({ restoreFocus = true } = {}) {
@@ -247,6 +337,14 @@ function closeCustomSelect({ restoreFocus = true } = {}) {
   portal.remove();
   openCustomSelect = null;
   if (restoreFocus && trigger.isConnected) trigger.focus();
+  if (inspectorRenderDeferred) {
+    inspectorRenderDeferred = false;
+    queueMicrotask(renderInspector);
+  }
+  if (workshopRenderDeferred) {
+    workshopRenderDeferred = false;
+    queueMicrotask(renderComponentWorkshop);
+  }
   return true;
 }
 
@@ -271,6 +369,8 @@ function syncCustomSelect(select) {
   const trigger = wrapper?.querySelector('.foundry-select-trigger');
   if (!trigger) return;
   const option = select.selectedOptions[0] ?? select.options[0];
+  if (params.get('ui') === 'next' && select.id === 'canvas-zoom')
+    trigger.title = `Canvas zoom: ${option?.textContent ?? ''}`;
   trigger.querySelector('.foundry-select-value').textContent = option?.textContent ?? '';
   trigger.disabled = select.disabled;
   trigger.setAttribute('aria-disabled', String(select.disabled));
@@ -295,6 +395,10 @@ function openSelectMenu(select, trigger) {
     )
     .join('');
   document.body.append(portal);
+  if (params.get('ui') === 'next' && trigger.closest(NEXT_ICON_SCOPE)) {
+    portal.dataset.nextIconScope = '';
+    refineNextIcons(portal);
+  }
   trigger.setAttribute('aria-controls', portal.id);
   trigger.setAttribute('aria-expanded', 'true');
   positionCustomSelect(trigger, portal);
@@ -373,6 +477,7 @@ function upgradeSelect(select) {
   trigger.setAttribute('aria-label', accessibleLabel);
   trigger.innerHTML = `<span class="foundry-select-value"></span>${iconSvg(ICONS.chevronDown)}`;
   wrapper.append(trigger);
+  if (params.get('ui') === 'next') refineNextIcons(wrapper);
   trigger.addEventListener('click', () => openSelectMenu(select, trigger));
   trigger.addEventListener('keydown', (event) => {
     if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(event.key)) {
@@ -416,6 +521,7 @@ function toast(message) {
 }
 
 function renderConnectionStatus() {
+  nextWorkspace?.connectionChanged();
   const status = $('#live-status');
   if (!status) return;
   const label = $('span', status);
@@ -446,14 +552,22 @@ function renderConnectionStatus() {
             label: 'Connecting',
             title: 'Connecting to the local Foundry runtime',
           };
+  const connectionChanged = status.dataset.status !== next.state;
   status.dataset.status = next.state;
   status.title = next.title;
   label.textContent = next.label;
+  readinessUI?.update();
+  if (connectionChanged && params.get('ui') === 'next' && activeMode === 'components') {
+    renderComponentWorkshop();
+  }
+  if (connectionChanged && nextDesignMemory && activeMode === 'memory') renderMemory();
+  if (nextDelivery && activeMode === 'delivery') renderDelivery();
 }
 
 async function api(path, options = {}) {
+  const { responseType, ...fetchOptions } = options;
   const response = await fetch(path, {
-    ...options,
+    ...fetchOptions,
     headers: {
       'content-type': 'application/json',
       ...(token ? { 'x-foundry-token': token } : {}),
@@ -465,6 +579,7 @@ async function api(path, options = {}) {
     throw new Error(payload.error ?? `Request failed: ${response.status}`);
   }
   const contentType = response.headers.get('content-type') ?? '';
+  if (responseType === 'blob') return response.blob();
   return contentType.includes('json') ? response.json() : response.text();
 }
 
@@ -594,10 +709,15 @@ async function runDurableAction(
         ? await requestCommand(command, payload, { timeoutMs, unavailableMessage })
         : await requestFrameCommand(frame, command, payload, { timeoutMs, unavailableMessage });
     await onSuccess?.(result);
+    if (frame === preview && activeMode === 'canvas') $('#canvas-action-error').hidden = true;
     if (successMessage) toast(successMessage);
     return result;
   } catch (error) {
-    toast(error instanceof Error ? error.message : errorMessage);
+    const message = error instanceof Error ? error.message : errorMessage;
+    if (frame === preview && activeMode === 'canvas') {
+      $('#canvas-action-error-detail').textContent = message;
+      $('#canvas-action-error').hidden = false;
+    } else toast(message);
     return null;
   }
 }
@@ -657,6 +777,15 @@ function markFrameSeen(source) {
 function markFrameOffline(source, reason = 'The preview stopped responding.') {
   if (!source) return;
   rejectPendingFrameCommands(source, reason);
+  if (nextDesignBranches) {
+    const branchFrame = [...designBranchFrames.values()].find(
+      (frame) => frame.contentWindow === source,
+    );
+    if (branchFrame) {
+      failNextBranchPreview(branchFrame, reason);
+      return;
+    }
+  }
   if (source === preview.contentWindow) {
     bridgeConnected = false;
     renderConnectionStatus();
@@ -700,10 +829,15 @@ async function pingPreviewFrame(frame) {
 }
 
 function pingPreviewFrames() {
+  workshopGallery?.ping();
   if (previewUrl) void pingPreviewFrame(preview);
   const stateFrame = $('#state-live-preview');
   if (stateFrame?.src) void pingPreviewFrame(stateFrame);
   $$('[data-responsive-frame]').forEach((frame) => void pingPreviewFrame(frame));
+  if (nextDesignBranches && activeMode === 'branches') {
+    for (const frame of designBranchFrames.values())
+      if (frame.dataset.branchSynced === 'true') void pingPreviewFrame(frame);
+  }
 }
 
 async function resetResponsiveFramePreview(frame) {
@@ -716,8 +850,13 @@ async function resetResponsiveFramePreview(frame) {
 }
 
 function setMode(mode, restoreFocus = true, returnFocus = null) {
+  if (mode !== activeMode) workspaceNavigationRevision += 1;
   closeCustomSelect({ restoreFocus: false });
   const previousMode = activeMode;
+  if (previousMode === 'branches' && mode !== 'branches' && nextDesignBranches) {
+    destroyNextBranchPreviews();
+  }
+  if (previousMode === 'components' && mode !== 'components') workshopGallery?.destroy();
   if (mode === 'motion' && previousMode !== 'motion') {
     motionStudioResetPropertiesScroll = true;
   }
@@ -742,6 +881,11 @@ function setMode(mode, restoreFocus = true, returnFocus = null) {
   activeMode = mode;
   sessionStorage.setItem(modeKey, mode);
   $('#app-shell').dataset.mode = mode;
+  if (mode !== 'health') delete $('#app-shell').dataset.stressPreview;
+  $('.center-workspace').setAttribute('aria-label', STUDIO_NAMES[mode] ?? 'Foundry workspace');
+  const reviewButton = $('#persistent-review');
+  if (mode === 'review') reviewButton.setAttribute('aria-current', 'page');
+  else reviewButton.removeAttribute('aria-current');
   $$('[data-workspace-mode].rail-button').forEach((button) => {
     const selected = button.dataset.workspaceMode === mode;
     button.classList.toggle('is-active', selected);
@@ -750,6 +894,11 @@ function setMode(mode, restoreFocus = true, returnFocus = null) {
   });
   $$('[data-mode-surface]').forEach((surface) => {
     surface.hidden = surface.dataset.modeSurface !== mode;
+    if (params.get('ui') === 'next' && surface.dataset.modeSurface === 'canvas') {
+      surface.inert = mode !== 'canvas';
+      if (mode !== 'canvas') surface.setAttribute('aria-hidden', 'true');
+      else surface.removeAttribute('aria-hidden');
+    }
   });
   if (mode !== 'review') $('#apply-run').hidden = true;
   if (mode === 'review') {
@@ -763,7 +912,11 @@ function setMode(mode, restoreFocus = true, returnFocus = null) {
     modeFocusReturn = null;
   }
   if (mode === 'states') renderStates();
-  if (mode === 'health') renderHealth();
+  if (mode === 'health') {
+    renderHealth();
+    if (params.get('ui') === 'next' && previousMode !== 'health')
+      void runStressAction('Framing preview…', revealStressSelection);
+  }
   if (mode === 'memory') renderMemory();
   if (mode === 'components') renderComponentWorkshop();
   if (mode === 'responsive') renderResponsiveLab();
@@ -778,6 +931,7 @@ function setMode(mode, restoreFocus = true, returnFocus = null) {
   if (mode === 'agent') renderVisualAgent();
   if (mode === 'delivery') renderDelivery();
   if (activeSession) renderChangeSummary();
+  readinessUI?.update();
   if (previousMode === 'review' && mode !== 'review' && restoreFocus) {
     const target = lastReviewFocus;
     if (target instanceof HTMLElement && target.isConnected) target.focus({ preventScroll: true });
@@ -807,7 +961,7 @@ function setDockVisibility(name, visible) {
   });
   const layersVisible = !$('#layers-dock').hidden;
   const inspectorVisible = !$('#inspector-dock').hidden;
-  const columns = `48px ${layersVisible ? 'var(--dock)' : '0px'} minmax(0,1fr) ${inspectorVisible ? 'var(--dock)' : '0px'}`;
+  const columns = `minmax(var(--studio-nav-width, 48px), max-content) ${layersVisible ? 'var(--dock)' : '0px'} minmax(0,1fr) ${inspectorVisible ? 'var(--dock)' : '0px'}`;
   $('.workspace').style.gridTemplateColumns = columns;
 }
 
@@ -934,25 +1088,70 @@ function currentWorkshopComponent() {
 }
 
 function renderComponentWorkshop() {
+  const workshop = $('.component-workshop-mode');
+  const isNext = params.get('ui') === 'next';
+  if (isNext && openCustomSelect && workshop.contains(openCustomSelect.select)) {
+    workshopRenderDeferred = true;
+    return;
+  }
+  if (isNext) rememberWorkshopDraft(workshop);
   const list = $('#component-workshop-list');
   const detail = $('#component-workshop-detail');
   const contract = $('#component-workshop-contract');
   if (!list || !detail || !contract) return;
+  if (isNext && !workshopGallery) {
+    const center = document.createElement('div');
+    center.className = 'next-workshop-center';
+    detail.before(center);
+    const heading = document.createElement('header');
+    heading.className = 'next-gallery-heading';
+    const scroll = document.createElement('div');
+    scroll.className = 'next-workshop-scroll';
+    center.append(heading, scroll);
+    scroll.append(detail);
+    const measureScrollbar = () =>
+      scroll.style.setProperty(
+        '--workshop-scrollbar-width',
+        `${scroll.offsetWidth - scroll.clientWidth}px`,
+      );
+    const scrollbarObserver = new ResizeObserver(measureScrollbar);
+    scrollbarObserver.observe(scroll);
+    measureScrollbar();
+    const gallery = document.createElement('section');
+    gallery.className = 'next-workshop-gallery';
+    scroll.prepend(gallery);
+    workshopGallery = createWorkshopGallery({
+      root: gallery,
+      heading,
+      request: requestFrameCommand,
+      invalidate: invalidateFrameTransport,
+      onSelect: (id) => {
+        workshopVariantId = id;
+        renderComponentWorkshop();
+      },
+    });
+  }
   const query = $('#component-workshop-search').value.trim().toLowerCase();
   const catalog = normalizedWorkshopComponents();
   const visible = catalog.filter((item) =>
     `${item.name} ${sourceText(item.source)}`.toLowerCase().includes(query),
   );
+  if (isNext) {
+    $('.workshop-browser-head', workshop).innerHTML =
+      `<strong>Components</strong><span>${query ? `${visible.length} of ` : ''}${catalog.length}</span>`;
+  }
   let component = currentWorkshopComponent();
   if (!visible.some((item) => item.key === component?.key)) component = visible[0] ?? null;
   workshopComponentId = component?.key ?? '';
   list.innerHTML = visible.length
-    ? visible
-        .map(
-          (item) =>
-            `<button class="workshop-component-row ${item.key === component?.key ? 'is-active' : ''}" data-workshop-component="${escapeAttribute(item.key)}"><i data-icon="component"></i><span><strong>${escapeText(item.name)}</strong><span>${escapeText(sourceText(item.source))}</span></span><code>${item.elements.length || '—'}</code></button>`,
-        )
-        .join('')
+    ? isNext
+      ? nextWorkshopCatalog(visible, component?.key, sourceText)
+      : visible
+          .map(
+            (item) =>
+              `<button class="workshop-component-row ${item.key === component?.key ? 'is-active' : ''}" data-workshop-component="${escapeAttribute(item.key)}"><i data-icon="component"></i><span><strong>${escapeText(item.name)}</strong><span>${escapeText(sourceText(item.source))}</span></span><code>${item.elements.length || '—'}</code></button>`,
+          )
+          .join('')
     : '<div class="workshop-empty foundry-empty-state is-compact"><i data-icon="search"></i><strong>No components match</strong><p>Try another name or source path.</p><button class="secondary-button compact" data-clear-workshop-search>Clear search</button></div>';
   renderIcons(list);
   $('[data-clear-workshop-search]', list)?.addEventListener('click', () => {
@@ -975,12 +1174,20 @@ function renderComponentWorkshop() {
     }),
   );
   if (!component) {
+    if (isNext) workshopGallery?.destroy();
     detail.innerHTML = query
       ? '<div class="workshop-empty foundry-empty-state"><i data-icon="search"></i><strong>No matching component</strong><p>Clear the search to return to the component catalog.</p></div>'
       : '<div class="workshop-empty foundry-empty-state"><i data-icon="component"></i><strong>No indexed components</strong><p>Instrument a source-backed component to begin.</p></div>';
     contract.innerHTML =
       '<div class="workshop-empty foundry-empty-state is-compact"><i data-icon="file"></i><strong>No source contract</strong><p>Choose an indexed component.</p></div>';
     $('#component-workshop-readiness').textContent = 'Instrument a component to begin.';
+    if (isNext) {
+      workshop.dataset.workshopKey = '';
+      $('#component-open-canvas').disabled = true;
+      $('#component-workshop-readiness').textContent = query
+        ? 'No matching components'
+        : 'No components indexed';
+    }
     renderIcons(detail);
     renderIcons(contract);
     return;
@@ -1016,67 +1223,114 @@ function renderComponentWorkshop() {
     ],
   ];
   const activeScope = scopes.find((item) => item[0] === scope && item[1]) ?? scopes[0];
-  const authoring = axes.length
-    ? `<section class="workshop-card workshop-authoring"><header><strong>Create source variant</strong><span>Reviewed source operation</span></header><div class="workshop-authoring-form"><label>Variant property<select data-workshop-axis>${axes.map((axis) => `<option value="${escapeAttribute(axis.id)}">${escapeText(axis.label)} · ${escapeText(axis.adapter)}</option>`).join('')}</select></label><label>Variant name<input data-workshop-variant-label placeholder="Danger" /></label><label>Source value<input data-workshop-variant-value placeholder="danger" /></label><label>Start from<select data-workshop-base><option value="">Current preview</option>${variants.map((variant) => `<option value="${escapeAttribute(variant.id)}">${escapeText(variant.name)}</option>`).join('')}</select></label><button class="primary-button" data-workshop-create-variant ${component.elements.length && axes.some((axis) => axis.canCreate) ? '' : 'disabled'}>Stage source variant</button></div><span class="workshop-help">Foundry records the exact authoring location. The coding agent creates the option only after Review.</span></section>`
-    : '<section class="workshop-card workshop-authoring"><header><strong>Create source variant</strong><span>Read-only</span></header><span class="workshop-help">No writable Storybook, CVA, or TypeScript variant axis was found.</span></section>';
-  const driftCard = `<section class="workshop-card workshop-drift" data-drift-count="${drift.length}"><header><strong>Cross-instance drift</strong><span>${selectedVariant ? `${drift.length} ${drift.length === 1 ? 'difference' : 'differences'}` : 'Choose a variant'}</span></header>${
-    drift.length
-      ? `<div class="workshop-drift-list">${drift
-          .slice(0, 6)
-          .map(
-            (item) =>
-              `<div><span>${escapeText(item.instance.label)}</span><code>${escapeText(item.property)} ${escapeText(item.actual)} → ${escapeText(item.expected)}</code></div>`,
-          )
-          .join(
-            '',
-          )}</div><button class="secondary-button" data-workshop-repair-drift>Repair ${drift.length} ${drift.length === 1 ? 'value' : 'values'}</button>`
-      : `<span class="workshop-help">${selectedVariant ? 'Every explicitly instrumented instance matches this variant.' : 'Select a source variant to compare its rendered instances.'}</span>`
-  }</section>`;
-  detail.innerHTML = `<div class="workshop-detail-head"><div><span class="eyebrow">Component canvas</span><h2>${escapeText(component.name)}</h2><p>${escapeText(selectedVariant?.name ?? (component.elements.length ? 'Live instance' : 'Source definition'))}</p></div><span class="workshop-source-state">${component.source ? 'Source linked' : 'Read only'}</span></div><div class="workshop-grid"><section class="workshop-card workshop-scope-section"><header><strong>Change scope</strong><span>${escapeText(activeScope[2])}</span></header><div class="workshop-scope">${scopes
-    .map(
-      ([id, enabled, reason]) =>
-        `<button data-workshop-scope="${id}" class="${scope === id ? 'is-active' : ''}" title="${escapeAttribute(reason)}" ${enabled ? '' : 'disabled'}>${id[0].toUpperCase()}${id.slice(1)}</button>`,
-    )
-    .join(
-      '',
-    )}</div><span class="workshop-help">Broader scopes remain unavailable until Foundry has an exact source target.</span></section><section class="workshop-card workshop-instances-section"><header><strong>Instances</strong><span>${component.elements.length ? 'Choose the live target' : 'Not on this canvas'}</span></header><div class="workshop-instances">${
-    component.elements.length
-      ? component.elements
-          .map(
-            (element, index) =>
-              `<button class="workshop-instance-row ${element.selected ? 'is-active' : ''}" data-workshop-instance="${index}"><span>${escapeText(element.label)}</span><code>${element.width ?? '—'} × ${element.height ?? '—'}</code></button>`,
-          )
-          .join('')
-      : '<span class="workshop-help">The definition is read-only until a live instance is available.</span>'
-  }</div></section><section class="workshop-card workshop-variants-section"><header><strong>Variants</strong><span>${selectedVariant ? escapeText(selectedVariant.name) : 'Choose one to preview'}</span></header><div class="workshop-variants">${
-    variants.length
-      ? variants
-          .map(
-            (variant) =>
-              `<button class="workshop-variant-row ${variant.id === workshopVariantId ? 'is-active' : ''}" data-workshop-variant="${escapeAttribute(variant.id)}" ${component.elements.length && Object.keys(variant.props).length ? '' : 'disabled'}><span>${escapeText(variant.name)}</span><code>${escapeText(
-                Object.entries(variant.props)
-                  .map(([key, value]) => `${key}=${value}`)
-                  .join(' · ') || 'No preview mapping',
-              )}</code></button>`,
-          )
-          .join('')
-      : '<span class="workshop-help">No Storybook or project variants were discovered.</span>'
-  }</div></section>${authoring}${driftCard}<section class="workshop-card workshop-states"><header><strong>Visual states</strong><span>Preview only</span></header><div class="workshop-state-grid">${workshopStates()
-    .map(
-      ([id, label, confidence]) =>
-        `<button data-workshop-state="${escapeAttribute(id)}" data-confidence="${confidence}" class="${workshopStateId === id ? 'is-active' : ''}" ${component.elements.length ? '' : 'disabled'}><i class="workshop-state-dot"></i>${escapeText(label)}</button>`,
-    )
-    .join(
-      '',
-    )}</div><span class="workshop-help">Green states use native browser behavior. Product-specific states expose semantic attributes without creating a design change.</span></section><section class="workshop-card workshop-responsive is-wide"><header><strong>Responsive verification</strong><span>${projectDesign().breakpoints.length} viewports · ${Math.max(1, projectDesign().themes.length)} themes</span></header><div class="workshop-responsive-grid">${projectDesign()
-    .breakpoints.map(
-      (viewport) =>
-        `<article class="condition-card"><strong>${escapeText(viewport.label)}</strong><span>${viewport.width} × ${viewport.height ?? 900} · Open the state matrix to verify</span></article>`,
-    )
-    .join('')}</div></section></div>`;
-  contract.innerHTML = `<header><strong>Source contract</strong><p>The component API, variants, tokens, and implementation stay visible.</p></header><div class="workshop-contract-summary"><strong>${variants.length} variants</strong><span>${component.source ? 'mapped to source' : 'indexed definition'}</span></div><dl><div><dt>Component</dt><dd>${escapeText(component.name)}</dd></div><div><dt>Source</dt><dd title="${escapeAttribute(source)}">${escapeText(source.split('/').at(-1) || source)}</dd></div><div><dt>Instances</dt><dd>${component.elements.length}</dd></div><div><dt>Tokens</dt><dd class="is-accent">${tokenCount || '—'}</dd></div><div><dt>Drift</dt><dd>${drift.length || 'None'}</dd></div></dl><div class="workshop-contract-note"><strong>${component.source ? 'Safe to extend' : 'Source mapping required'}</strong><span>${component.source ? 'Create another state or density only when the source contract supports it. Visual-only variants stay out of the library.' : 'This definition remains read-only until Foundry can resolve its authoring location.'}</span></div>`;
+  if (!isNext) {
+    const authoring = axes.length
+      ? `<section class="workshop-card workshop-authoring"><header><strong>Create source variant</strong><span>Reviewed source operation</span></header><div class="workshop-authoring-form"><label>Variant property<select data-workshop-axis>${axes.map((axis) => `<option value="${escapeAttribute(axis.id)}">${escapeText(axis.label)} · ${escapeText(axis.adapter)}</option>`).join('')}</select></label><label>Variant name<input data-workshop-variant-label placeholder="Danger" /></label><label>Source value<input data-workshop-variant-value placeholder="danger" /></label><label>Start from<select data-workshop-base><option value="">Current preview</option>${variants.map((variant) => `<option value="${escapeAttribute(variant.id)}">${escapeText(variant.name)}</option>`).join('')}</select></label><button class="primary-button" data-workshop-create-variant ${component.elements.length && axes.some((axis) => axis.canCreate) ? '' : 'disabled'}>Stage source variant</button></div><span class="workshop-help">Foundry records the exact authoring location. The coding agent creates the option only after Review.</span></section>`
+      : '<section class="workshop-card workshop-authoring"><header><strong>Create source variant</strong><span>Read-only</span></header><span class="workshop-help">No writable Storybook, CVA, or TypeScript variant axis was found.</span></section>';
+    const driftCard = `<section class="workshop-card workshop-drift" data-drift-count="${drift.length}"><header><strong>Cross-instance drift</strong><span>${selectedVariant ? `${drift.length} ${drift.length === 1 ? 'difference' : 'differences'}` : 'Choose a variant'}</span></header>${
+      drift.length
+        ? `<div class="workshop-drift-list">${drift
+            .slice(0, 6)
+            .map(
+              (item) =>
+                `<div><span>${escapeText(item.instance.label)}</span><code>${escapeText(item.property)} ${escapeText(item.actual)} → ${escapeText(item.expected)}</code></div>`,
+            )
+            .join(
+              '',
+            )}</div><button class="secondary-button" data-workshop-repair-drift>Repair ${drift.length} ${drift.length === 1 ? 'value' : 'values'}</button>`
+        : `<span class="workshop-help">${selectedVariant ? 'Every explicitly instrumented instance matches this variant.' : 'Select a source variant to compare its rendered instances.'}</span>`
+    }</section>`;
+    detail.innerHTML = `<div class="workshop-detail-head"><div><span class="eyebrow">Component canvas</span><h2>${escapeText(component.name)}</h2><p>${escapeText(selectedVariant?.name ?? (component.elements.length ? 'Live instance' : 'Source definition'))}</p></div><span class="workshop-source-state">${component.source ? 'Source linked' : 'Read only'}</span></div><div class="workshop-grid"><section class="workshop-card workshop-scope-section"><header><strong>Change scope</strong><span>${escapeText(activeScope[2])}</span></header><div class="workshop-scope">${scopes
+      .map(
+        ([id, enabled, reason]) =>
+          `<button data-workshop-scope="${id}" class="${scope === id ? 'is-active' : ''}" title="${escapeAttribute(reason)}" ${enabled ? '' : 'disabled'}>${id[0].toUpperCase()}${id.slice(1)}</button>`,
+      )
+      .join(
+        '',
+      )}</div><span class="workshop-help">Broader scopes remain unavailable until Foundry has an exact source target.</span></section><section class="workshop-card workshop-instances-section"><header><strong>Instances</strong><span>${component.elements.length ? 'Choose the live target' : 'Not on this canvas'}</span></header><div class="workshop-instances">${
+      component.elements.length
+        ? component.elements
+            .map(
+              (element, index) =>
+                `<button class="workshop-instance-row ${element.selected ? 'is-active' : ''}" data-workshop-instance="${index}"><span>${escapeText(element.label)}</span><code>${element.width ?? '—'} × ${element.height ?? '—'}</code></button>`,
+            )
+            .join('')
+        : '<span class="workshop-help">The definition is read-only until a live instance is available.</span>'
+    }</div></section><section class="workshop-card workshop-variants-section"><header><strong>Variants</strong><span>${selectedVariant ? escapeText(selectedVariant.name) : 'Choose one to preview'}</span></header><div class="workshop-variants">${
+      variants.length
+        ? variants
+            .map(
+              (variant) =>
+                `<button class="workshop-variant-row ${variant.id === workshopVariantId ? 'is-active' : ''}" data-workshop-variant="${escapeAttribute(variant.id)}" ${component.elements.length && Object.keys(variant.props).length ? '' : 'disabled'}><span>${escapeText(variant.name)}</span><code>${escapeText(
+                  Object.entries(variant.props)
+                    .map(([key, value]) => `${key}=${value}`)
+                    .join(' · ') || 'No preview mapping',
+                )}</code></button>`,
+            )
+            .join('')
+        : '<span class="workshop-help">No Storybook or project variants were discovered.</span>'
+    }</div></section>${authoring}${driftCard}<section class="workshop-card workshop-states"><header><strong>Visual states</strong><span>Preview only</span></header><div class="workshop-state-grid">${workshopStates()
+      .map(
+        ([id, label, confidence]) =>
+          `<button data-workshop-state="${escapeAttribute(id)}" data-confidence="${confidence}" class="${workshopStateId === id ? 'is-active' : ''}" ${component.elements.length ? '' : 'disabled'}><i class="workshop-state-dot"></i>${escapeText(label)}</button>`,
+      )
+      .join(
+        '',
+      )}</div><span class="workshop-help">Green states use native browser behavior. Product-specific states expose semantic attributes without creating a design change.</span></section><section class="workshop-card workshop-responsive is-wide"><header><strong>Responsive verification</strong><span>${projectDesign().breakpoints.length} viewports · ${Math.max(1, projectDesign().themes.length)} themes</span></header><div class="workshop-responsive-grid">${projectDesign()
+      .breakpoints.map(
+        (viewport) =>
+          `<article class="condition-card"><strong>${escapeText(viewport.label)}</strong><span>${viewport.width} × ${viewport.height ?? 900} · Open the state matrix to verify</span></article>`,
+      )
+      .join('')}</div></section></div>`;
+    contract.innerHTML = `<header><strong>Source contract</strong><p>The component API, variants, tokens, and implementation stay visible.</p></header><div class="workshop-contract-summary"><strong>${variants.length} variants</strong><span>${component.source ? 'mapped to source' : 'indexed definition'}</span></div><dl><div><dt>Component</dt><dd>${escapeText(component.name)}</dd></div><div><dt>Source</dt><dd title="${escapeAttribute(source)}">${escapeText(source.split('/').at(-1) || source)}</dd></div><div><dt>Instances</dt><dd>${component.elements.length}</dd></div><div><dt>Tokens</dt><dd class="is-accent">${tokenCount || '—'}</dd></div><div><dt>Drift</dt><dd>${drift.length || 'None'}</dd></div></dl><div class="workshop-contract-note"><strong>${component.source ? 'Safe to extend' : 'Source mapping required'}</strong><span>${component.source ? 'Create another state or density only when the source contract supports it. Visual-only variants stay out of the library.' : 'This definition remains read-only until Foundry can resolve its authoring location.'}</span></div>`;
+  } else {
+    const presentation = nextWorkshopPresentation({
+      component,
+      selectedVariant,
+      variants,
+      axes,
+      drift,
+      scopes,
+      activeScope,
+      stateId: workshopStateId,
+      states: workshopStates(),
+      source,
+      tokenCount,
+      breakpoints: projectDesign().breakpoints,
+      connected: bridgeConnected,
+    });
+    detail.innerHTML = presentation.detail;
+    contract.innerHTML = presentation.contract;
+    if (activeMode === 'components')
+      workshopGallery.update({
+        component,
+        variants,
+        selectedVariantId: workshopVariantId,
+        instanceIndex: Math.max(
+          0,
+          component.elements.findIndex((element) => element.selected),
+        ),
+        viewport: selectedViewport(),
+        theme: bridgeState?.context?.theme ?? 'current',
+        state: workshopStateId,
+        previewUrl,
+        sessionId,
+        connected: bridgeConnected,
+      });
+    workshop.dataset.nextIconScope = '';
+    $('.mode-head h1', workshop).textContent = 'Component workshop';
+    $('.mode-head p', workshop).textContent = 'Explore instances and authored variants';
+    const browserHeading = $('.workshop-browser-head', workshop);
+    browserHeading.innerHTML = `<strong>Components</strong><span>${query ? `${visible.length} of ` : ''}${catalog.length}</span>`;
+    $('#component-open-canvas').disabled = !bridgeConnected || !component.elements.length;
+    $('#component-open-canvas').innerHTML =
+      `${iconSvg(arrowUpRightIcon)}<span>View on Canvas</span>`;
+    $('[data-workshop-open-states]', contract)?.addEventListener('click', () => setMode('states'));
+    renderIcons(workshop);
+  }
   upgradeSelects(detail);
-  $$('[data-workshop-scope]', detail).forEach((button) =>
+  if (isNext) restoreWorkshopDraft(workshop, component.key, syncCustomSelect);
+  $$('[data-workshop-scope]', workshop).forEach((button) =>
     button.addEventListener('click', async () => {
       const nextScope = button.dataset.workshopScope;
       await runDurableAction(
@@ -1104,6 +1358,11 @@ function renderComponentWorkshop() {
   $$('[data-workshop-variant]', detail).forEach((button) =>
     button.addEventListener('click', async () => {
       const nextVariantId = button.dataset.workshopVariant;
+      if (isNext) {
+        workshopVariantId = nextVariantId;
+        renderComponentWorkshop();
+        return;
+      }
       await runDurableAction(
         'preview-component-variant',
         { componentId: component.key, variantId: nextVariantId },
@@ -1116,9 +1375,14 @@ function renderComponentWorkshop() {
       );
     }),
   );
-  $$('[data-workshop-state]', detail).forEach((button) =>
+  $$('[data-workshop-state]', workshop).forEach((button) =>
     button.addEventListener('click', async () => {
       const nextStateId = button.dataset.workshopState;
+      if (isNext) {
+        workshopStateId = nextStateId;
+        renderComponentWorkshop();
+        return;
+      }
       await runDurableAction(
         'preview-component-state',
         { stateId: nextStateId },
@@ -1155,6 +1419,10 @@ function renderComponentWorkshop() {
   $('#component-workshop-readiness').textContent = component.elements.length
     ? `${component.name} is ready · ${activeScope[2]}`
     : `${component.name} is indexed but not rendered on this canvas.`;
+  if (isNext)
+    $('#component-workshop-readiness').textContent = !bridgeConnected
+      ? 'Preview offline. Inputs are preserved.'
+      : `${component.name} · ${activeScope[2]}. Source changes require Review and Apply.`;
 }
 
 function selectedViewport() {
@@ -1261,13 +1529,15 @@ function updateCanvasViewport({ reset = false } = {}) {
   const viewport = selectedViewport();
   if (reset || canvasViewportKey !== viewport.key) {
     canvasViewportKey = viewport.key;
-    canvasView = reset ? { x: 12, y: 12, scale: 1 } : restoreCanvasView(viewport.key);
+    fitCanvas();
+    return;
   }
   clampCanvasView();
   renderCanvasView({ persist: false });
 }
 
 function setCanvasZoom(nextScale, clientX, clientY, { resetOrigin = false } = {}) {
+  canvasFitMode = null;
   const stage = $('#canvas-stage');
   const rect = stage.getBoundingClientRect();
   const oldScale = canvasView.scale;
@@ -1288,6 +1558,7 @@ function setCanvasZoom(nextScale, clientX, clientY, { resetOrigin = false } = {}
 }
 
 function fitCanvas(mode = 'fit') {
+  canvasFitMode = mode;
   const stage = $('#canvas-stage');
   const viewport = selectedViewport();
   const gutter = 24;
@@ -1307,6 +1578,7 @@ function fitCanvas(mode = 'fit') {
 }
 
 function beginCanvasPan(screenX, screenY, pointerId = null) {
+  canvasFitMode = null;
   canvasPanning = { screenX, screenY, pointerId };
   $('#canvas-stage').classList.add('is-panning');
 }
@@ -1387,6 +1659,7 @@ function renderLayers() {
           .join('')}</div>`
       : '<div class="empty-inspector">No components match this search.</div>';
     renderIcons(root);
+    nextWorkspace?.refineStructure(root, structureTab);
     $$('[data-component-name]', root).forEach((button) =>
       button.addEventListener('click', async () => {
         const name = button.dataset.componentName;
@@ -1404,6 +1677,16 @@ function renderLayers() {
     );
     return;
   }
+  if (nextWorkspace) {
+    nextLayerTree ??= createNextLayerTree({
+      root,
+      renderIcons,
+      onSelect: (selector, additive) => void runDurableAction('select', { selector, additive }),
+    });
+    nextLayerTree.update(layers, query);
+    nextWorkspace.refineStructure(root, structureTab);
+    return;
+  }
   const visible = layers.filter((layer) =>
     `${layer.label} ${layer.kind}`.toLowerCase().includes(query),
   );
@@ -1414,8 +1697,9 @@ function renderLayers() {
             `<button class="layer-row ${layer.selected ? 'is-selected' : ''}" style="--depth:${Math.min(layer.depth, 10)}" data-layer-selector="${escapeAttribute(layer.selector)}" role="treeitem" aria-level="${layer.depth + 1}" aria-selected="${layer.selected}"><span class="chevron">${layer.hasChildren ? '<i data-icon="chevronDown"></i>' : ''}</span><span class="layer-icon"><i data-icon="${layer.kind === 'component' ? 'component' : 'box'}"></i></span><span class="layer-label">${escapeText(layer.label)}</span><span class="layer-meta">${escapeText(layer.instrumented ? 'Mapped' : layer.kind)}</span></button>`,
         )
         .join('')
-    : '<div class="empty-inspector">Select inside the live preview to populate the product structure.</div>';
+    : `<div class="empty-inspector">${nextWorkspace && query ? 'No layers match this search.' : 'Select inside the live preview to populate the product structure.'}</div>`;
   renderIcons(root);
+  nextWorkspace?.refineStructure(root, structureTab);
   $$('[data-layer-selector]', root).forEach((button) =>
     button.addEventListener(
       'click',
@@ -1692,7 +1976,18 @@ function controlField(control) {
   return `<input id="${id}" data-control-index="${control.index}" type="${type}" value="${escapeText(control.value)}" ${control.min != null ? `min="${control.min}"` : ''} ${control.max != null ? `max="${control.max}"` : ''} ${control.step != null ? `step="${control.step}"` : ''}/>${unit}`;
 }
 
+let inspectorRenderDeferred = false;
+let inspectorRenderedSelectionId = null;
+let canvasFitMode = 'fit';
+
 function renderInspector() {
+  if (nextWorkspace?.render(bridgeState)) return;
+  const sameSelection = inspectorRenderedSelectionId === bridgeState?.selection?.id;
+  if (sameSelection && openCustomSelect?.trigger.closest('#inspector-sections')) {
+    inspectorRenderDeferred = true;
+    return;
+  }
+  inspectorRenderedSelectionId = bridgeState?.selection?.id;
   if (openCustomSelect?.trigger.closest('#inspector-sections'))
     closeCustomSelect({ restoreFocus: false });
   const summary = $('#selection-summary');
@@ -2108,8 +2403,7 @@ async function setStatus(changeId, status) {
 function validChange(change) {
   return (
     change.status === 'approved' &&
-    change.confidence !== 'unresolved' &&
-    !(change.mappingCandidates?.length > 1 && !change.selectedMappingId)
+    !reviewMappingIssue(change, activeSession?.changeSet?.operations)
   );
 }
 
@@ -2138,7 +2432,12 @@ function changeContextSummary(change) {
 }
 
 function renderReview() {
-  const changes = activeSession?.changeSet?.changes ?? [];
+  const expandedSources = new Set(
+    $$('.change-source-details[open]').map((details) => details.dataset.changeSource),
+  );
+  const changes = (activeSession?.changeSet?.changes ?? []).filter(
+    (change) => change.status !== 'applied',
+  );
   const listenerConnected = Boolean(activeAgentPresence.connected);
   const returnMode = reviewOriginMode === 'review' ? 'canvas' : reviewOriginMode;
   const returnLabel =
@@ -2169,19 +2468,8 @@ function renderReview() {
     group.changes.push(change);
     groups.set(key, group);
   }
-  const included = changes.filter(validChange).length;
-  const unresolvedCount = changes.filter((change) => !validChange(change)).length;
-  const affectedFiles = new Set(
-    changes
-      .map(
-        (change) =>
-          change.source?.file ??
-          change.source?.path ??
-          change.target?.source?.file ??
-          change.target?.source?.path,
-      )
-      .filter(Boolean),
-  ).size;
+  const batch = reviewBatchSummary(changes, activeSession?.changeSet?.operations);
+  const included = batch.included;
   const affectedContexts = new Set(
     changes.flatMap((change) => {
       const contextSet = changeContextSet(change);
@@ -2193,34 +2481,55 @@ function renderReview() {
     }),
   );
   const reviewTarget = changes[0]?.target?.label ?? 'Current selection';
-  $('#review-context').textContent =
-    `${reviewTarget} · ${affectedContexts.size || 1} affected ${affectedContexts.size === 1 ? 'context' : 'contexts'}`;
+  $('#review-context').textContent = changes.length
+    ? `${reviewTarget} · ${affectedContexts.size} affected ${affectedContexts.size === 1 ? 'context' : 'contexts'}`
+    : 'No source changes have been requested.';
   $('#review-count').textContent = `${included} included`;
+  $('#review-compare').disabled = changes.length === 0 || !bridgeConnected;
   $('#apply-agent').textContent = included
     ? listenerConnected
       ? `Apply ${included} with agent`
       : `Queue ${included} for agent`
     : 'Review changes first';
-  $('#apply-agent').disabled = included === 0;
+  $('#apply-agent').disabled = included === 0 || $('#apply-agent').dataset.submitting === 'true';
   $('#changes').innerHTML = groups.size
     ? [...groups.values()]
         .map(
           (group) =>
             `<section class="change-group"><header class="change-group-head"><strong>${escapeText(group.target.label)}</strong><span>${group.changes.length} ${group.changes.length === 1 ? 'change' : 'changes'}</span></header>${group.changes
               .map((change) => {
-                const unresolved =
-                  change.confidence === 'unresolved' ||
-                  (change.mappingCandidates?.length > 1 && !change.selectedMappingId);
+                const mappingIssue = reviewMappingIssue(
+                  change,
+                  activeSession?.changeSet?.operations,
+                );
+                const unresolved = Boolean(mappingIssue);
                 const deletable = change.status !== 'applied';
-                return `<div class="change-row"><div class="change-line"><label class="change-include"><input type="checkbox" data-change-id="${escapeText(change.id)}" ${validChange(change) ? 'checked' : ''} ${unresolved ? 'disabled' : ''} aria-label="Include ${escapeText(change.property)}"><span class="change-property"><strong>${escapeText(change.property)}</strong></span></label><div class="change-values"><span class="before-value">${escapeText(formatValue(change.before, change.unit))}</span><span class="change-arrow">→</span><input class="after-value" data-after-id="${escapeText(change.id)}" value="${escapeText(formatValue(change.after, change.unit))}" aria-label="New ${escapeText(change.property)} value"><span class="status-chip ${unresolved ? 'unresolved' : ''}">${escapeText(unresolved ? 'Mapping needed' : change.confidence)}</span></div><div class="change-actions"><button class="secondary-button compact" data-preview-change="${escapeText(change.id)}">Preview before</button><button class="danger-button compact delete-change" data-delete-change="${escapeText(change.id)}" aria-label="Delete ${escapeText(change.property)} change and restore its original value" ${deletable ? '' : 'disabled'}>Delete and restore</button></div></div><span class="change-source">${escapeText(change.property)} · ${escapeText(change.scope)} · ${escapeText(changeContextSummary(change))}</span></div>`;
+                const source = reviewSource(
+                  change,
+                  activeSession?.changeSet?.operations?.find(
+                    (operation) => operation.id === change.operationId,
+                  ),
+                );
+                return `<div class="change-row"><div class="change-line"><label class="change-include"><input type="checkbox" data-change-id="${escapeText(change.id)}" ${validChange(change) ? 'checked' : ''} ${unresolved ? 'disabled' : ''} aria-label="Include ${escapeText(change.property)}"><span class="change-property"><strong>${escapeText(change.property)}</strong></span></label><div class="change-values"><span class="before-value">${escapeText(formatValue(change.before, change.unit))}</span><span class="change-arrow">→</span><input class="after-value" data-after-id="${escapeText(change.id)}" value="${escapeText(formatValue(change.after, change.unit))}" aria-label="New ${escapeText(change.property)} value"><span class="status-chip ${unresolved ? 'unresolved' : ''}">${escapeText(unresolved ? 'Mapping needed' : change.confidence)}</span></div><div class="change-actions"><button class="secondary-button compact" data-preview-change="${escapeText(change.id)}">View on canvas</button><button class="danger-button compact delete-change" data-delete-change="${escapeText(change.id)}" aria-label="Delete ${escapeText(change.property)} change and restore its original value" ${deletable ? '' : 'disabled'}>Delete and restore</button></div></div><details class="change-source-details" data-change-source="${escapeText(change.id)}" ${expandedSources.has(change.id) ? 'open' : ''}><summary>Source and context</summary><span class="change-source">${escapeText(sourceText(source))} · ${escapeText(change.property)} · ${escapeText(change.scope)} · ${escapeText(changeContextSummary(change))}</span></details></div>`;
               })
               .join('')}</section>`,
         )
         .join('')
     : '<div class="empty-mode foundry-empty-state"><i data-icon="file"></i><strong>No changes recorded</strong><p>Return to Canvas and adjust a measured property.</p></div>';
   $('#review-summary-content').innerHTML =
-    `<div class="review-summary-metrics"><div><span>Included</span><strong>${included} of ${changes.length}</strong></div><div><span>Source mapping</span><strong class="is-accent">${unresolvedCount ? 'Review' : 'Exact'}</strong></div><div><span>Affected files</span><strong>${affectedFiles || (changes.length ? 1 : 0)}</strong></div><div><span>Risk</span><strong>${unresolvedCount ? 'Needs review' : 'Local styles'}</strong></div></div><div class="review-agent-state" data-connected="${listenerConnected}"><strong>${listenerConnected ? 'Apply listener ready' : 'Agent currently offline'}</strong><span>${listenerConnected ? 'This listener can claim the reviewed batch immediately.' : 'You can queue this batch now. A Foundry listener will claim it after reconnecting.'}</span></div>`;
+    `<div class="review-summary-metrics"><div><span>Included</span><strong>${included} of ${changes.length}</strong></div><div><span>Source mapping</span><strong>${escapeText(batch.mappingLabel)}</strong></div><div><span>Source files in review</span><strong>${escapeText(batch.filesLabel)}</strong></div><div><span>Change scope</span><strong>${escapeText(batch.riskLabel)}</strong></div></div><div class="review-agent-state" data-connected="${listenerConnected}"><strong>${listenerConnected ? 'Agent listener connected' : 'Agent offline'}</strong><span>${listenerConnected ? 'The listener can claim this batch after you choose Apply. Source edits begin only after that handoff.' : 'Queue this batch to save it for a listener. Queuing does not begin source work.'}</span></div>`;
   renderIcons($('#changes'));
+  for (const change of changes) {
+    const issue = reviewMappingIssue(change, activeSession?.changeSet?.operations);
+    if (!issue) continue;
+    const row = $(`[data-change-id="${CSS.escape(change.id)}"]`)?.closest('.change-row');
+    if (!row) continue;
+    const message = document.createElement('p');
+    message.className = 'change-source';
+    message.setAttribute('role', 'note');
+    message.textContent = issue;
+    row.append(message);
+  }
   $$('[data-change-id]').forEach((input) =>
     input.addEventListener('change', () =>
       setStatus(input.dataset.changeId, input.checked ? 'approved' : 'rejected'),
@@ -2236,22 +2545,39 @@ function renderReview() {
         renderSession(payload);
         toast('Change deleted and original value restored');
       } catch (error) {
-        toast(error.message);
+        $('#review-apply-error').hidden = false;
+        $('#review-apply-error').textContent =
+          error instanceof Error
+            ? error.message
+            : 'The change could not be restored. Try again after reconnecting.';
         button.disabled = false;
       }
     }),
   );
   $$('[data-preview-change]').forEach((button) => {
-    const showBefore = () => toggleComparison('before');
-    const showAfter = () => toggleComparison('after');
-    button.addEventListener('pointerdown', showBefore);
-    button.addEventListener('pointerup', showAfter);
-    button.addEventListener('pointercancel', showAfter);
-    button.addEventListener('mouseleave', showAfter);
-    button.addEventListener('keydown', (event) => {
-      if (event.key === ' ' || event.key === 'Enter') showBefore();
+    button.textContent = 'View on canvas';
+    button.addEventListener('click', async () => {
+      const change = changes.find((item) => item.id === button.dataset.previewChange);
+      const selector = change?.target?.locator?.selector ?? change?.target?.selector;
+      button.disabled = true;
+      try {
+        if (selector) await requestCommand('select', { selector });
+        await requestCommand('compare', { mode: 'after' });
+        comparisonMode = 'after';
+        $('#compare').classList.remove('is-active');
+        $('#compare').setAttribute('aria-pressed', 'false');
+        setMode('canvas', false);
+      } catch (error) {
+        const message = $('#review-apply-error');
+        message.hidden = false;
+        message.textContent =
+          error instanceof Error
+            ? error.message
+            : 'The preview is unavailable. Your reviewed changes are preserved.';
+      } finally {
+        if (button.isConnected) button.disabled = false;
+      }
     });
-    button.addEventListener('keyup', showAfter);
   });
 }
 
@@ -2302,10 +2628,11 @@ function renderApplyRun(runs = []) {
   const root = $('#apply-run');
   const run = runs.at(-1);
   if (
-    activeMode !== 'review' ||
-    !run ||
-    run.state === 'cancelled' ||
-    run.id === dismissedApplyRunId
+    !shouldDisplayApplyRun(run, {
+      mode: activeMode,
+      dismissedRunId: dismissedApplyRunId,
+      changes: activeSession?.changeSet?.changes ?? [],
+    })
   ) {
     root.hidden = true;
     root.dataset.signature = '';
@@ -2317,11 +2644,14 @@ function renderApplyRun(runs = []) {
   const queued = run.state === 'queued';
   const listenerConnected = Boolean(activeAgentPresence.connected);
   const active = ['queued', 'claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state);
+  const lifecycle = applyLifecyclePresentation(run, {
+    previewConnected: bridgeConnected,
+    listenerConnected,
+    deliveryRecords: activeSession?.deliveryRecords ?? [],
+  });
+  const verifiedDelivery = lifecycle?.phase === 'Verified';
   const stageIndex = runStageIndex(run);
-  const latestMessage =
-    run.state === 'claimed'
-      ? 'The agent received this batch. Foundry is keeping the handoff active while source work begins.'
-      : (run.messages?.at(-1)?.message ?? run.error ?? 'The reviewed batch is ready.');
+  const latestMessage = lifecycle?.detail ?? run.error ?? 'The reviewed batch is ready.';
   const signature = JSON.stringify([
     run.id,
     run.state,
@@ -2332,6 +2662,9 @@ function renderApplyRun(runs = []) {
     run.validationResults,
     run.verificationResults,
     listenerConnected,
+    lifecycle?.phase,
+    bridgeConnected,
+    applyRunActionError?.runId === run.id ? applyRunActionError.message : '',
     cancelConfirmationRunId === run.id && Date.now() < cancelConfirmationUntil,
   ]);
   if (root.dataset.signature === signature) return;
@@ -2346,7 +2679,7 @@ function renderApplyRun(runs = []) {
           ? 'needs-attention'
           : 'is-active'
         : '';
-    return `<div class="run-step ${stateClass}"><span class="run-step-index">${String(index + 1).padStart(2, '0')}</span><i></i><strong>${escapeText(RUN_LABELS[state])}</strong><span>${complete ? 'Complete' : current ? (queued ? 'Waiting for agent' : 'In progress') : 'Waiting'}</span></div>`;
+    return `<div class="run-step ${stateClass}"><span class="run-step-index">${String(index + 1).padStart(2, '0')}</span><i></i><strong>${escapeText(RUN_LABELS[state])}</strong><span>${complete ? 'Complete' : current ? (attention ? 'Needs attention' : queued ? 'Waiting for agent' : 'In progress') : 'Waiting'}</span></div>`;
   }).join('');
   const changedFiles = run.changedFiles?.length
     ? `<section class="apply-result-group"><header class="change-group-head"><strong>Changed files</strong><span>${run.changedFiles.length}</span></header>${run.changedFiles.map((file) => `<div class="apply-result-row"><code>${escapeText(file)}</code><span>Edited</span></div>`).join('')}</section>`
@@ -2366,9 +2699,12 @@ function renderApplyRun(runs = []) {
   const primaryAction = attention
     ? `<button class="primary-button" data-run-action="${run.interruptedState ? 'resume' : 'retry'}" data-run-id="${run.id}">${listenerConnected ? (run.interruptedState ? 'Resume with agent' : 'Retry with agent') : run.interruptedState ? 'Queue resume for agent' : 'Queue retry for agent'}</button>`
     : passed
-      ? `<button class="primary-button" data-run-navigation="back">Done</button>`
+      ? verifiedDelivery
+        ? `<button class="primary-button" data-run-navigation="delivery">Open verified handoff</button>`
+        : `<button class="primary-button" data-run-navigation="back">Back to workspace</button>`
       : `<button class="primary-button" disabled>${escapeText(RUN_LABELS[run.state] ?? run.state)}</button>`;
-  root.innerHTML = `<div class="apply-surface"><header class="mode-head apply-head"><div><h1>Apply and verify</h1><p>Follow the approved source changes through rebuild and rendered verification.</p></div><div class="mode-actions"><span class="mode-count">Attempt ${run.attempts}</span></div></header><div class="apply-workspace"><section class="apply-result-group apply-status-group"><header class="change-group-head"><strong>Apply and verify</strong><span>${completedStages} of ${RUN_ORDER.length} complete</span></header><div class="apply-status-row"><i class="${passed ? 'is-passed' : attention ? 'needs-attention' : 'is-active'}"></i><div><strong>${escapeText(RUN_LABELS[run.state] ?? run.state)}</strong><span>${escapeText(latestMessage)}</span></div></div><div class="run-steps">${stageRows}</div></section><aside class="apply-evidence"><header><div><strong>${queued ? 'Agent handoff' : 'Live source activity'}</strong><span>${queued ? (listenerConnected ? 'A connected listener can claim this queued batch.' : 'This batch will remain queued until a Foundry listener reconnects.') : 'Files, checks, and rendered evidence update as the agent works.'}</span></div><span class="status-chip ${attention ? 'unresolved' : ''}">${passed ? 'Passed' : attention ? 'Needs attention' : queued ? 'Queued' : 'Running'}</span></header><div class="apply-progress-list">${changedFiles || '<section class="apply-result-group"><header class="change-group-head"><strong>Changed files</strong><span>Waiting</span></header><div class="apply-result-row"><div><strong>Source edits</strong><span>Files appear here when the agent begins writing.</span></div><span>Pending</span></div></section>'}${validationResults}${verificationResults}</div><footer class="review-footer apply-footer">${secondaryAction}${primaryAction}</footer></aside></div></div>`;
+  root.innerHTML = `<div class="apply-surface"><header class="mode-head apply-head"><div><h1>Apply and verify</h1><p>Follow the approved source changes through rebuild and rendered verification.</p></div><div class="mode-actions"><span class="mode-count">Attempt ${run.attempts}</span></div></header><div class="apply-workspace"><section class="apply-result-group apply-status-group"><header class="change-group-head"><strong>Apply and verify</strong><span>${completedStages} of ${RUN_ORDER.length} complete</span></header><div class="apply-status-row"><i class="${passed ? 'is-passed' : attention ? 'needs-attention' : 'is-active'}"></i><div><strong>${escapeText(lifecycle?.phase ?? RUN_LABELS[run.state] ?? run.state)}</strong><span>${escapeText(latestMessage)}</span></div></div><div class="run-steps">${stageRows}</div></section><aside class="apply-evidence"><header><div><strong>${queued ? 'Agent handoff' : 'Live source activity'}</strong><span>${queued ? (listenerConnected ? 'A connected listener can claim this queued batch.' : 'This batch will remain queued until a Foundry listener reconnects.') : 'Files, checks, and rendered evidence update as the agent works.'}</span></div><span class="status-chip ${attention ? 'unresolved' : ''}">${passed ? (verifiedDelivery ? 'Verified' : 'Checks passed') : attention ? 'Needs attention' : queued ? 'Queued' : 'Running'}</span></header><div class="apply-progress-list">${changedFiles || '<section class="apply-result-group"><header class="change-group-head"><strong>Changed files</strong><span>Waiting</span></header><div class="apply-result-row"><div><strong>Source edits</strong><span>Files appear here when the agent begins writing.</span></div><span>Pending</span></div></section>'}${validationResults}${verificationResults}</div><footer class="review-footer apply-footer">${applyRunActionError?.runId === run.id ? `<p class="apply-action-error" role="alert">${escapeText(applyRunActionError.message)}</p>` : ''}${secondaryAction}${primaryAction}</footer></aside></div></div>`;
+  $('[data-run-navigation="delivery"]', root)?.addEventListener('click', () => setMode('delivery'));
   $$('[data-run-navigation="back"]', root).forEach((button) =>
     button.addEventListener('click', () => {
       dismissedApplyRunId = run.id;
@@ -2398,13 +2734,29 @@ function renderApplyRun(runs = []) {
         cancelConfirmationRunId = null;
         cancelConfirmationUntil = 0;
       }
-      await api(
-        `/v1/sessions/${sessionId}/apply-runs/${button.dataset.runId}/${button.dataset.runAction}`,
-        { method: 'POST', body: '{}' },
-      );
-      await loadSession();
-      if (!listenerConnected && button.dataset.runAction !== 'cancel') {
-        toast('Apply request queued. A Foundry agent will resume it after reconnecting.');
+      button.disabled = true;
+      applyRunActionError = null;
+      try {
+        await api(
+          `/v1/sessions/${sessionId}/apply-runs/${button.dataset.runId}/${button.dataset.runAction}`,
+          { method: 'POST', body: '{}' },
+        );
+        await loadSession();
+        if (!listenerConnected && button.dataset.runAction !== 'cancel') {
+          toast('Apply request queued. A Foundry agent will resume it after reconnecting.');
+        }
+      } catch (error) {
+        applyRunActionError = {
+          runId: run.id,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'The request was not acknowledged. Check connection and review this run before trying again.',
+        };
+        root.dataset.signature = '';
+        renderApplyRun(activeSession?.applyRuns ?? []);
+      } finally {
+        if (button.isConnected) button.disabled = false;
       }
     }),
   );
@@ -2412,8 +2764,17 @@ function renderApplyRun(runs = []) {
 
 function renderChangeSummary() {
   const direction = activeDesignDirection();
-  const changes = (direction?.changes ?? []).filter((change) => change.status !== 'rejected');
+  const preview = activeVisualAgentPreview();
+  const changes = (direction?.changes ?? []).filter(
+    (change) => !['rejected', 'applied'].includes(change.status),
+  );
   const root = $('#change-summary');
+  root.dataset.visualPreview = String(Boolean(preview));
+  $('#visual-preview-back').hidden = !preview;
+  $('#visual-preview-cancel').hidden = !preview;
+  $('#visual-preview-cancel').disabled = visualAgentProposalBusy;
+  $('#compare').hidden = Boolean(preview);
+  $('[data-workspace-mode="review"]', root).hidden = Boolean(preview);
   root.hidden = changes.length === 0 || activeMode !== 'canvas';
   if (!changes.length) return;
   const latest = changes.at(-1);
@@ -2422,10 +2783,32 @@ function renderChangeSummary() {
     run && ['queued', 'claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state);
   $('#change-count').textContent =
     `${changes.length} ${changes.length === 1 ? 'change' : 'changes'} · ${direction.name}`;
-  $('#latest-change').textContent = activeRun
-    ? run.state.replaceAll('_', ' ')
-    : `${latest.target.label} · ${latest.property}`;
+  $('#latest-change').textContent =
+    comparisonMode === 'before'
+      ? 'Source baseline · your preview edits are preserved'
+      : activeRun
+        ? run.state.replaceAll('_', ' ')
+        : `${latest.target.label} · ${latest.property}`;
+  $('#compare').setAttribute(
+    'aria-label',
+    comparisonMode === 'before' ? 'Show current preview' : 'Show source baseline',
+  );
+  $('#compare').title = $('#compare').getAttribute('aria-label');
+  $('#compare-label').textContent = comparisonMode === 'before' ? 'End compare' : 'Compare';
+  if (params.get('ui') === 'next') {
+    root.setAttribute('aria-label', 'Pending changes');
+    $('#change-count').title = $('#change-count').textContent;
+    $('#latest-change').title = $('#latest-change').textContent;
+    $('#compare').setAttribute('aria-pressed', String(comparisonMode === 'before'));
+  }
   $('#compare').disabled = changes.length === 0;
+  if (preview) {
+    root.setAttribute('aria-label', 'Visual Agent direction preview');
+    $('#change-count').textContent = preview.proposal.name;
+    $('#latest-change').textContent = 'Temporary preview · Review unchanged';
+    $('#change-count').title = preview.proposal.name;
+    $('#latest-change').title = 'Cancel restores Main direction and keeps this proposal.';
+  }
 }
 
 function renderStates() {
@@ -2465,7 +2848,7 @@ function renderStates() {
     Number(stateViewport?.width ?? selectedViewport.width) || sessionViewport.width;
   const viewportHeight =
     Number(stateViewport?.height ?? selectedViewport.height) || sessionViewport.height;
-  const previewScale = Math.min(1, 760 / viewportWidth, 620 / viewportHeight);
+  const previewScale = 0.1; // Replaced with measured host bounds after layout.
   const changeCount = (activeDesignDirection()?.changes ?? []).filter(
     (change) => change.status !== 'rejected',
   ).length;
@@ -2521,6 +2904,21 @@ function renderStates() {
       requestStateWorkbenchPreviewContext();
     }),
   );
+  if (params.get('ui') === 'next') {
+    nextStateWorkbench ??= createNextStateWorkbench($('[data-mode-surface="states"]'), {
+      selectState: (id) => {
+        stateWorkbenchContext.state = id;
+        updateStateWorkbenchPresentation();
+        requestStateWorkbenchPreviewContext();
+      },
+      syncControls: () => {
+        upgradeSelects(root);
+        renderIcons(root);
+      },
+    });
+    nextStateWorkbench.mount();
+    renderIcons(root);
+  }
   updateStateWorkbenchPresentation();
 }
 
@@ -2606,7 +3004,8 @@ function updateStateWorkbenchPresentation() {
   const context = stateWorkbenchPreviewContext({ advanceRevision: false });
   const width = context.viewport.width;
   const height = context.viewport.height;
-  const scale = Math.min(1, 760 / width, 620 / height);
+  const host = $('.state-preview-stage');
+  const scale = previewFitScale(width, height, host?.clientWidth, host?.clientHeight);
   const viewport = $('.state-preview-viewport');
   viewport?.style.setProperty('--state-preview-width', `${width}px`);
   viewport?.style.setProperty('--state-preview-height', `${height}px`);
@@ -2680,6 +3079,31 @@ function updateStateWorkbenchPresentation() {
   if (viewportResult) viewportResult.textContent = `${width} × ${height}`;
   if (themeResult) themeResult.textContent = stateWorkbenchContext.theme;
   if (motionResult) motionResult.textContent = stateWorkbenchContext.motionPreference;
+  nextStateWorkbench?.update({
+    context,
+    connected: stateWorkbenchConnected,
+    pending: stateWorkbenchApplying || Boolean(stateWorkbenchRequestedContext),
+    lastResult: stateWorkbenchLastResult,
+    results: stateWorkbenchResults,
+    keyFor: stateWorkbenchResultKey,
+    states: [
+      { id: 'current', label: 'Current' },
+      ...projectDesign()
+        .states.filter((item) => item.id !== 'current')
+        .slice(0, 12),
+    ],
+    themes: [{ id: 'current', label: 'Current' }, ...projectDesign().themes],
+    viewports: [
+      {
+        id: 'current',
+        label: 'Current',
+        ...(activeSession?.changeSet?.context?.viewport ?? { width: 1440, height: 900 }),
+      },
+      ...projectDesign().breakpoints.filter((item) => item.id !== 'current'),
+    ],
+    selection: bridgeState?.selection,
+    scale,
+  });
 }
 
 async function applyStateWorkbenchContext() {
@@ -2736,6 +3160,7 @@ async function applyStateWorkbenchContext() {
   } catch (error) {
     stateWorkbenchLastResult = {
       applied: false,
+      context,
       failureReason:
         error instanceof Error ? error.message : 'The preview condition could not be inspected.',
       axes: {},
@@ -2965,9 +3390,14 @@ async function applyResponsiveScopeTransaction({
   nextSelector,
   previousSelector,
 }) {
+  const navigationRevision = workspaceNavigationRevision;
   const endpoints = responsiveCommandEndpoints();
   const apply = async (endpoint, scopeMode, selector) => {
+    if (navigationRevision !== workspaceNavigationRevision)
+      throw new Error('Workspace navigation cancelled the selection sync.');
     if (selector) await requestResponsiveEndpoint(endpoint, 'select', { selector });
+    if (navigationRevision !== workspaceNavigationRevision)
+      throw new Error('Workspace navigation cancelled the selection sync.');
     return requestResponsiveEndpoint(
       endpoint,
       'set-responsive-edit-scope',
@@ -2978,6 +3408,8 @@ async function applyResponsiveScopeTransaction({
     endpoints.map((endpoint) => apply(endpoint, nextScope, nextSelector)),
   );
   const failure = results.find((result) => result.status === 'rejected');
+  if (navigationRevision !== workspaceNavigationRevision)
+    throw new Error('Workspace navigation cancelled the selection sync.');
   if (!failure) return results.map((result) => result.value);
   await Promise.allSettled(
     endpoints.map((endpoint) => apply(endpoint, previousScope, previousSelector)),
@@ -3004,6 +3436,7 @@ async function flushResponsiveSelectionSync() {
           responsiveSelectionSelector = request.nextSelector;
         }
       } catch (error) {
+        if (activeMode !== 'responsive') continue;
         responsiveEditScope = request.previousScope;
         responsiveSelectionSelector = request.previousSelector;
         toast(
@@ -3042,6 +3475,9 @@ function sendResponsiveTransientCommand(frame, command, payload = {}) {
 async function applyResponsiveFrameContext(frame, viewportId) {
   const context = responsivePreviewContext(viewportId);
   const result = await requestFrameCommand(frame, 'apply-preview-context', { context });
+  if (!frame.isConnected || responsiveFrames.get(frame.contentWindow) !== viewportId) {
+    throw new Error('The responsive frame was replaced before its context was applied.');
+  }
   if (result.reloadQuery) {
     const reloadSignature = JSON.stringify(result.reloadQuery);
     if (frame.dataset.responsiveReloadQuery === reloadSignature) {
@@ -3052,6 +3488,8 @@ async function applyResponsiveFrameContext(frame, viewportId) {
       frame,
       'The responsive frame is reloading to apply its authored state.',
     );
+    frame.dataset.responsiveReady = 'false';
+    frame.dataset.responsiveLoaded = 'false';
     frame.src = responsivePreviewUrl(viewportId, result.reloadQuery);
     return { reloading: true, result };
   }
@@ -3099,6 +3537,7 @@ async function syncResponsiveFrame(frame) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'This responsive frame could not connect.';
+    if (!frame.isConnected || responsiveFrames.get(frame.contentWindow) !== viewportId) return;
     if (isWorkspaceTransportError(error)) markFrameOffline(frame.contentWindow, message);
     else {
       markFrameSeen(frame.contentWindow);
@@ -3240,60 +3679,64 @@ async function runResponsiveAudit() {
   );
   $('#responsive-lab-status').textContent = responsiveStatusText();
   frames.forEach(({ viewportId }) => updateResponsiveCard(viewportId));
-  const results = await Promise.all(
-    frames.map(async ({ frame, viewportId }) => {
-      try {
-        const contextApplication = await applyResponsiveFrameContext(frame, viewportId);
-        if (contextApplication.reloading) {
-          throw new Error('Responsive audit is waiting for the authored state to reload.');
-        }
-        const result = await requestFrameCommand(
-          frame,
-          'audit-responsive',
-          {
-            frameId: viewportId,
-            viewportId,
-            timeoutMs: 10_000,
-          },
-          { timeoutMs: 12_500 },
-        );
-        const readinessFailures = [];
-        if (result?.fonts?.ready !== true) readinessFailures.push('fonts did not finish loading');
-        if (result?.stableLayout?.stable !== true)
-          readinessFailures.push('layout did not stabilize');
-        if (readinessFailures.length) {
-          const message = `Responsive audit incomplete: ${readinessFailures.join(' and ')}.`;
-          responsiveFrameStates.set(viewportId, {
-            ...(responsiveFrameStates.get(viewportId) ?? {}),
-            connection: 'live',
-            auditStatus: 'failed',
-            audit: result,
-            error: message,
-          });
-          updateResponsiveCard(viewportId);
-          return { viewportId, result: null, partial: result, error: message };
-        }
+  const auditFrame = async ({ frame, viewportId }) => {
+    try {
+      nextResponsiveLab?.prepareAuditFrame(viewportId);
+      const contextApplication = await applyResponsiveFrameContext(frame, viewportId);
+      if (contextApplication.reloading) {
+        throw new Error('Responsive audit is waiting for the authored state to reload.');
+      }
+      const result = await requestFrameCommand(
+        frame,
+        'audit-responsive',
+        {
+          frameId: viewportId,
+          viewportId,
+          timeoutMs: 10_000,
+        },
+        { timeoutMs: 12_500 },
+      );
+      const readinessFailures = [];
+      if (result?.fonts?.ready !== true) readinessFailures.push('fonts did not finish loading');
+      if (result?.stableLayout?.stable !== true) readinessFailures.push('layout did not stabilize');
+      if (readinessFailures.length) {
+        const message = `Responsive audit incomplete: ${readinessFailures.join(' and ')}.`;
         responsiveFrameStates.set(viewportId, {
           ...(responsiveFrameStates.get(viewportId) ?? {}),
           connection: 'live',
-          auditStatus: 'passed',
+          auditStatus: 'failed',
           audit: result,
-          error: null,
-        });
-        updateResponsiveCard(viewportId);
-        return { viewportId, result };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Responsive audit failed.';
-        responsiveFrameStates.set(viewportId, {
-          ...(responsiveFrameStates.get(viewportId) ?? {}),
-          auditStatus: /respond|timeout/i.test(message) ? 'timeout' : 'failed',
           error: message,
         });
         updateResponsiveCard(viewportId);
-        return { viewportId, result: null, error: message };
+        return { viewportId, result: null, partial: result, error: message };
       }
-    }),
-  );
+      responsiveFrameStates.set(viewportId, {
+        ...(responsiveFrameStates.get(viewportId) ?? {}),
+        connection: 'live',
+        auditStatus: 'passed',
+        audit: result,
+        error: null,
+      });
+      updateResponsiveCard(viewportId);
+      return { viewportId, result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Responsive audit failed.';
+      responsiveFrameStates.set(viewportId, {
+        ...(responsiveFrameStates.get(viewportId) ?? {}),
+        auditStatus: /respond|timeout/i.test(message) ? 'timeout' : 'failed',
+        error: message,
+      });
+      updateResponsiveCard(viewportId);
+      return { viewportId, result: null, error: message };
+    }
+  };
+  const results = [];
+  if (nextResponsiveLab) {
+    // Keep the frame being measured visible. Browsers throttle animation-frame
+    // readiness in iframes scrolled outside a compact gallery.
+    for (const item of frames) results.push(await auditFrame(item));
+  } else results.push(...(await Promise.all(frames.map(auditFrame))));
   const passed = results.filter((item) => item.result).length;
   const failed = results.length - passed;
   const findings = results.reduce((total, item) => total + (item.result?.findings?.length ?? 0), 0);
@@ -3308,6 +3751,7 @@ async function runResponsiveAudit() {
   };
   responsiveAuditRunning = false;
   $('#responsive-lab-status').textContent = responsiveStatusText();
+  refreshNextResponsiveLab();
   toast(
     failed
       ? `Responsive audit measured ${passed} frames; ${failed} need attention.`
@@ -3396,7 +3840,7 @@ function responsiveFindingSummary(snapshot, frameState = {}) {
     issues.push('Selection clips horizontally');
   if (snapshot.selection?.scrollHeight > snapshot.selection?.clientHeight + 1)
     issues.push('Selection clips vertically');
-  return issues.length ? issues : ['No overflow detected'];
+  return issues.length ? issues : ['Geometry clear · audit not run'];
 }
 
 function updateResponsiveCard(viewportId) {
@@ -3407,7 +3851,7 @@ function updateResponsiveCard(viewportId) {
   const findings = responsiveFindingSummary(snapshot, frameState);
   const footer = $('footer', card);
   footer.className =
-    findings[0] === 'No overflow detected' || findings[0] === 'Audit passed'
+    findings[0] === 'Geometry clear · audit not run' || findings[0] === 'Audit passed'
       ? 'is-clear'
       : frameState.auditStatus === 'running' || frameState.connection === 'connecting'
         ? 'is-running'
@@ -3415,6 +3859,58 @@ function updateResponsiveCard(viewportId) {
           ? ''
           : 'has-issue';
   $('span', footer).textContent = findings.join(' · ');
+  const previousDetails = $('.responsive-findings', card);
+  const expanded = previousDetails?.open ?? false;
+  previousDetails?.remove();
+  if (frameState.audit) {
+    const measured = frameState.audit.findings ?? [];
+    const details = document.createElement('details');
+    details.className = 'responsive-findings';
+    details.open = expanded;
+    details.innerHTML = `<summary>View findings (${measured.length})</summary><div>${measured.length ? measured.map((finding, index) => `<article><strong>${escapeText(finding.title ?? finding.ruleId)}</strong><p>${escapeText(finding.label ?? '')}: ${escapeText(finding.description ?? '')}</p><p>${escapeText(finding.evidence ?? '')}</p><code>${escapeText(sourceText(finding.source))}</code><button class="secondary-button compact" data-locate-finding="${index}">${viewportId === 'custom' ? 'Select in preview' : 'View on Canvas'}</button></article>`).join('') : '<p>No findings in this measured frame.</p>'}</div>`;
+    card.append(details);
+    $$('[data-locate-finding]', details).forEach((button) =>
+      button.addEventListener('click', async () => {
+        const finding = measured[Number(button.dataset.locateFinding)];
+        try {
+          if (viewportId === 'custom') {
+            const frame = $('[data-responsive-frame]', card);
+            await requestFrameCommand(frame, 'select', {
+              selector: finding.selector,
+              reveal: true,
+            });
+            toast('Finding selected in the custom preview.');
+          } else {
+            await requestCommand('set-context', { key: 'breakpoint', value: viewportId });
+            $('#canvas-viewport').value = viewportId;
+            syncCustomSelect($('#canvas-viewport'));
+            await viewSelectionOnCanvas(finding.selector);
+          }
+        } catch (error) {
+          toast(error instanceof Error ? error.message : 'This finding could not be located.');
+        }
+      }),
+    );
+  }
+  refreshNextResponsiveLab();
+}
+
+function refreshNextResponsiveLab() {
+  if (activeMode !== 'responsive' || !nextResponsiveLab) return;
+  nextResponsiveLab.update({
+    contexts: responsiveViewportContexts(),
+    activeId: responsiveActiveViewport,
+    frames: responsiveFrameStates,
+    snapshots: responsiveSnapshots,
+    selection: bridgeState?.selection,
+    running: responsiveAuditRunning,
+    summary: responsiveAuditSummary,
+    stress: responsiveStressMode,
+    scope: responsiveEditScope,
+    target: responsiveScrubTarget,
+    containerWidth: responsiveContainerWidth,
+    connected: bridgeConnected,
+  });
 }
 
 function scrubResponsiveCustomFrame() {
@@ -3449,12 +3945,21 @@ function scrubResponsiveCustomFrame() {
       width: responsiveScrubTarget === 'container' ? responsiveContainerWidth : null,
     });
     responsiveSnapshots.delete('custom');
+    refreshNextResponsiveLab();
   }, 120);
 }
 
 function renderResponsiveLab() {
   const root = $('#responsive-viewport-grid');
   if (!root) return;
+  if (params.get('ui') === 'next') {
+    nextResponsiveLab ??= createNextResponsiveLab($('.responsive-lab-mode'), {
+      selectFrame: (id) => {
+        responsiveActiveViewport = id;
+        refreshNextResponsiveLab();
+      },
+    });
+  }
   responsiveRenderKey = activeSession?.changeSet?.designGraphRevision ?? '';
   $$('[data-responsive-target]').forEach((button) => {
     const active = button.dataset.responsiveTarget === responsiveScrubTarget;
@@ -3520,14 +4025,14 @@ function renderResponsiveLab() {
         ? `<div class="responsive-frame-viewport" style="--preview-width:${item.width}px;--preview-height:${item.height}px;--preview-scale:${scale}"><iframe data-responsive-frame="${escapeAttribute(item.id)}" title="${escapeAttribute(item.label)} live viewport" width="${item.width}" height="${item.height}"></iframe></div>`
         : '<div class="responsive-frame-empty foundry-empty-state is-compact"><i data-icon="window"></i><strong>Preview unavailable</strong><p>Configure a project preview to inspect this viewport.</p></div>';
       const footerClass =
-        findings[0] === 'No overflow detected' || findings[0] === 'Audit passed'
+        findings[0] === 'Geometry clear · audit not run' || findings[0] === 'Audit passed'
           ? 'is-clear'
           : frameState.auditStatus === 'running' || frameState.connection === 'connecting'
             ? 'is-running'
             : findings[0] === 'Live preview'
               ? ''
               : 'has-issue';
-      return `<article class="responsive-viewport-card ${responsiveActiveViewport === item.id ? 'is-active' : ''}" data-responsive-card="${escapeAttribute(item.id)}"><header><div><strong>${escapeText(item.label)}</strong><span>${item.width} × ${item.height}</span></div><button class="chip-button" data-responsive-open="${escapeAttribute(item.id)}">Inspect</button></header>${preview}<footer class="${footerClass}"><i></i><span>${escapeText(findings.join(' · '))}</span></footer></article>`;
+      return `<article class="responsive-viewport-card ${responsiveActiveViewport === item.id ? 'is-active' : ''}" data-responsive-card="${escapeAttribute(item.id)}"><header><div><strong>${escapeText(item.label)}</strong><span>${item.width} × ${item.height}</span></div><button class="chip-button" data-responsive-open="${escapeAttribute(item.id)}">Select frame</button></header>${preview}<footer class="${footerClass}"><i></i><span>${escapeText(findings.join(' · '))}</span></footer></article>`;
     })
     .join('');
   $$('[data-responsive-frame]', root).forEach((frame) => {
@@ -3544,7 +4049,12 @@ function renderResponsiveLab() {
         'The responsive frame reloaded before the operation completed.',
       );
       responsiveSnapshots.delete(item.id);
-      void syncResponsiveFrame(frame);
+      frame.dataset.responsiveLoaded = 'true';
+      frame.dataset.responsiveNeedsSync = 'true';
+      if (frame.dataset.responsiveReady === 'true') {
+        frame.dataset.responsiveNeedsSync = 'false';
+        void syncResponsiveFrame(frame);
+      }
     });
     frame.src = responsivePreviewUrl(item.id);
   });
@@ -3564,13 +4074,15 @@ function renderResponsiveLab() {
           },
         );
       }
-      renderResponsiveLab();
+      if (nextResponsiveLab) refreshNextResponsiveLab();
+      else renderResponsiveLab();
     }),
   );
   $$('[data-responsive-boundary]', $('#responsive-boundaries')).forEach((button) =>
     button.addEventListener('click', () => {
       responsiveActiveViewport = button.dataset.responsiveBoundary;
-      renderResponsiveLab();
+      if (nextResponsiveLab) refreshNextResponsiveLab();
+      else renderResponsiveLab();
     }),
   );
   $$('[data-responsive-container-boundary]', $('#responsive-boundaries')).forEach((button) =>
@@ -3587,7 +4099,7 @@ function renderResponsiveLab() {
       Math.max(
         0,
         responsiveFindingSummary(snapshot).length -
-          (responsiveFindingSummary(snapshot)[0] === 'No overflow detected' ? 1 : 0),
+          (responsiveFindingSummary(snapshot)[0] === 'Geometry clear · audit not run' ? 1 : 0),
       ),
     0,
   );
@@ -3597,9 +4109,12 @@ function renderResponsiveLab() {
       ? `${bridgeState.selection.label} linked across ${contexts.length} live viewports${issueCount ? ` · ${issueCount} findings` : ''}`
       : 'Select an element on the canvas to link it across every viewport.';
   renderResponsiveComparison();
+  refreshNextResponsiveLab();
 }
 
 function renderHealth() {
+  if (params.get('ui') === 'next') nextStressLab ??= createNextStressLab($('.stress-lab-mode'));
+  nextStressLab?.capture();
   const issues = bridgeState?.health ?? [];
   const stress = bridgeState?.stressTesting ?? {};
   const profiles = stress.profiles ?? [];
@@ -3611,7 +4126,8 @@ function renderHealth() {
   const active = stress.active ?? [];
   const stressError = typeof stress.error === 'string' ? stress.error : '';
   const high = issues.filter((issue) => issue.severity === 'high').length;
-  const accessibility = issues.filter((issue) => issue.kind === 'accessibility').length;
+  const accessibility = issues.filter(isAccessibilityFinding).length;
+  const tested = Boolean(stress.scannedAt);
   const temporary = active.length;
   $('#stress-lab-status').textContent = stressError
     ? 'Selection unavailable'
@@ -3653,6 +4169,9 @@ function renderHealth() {
     button.setAttribute('aria-pressed', String(selected));
   });
   $('#apply-stress').disabled = selectedStressConditions.size === 0;
+  $('#apply-stress').textContent = selectedStressConditions.size
+    ? `Run ${selectedStressConditions.size} ${selectedStressConditions.size === 1 ? 'test' : 'tests'}`
+    : 'Select a condition';
   $('#clear-stress').disabled = selectedStressConditions.size === 0 && active.length === 0;
   const runStressButton = $('[data-studio-action="stress-run"]');
   if (runStressButton) {
@@ -3705,12 +4224,12 @@ function renderHealth() {
           return `<section class="stress-finding-group"><header><strong>${escapeText(label)}</strong><span>${findings.length}</span></header>${findings
             .map(
               (issue) =>
-                `<article class="stress-finding-card"><div class="stress-finding-title"><i data-severity="${escapeAttribute(issue.severity)}"></i><span><strong>${escapeText(issue.title ?? issue.kind)}</strong><small>${escapeText(issue.detail ?? issue.description ?? '')}</small></span><span class="stress-kind">${escapeText(issue.kind)}</span></div><div class="stress-finding-evidence"><span>${escapeText(issue.viewport ?? 'Current viewport')}</span><p>${escapeText(issue.evidence ?? '')}</p>${issue.source ? `<code>${escapeText(issue.source)}</code>` : ''}</div>${issue.stressConditions?.length ? `<div class="stress-context">Found under ${issue.stressConditions.map((condition) => `<span>${escapeText(condition.replaceAll('-', ' '))}</span>`).join('')}</div>` : ''}<footer><button class="secondary-button compact" data-stress-select="${escapeAttribute(issue.id)}">Select layer</button>${issue.canFix ? `<button class="primary-button compact" data-stress-fix="${escapeAttribute(issue.id)}" ${issue.previewed ? 'disabled' : ''}>${issue.previewed ? 'Added to review' : 'Preview correction'}</button>` : ''}</footer></article>`,
+                `<article class="stress-finding-card"><div class="stress-finding-title"><i data-severity="${escapeAttribute(issue.severity)}"></i><span><strong>${escapeText(issue.title ?? issue.kind)}</strong><small>${escapeText(issue.detail ?? issue.description ?? '')}</small></span><span class="stress-kind">${escapeText(issue.kind)}</span></div><div class="stress-finding-evidence"><span>${escapeText(issue.viewport ?? 'Current viewport')}</span><p>${escapeText(issue.evidence ?? '')}</p>${issue.source ? `<code>${escapeText(issue.source)}</code>` : ''}</div>${issue.stressConditions?.length ? `<div class="stress-context">Found under ${issue.stressConditions.map((condition) => `<span>${escapeText(condition.replaceAll('-', ' '))}</span>`).join('')}</div>` : ''}<footer><button class="secondary-button compact" data-stress-select="${escapeAttribute(issue.id)}">Select layer</button>${issue.canFix ? `<button class="primary-button compact" data-stress-fix="${escapeAttribute(issue.id)}" ${issue.previewed ? 'disabled' : ''}>${issue.previewed ? (issue.recordedBranchId ? 'Saved to direction' : 'Added to review') : 'Preview correction'}</button>` : ''}</footer></article>`,
             )
             .join('')}</section>`;
         })
         .join('')
-    : `<div class="stress-empty foundry-empty-state"><i data-icon="${stressError || issues.length ? 'triangle-alert' : 'check'}"></i><strong>${stressError ? 'Selection unavailable' : issues.length ? 'No findings match this filter' : 'No issues found'}</strong><p>${stressError ? escapeText(stressError) : issues.length ? 'Choose another severity to continue reviewing.' : active.length ? 'The rendered product passed under the active stress conditions.' : 'Apply temporary conditions or scan the current state.'}</p></div>`;
+    : `<div class="stress-empty foundry-empty-state"><i data-icon="${stressError || issues.length ? 'activity' : tested ? 'check' : 'activity'}"></i><strong>${stressError ? 'Selection unavailable' : issues.length ? 'No findings match this filter' : tested ? 'No issues found' : 'Not tested yet'}</strong><p>${stressError ? escapeText(stressError) : issues.length ? 'Choose another severity to continue reviewing.' : active.length ? 'No findings were detected in the tested scope under these conditions.' : 'Apply temporary conditions or scan the current state.'}</p></div>`;
   $('#stress-lab-footnote').textContent = stressError
     ? stressError
     : active.length
@@ -3754,10 +4273,25 @@ function renderHealth() {
       () => void runDurableAction('preview-health-fix', { issueId: button.dataset.stressFix }),
     ),
   );
+  nextStressLab?.update({
+    issues,
+    stress,
+    selection: bridgeState?.selection,
+    connected: bridgeConnected,
+    busy: stressActionBusy,
+    error: stressActionError,
+    selected: [...selectedStressConditions],
+    scope: stressScope,
+    context: bridgeState?.context,
+    viewport: selectedViewport(),
+  });
   renderIcons($('[data-mode-surface="health"]'));
 }
 
 function renderMemory() {
+  if (params.get('ui') === 'next')
+    nextDesignMemory ??= createNextDesignMemory($('[data-mode-surface="memory"]'));
+  nextDesignMemory?.capture();
   const memory = bridgeState?.decisionMemory ?? {};
   const decisions = memory.decisions ?? bridgeState?.memory?.decisions ?? [];
   const relevant = new Map(
@@ -3793,7 +4327,6 @@ function renderMemory() {
     button.setAttribute('aria-pressed', String(active));
   });
   $('#decision-memory-save').disabled = !memory.canCapture;
-  const context = memory.context ?? {};
   $('#decision-memory-context').innerHTML = bridgeState?.selection
     ? `<strong>${escapeText(bridgeState.selection.label)}</strong><code>${escapeText(sourceText(bridgeState.selection.source) || bridgeState.selection.kind)}</code><span>${memory.hasEditedValues ? 'Edited values will become explicit preference or avoidance rules.' : 'This decision will be connected to the selected component and source.'}</span>`
     : '<span>Select a layer before capturing contextual guidance.</span>';
@@ -3893,6 +4426,15 @@ function renderMemory() {
       },
     );
   });
+  nextDesignMemory?.update({
+    decision,
+    decisions,
+    filtered,
+    connected: bridgeConnected,
+    canCapture: Boolean(memory.canCapture),
+    busy: memoryCaptureBusy,
+    error: memoryCaptureError,
+  });
   renderIcons($('[data-mode-surface="memory"]'));
 }
 
@@ -3965,8 +4507,11 @@ function visualAgentContextSnapshot(comment) {
 function renderVisualAgent() {
   const root = $('[data-mode-surface="agent"]');
   if (!root) return;
+  if (params.get('ui') === 'next') nextVisualAgent ??= createNextVisualAgent(root);
+  nextVisualAgent?.capture();
   const requests = visualAgentRequests();
-  const request = activeVisualAgentRequest();
+  const request = visualAgentNewQuestion ? null : activeVisualAgentRequest();
+  const responsePresentation = visualAgentResponsePresentation(request);
   const selection = bridgeState?.selection;
   const targets = selection?.targets ?? (selection ? [selection] : []);
   const region = bridgeState?.visualAgent?.region;
@@ -3981,9 +4526,7 @@ function renderVisualAgent() {
       ? 'A connected Foundry listener can claim this request now.'
       : 'The request will wait safely for a Foundry listener.';
   $('#visual-agent-status').textContent = request
-    ? request.status === 'ready'
-      ? `${request.proposals.length} ready`
-      : request.status.replace('_', ' ')
+    ? responsePresentation.label
     : contextCount
       ? `${contextCount} attached`
       : 'No context';
@@ -4029,17 +4572,20 @@ function renderVisualAgent() {
               `<article class="visual-agent-proposal" data-status="${proposal.status}"><header><div><strong>${escapeText(proposal.name)}</strong><span>${escapeText(proposal.status)}</span></div><p>${escapeText(proposal.summary)}</p></header><div class="visual-agent-proposal-grid"><section><span>Why</span>${proposal.reasoning.map((item) => `<p>${escapeText(item)}</p>`).join('') || '<p>Grounded in the attached context.</p>'}</section><section><span>Exact values</span>${proposal.exactValues.map((item) => `<code>${escapeText(item)}</code>`).join('') || '<code>No value changes proposed</code>'}</section><section><span>Responsive impact</span><p>${escapeText(proposal.responsiveImpact)}</p></section><section><span>Affected source</span>${proposal.sourceLocations.map((item) => `<code>${escapeText(item)}</code>`).join('') || '<code>No mapped source</code>'}</section><section><span>Verification</span>${proposal.verificationPlan.map((item) => `<p>${escapeText(item)}</p>`).join('') || '<p>Rebuild and measure the selected targets.</p>'}</section></div><footer><span>${proposal.changes.length} reviewable ${proposal.changes.length === 1 ? 'change' : 'changes'}</span><button class="quiet-button compact" data-agent-proposal-action="reject" data-agent-request="${request.id}" data-agent-proposal="${proposal.id}" ${proposal.status === 'rejected' ? 'disabled' : ''}>Reject</button><button class="secondary-button compact" data-agent-proposal-action="preview" data-agent-request="${request.id}" data-agent-proposal="${proposal.id}" ${!proposal.changes.length || proposal.status === 'promoted' ? 'disabled' : ''}>${proposal.branchId ? 'Preview again' : 'Preview direction'}</button><button class="primary-button compact" data-agent-proposal-action="promote" data-agent-request="${request.id}" data-agent-proposal="${proposal.id}" ${proposal.status !== 'previewing' ? 'disabled' : ''}>Move to Review</button></footer></article>`,
           )
           .join('')}</section>`
-      : request.status === 'needs_attention'
-        ? `<div class="visual-agent-recovery"><i data-icon="activity"></i><div><strong>Agent response interrupted</strong><p>${escapeText(request.error ?? 'The request needs attention before retrying.')}</p></div><button class="primary-button compact" data-agent-retry="${request.id}">Retry request</button></div>`
-        : request.status === 'thinking' && request.agent
-          ? `<div class="visual-agent-thinking"><i data-icon="sparkles"></i><span><strong>${escapeText(request.agent.name)} is inspecting context</strong><small>Source-safe directions will appear here without entering Review.</small></span></div>`
-          : '<div class="visual-agent-thinking is-queued"><i data-icon="activity"></i><span><strong>Waiting for a Foundry listener</strong><small>This durable request is saved locally and will be claimed after an agent connects.</small></span></div>';
+      : responsePresentation.answered
+        ? '<div class="visual-agent-thinking"><i data-icon="check"></i><span><strong>Response complete</strong><small>Advice only. No changes proposed or added to Review.</small></span></div>'
+        : request.status === 'needs_attention'
+          ? `<div class="visual-agent-recovery"><i data-icon="activity"></i><div><strong>Agent response interrupted</strong><p>${escapeText(request.error ?? 'The request needs attention before retrying.')}</p></div><button class="primary-button compact" data-agent-retry="${request.id}">Retry request</button></div>`
+          : request.status === 'thinking' && request.agent
+            ? `<div class="visual-agent-thinking"><i data-icon="sparkles"></i><span><strong>${escapeText(request.agent.name)} is inspecting context</strong><small>Source-safe directions will appear here without entering Review.</small></span></div>`
+            : '<div class="visual-agent-thinking is-queued"><i data-icon="activity"></i><span><strong>Waiting for a Foundry listener</strong><small>This durable request is saved locally and will be claimed after an agent connects.</small></span></div>';
     $('#visual-agent-conversation').innerHTML =
       `<header class="visual-agent-conversation-head"><div><span class="eyebrow">Active question</span><strong>${escapeText(request.title)}</strong></div><span data-status="${escapeAttribute(request.status)}">${escapeText(request.status.replace('_', ' '))}</span></header><div class="visual-agent-conversation-body"><div class="visual-agent-messages">${messages}</div>${proposals}</div>`;
   }
   $$('[data-visual-agent-thread]', root).forEach((button) =>
     button.addEventListener('click', () => {
       visualAgentRequestId = button.dataset.visualAgentThread;
+      visualAgentNewQuestion = false;
       renderVisualAgent();
     }),
   );
@@ -4066,10 +4612,86 @@ function renderVisualAgent() {
       toast(error.message);
     }
   });
+  nextVisualAgent?.update({
+    request,
+    requests,
+    connected: bridgeConnected,
+    listener: listenerConnected,
+    contextCount,
+    busy: visualAgentSubmitting,
+    error: visualAgentSubmitError,
+  });
   renderIcons(root);
 }
 
+function activeVisualAgentPreview() {
+  const branchId = activeSession?.activeDesignBranchId;
+  if (!branchId) return null;
+  for (const request of activeSession?.visualAgentRequests ?? []) {
+    const proposal = request.proposals.find(
+      (item) => item.branchId === branchId && item.status === 'previewing',
+    );
+    if (proposal) return { request, proposal };
+  }
+  return null;
+}
+
+function returnToVisualAgentConversation() {
+  const preview = activeVisualAgentPreview();
+  if (preview) visualAgentRequestId = preview.request.id;
+  visualAgentNewQuestion = false;
+  setMode('agent');
+}
+
+async function cancelVisualAgentPreview() {
+  const preview = activeVisualAgentPreview();
+  if (!preview || visualAgentProposalBusy) return;
+  if (!bridgeConnected) {
+    toast('Reconnect the live preview before cancelling. The direction is still saved.');
+    return;
+  }
+  visualAgentProposalBusy = true;
+  renderChangeSummary();
+  const previous = activeDesignDirection();
+  const main = designBranchById('main');
+  try {
+    const result = await requestCommand('switch-design-branch', {
+      previousChanges: previous.changes ?? [],
+      nextChanges: main.changes ?? [],
+    });
+    if (!result?.switched) throw new Error('The preview did not confirm restoration.');
+    try {
+      const updated = await api(`/v1/sessions/${sessionId}/design-branches/activate`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      renderSession(updated);
+    } catch (error) {
+      // Keep the rendered direction consistent with the still-saved proposal on failure.
+      await requestCommand('switch-design-branch', {
+        previousChanges: main.changes ?? [],
+        nextChanges: previous.changes ?? [],
+      });
+      throw error;
+    }
+    visualAgentRequestId = preview.request.id;
+    visualAgentNewQuestion = false;
+    setMode('agent');
+    toast('Preview cancelled. Main direction restored; proposal kept. Review is unchanged.');
+  } catch (error) {
+    toast(`Could not finish cancelling the preview: ${error.message}`);
+  } finally {
+    visualAgentProposalBusy = false;
+    renderChangeSummary();
+  }
+}
+
+$('#visual-preview-back').addEventListener('click', returnToVisualAgentConversation);
+$('#visual-preview-cancel').addEventListener('click', () => void cancelVisualAgentPreview());
+
 async function handleVisualAgentProposal(button) {
+  if (visualAgentProposalBusy) return;
+  visualAgentProposalBusy = true;
   const action = button.dataset.agentProposalAction;
   const current = activeDesignDirection();
   const proposalEndpoint = `/v1/sessions/${sessionId}/visual-agent-requests/${button.dataset.agentRequest}/proposals/${button.dataset.agentProposal}`;
@@ -4093,10 +4715,12 @@ async function handleVisualAgentProposal(button) {
         return;
       }
       try {
-        await requestCommand('switch-design-branch', {
+        const result = await requestCommand('switch-design-branch', {
           previousChanges: current.changes ?? [],
           nextChanges: branch.changes ?? [],
         });
+        if (!result?.switched)
+          throw new Error('The live preview did not acknowledge the direction.');
         const acknowledged = await api(proposalEndpoint, {
           method: 'POST',
           body: JSON.stringify({ action: 'previewed' }),
@@ -4108,6 +4732,10 @@ async function handleVisualAgentProposal(button) {
           throw new Error('The preview acknowledgement was not persisted.');
         }
         renderSession(acknowledged);
+        visualAgentRequestId = request.id;
+        const selector =
+          proposal.changes[0]?.target?.locator?.selector ?? request.context.targets[0]?.selector;
+        await viewSelectionOnCanvas(selector);
         toast(`${proposal?.name ?? 'Direction'} is live on the canvas`);
       } catch (error) {
         toast(
@@ -4158,6 +4786,9 @@ async function handleVisualAgentProposal(button) {
     }
   } catch (error) {
     toast(error.message);
+  } finally {
+    visualAgentProposalBusy = false;
+    renderChangeSummary();
   }
 }
 
@@ -4169,9 +4800,76 @@ function deliveryVerificationMarkup(item) {
   return `<p data-passed="${item.passed}"><i data-icon="${item.passed ? 'check' : 'close'}"></i><span>${escapeText(item.property)}<small class="verification-context">${escapeText(verificationContextLabel(item))}</small>${item.reason ? `<small>${escapeText(item.reason)}</small>` : ''}</span></p>`;
 }
 
+function engineeringEvidenceMarkup(record) {
+  const rows = engineeringEvidence(record, activeSession?.applyRuns ?? []);
+  const value = (item) => escapeText(typeof item === 'object' ? JSON.stringify(item) : item);
+  return `<section class="engineering-evidence"><header><span class="eyebrow">Read-only evidence</span><h3>Engineering brief</h3><p>Captured values are separate from rebuilt measurements. Each affected context needs its own result; a screenshot reference alone is not verification.</p></header><div class="engineering-evidence-grid"><table><thead><tr><th>Target / property</th><th>Captured → requested</th><th>Context</th><th>Rebuilt result</th></tr></thead><tbody>${rows.map(({ change, context, result, status, beforeProvenance }) => `<tr><td><strong>${escapeText(change.target.label || change.target.id)}</strong><code>${escapeText(change.property)}</code><small>${escapeText(sourceText(change.target.source))}</small></td><td><code>${value(change.before)} → ${value(change.after)}</code><small>${escapeText(beforeProvenance)}</small></td><td><strong>${escapeText(context.breakpoint)}</strong><small>${escapeText(context.theme)} · ${escapeText(context.state)}</small></td><td><span class="evidence-status" data-status="${status}">${status}</span>${result ? `<code>${value(result.rendered)}</code><small>${escapeText(result.reason || result.verifiedAt)}</small>` : '<small>No matching rendered evidence</small>'}</td></tr>`).join('') || '<tr><td colspan="4">The reviewed source snapshot is unavailable. Existing evidence remains visible above; exact before-and-after comparisons cannot be inferred.</td></tr>'}</tbody></table></div></section>`;
+}
+
+async function loadVisualCheckReports() {
+  if (visualChecksStatus === 'loading') return;
+  visualChecksStatus = 'loading';
+  visualChecksError = '';
+  if (activeMode === 'delivery' && deliveryTab === 'checks') renderDelivery();
+  try {
+    const payload = await api(`/v1/sessions/${sessionId}/visual-checks`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    visualCheckReports = payload.reports ?? [];
+    visualChecksStatus = payload.supported === false ? 'unsupported' : 'loaded';
+  } catch (error) {
+    visualChecksStatus = 'error';
+    visualChecksError =
+      error instanceof Error ? error.message : 'Visual check reports are unavailable.';
+  }
+  if (activeMode === 'delivery' && deliveryTab === 'checks') renderDelivery();
+}
+
+function visualChecksMarkup() {
+  if (!visualCheckReports.some((report) => report.id === visualCheckReportId))
+    visualCheckReportId = visualCheckReports[0]?.id ?? '';
+  const report = visualCheckReports.find((item) => item.id === visualCheckReportId);
+  const list = visualCheckReports
+    .map(
+      (item) =>
+        `<button class="delivery-record-row ${item.id === visualCheckReportId ? 'is-active' : ''}" data-visual-report="${escapeAttribute(item.id)}"><i data-icon="compare"></i><span><strong>${new Date(item.createdAt).toLocaleString()}</strong><small>${item.results.length} screens · ${item.exitCode === 0 ? 'Matched baselines' : item.exitCode === 3 ? 'Approval needed' : item.exitCode === 2 ? 'Check incomplete' : 'Differences found'}</small></span></button>`,
+    )
+    .join('');
+  const message =
+    visualChecksStatus === 'loading'
+      ? 'Reading local reports…'
+      : visualChecksStatus === 'error'
+        ? visualChecksError
+        : visualChecksStatus === 'unsupported'
+          ? 'This runtime does not expose local visual checks. Start Foundry with the current CLI.'
+          : 'Register a screen, run a capture, then explicitly approve its baseline in your terminal.';
+  const detail = report
+    ? `<div class="visual-check-summary"><header><div><span class="eyebrow">Local regression evidence</span><h2>Visual checks</h2></div><button class="secondary-button" data-refresh-visual-checks>Refresh reports</button></header><p>Baselines are approved explicitly. Pixel differences flag changes to review, not automatic judgments of design quality.</p><code class="visual-check-command">.foundry/visual-checks/runs/${escapeText(report.id)}/report.html</code></div><div class="visual-check-results">${report.results
+        .map((result) => {
+          const capture = result.capture;
+          return `<article class="visual-check-result"><header><div><h3>${escapeText(result.name)}</h3><small>${capture ? `${capture.screen.viewport.width} × ${capture.screen.viewport.height} · ${escapeText(capture.screen.theme)} · ${escapeText(capture.screen.state)}` : 'No rendered capture'}</small></div><span class="visual-check-status" data-status="${escapeAttribute(result.status)}">${escapeText(result.status)}</span></header>${result.reason ? `<p>${escapeText(result.reason)}</p>` : ''}<dl><div><dt>Changed pixels</dt><dd>${result.changedRatio === undefined ? 'No comparable baseline' : `${(result.changedRatio * 100).toFixed(3)}%`}</dd></div><div><dt>Geometry</dt><dd>${result.geometryChanges.length} differences</dd></div><div><dt>Health</dt><dd>${result.newFindings.length} new findings</dd></div></dl>${capture ? `<p>Revision ${escapeText(capture.sourceRevision || 'unavailable')}${capture.sourceDirty ? ' · Uncommitted changes' : ''}<br>${escapeText(capture.browser)} · ${escapeText(capture.platform)} · ${capture.screen.masks.length} masks</p>` : ''}<details><summary>Evidence &amp; findings</summary><ul>${[...result.geometryChanges.map((item) => `${item.selector}: ${item.description}`), ...result.newFindings.map((item) => `${item.selector}: ${item.message}`), ...(capture?.evidence ?? [])].map((item) => `<li>${escapeText(item)}</li>`).join('') || '<li>No additional evidence was recorded.</li>'}</ul></details>${result.status === 'unbaselined' ? `<code class="visual-check-command">npx foundry-design visual-check approve --run ${escapeText(report.id)} --name ${escapeText(result.name)}</code><p>Review the local report images before approving. This action is never automatic.</p>` : ''}</article>`;
+        })
+        .join('')}</div>`
+    : `<div class="delivery-empty foundry-empty-state is-stage"><i data-icon="compare"></i><strong>${visualChecksStatus === 'loading' ? 'Loading visual checks' : visualChecksStatus === 'error' ? 'Reports could not be read' : 'Keep the product in view'}</strong><p>${escapeText(message)}</p><code class="visual-check-command">npx foundry-design visual-check list</code><button class="secondary-button" data-refresh-visual-checks ${visualChecksStatus === 'loading' ? 'disabled' : ''}>Refresh reports</button></div>`;
+  return `<div class="delivery-layout"><aside class="delivery-sidebar"><header><span class="eyebrow">Visual check runs</span><strong>${visualCheckReports.length} recent</strong></header><div>${list || '<div class="delivery-empty foundry-empty-state is-compact"><strong>No local reports yet</strong><p>Checks never change the design ledger or your source.</p></div>'}</div></aside><section class="delivery-stage">${detail}</section></div>`;
+}
+
 function renderDelivery() {
   const root = $('#delivery-content');
   if (!root) return;
+  if (params.get('ui') === 'next')
+    nextDelivery ??= createNextDelivery($('.delivery-mode'), {
+      saveNarrative: (id, payload) =>
+        api(`/v1/sessions/${sessionId}/delivery-records/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        }),
+      receiveSession: renderSession,
+      openReview: () => setMode('review'),
+    });
+  nextDelivery?.capture();
+  $('#delivery-generate-docs').hidden = deliveryTab === 'checks';
+  $('#delivery-export').hidden = deliveryTab === 'checks';
   const records = activeSession?.deliveryRecords ?? [];
   const docs = activeSession?.documentationPages ?? [];
   const history = activeSession?.designHistory ?? [];
@@ -4193,13 +4891,64 @@ function renderDelivery() {
       ? `<article class="delivery-record-detail"><header><div><span class="delivery-status" data-status="${escapeAttribute(record.status)}">${escapeText(deliveryStatusLabel(record.status))}</span><h2>${escapeText(record.title)}</h2><p>${escapeText(record.summary || 'Add a concise engineering summary.')}</p></div><code>${escapeText(record.id)}</code></header><div class="delivery-detail-grid"><section><span class="eyebrow">Intent</span><textarea data-delivery-field="intent" rows="4">${escapeText(record.intent)}</textarea><small>${record.narrativeSource === 'agent' ? 'Agent-generated narrative' : record.narrativeSource === 'authored' ? 'Authored narrative' : 'Deterministic from reviewed changes'}</small></section><section><span class="eyebrow">Affected source</span><div class="delivery-chip-list">${(record.affectedFiles.length ? record.affectedFiles : ['No mapped files']).map((item) => `<code>${escapeText(item)}</code>`).join('')}</div><span class="eyebrow section-label">Components and tokens</span><div class="delivery-chip-list">${[...record.affectedComponents, ...record.affectedTokens].map((item) => `<span>${escapeText(item)}</span>`).join('') || '<span>None recorded</span>'}</div></section><section><span class="eyebrow">Risks and questions</span><textarea data-delivery-field="risks" rows="4" placeholder="One item per line">${escapeText(record.risks.join('\n'))}</textarea><textarea data-delivery-field="questions" rows="3" placeholder="Open questions, one per line">${escapeText(record.questions.join('\n'))}</textarea></section><section><span class="eyebrow">Contexts</span><div class="delivery-contexts">${record.contexts.map((item) => `<span><strong>${escapeText(item.breakpoint)}</strong><small>${escapeText(item.theme)} · ${escapeText(item.state)}</small></span>`).join('')}</div></section></div><section class="delivery-criteria"><header><div><span class="eyebrow">Acceptance criteria</span><strong>${record.acceptanceCriteria.filter((item) => item.status === 'passed').length} of ${record.acceptanceCriteria.length} passed</strong></div>${record.blockers.length ? `<span class="delivery-blocker"><i data-icon="activity"></i>${record.blockers.length} blocked</span>` : '<span class="delivery-ready"><i data-icon="check"></i>Ready</span>'}</header><div>${record.acceptanceCriteria.map((item) => `<article data-status="${escapeAttribute(item.status)}"><i data-icon="${item.status === 'passed' ? 'check' : item.status === 'failed' ? 'close' : 'activity'}"></i><span><strong>${escapeText(item.label)}</strong><small>${escapeText(deliveryStatusLabel(item.status))}</small></span></article>`).join('')}</div></section><section class="delivery-validation"><div><span class="eyebrow">Source validation</span>${record.validationResults.map((item) => `<p data-passed="${item.passed}"><i data-icon="${item.passed ? 'check' : 'close'}"></i><span>${escapeText(item.name)}${item.summary ? `<small>${escapeText(item.summary)}</small>` : ''}</span></p>`).join('') || '<p class="delivery-muted">Validation has not run yet.</p>'}</div><div><span class="eyebrow">Rendered evidence</span>${record.verificationResults.map(deliveryVerificationMarkup).join('') || '<p class="delivery-muted">Rendered verification has not completed.</p>'}</div></section></article>`
       : '<div class="delivery-empty foundry-empty-state is-stage"><i data-icon="file"></i><strong>Review creates the contract</strong><p>Resolved changes become a versioned handoff with exact values, source relationships, acceptance criteria, and rendered evidence.</p></div>';
     root.innerHTML = `<div class="delivery-layout"><aside class="delivery-sidebar"><header><span class="eyebrow">Delivery records</span><strong>${records.length} total</strong></header><div>${recordList}</div></aside><section class="delivery-stage">${detail}</section></div>`;
+    if (record)
+      $('.delivery-record-detail', root)?.insertAdjacentHTML(
+        'beforeend',
+        engineeringEvidenceMarkup(record) + deliveryEvidenceUI.markup(record),
+      );
+    if (record) {
+      deliveryEvidenceUI.bind(root, record);
+      if (deliveryNarrativeReadOnly(record)) {
+        const note = 'Read-only record. Intent, risks and questions are preserved.';
+        $('.delivery-record-detail', root).dataset.readonly = 'true';
+        $('.delivery-record-detail > header > div', root)?.insertAdjacentHTML(
+          'beforeend',
+          `<p id="delivery-narrative-readonly" data-delivery-readonly-note>${note}</p>`,
+        );
+        $$('[data-delivery-field]', root).forEach((field) => {
+          const value = document.createElement('p');
+          value.className = 'delivery-narrative-value';
+          value.dataset.deliveryReadonlyField = field.dataset.deliveryField;
+          value.textContent =
+            field.value.trim() ||
+            {
+              intent: 'No intent recorded.',
+              risks: 'No risks recorded.',
+              questions: 'No open questions recorded.',
+            }[field.dataset.deliveryField];
+          value.setAttribute('aria-describedby', 'delivery-narrative-readonly');
+          field.replaceWith(value);
+        });
+      }
+    }
   } else if (deliveryTab === 'documentation') {
     const page = docs.find((candidate) => candidate.id === deliveryDocumentId);
     root.innerHTML = `<div class="delivery-layout"><aside class="delivery-sidebar"><header><span class="eyebrow">Living documentation</span><strong>${docs.length} pages</strong></header><div>${docs.map((item) => `<button class="delivery-document-row ${item.id === page?.id ? 'is-active' : ''}" data-delivery-document="${escapeAttribute(item.id)}"><i data-icon="file"></i><span><strong>${escapeText(item.title)}</strong><small>${escapeText(item.kind)}</small></span><em data-freshness="${escapeAttribute(item.freshness)}">${escapeText(item.freshness)}</em></button>`).join('') || '<div class="delivery-empty compact"><i data-icon="sparkles"></i><strong>No generated docs</strong><p>Refresh documentation to derive it from the design graph and verified records.</p></div>'}</div></aside><section class="delivery-stage">${page ? `<article class="delivery-document"><header><div><span class="delivery-status" data-status="${escapeAttribute(page.freshness)}">${escapeText(page.freshness)}</span><h2>${escapeText(page.title)}</h2><p>${escapeText(page.summary)}</p></div><code>${escapeText(page.kind)}</code></header><pre>${escapeText(page.body)}</pre><footer><span>${page.sourceFiles.length} source ${page.sourceFiles.length === 1 ? 'file' : 'files'}</span><span>${page.deliveryRecordIds.length} verified ${page.deliveryRecordIds.length === 1 ? 'record' : 'records'}</span><span>Updated ${new Date(page.updatedAt).toLocaleString()}</span></footer></article>` : '<div class="delivery-empty is-stage"><i data-icon="file"></i><strong>Documentation stays accountable</strong><p>Generated pages show their source relationships and become stale when those sources change.</p></div>'}</section></div>`;
+  } else if (deliveryTab === 'checks') {
+    root.innerHTML = visualChecksMarkup();
+    $$('[data-refresh-visual-checks]', root).forEach((button) =>
+      button.addEventListener('click', () => void loadVisualCheckReports()),
+    );
+    $$('[data-visual-report]', root).forEach((button) =>
+      button.addEventListener('click', () => {
+        visualCheckReportId = button.dataset.visualReport;
+        renderDelivery();
+      }),
+    );
   } else {
     root.innerHTML = `<div class="delivery-history-layout"><section class="delivery-timeline"><header><div><span class="eyebrow">Verified history</span><h2>What changed, and why</h2></div><button class="secondary-button compact" id="delivery-create-milestone" ${history.length ? '' : 'disabled'}><i data-icon="plus"></i>Create milestone</button></header><div>${history.map((entry) => `<article><span class="delivery-timeline-mark"><i data-icon="check"></i></span><div><header><strong>${escapeText(entry.title)}</strong><time>${new Date(entry.createdAt).toLocaleString()}</time></header><p>${escapeText(entry.summary)}</p><footer><span>${entry.affectedFiles.length} files</span><span>${entry.changeIds.length} changes</span><code>${escapeText(entry.applyRunId)}</code></footer></div></article>`).join('') || '<div class="delivery-empty is-stage"><i data-icon="check"></i><strong>No verified entries yet</strong><p>A passed Apply run creates one immutable history entry. Failed and cancelled runs never appear here.</p></div>'}</div></section><aside class="delivery-milestones"><header><span class="eyebrow">Milestones</span><strong>${milestones.length} groups</strong></header>${milestones.map((item) => `<article><span class="delivery-status" data-status="${escapeAttribute(item.status)}">${escapeText(item.status)}</span><strong>${escapeText(item.name)}</strong><p>${escapeText(item.summary || 'No summary')}</p><small>${item.entryIds.length} history ${item.entryIds.length === 1 ? 'entry' : 'entries'}</small></article>`).join('') || '<div class="delivery-empty compact"><i data-icon="bookmark"></i><strong>No milestones</strong><p>Group verified entries into internal releases or decision points.</p></div>'}</aside></div>`;
   }
-  renderIcons(root);
+  nextDelivery?.update({
+    tab: deliveryTab,
+    records,
+    recordId: deliveryRecordId,
+    documentId: deliveryDocumentId,
+    reportId: visualCheckReportId,
+    runtimeConnected,
+    generating: deliveryGenerating,
+    actionError: deliveryActionError,
+  });
+  renderIcons(nextDelivery ? $('.delivery-mode') : root);
   $$('[data-delivery-record]', root).forEach((button) =>
     button.addEventListener('click', () => {
       deliveryRecordId = button.dataset.deliveryRecord;
@@ -4214,8 +4963,9 @@ function renderDelivery() {
   );
   $$('[data-delivery-field]', root).forEach((field) =>
     field.addEventListener('change', async () => {
+      if (nextDelivery) return;
       const record = records.find((candidate) => candidate.id === deliveryRecordId);
-      if (!record) return;
+      if (!record || deliveryNarrativeReadOnly(record)) return;
       const key = field.dataset.deliveryField;
       const value = ['risks', 'questions'].includes(key)
         ? field.value
@@ -4266,6 +5016,10 @@ function visualRecipeTargetSuggestions(recipe) {
 }
 
 function renderVisualRecipes() {
+  if (params.get('ui') === 'next') {
+    nextRecipes ??= createNextRecipes($('.visual-recipes-mode'));
+    nextRecipes.capture();
+  }
   const visual = bridgeState?.visualRecipes ?? {};
   const recipes = visual.recipes ?? bridgeState?.memory?.recipes ?? [];
   const filtered = recipes.filter((recipe) =>
@@ -4350,6 +5104,14 @@ function renderVisualRecipes() {
       }
     }),
   );
+  nextRecipes?.render({
+    recipe,
+    assessment,
+    selection,
+    connected: bridgeConnected,
+    canSave: visual.canSave,
+    count: recipes.length,
+  });
   renderIcons($('[data-mode-surface="recipes"]'));
 }
 
@@ -4390,7 +5152,14 @@ function compareDesignSystemItems(left, right) {
 }
 
 function renderDesignSystem() {
+  if (params.get('ui') === 'next') {
+    nextDesignSystem ??= createNextDesignSystem($('.design-system-mode'));
+    nextDesignSystem.capture();
+  }
   const project = projectDesign();
+  // Rendered values are evidence from the live preview, not replacements for
+  // the revisioned source graph or its authored declaration locations.
+  const renderedTokens = bridgeState?.project?.renderedTokens ?? {};
   const tokens = (project.tokens ?? []).filter(isAuthoredDesignToken);
   const tokenIds = new Set(tokens.map((token) => token.id));
   const usages = (project.tokenUsages ?? []).filter((usage) => tokenIds.has(usage.tokenId));
@@ -4514,12 +5283,12 @@ function renderDesignSystem() {
           .map((item) => {
             const tokenUsages = usages.filter((usage) => usage.tokenId === item.id);
             const tokenFindings = findings.filter((finding) => finding.tokenIds?.includes(item.id));
-            const previewValue = item.resolvedValue ?? item.value;
+            const previewValue = renderedTokens[item.id] || item.resolvedValue || item.value;
             const sample =
               item.category === 'color'
                 ? `<i class="design-token-swatch" style="--token-color:${escapeAttribute(previewValue)}"></i>`
                 : '<i class="design-token-glyph"></i>';
-            return `<button class="design-token-row ${item.id === designSystemTokenId ? 'is-active' : ''}" data-system-token="${escapeAttribute(item.id)}">${sample}<span><strong>${escapeText(item.name)}</strong><code>${escapeText(item.value)}</code></span><span class="design-token-count ${tokenFindings.some((finding) => finding.severity === 'warning') || ['broken', 'circular'].includes(item.aliasStatus) ? 'has-warning' : ''}">${tokenUsages.length}</span></button>`;
+            return `<button class="design-token-row ${item.id === designSystemTokenId ? 'is-active' : ''}" data-system-token="${escapeAttribute(item.id)}">${sample}<span><strong>${escapeText(item.name)}</strong><code>${escapeText(previewValue)}</code></span><span class="design-token-count ${tokenFindings.some((finding) => finding.severity === 'warning') || ['broken', 'circular'].includes(item.aliasStatus) ? 'has-warning' : ''}">${tokenUsages.length}</span></button>`;
           })
           .join('')
       : '<div class="workshop-empty foundry-empty-state is-compact"><i data-icon="search"></i><strong>No tokens match</strong><p>Try another search or category.</p><button class="secondary-button compact" data-clear-system-search>Clear filters</button></div>';
@@ -4537,7 +5306,16 @@ function renderDesignSystem() {
       const references = tokenUsages.filter((usage) => usage.kind !== 'literal');
       const aliases = tokenUsages.filter((usage) => usage.kind === 'alias');
       const literalUsages = tokenUsages.filter((usage) => usage.kind === 'literal');
-      const previewValue = token.resolvedValue ?? token.value;
+      const previewValue = renderedTokens[token.id] || token.resolvedValue || token.value;
+      const liveValue = renderedTokens[token.id];
+      const declarationMarkup = (
+        token.declarations ?? [{ value: token.value, source: token.source }]
+      )
+        .map(
+          (declaration) =>
+            `<p><code>${escapeText(sourceText(declaration.source))}</code> · ${escapeText(declaration.value)}</p>`,
+        )
+        .join('');
       const colorPreview =
         token.category === 'color'
           ? `<span class="design-system-color-preview" style="--token-color:${escapeAttribute(previewValue)}"></span>`
@@ -4561,10 +5339,25 @@ function renderDesignSystem() {
             )
             .join('')
         : '<p class="design-system-empty">This token follows the indexed project system.</p>';
-      detail.innerHTML = `<div class="design-system-detail-head"><div><span class="eyebrow">${escapeText(DESIGN_SYSTEM_CATEGORY_LABELS[token.category] ?? 'Project token')}</span><h2>${escapeText(token.name)}</h2><code>${escapeText(token.value)}</code></div>${colorPreview}</div><div class="design-system-grid"><section class="design-system-card"><header><strong>Source of truth</strong><span>${escapeText(token.confidence ?? 'inferred')}</span></header><div class="design-system-source"><code>${escapeText(sourceText(token.source))}</code><p>${escapeText(token.evidence?.join(' · ') || 'Indexed project value')}</p></div></section><section class="design-system-card"><header><strong>Impact preview</strong><span>Read only</span></header><p>Changing this token can affect <strong>${references.length}</strong> indexed references across <strong>${files.size}</strong> files and <strong>${components.size}</strong> mapped components.</p><div class="design-impact-pills"><span>${literalUsages.length} literals</span><span>${aliases.length} aliases</span><span>${tokenFindings.length} findings</span></div></section><section class="design-system-card is-wide"><header><strong>Alias chain</strong><span class="alias-health" data-status="${escapeAttribute(token.aliasStatus ?? 'direct')}">${escapeText(token.aliasStatus ?? 'direct')}</span></header><div class="alias-chain">${chain}${token.resolvedValue ? `<i>=</i><code>${escapeText(token.resolvedValue)}</code>` : ''}</div></section><section class="design-system-card is-wide"><header><strong>Usage trace</strong><span>${tokenUsages.length} indexed</span></header><div class="design-usage-list">${usageMarkup}</div></section><section class="design-system-card is-wide"><header><strong>System guidance</strong><span>${tokenFindings.length ? 'Review suggested' : 'Aligned'}</span></header><div class="design-finding-list">${findingMarkup}</div></section></div>`;
+      detail.innerHTML = `<div class="design-system-detail-head"><div><span class="eyebrow">${escapeText(DESIGN_SYSTEM_CATEGORY_LABELS[token.category] ?? 'Project token')}</span><h2>${escapeText(token.name)}</h2><code>${escapeText(previewValue)}</code><small>${liveValue ? 'Rendered on current canvas' : 'Indexed value · preview unavailable'}</small></div>${colorPreview}</div><div class="design-system-grid"><section class="design-system-card"><header><strong>Source of truth</strong><span>${escapeText(token.confidence ?? 'inferred')}</span></header><div class="design-system-source">${declarationMarkup}</div></section><section class="design-system-card"><header><strong>Impact preview</strong><span>Read only</span></header><p>Changing this token can affect <strong>${references.length}</strong> indexed references across <strong>${files.size}</strong> files and <strong>${components.size}</strong> mapped components.</p><div class="design-impact-pills"><span>${literalUsages.length} literals</span><span>${aliases.length} aliases</span><span>${tokenFindings.length} findings</span></div></section><section class="design-system-card is-wide"><header><strong>Indexed alias chain</strong><span class="alias-health" data-status="${escapeAttribute(token.aliasStatus ?? 'direct')}">${escapeText(token.aliasStatus ?? 'direct')}</span></header><div class="alias-chain">${chain}${token.resolvedValue ? `<i>=</i><code>${escapeText(token.resolvedValue)}</code>` : ''}</div></section><section class="design-system-card is-wide"><header><strong>Usage trace</strong><span>${tokenUsages.length} indexed</span></header><div class="design-usage-list">${usageMarkup}</div></section><section class="design-system-card is-wide"><header><strong>System guidance</strong><span>${tokenFindings.length ? 'Review suggested' : 'Aligned'}</span></header><div class="design-finding-list">${findingMarkup}</div></section></div>`;
     }
   }
 
+  if (nextDesignSystem) {
+    const token =
+      designSystemView === 'tokens' ? tokens.find((item) => item.id === designSystemTokenId) : null;
+    const candidate =
+      designSystemView === 'promotions'
+        ? promotions.find((item) => item.id === designSystemPromotionId)
+        : null;
+    nextDesignSystem.render({
+      token,
+      candidate,
+      renderedValue: token ? renderedTokens[token.id] : undefined,
+      connected: bridgeConnected,
+      usages: token ? usages.filter((usage) => usage.tokenId === token.id) : [],
+    });
+  }
   renderIcons($('[data-mode-surface="system"]'));
   $('[data-clear-system-search]')?.addEventListener('click', () => {
     designSystemCategory = 'all';
@@ -4574,14 +5367,15 @@ function renderDesignSystem() {
     renderDesignSystem();
     $('#design-system-search').focus();
   });
-  $$('[data-system-view]').forEach((button) =>
-    button.addEventListener('click', () => {
-      designSystemView = button.dataset.systemView;
-      designSystemCategory = 'all';
-      designSystemTokenId = '';
-      designSystemPromotionId = '';
-      renderDesignSystem();
-    }),
+  $$('[data-system-view]').forEach(
+    (button) =>
+      (button.onclick = () => {
+        designSystemView = button.dataset.systemView;
+        designSystemCategory = 'all';
+        designSystemTokenId = '';
+        designSystemPromotionId = '';
+        renderDesignSystem();
+      }),
   );
   $$('[data-system-category]').forEach((button) =>
     button.addEventListener('click', () => {
@@ -4629,8 +5423,11 @@ async function hydratePendingDesignGraph() {
   return true;
 }
 
-async function reindexProjectDesign() {
-  if (designSystemReindexing) return;
+async function reindexProjectDesign({ throwOnError = false } = {}) {
+  if (designSystemReindexing) {
+    if (throwOnError) throw new Error('Project re-indexing is already in progress.');
+    return;
+  }
   designSystemReindexing = true;
   renderDesignSystem();
   try {
@@ -4654,6 +5451,7 @@ async function reindexProjectDesign() {
     }
   } catch (error) {
     toast(error instanceof Error ? error.message : 'The project could not be re-indexed.');
+    if (throwOnError) throw error;
   } finally {
     designSystemReindexing = false;
     if (activeMode === 'system') renderDesignSystem();
@@ -4831,6 +5629,9 @@ function typographyMetricValue(metrics, key, fallback = '—') {
 
 const TYPOGRAPHY_SPECIMEN_STYLE_PROPERTIES = [
   ['boxSizing', 'box-sizing'],
+  ['display', 'display'],
+  ['alignItems', 'align-items'],
+  ['justifyContent', 'justify-content'],
   ['paddingTop', 'padding-top'],
   ['paddingRight', 'padding-right'],
   ['paddingBottom', 'padding-bottom'],
@@ -4906,15 +5707,64 @@ function typographyComparisonCard(label, specimen, metrics, family, candidate = 
   const clipped = Boolean(metrics?.clipped);
   const contract = typographySpecimenContract(metrics, family);
   const copy = contract.text || specimen;
-  return `<article class="typography-comparison-card${candidate ? ' is-candidate' : ''}"><header><span class="eyebrow">${label}</span><strong>${escapeText(family || 'Rendered font')}</strong></header><div class="typography-comparison-specimen-stage"><div class="typography-comparison-specimen" data-specimen-contract="${contract.version}" style="${escapeAttribute(contract.style)}">${escapeText(copy)}</div></div><dl><div><dt>Face</dt><dd data-status="${escapeAttribute(String(loaded))}">${escapeText(String(loaded))}</dd></div><div><dt>Lines</dt><dd>${escapeText(String(typographyMetricValue(metrics, 'lineCount')))}</dd></div><div><dt>Rendered</dt><dd>${width && height ? `${width} × ${height}` : '—'}</dd></div><div><dt>Clipping</dt><dd data-status="${clipped ? 'failed' : 'passed'}">${clipped ? 'Clipped' : 'Clear'}</dd></div></dl>${candidate ? `<footer><span>${typographyCandidate?.origin === 'local' ? 'Preview-only local face' : 'No design change created yet'}</span><button class="primary-button compact" id="typography-use-candidate">Use this font</button></footer>` : ''}</article>`;
+  return `<article class="typography-comparison-card${candidate ? ' is-candidate' : ''}"><header><span class="eyebrow">${label}</span><strong>${escapeText(family || 'Rendered font')}</strong></header><div class="typography-comparison-specimen-stage"><div class="typography-comparison-specimen" data-specimen-contract="${contract.version}" style="${escapeAttribute(contract.style)}">${escapeText(copy)}</div></div><dl><div><dt>Face</dt><dd data-status="${escapeAttribute(String(loaded))}">${escapeText(String(loaded))}</dd></div><div><dt>Lines</dt><dd>${escapeText(String(typographyMetricValue(metrics, 'lineCount')))}</dd></div><div><dt>Rendered</dt><dd>${width && height ? `${width} × ${height}` : '—'}</dd></div><div><dt>Product clipping</dt><dd data-status="${clipped ? 'failed' : 'passed'}">${clipped ? 'Clipped' : 'Clear'}</dd></div></dl>${candidate ? `<footer><span>${typographyCandidateStaged() ? 'Font change staged in Review' : typographyCandidate?.origin === 'local' ? 'Preview-only local face' : 'No design change created yet'}</span><button class="primary-button compact" id="typography-use-candidate" ${typographyCandidateStaged() ? 'disabled' : ''}>${typographyCandidateStaged() ? 'Staged in Review' : 'Use this font'}</button></footer>` : '<footer><span>Current canvas typography</span></footer>'}</article>`;
+}
+
+function typographyCandidateStaged() {
+  const normalize = (value) =>
+    String(value ?? '')
+      .replace(/["']/g, '')
+      .split(',')[0]
+      .trim()
+      .toLowerCase();
+  return (activeDesignDirection()?.changes ?? []).some(
+    (change) =>
+      !['rejected', 'applied'].includes(change.status) &&
+      change.target?.id === bridgeState?.selection?.id &&
+      change.property === 'fontFamily' &&
+      normalize(change.after) === normalize(typographyCandidate?.family),
+  );
+}
+
+function fitTypographySpecimens() {
+  const stages = $$('.typography-comparison-specimen-stage');
+  // Keep both cards at the same display scale without changing source geometry.
+  const scale = Math.min(
+    1,
+    ...stages.map((stage) => {
+      const specimen = $('.typography-comparison-specimen', stage);
+      return previewFitScale(
+        specimen.offsetWidth,
+        specimen.offsetHeight,
+        stage.clientWidth,
+        stage.clientHeight,
+      );
+    }),
+  );
+  stages.forEach((stage) => {
+    $('.typography-comparison-specimen', stage).style.transform = `scale(${scale})`;
+    stage.title = `Specimen shown at ${Math.round(scale * 100)}%. Metrics describe the rendered product.`;
+  });
 }
 
 function renderTypographyStudio() {
+  if (params.get('ui') === 'next') {
+    nextTypographyStudio ??= createNextTypographyStudio($('.typography-studio-mode'), () => {
+      typographyCandidate = null;
+      typographyComparison = null;
+      clearTypographyComparisonFonts();
+      renderTypographyStudio();
+    });
+    if (nextTypographyStudio.isEditing()) return;
+    nextTypographyStudio.capture();
+  }
+  requestAnimationFrame(fitTypographySpecimens);
   const selection = bridgeState?.selection;
   const typography = bridgeState?.typography;
   const selectionId = selection?.id ?? '';
   if (selectionId !== typographySelectionId) {
     typographySelectionId = selectionId;
+    typographyScale = { ...typographyScale, ...(typography?.scale ?? {}) };
     typographyCandidate = null;
     typographyComparison = null;
     clearTypographyComparisonFonts();
@@ -4924,6 +5774,17 @@ function renderTypographyStudio() {
   const stage = $('#typography-studio-stage');
   const properties = $('#typography-studio-properties');
   if (!summary || !list || !stage || !properties) return;
+  const refineTypography = () => {
+    nextTypographyStudio?.render({
+      selection,
+      typography,
+      candidate: typographyCandidate,
+      comparison: typographyComparison,
+      pending: typographyComparisonPending,
+      connected: bridgeConnected,
+    });
+    if (nextTypographyStudio) renderIcons($('.typography-studio-mode'));
+  };
   $('#typography-studio-status').textContent = selection
     ? `${typography?.metrics?.lineCount ?? 1} lines · ${typography?.metrics?.faceStatus ?? 'unresolved'}`
     : 'Select a text layer';
@@ -4938,10 +5799,10 @@ function renderTypographyStudio() {
       '<div class="typography-studio-empty foundry-empty-state is-compact"><i data-icon="typography"></i><strong>No typography properties</strong><p>Select a text layer to inspect its source-backed values.</p></div>';
     renderIcons(stage);
     renderIcons(properties);
+    refineTypography();
     return;
   }
 
-  typographyScale = { ...typographyScale, ...(typography.scale ?? {}) };
   typographyGoogleSelection = typography.googleSelection ?? typographyGoogleSelection;
   summary.innerHTML = `<span class="eyebrow">Selection</span><strong>${escapeText(selection.label)}</strong><code>${escapeText(typography.selection.primaryFamily)}</code><p>${escapeText(sourceText(selection.source))}</p>`;
   $$('[data-typography-source]').forEach((button) => {
@@ -4968,7 +5829,7 @@ function renderTypographyStudio() {
   const treatments = typography.treatments ?? [];
   const usages = typography.usages ?? [];
   const comparisonMarkup = typographyCandidate
-    ? `<section class="typography-comparison"><header><div><span class="eyebrow">Font comparison</span><strong>Current and Candidate</strong></div><span>${typographyComparisonPending ? 'Measuring…' : 'Temporary preview · 0 changes'}</span></header><div>${typographyComparisonCard('Current', specimen, typographyComparison?.current ?? typography.metrics, typography.selection.primaryFamily)}${typographyComparisonCard('Candidate', specimen, typographyComparison?.candidate, typographyCandidate.family, true)}</div></section>`
+    ? `<section class="typography-comparison"><header><div><span class="eyebrow">Font comparison</span><strong>Current and Candidate</strong></div><span>${typographyComparisonPending ? 'Measuring…' : typographyCandidateStaged() ? 'Font change staged in Review' : 'Comparison only · 0 changes'}</span></header><div>${typographyComparisonCard('Current', specimen, typographyComparison?.current ?? typography.metrics, typography.selection.primaryFamily)}${typographyComparisonCard('Candidate', specimen, typographyComparison?.candidate, typographyCandidate.family, true)}</div></section>`
     : `<section class="typography-comparison is-empty"><header><div><span class="eyebrow">Font comparison</span><strong>Current and Candidate</strong></div><span>Temporary preview</span></header><div>${typographyComparisonCard('Current', specimen, typography.metrics, typography.selection.primaryFamily)}<article class="typography-comparison-placeholder foundry-empty-state"><i data-icon="typography"></i><strong>Choose a candidate</strong><p>Select a project, Google, or local font to compare it with identical copy and geometry.</p></article></div></section>`;
   stage.innerHTML = `${comparisonMarkup}<section class="typography-treatment-panel"><header><div><span class="eyebrow">Rhythm</span><strong>Type treatments</strong></div><button class="secondary-button compact" data-typography-action="reset-preview">Reset preview</button></header><div class="typography-treatment-grid">${treatments.map((treatment) => `<button data-treatment-id="${escapeAttribute(treatment.id)}" aria-pressed="${String(typography.preview?.treatmentId === treatment.id)}"><strong>${escapeText(treatment.label)}</strong><span>${escapeText(treatment.detail)}</span></button>`).join('')}</div><div class="typography-scale-panel"><label><span>Base size</span><input id="typography-scale-base" type="range" min="8" max="128" step="4" value="${Number(typographyScale.base)}"><output>${Number(typographyScale.base)}px</output></label><div class="typography-scale-options"><span>Ratio</span>${[1.125, 1.2, 1.25, 1.333].map((ratio) => `<button data-scale-ratio="${ratio}" aria-pressed="${String(Number(typographyScale.ratio) === ratio)}">${ratio}</button>`).join('')}</div><div class="typography-scale-options"><span>Step</span>${[-1, 0, 1, 2, 3].map((step) => `<button data-scale-step="${step}" aria-pressed="${String(Number(typographyScale.step) === step)}">${step > 0 ? '+' : ''}${step}</button>`).join('')}</div><div class="typography-scale-result"><code>${escapeText(typography.scale?.value ?? typography.selection.size)}</code><button data-scale-fluid aria-pressed="${String(Boolean(typographyScale.fluid))}">${typographyScale.fluid ? 'Fluid' : 'Fixed'}</button><button class="primary-button compact" data-preview-scale>Preview scale</button></div></div></section><section class="typography-usage-panel"><header><strong>Project usage</strong><span>${usages.reduce((total, usage) => total + usage.count, 0)} text nodes</span></header><div>${usages
     .slice(0, 6)
@@ -5140,6 +6001,7 @@ function renderTypographyStudio() {
         }),
     ),
   );
+  refineTypography();
 }
 
 function motionSourceLabel(kind) {
@@ -5420,6 +6282,11 @@ function renderMotionCurveEditor(selection, motion, disabled) {
 }
 
 function renderMotionStudio() {
+  if (params.get('ui') === 'next') {
+    nextMotionStudio ??= createNextMotionStudio($('.motion-studio-mode'));
+    if (nextMotionStudio.isEditing()) return;
+    nextMotionStudio.capture();
+  }
   if (motionComparisonFrame) {
     cancelAnimationFrame(motionComparisonFrame);
     motionComparisonFrame = 0;
@@ -5434,6 +6301,10 @@ function renderMotionStudio() {
   motionStudioResetPropertiesScroll = false;
   const resetPropertiesScrollIfNeeded = () => {
     if (resetPropertiesScroll) properties.scrollTop = 0;
+  };
+  const refineMotion = (motion) => {
+    nextMotionStudio?.render({ selection, motion, connected: bridgeConnected });
+    if (nextMotionStudio) renderIcons($('.motion-studio-mode'));
   };
   $('#motion-studio-status').textContent = selection
     ? `${motions.length} ${motions.length === 1 ? 'motion' : 'motions'} detected`
@@ -5450,6 +6321,7 @@ function renderMotionStudio() {
     renderIcons(stage);
     renderIcons(properties);
     resetPropertiesScrollIfNeeded();
+    refineMotion(null);
     return;
   }
 
@@ -5475,6 +6347,7 @@ function renderMotionStudio() {
     renderIcons(stage);
     renderIcons(properties);
     resetPropertiesScrollIfNeeded();
+    refineMotion(null);
     return;
   }
 
@@ -5940,6 +6813,7 @@ function renderMotionStudio() {
     field.addEventListener('change', commit);
     field.addEventListener('blur', commit);
   });
+  refineMotion(motion);
 }
 
 function focusedInspectorEdit() {
@@ -5977,6 +6851,7 @@ function restoreInspectorEdit(edit) {
 }
 
 function renderBridgeState() {
+  readinessUI?.update();
   const focusedEdit = focusedInspectorEdit();
   renderLayers();
   renderInspector();
@@ -5986,6 +6861,7 @@ function renderBridgeState() {
   $('#canvas-detail').textContent = bridgeState.selection
     ? `${bridgeState.selection.label} · ${bridgeState.selection.width} × ${bridgeState.selection.height}px`
     : 'Select a rendered element';
+  nextWorkspace?.refineCanvasHeader(bridgeState.selection);
   $('#undo').disabled = !bridgeState.history?.canUndo;
   $('#redo').disabled = !bridgeState.history?.canRedo;
   if (activeMode === 'components') renderComponentWorkshop();
@@ -6030,6 +6906,8 @@ function renderBridgeState() {
 
 function renderSession(payload) {
   activeSession = payload;
+  void restoreSavedCanvasPreview();
+  readinessUI?.update();
   const context = payload.changeSet.context;
   $('#project-name').textContent = context.targetName ?? 'Design workspace';
   renderChangeSummary();
@@ -6108,8 +6986,24 @@ async function sendBranchPreview(frame, branch) {
       changes: branch.changes ?? [],
     });
     if (!result?.switched) throw new Error('The direction preview was not acknowledged.');
+    if (nextDesignBranches) {
+      await requestFrameCommand(frame, 'set-mode', { mode: 'interact' });
+      const status = card?.querySelector('.branch-status');
+      if (status) {
+        status.textContent = 'Preview ready';
+        status.dataset.status = 'ready';
+        status.title = 'Direction preview acknowledged. Source is unchanged.';
+      }
+    }
     card?.setAttribute('data-preview-connection', 'live');
   } catch (error) {
+    if (nextDesignBranches) {
+      failNextBranchPreview(
+        frame,
+        error instanceof Error ? error.message : 'Direction preview failed.',
+      );
+      return;
+    }
     card?.setAttribute('data-preview-connection', 'offline');
     const status = card?.querySelector('.branch-status');
     if (status) {
@@ -6120,12 +7014,52 @@ async function sendBranchPreview(frame, branch) {
   }
 }
 
+function failNextBranchPreview(frame, reason) {
+  const card = frame.closest('.design-branch-preview-card');
+  if (!card || !frame.isConnected) return;
+  frame.dataset.branchFailed = 'true';
+  card.dataset.previewConnection = 'offline';
+  const status = card.querySelector('.branch-status');
+  status.dataset.status = 'offline';
+  status.textContent = 'Preview unavailable';
+  status.title = reason;
+  frame.style.visibility = 'hidden';
+  let error = card.querySelector('.next-branch-preview-error');
+  if (!error) {
+    error = document.createElement('p');
+    error.className = 'next-branch-preview-error';
+    card.querySelector('.design-branch-preview-viewport').append(error);
+  }
+  error.textContent = `${reason} Use Reload previews to try again. Your directions are unchanged.`;
+}
+
+function destroyNextBranchPreviews() {
+  for (const timer of branchFrameTimers.values()) clearTimeout(timer);
+  branchFrameTimers.clear();
+  for (const frame of $$('[data-design-branch-frame]')) {
+    invalidateFrameTransport(frame, 'The branch comparison changed.');
+  }
+  $('#design-branch-previews')?.replaceChildren();
+  designBranchFrames.clear();
+  designBranchPreviewRenderKey = '';
+}
+
 function renderDesignBranchPreviews() {
   const root = $('#design-branch-previews');
   if (!root) return;
-  designBranchFrames.clear();
-  const directions = [designBranchById(branchCompareLeft), designBranchById(branchCompareRight)];
+  const pair = [designBranchById(branchCompareLeft), designBranchById(branchCompareRight)];
+  const directions = nextDesignBranches ? branchComparisonDirections(...pair) : pair;
   const viewport = selectedViewport();
+  if (nextDesignBranches) {
+    const key = branchPreviewKey(directions, viewport, previewUrl);
+    if (key === designBranchPreviewRenderKey && root.children.length) {
+      nextDesignBranches.fit();
+      return;
+    }
+    destroyNextBranchPreviews();
+    designBranchPreviewRenderKey = key;
+  }
+  designBranchFrames.clear();
   const availablePreviewWidth = Math.max(160, (root.clientWidth - 12) / 2);
   const previewScale = Math.min(1, availablePreviewWidth / viewport.width, 360 / viewport.height);
   root.innerHTML = directions
@@ -6139,9 +7073,44 @@ function renderDesignBranchPreviews() {
   $$('[data-design-branch-frame]', root).forEach((frame) => {
     const index = Number(frame.dataset.designBranchFrame);
     const branch = directions[index];
-    designBranchFrames.set(branch.id, frame);
-    frame.addEventListener('load', () => void sendBranchPreview(frame, branch));
+    designBranchFrames.set(nextDesignBranches ? index : branch.id, frame);
+    if (nextDesignBranches) {
+      const status = frame.closest('article').querySelector('.branch-status');
+      status.textContent = 'Connecting…';
+      status.dataset.status = 'connecting';
+      frame.tabIndex = -1;
+      branchFrameTimers.set(
+        frame,
+        setTimeout(() => {
+          if (frame.dataset.branchSynced !== 'true')
+            failNextBranchPreview(frame, 'The preview did not connect.');
+        }, 8000),
+      );
+      frame.addEventListener('load', () => {
+        if (frame.dataset.branchLoaded === 'true') {
+          invalidateFrameTransport(frame, 'The direction preview reloaded.');
+          failNextBranchPreview(frame, 'The project reloaded.');
+          return;
+        }
+        frame.dataset.branchLoaded = 'true';
+        syncNextBranchFrame(frame, branch);
+      });
+    } else frame.addEventListener('load', () => void sendBranchPreview(frame, branch));
   });
+}
+
+function syncNextBranchFrame(frame, branch) {
+  if (
+    frame.dataset.branchFailed === 'true' ||
+    frame.dataset.branchLoaded !== 'true' ||
+    frame.dataset.branchReady !== 'true' ||
+    frame.dataset.branchSynced === 'true'
+  )
+    return;
+  frame.dataset.branchSynced = 'true';
+  clearTimeout(branchFrameTimers.get(frame));
+  branchFrameTimers.delete(frame);
+  void sendBranchPreview(frame, branch);
 }
 
 function renderDesignBranchDecisions() {
@@ -6197,7 +7166,12 @@ function updateDesignBranchSelection() {
 }
 
 async function activateDesignDirection(branchId) {
-  const previous = activeDesignDirection();
+  // The polling snapshot can lag the edit that just finished. Restore the
+  // acknowledged direction, including its newest edits, before changing branches.
+  const current = await api(`/v1/sessions/${sessionId}`);
+  const previous = current.activeDesignBranchId
+    ? current.designBranches.find((branch) => branch.id === current.activeDesignBranchId)
+    : current.changeSet;
   const updated = await api(`/v1/sessions/${sessionId}/design-branches/activate`, {
     method: 'POST',
     body: JSON.stringify({
@@ -6210,7 +7184,7 @@ async function activateDesignDirection(branchId) {
       : updated.designBranches.find((branch) => branch.id === branchId);
   if (bridgeConnected) {
     await requestCommand('switch-design-branch', {
-      previousChanges: previous.changes ?? [],
+      previousChanges: previous?.changes ?? [],
       nextChanges: next?.changes ?? [],
     });
   }
@@ -6356,6 +7330,9 @@ function renderDesignBranchRecords() {
 
 function renderDesignBranches() {
   if (!activeSession || !$('#design-branch-list')) return;
+  if (params.get('ui') === 'next')
+    nextDesignBranches ??= createNextDesignBranches($('.design-branches-mode'));
+  nextDesignBranches?.capture();
   const directions = designBranchDirections();
   const activeId = activeSession.activeDesignBranchId ?? 'main';
   if (!directions.some((branch) => branch.id === branchCompareLeft)) branchCompareLeft = 'main';
@@ -6402,7 +7379,30 @@ function renderDesignBranches() {
   renderDesignBranchDecisions();
   renderDesignBranchDetail();
   renderDesignBranchRecords();
-  $('#design-branch-promote').disabled = activeId === 'main';
+  $('#design-branch-promote').disabled =
+    activeId === 'main' || !branchReviewableChanges(activeDesignDirection()).length;
+  if (nextDesignBranches) {
+    const eligible = new Set(
+      $$('[data-branch-decision]').map((input) => input.dataset.branchDecision),
+    );
+    for (const id of branchDecisionSelection)
+      if (!eligible.has(id)) branchDecisionSelection.delete(id);
+    updateDesignBranchSelection();
+    nextDesignBranches.update({
+      active: activeDesignDirection(),
+      directions,
+      comparisonCount: branchComparisonDirections(
+        designBranchById(branchCompareLeft),
+        designBranchById(branchCompareRight),
+      ).length,
+      recordsCount: (activeSession.designBranchRecords ?? []).length,
+    });
+    $('#next-branch-refresh').onclick = () => {
+      destroyNextBranchPreviews();
+      renderDesignBranches();
+    };
+    renderIcons($('.design-branches-mode'));
+  }
 }
 
 $('#design-branch-create').addEventListener('click', async () => {
@@ -6481,6 +7481,10 @@ $('#design-branch-compose').addEventListener('click', async () => {
 $('#design-branch-promote').addEventListener('click', async () => {
   const chosen = activeDesignDirection();
   if (chosen.id === 'main') return;
+  if (!branchReviewableChanges(chosen).length) {
+    toast('No saved changes in this direction. Edit a property on Canvas and press Enter first.');
+    return;
+  }
   try {
     const updated = await api(
       `/v1/sessions/${sessionId}/design-branches/${encodeURIComponent(chosen.id)}/promote`,
@@ -6710,6 +7714,8 @@ function restoreWorkspaceScroll(scroll) {
 function commitLoadedSession(payload, presence, { deferRender = false } = {}) {
   activeSession = payload;
   activeAgentPresence = presence?.connected ? presence : { connected: false, presence: null };
+  // Presence must stay current while typing even when the full session render is deferred.
+  nextVisualAgent?.updateConnection({ listener: activeAgentPresence.connected });
   const snapshot = sessionRenderSnapshot(payload, activeAgentPresence);
   if (snapshot === lastRenderedSessionSnapshot) return;
   if (deferRender && sessionRenderBlocked()) {
@@ -6764,10 +7770,92 @@ async function loadSession({ deferRender = false, isPoll = false } = {}) {
   }
 }
 
+async function restoreSavedCanvasPreview() {
+  if (
+    !activeSession ||
+    !bridgeConnected ||
+    !bridgeState ||
+    bridgeBranchSynced ||
+    bridgeBranchSyncing ||
+    previewRecoveryFailed ||
+    previewRecoveryBlocked(activeSession.applyRuns)
+  )
+    return;
+  const generation = previewRecoveryGeneration;
+  const branch = activeDesignDirection();
+  const nextChanges = recoverablePreviewChanges(branch, bridgeState.context);
+  bridgeBranchSyncing = true;
+  try {
+    if (nextChanges.length) {
+      const result = await requestCommand('switch-design-branch', {
+        previousChanges: [],
+        nextChanges,
+      });
+      if (!result?.switched) throw new Error('The preview did not acknowledge saved edits.');
+    }
+    if (generation === previewRecoveryGeneration) bridgeBranchSynced = true;
+  } catch (error) {
+    if (generation === previewRecoveryGeneration) {
+      previewRecoveryFailed = true;
+      showPreviewRecoveryFallback(
+        'Saved preview could not be restored',
+        'Your edits are still saved in Review. Reconnect the preview to try restoring them again.',
+      );
+      toast(error instanceof Error ? error.message : 'Saved preview could not be restored.');
+    }
+  } finally {
+    if (generation === previewRecoveryGeneration) bridgeBranchSyncing = false;
+  }
+}
+
+function showPreviewRecoveryFallback(
+  title = 'Live preview unavailable',
+  message = 'Start or restart your project’s preview server, then reconnect. Your saved edits are safe in Review. If the server is running, check its Foundry adapter or try the overlay preview.',
+) {
+  $('#preview-loading').hidden = true;
+  $('#preview-fallback strong').textContent = title;
+  $('#preview-fallback p').textContent = message;
+  $('#preview-fallback').hidden = false;
+  $('#reconnect-preview').disabled = !previewUrl;
+}
+
+function resetPreviewRecovery() {
+  previewRecoveryGeneration += 1;
+  bridgeConnected = false;
+  bridgeState = null;
+  bridgeBranchSynced = false;
+  bridgeBranchSyncing = false;
+  previewRecoveryFailed = false;
+  bridgeInterfaceThemeSynced = false;
+  bridgeInterfaceThemeSyncing = false;
+  clearTimeout(previewConnectionTimer);
+  $('#preview-fallback').hidden = true;
+  $('#preview-loading').hidden = false;
+  previewConnectionTimer = setTimeout(() => {
+    if (!bridgeConnected) showPreviewRecoveryFallback();
+  }, 5000);
+}
+
+function reconnectCanvasPreview() {
+  if (!previewUrl) throw new Error('Configure a preview URL in your project before reconnecting.');
+  rejectPendingFrameCommands(
+    preview.contentWindow,
+    'Reconnecting the preview.',
+    'WORKSPACE_FRAME_RELOADED',
+  );
+  resetPreviewRecovery();
+  preview.src = preview.src;
+  renderConnectionStatus();
+}
+
+$('#reconnect-preview').addEventListener('click', reconnectCanvasPreview);
+
 function setupPreview() {
   if (!previewUrl) {
-    $('#preview-loading').hidden = true;
-    $('#preview-fallback').hidden = false;
+    showPreviewRecoveryFallback(
+      'No preview configured',
+      'Configure a project preview URL to connect. Your saved edits remain in Review.',
+    );
     $('#direct-preview').hidden = true;
     renderConnectionStatus();
     return;
@@ -6775,29 +7863,20 @@ function setupPreview() {
   const embedded = new URL(previewUrl);
   embedded.searchParams.set('__foundry_embedded', '1');
   embedded.searchParams.set('__foundry_frame', 'canvas');
-  preview.src = embedded.href;
   preview.addEventListener('load', () => {
     rejectPendingFrameCommands(
       preview.contentWindow,
       'The canvas reloaded before the preview operation completed.',
       'WORKSPACE_FRAME_RELOADED',
     );
-    bridgeConnected = false;
-    bridgeBranchSynced = false;
-    bridgeBranchSyncing = false;
-    bridgeInterfaceThemeSynced = false;
-    bridgeInterfaceThemeSyncing = false;
+    resetPreviewRecovery();
     frameLastSeen.set(preview.contentWindow, Date.now());
     renderConnectionStatus();
   });
+  resetPreviewRecovery();
+  preview.src = embedded.href;
   $('#direct-preview').href = previewUrl;
   $('#direct-preview-menu').href = previewUrl;
-  setTimeout(() => {
-    if (!bridgeConnected) {
-      $('#preview-loading').hidden = true;
-      $('#preview-fallback').hidden = false;
-    }
-  }, 5000);
 }
 
 window.addEventListener('message', (event) => {
@@ -6820,6 +7899,18 @@ window.addEventListener('message', (event) => {
     }
     return;
   }
+  if (workshopGallery?.receive(event)) return;
+  if (nextDesignBranches && event.data?.type === 'foundry:workspace-state') {
+    const frame = [...designBranchFrames.values()].find(
+      (item) => item.contentWindow === event.source,
+    );
+    if (frame) {
+      markFrameSeen(event.source);
+      frame.dataset.branchReady = 'true';
+      syncNextBranchFrame(frame, designBranchById(frame.closest('article').dataset.directionId));
+      return;
+    }
+  }
   const stateFrame = $('#state-live-preview');
   if (
     stateFrame?.contentWindow === event.source &&
@@ -6836,6 +7927,17 @@ window.addEventListener('message', (event) => {
   if (responsiveViewportId && event.data?.type === 'foundry:workspace-state') {
     markFrameSeen(event.source);
     responsiveSnapshots.set(responsiveViewportId, event.data.payload?.responsive ?? {});
+    const frame = $$('[data-responsive-frame]').find((item) => item.contentWindow === event.source);
+    if (frame) {
+      frame.dataset.responsiveReady = 'true';
+      if (
+        frame.dataset.responsiveLoaded === 'true' &&
+        frame.dataset.responsiveNeedsSync === 'true'
+      ) {
+        frame.dataset.responsiveNeedsSync = 'false';
+        void syncResponsiveFrame(frame);
+      }
+    }
     updateResponsiveCard(responsiveViewportId);
     return;
   }
@@ -6903,28 +8005,10 @@ window.addEventListener('message', (event) => {
     setMode('agent', false);
     requestAnimationFrame(() => $('#visual-agent-prompt')?.focus());
   }
-  if (!bridgeBranchSynced && !bridgeBranchSyncing) {
-    const branch = activeDesignDirection();
-    if (branch.id !== 'main') {
-      bridgeBranchSyncing = true;
-      void runDurableAction(
-        'switch-design-branch',
-        {
-          previousChanges: [],
-          nextChanges: branch.changes ?? [],
-        },
-        {
-          onSuccess: () => {
-            bridgeBranchSynced = true;
-          },
-        },
-      ).finally(() => {
-        bridgeBranchSyncing = false;
-      });
-    } else bridgeBranchSynced = true;
-  }
+  void restoreSavedCanvasPreview();
+  clearTimeout(previewConnectionTimer);
   $('#preview-loading').hidden = true;
-  $('#preview-fallback').hidden = true;
+  if (!previewRecoveryFailed) $('#preview-fallback').hidden = true;
   renderBridgeState();
   if (canvasRequestedContext && !canvasContextApplying) void applyCanvasPreviewContext();
 });
@@ -6999,7 +8083,32 @@ $('#state-run-verification')?.addEventListener('click', () => {
   );
 });
 $('#component-workshop-search').addEventListener('input', renderComponentWorkshop);
-$('#component-open-canvas').addEventListener('click', () => setMode('canvas'));
+async function viewSelectionOnCanvas(selector = bridgeState?.selection?.selector) {
+  setMode('canvas');
+  fitCanvas();
+  if (selector) await runDurableAction('select', { selector, reveal: true });
+}
+$('#component-open-canvas').addEventListener('click', async () => {
+  if (params.get('ui') === 'next') {
+    const component = currentWorkshopComponent();
+    if (!component?.elements.length) return;
+    const index = Math.max(
+      0,
+      component.elements.findIndex((element) => element.selected),
+    );
+    const result = await runDurableAction('select-component-instance', {
+      componentId: component.key,
+      index,
+    });
+    if (!result) return;
+    await viewSelectionOnCanvas(component.elements[index].selector);
+    return;
+  }
+  await viewSelectionOnCanvas();
+});
+$$('[data-view-selection-on-canvas]').forEach((button) =>
+  button.addEventListener('click', () => void viewSelectionOnCanvas()),
+);
 $('#component-workshop-review').addEventListener('click', () => setMode('review'));
 $('#responsive-open-canvas')?.addEventListener('click', async () => {
   const breakpointId = responsiveActiveViewport === 'custom' ? 'current' : responsiveActiveViewport;
@@ -7030,6 +8139,7 @@ $('#responsive-review').addEventListener('click', () => setMode('review'));
 $$('[data-delivery-tab]').forEach((button) =>
   button.addEventListener('click', () => {
     deliveryTab = button.dataset.deliveryTab;
+    if (deliveryTab === 'checks') void loadVisualCheckReports();
     $$('[data-delivery-tab]').forEach((candidate) => {
       const selected = candidate === button;
       candidate.classList.toggle('is-active', selected);
@@ -7039,6 +8149,12 @@ $$('[data-delivery-tab]').forEach((button) =>
   }),
 );
 $('#delivery-generate-docs')?.addEventListener('click', async () => {
+  if (nextDelivery && (deliveryGenerating || !runtimeConnected)) return;
+  if (nextDelivery) {
+    deliveryGenerating = true;
+    deliveryActionError = '';
+    renderDelivery();
+  }
   try {
     renderSession(
       await api(`/v1/sessions/${sessionId}/documentation/generate`, {
@@ -7046,16 +8162,22 @@ $('#delivery-generate-docs')?.addEventListener('click', async () => {
         body: '{}',
       }),
     );
-    deliveryTab = 'documentation';
+    if (!nextDelivery) deliveryTab = 'documentation';
     $$('[data-delivery-tab]').forEach((button) => {
       const selected = button.dataset.deliveryTab === deliveryTab;
       button.classList.toggle('is-active', selected);
       button.setAttribute('aria-selected', String(selected));
     });
     renderDelivery();
-    toast('Documentation refreshed from verified source evidence.');
+    toast('Documentation refreshed from indexed sources and delivery records.');
   } catch (error) {
+    if (nextDelivery) deliveryActionError = `Documentation was not refreshed. ${error.message}`;
     toast(error.message);
+  } finally {
+    if (nextDelivery) {
+      deliveryGenerating = false;
+      renderDelivery();
+    }
   }
 });
 const milestoneDialog = $('#delivery-milestone-dialog');
@@ -7087,7 +8209,9 @@ $('#delivery-export')?.addEventListener('click', async () => {
     toast('Choose a delivery record first.');
     return;
   }
-  const command = `npx foundry-design delivery export ${record.id} --format repo --output "${activeSession.changeSet.context.projectRoot}"`;
+  const command = nextDelivery
+    ? `npx foundry-design delivery export ${deliveryShellArgument(record.id)} --format repo --output ${deliveryShellArgument(activeSession.changeSet.context.projectRoot)}`
+    : `npx foundry-design delivery export ${record.id} --format repo --output "${activeSession.changeSet.context.projectRoot}"`;
   try {
     await navigator.clipboard.writeText(command);
     toast('Safe repository export command copied.');
@@ -7157,6 +8281,7 @@ $('#responsive-clear-comparison').addEventListener('click', () => {
 $$('[data-responsive-stress]').forEach((button) =>
   button.addEventListener('click', async () => {
     responsiveStressMode = button.dataset.responsiveStress;
+    refreshNextResponsiveLab();
     $$('[data-responsive-stress]').forEach((candidate) => {
       const active = candidate === button;
       candidate.classList.toggle('is-active', active);
@@ -7207,6 +8332,7 @@ $$('[data-responsive-scope]').forEach((button) =>
       candidate.classList.toggle('is-active', active);
       candidate.setAttribute('aria-pressed', String(active));
     });
+    refreshNextResponsiveLab();
   }),
 );
 $$('[data-canvas-mode]').forEach((button) =>
@@ -7221,16 +8347,27 @@ async function toggleComparison(mode) {
     comparisonMode = nextMode;
     $('#compare').classList.toggle('is-active', comparisonMode === 'before');
     $('#compare').setAttribute('aria-pressed', String(comparisonMode === 'before'));
+    renderChangeSummary();
     toast(comparisonMode === 'before' ? 'Showing source baseline' : 'Showing current preview');
+    $('#canvas-action-error').hidden = true;
+    return true;
   } catch (error) {
-    toast(error instanceof Error ? error.message : 'The comparison view could not be changed.');
+    const message =
+      error instanceof Error ? error.message : 'The comparison view could not be changed.';
+    if (activeMode === 'review') {
+      $('#review-apply-error').hidden = false;
+      $('#review-apply-error').textContent = message;
+    } else {
+      $('#canvas-action-error-detail').textContent = message;
+      $('#canvas-action-error').hidden = false;
+    }
+    return false;
   }
 }
 
 $('#compare').addEventListener('click', () => void toggleComparison());
-$('#review-compare').addEventListener('click', () => {
-  setMode('canvas', false);
-  void toggleComparison('before');
+$('#review-compare').addEventListener('click', async () => {
+  if (await toggleComparison('before')) setMode('canvas', false);
 });
 $$('[data-context]').forEach((select) =>
   select.addEventListener(
@@ -7249,6 +8386,19 @@ $('#canvas-viewport').addEventListener('change', () => {
 $('#canvas-theme').addEventListener('change', requestCanvasPreviewContext);
 $('#canvas-state').addEventListener('change', requestCanvasPreviewContext);
 $('#apply-agent').addEventListener('click', async () => {
+  const applyButton = $('#apply-agent');
+  if (applyButton.dataset.submitting === 'true') return;
+  const errorMessage = $('#review-apply-error');
+  errorMessage.hidden = true;
+  errorMessage.textContent = '';
+  if (!(activeSession?.changeSet?.changes ?? []).some(validChange)) {
+    errorMessage.textContent =
+      'Resolve the source mapping and include a change before applying. Your preview has not been discarded.';
+    errorMessage.hidden = false;
+    return;
+  }
+  applyButton.dataset.submitting = 'true';
+  applyButton.disabled = true;
   const listenerConnected = Boolean(activeAgentPresence.connected);
   const reviews = (activeSession?.changeSet?.changes ?? []).map((change) => {
     const afterField = $(`[data-after-id="${CSS.escape(change.id)}"]`);
@@ -7274,17 +8424,53 @@ $('#apply-agent').addEventListener('click', async () => {
       toast('Batch queued. A Foundry agent will claim it when its listener reconnects.');
     }
   } catch (error) {
+    errorMessage.textContent = `Apply was not queued: ${error.message}. Your reviewed changes are preserved.`;
+    errorMessage.hidden = false;
     toast(error.message);
+  } finally {
+    delete applyButton.dataset.submitting;
+    applyButton.disabled = !(activeSession?.changeSet?.changes ?? []).some(validChange);
   }
 });
-$('#run-health').addEventListener('click', async () => {
+async function revealStressSelection() {
+  const selection = bridgeState?.selection;
+  if (params.get('ui') !== 'next' || stressScope !== 'selection' || !selection?.selector) return;
+  // Do not replace a multi-selection just to frame one of its elements.
+  if (selection.targets?.length > 1) return;
+  const geometry = selection.targets?.[0]?.geometry;
+  const viewport = selectedViewport();
+  if (
+    geometry &&
+    geometry.x >= 0 &&
+    geometry.y >= 0 &&
+    geometry.x + geometry.width <= viewport.width &&
+    geometry.y + geometry.height <= viewport.height
+  )
+    return;
+  await requestCommand('select', { selector: selection.selector, reveal: true });
+}
+async function runStressAction(label, action) {
+  if (stressActionBusy) return;
+  stressActionBusy = label;
+  stressActionError = '';
+  renderHealth();
   try {
-    await requestCommand('scan-health');
-    toast('Rendered canvas scan complete');
+    await action();
   } catch (error) {
-    toast(error instanceof Error ? error.message : 'The rendered canvas could not be scanned.');
+    stressActionError =
+      error instanceof Error ? error.message : 'The stress preview could not update.';
+    toast(stressActionError);
+  } finally {
+    stressActionBusy = '';
+    renderHealth();
   }
-});
+}
+$('#run-health').addEventListener('click', () =>
+  runStressAction('Scanning…', async () => {
+    await requestCommand('scan-health', { scope: stressScope });
+    toast(`Rendered ${stressScope} scan complete`);
+  }),
+);
 $$('[data-stress-scope]').forEach((button) =>
   button.addEventListener('click', () => {
     stressScope = button.dataset.stressScope === 'canvas' ? 'canvas' : 'selection';
@@ -7302,26 +8488,23 @@ $('#apply-stress').addEventListener('click', async () => {
     toast('Select a layer before applying selection stress tests');
     return;
   }
-  try {
+  await runStressAction('Running tests…', async () => {
+    await revealStressSelection();
     await requestCommand('apply-health-stress', {
       conditions: [...selectedStressConditions],
       scope: stressScope,
     });
     toast('Temporary conditions applied and the rendered state measured.');
-  } catch (error) {
-    toast(error instanceof Error ? error.message : 'Stress conditions could not be applied.');
-  }
+  });
 });
-$('#clear-stress').addEventListener('click', async () => {
-  try {
+$('#clear-stress').addEventListener('click', () =>
+  runStressAction('Clearing conditions…', async () => {
     await requestCommand('clear-health-stress');
     selectedStressConditions.clear();
     renderHealth();
     toast('Temporary conditions cleared');
-  } catch (error) {
-    toast(error instanceof Error ? error.message : 'Stress conditions could not be cleared.');
-  }
-});
+  }),
+);
 $('#stress-review').addEventListener('click', () => setMode('review'));
 $('#visual-recipe-search').addEventListener('input', (event) => {
   visualRecipeSearch = event.target.value;
@@ -7391,6 +8574,11 @@ $$('[data-decision-outcome]').forEach((button) =>
   }),
 );
 $('#decision-memory-save').addEventListener('click', async () => {
+  if (
+    nextDesignMemory &&
+    (memoryCaptureBusy || !bridgeConnected || !bridgeState?.decisionMemory?.canCapture)
+  )
+    return;
   const title = $('#decision-memory-title').value.trim();
   const summary = $('#decision-memory-summary').value.trim();
   const rationale = $('#decision-memory-rationale').value.trim();
@@ -7398,7 +8586,12 @@ $('#decision-memory-save').addEventListener('click', async () => {
     toast('Add a title and clear guidance first');
     return;
   }
-  await runDurableAction(
+  if (nextDesignMemory) {
+    memoryCaptureBusy = true;
+    memoryCaptureError = '';
+    renderMemory();
+  }
+  const result = await runDurableAction(
     'save-design-decision',
     {
       title,
@@ -7412,12 +8605,24 @@ $('#decision-memory-save').addEventListener('click', async () => {
       successMessage: 'Decision saved to this project',
       errorMessage: 'The decision could not be saved.',
       onSuccess: () => {
-        $('#decision-memory-title').value = '';
-        $('#decision-memory-summary').value = '';
-        $('#decision-memory-rationale').value = '';
+        for (const [id, submitted] of [
+          ['decision-memory-title', title],
+          ['decision-memory-summary', summary],
+          ['decision-memory-rationale', rationale],
+        ]) {
+          const field = $(`#${id}`);
+          if (!nextDesignMemory || field.value.trim() === submitted) field.value = '';
+        }
       },
     },
   );
+  if (nextDesignMemory) {
+    memoryCaptureBusy = false;
+    memoryCaptureError = result
+      ? ''
+      : 'Not saved. Your draft is preserved. Check the preview connection and try again.';
+    renderMemory();
+  }
 });
 $('#decision-memory-review').addEventListener('click', () => setMode('review'));
 $('#decision-memory-import').addEventListener('click', () => $('#decision-memory-file').click());
@@ -7471,6 +8676,7 @@ $('#visual-agent-clear-region').addEventListener('click', async () => {
   }
 });
 $('#visual-agent-ask').addEventListener('click', async () => {
+  if (visualAgentSubmitting) return;
   const prompt = $('#visual-agent-prompt').value.trim();
   const comment = $('#visual-agent-comment').value.trim();
   if (!prompt) {
@@ -7486,14 +8692,18 @@ $('#visual-agent-ask').addEventListener('click', async () => {
     toast('Select rendered layers or draw a canvas region first');
     return;
   }
+  visualAgentSubmitting = true;
+  visualAgentSubmitError = '';
+  renderVisualAgent();
   try {
     const updated = await api(`/v1/sessions/${sessionId}/visual-agent-requests`, {
       method: 'POST',
       body: JSON.stringify({ prompt, context }),
     });
     visualAgentRequestId = updated.visualAgentRequests.at(-1)?.id ?? '';
-    $('#visual-agent-prompt').value = '';
-    $('#visual-agent-comment').value = '';
+    visualAgentNewQuestion = false;
+    if ($('#visual-agent-prompt').value.trim() === prompt) $('#visual-agent-prompt').value = '';
+    if ($('#visual-agent-comment').value.trim() === comment) $('#visual-agent-comment').value = '';
     renderSession(updated);
     toast(
       activeAgentPresence.connected
@@ -7501,7 +8711,11 @@ $('#visual-agent-ask').addEventListener('click', async () => {
         : 'Visual question queued. It will wait for a Foundry listener.',
     );
   } catch (error) {
+    visualAgentSubmitError = error.message;
     toast(error.message);
+  } finally {
+    visualAgentSubmitting = false;
+    renderVisualAgent();
   }
 });
 $('#visual-agent-review').addEventListener('click', () => setMode('review'));
@@ -7556,8 +8770,11 @@ $$('[data-studio-action]').forEach((button) => {
       else toast('Select a moving layer to compare its motion.');
     }
     if (action === 'motion-preview') {
-      const toggle = $('[data-studio-action="toggle"]', $('#motion-studio-stage'));
-      if (toggle) toggle.click();
+      const id = $('.motion-studio-canvas', $('#motion-studio-stage'))?.dataset.motionId;
+      if (id)
+        void viewSelectionOnCanvas().then(() =>
+          runDurableAction('motion-action', { id, action: 'replay' }),
+        );
       else toast('Select a moving layer to preview its motion.');
     }
     if (action === 'typography-compare') {
@@ -7592,7 +8809,14 @@ $$('[data-studio-action]').forEach((button) => {
     }
     if (action === 'memory-export') $('#decision-memory-export')?.click();
     if (action === 'memory-record') $('#decision-memory-title')?.focus();
-    if (action === 'agent-start') $('#visual-agent-prompt')?.focus();
+    if (action === 'agent-start') {
+      if (nextVisualAgent) {
+        visualAgentNewQuestion = true;
+        visualAgentSubmitError = '';
+        renderVisualAgent();
+      }
+      $('#visual-agent-prompt')?.focus();
+    }
   });
 });
 $$('[data-close-mode]').forEach((button) =>
@@ -7639,6 +8863,7 @@ const commands = [
   ['agent', 'Visual agent', 'a', 'message'],
   ['delivery', 'Delivery', 'd', 'fileCheck'],
 ];
+let commandFocusReturn = null;
 function renderCommands(query = '') {
   const root = $('#command-list');
   root.innerHTML = commands
@@ -7651,16 +8876,52 @@ function renderCommands(query = '') {
   renderIcons(root);
   $$('[data-command-mode]', root).forEach((button) =>
     button.addEventListener('click', () => {
-      modeFocusReturn = $('#command-trigger');
+      modeFocusReturn =
+        params.get('ui') === 'next' ? $('#workspace-menu-trigger') : $('#command-trigger');
       setMode(button.dataset.commandMode, true, modeFocusReturn);
       $('#command-dialog').close();
     }),
   );
 }
-$('#command-trigger').addEventListener('click', () => {
+function openCommands() {
+  if ($('#command-dialog').open) return;
+  commandFocusReturn = document.activeElement?.closest('#workspace-menu')
+    ? $('#workspace-menu-trigger')
+    : document.activeElement;
+  if (params.get('ui') === 'next') {
+    closeWorkspaceMenu();
+    $('#command-input').value = '';
+  }
   renderCommands();
   $('#command-dialog').showModal();
   $('#command-input').focus();
+}
+$('#command-trigger').addEventListener('click', openCommands);
+$('#command-dialog').addEventListener('close', () => {
+  if (
+    params.get('ui') === 'next' &&
+    commandFocusReturn instanceof HTMLElement &&
+    commandFocusReturn.isConnected
+  ) {
+    commandFocusReturn.focus({ preventScroll: true });
+  }
+});
+document.addEventListener('keydown', (event) => {
+  if (
+    params.get('ui') !== 'next' ||
+    event.defaultPrevented ||
+    event.repeat ||
+    event.isComposing ||
+    !(event.metaKey || event.ctrlKey) ||
+    event.altKey ||
+    event.shiftKey ||
+    event.key.toLowerCase() !== 'k'
+  )
+    return;
+  if (document.querySelector('dialog[open]:not(#command-dialog)')) return;
+  event.preventDefault();
+  if ($('#command-dialog').open) $('#command-dialog').close();
+  else openCommands();
 });
 $('#close-commands').addEventListener('click', () => $('#command-dialog').close());
 $('#command-input').addEventListener('input', (event) => renderCommands(event.target.value));
@@ -7723,10 +8984,20 @@ dockResizer.addEventListener('dblclick', () => setDockWidth(320, { persist: true
 
 const canvasStage = $('#canvas-stage');
 const canvasResizeObserver = new ResizeObserver(() => {
-  clampCanvasView();
-  renderCanvasView({ persist: false });
+  if (nextStressLab && activeMode === 'health') return;
+  if (canvasFitMode) fitCanvas(canvasFitMode);
+  else {
+    clampCanvasView();
+    renderCanvasView({ persist: false });
+  }
 });
 canvasResizeObserver.observe(canvasStage);
+const studioResizeObserver = new ResizeObserver(() => {
+  updateStateWorkbenchPresentation();
+  fitTypographySpecimens();
+});
+studioResizeObserver.observe($('#state-grid'));
+studioResizeObserver.observe($('#typography-studio-stage'));
 canvasStage.addEventListener('pointerdown', (event) => {
   const shouldPan = canvasTool === 'pan' || canvasSpaceHeld || event.button === 1;
   if (!shouldPan) return;
@@ -7942,10 +9213,64 @@ applyTheme(
   false,
 );
 renderIcons();
+createStudioNavigation();
+if (params.get('ui') === 'next') {
+  nextWorkspace = createNextWorkspace({
+    command: requestCommand,
+    navigate: (mode) => setMode(mode),
+    renderIcons,
+    state: () => ({
+      connected: bridgeConnected,
+      runtimeConnected,
+      listenerConnected: activeAgentPresence.connected,
+      direction: activeDesignDirection(),
+    }),
+    openConnection: () => readinessUI?.open(),
+    rerender: () => renderInspector(),
+  });
+}
+$('#canvas-action-dismiss').addEventListener('click', () => {
+  $('#canvas-action-error').hidden = true;
+});
+$('#canvas-action-connection').addEventListener('click', () => void readinessUI?.open());
 upgradeSelects();
 syncTabStops();
 setMode(activeMode, false);
 setupPreview();
+readinessUI = createReadinessUI({
+  bindStatusTrigger: !nextWorkspace,
+  api,
+  sessionId,
+  renderIcons,
+  state: () => ({
+    session: activeSession,
+    selection: bridgeState?.selection,
+    previewConnected: bridgeConnected,
+    listenerConnected: activeAgentPresence.connected,
+  }),
+  navigate: (action) => {
+    setMode(action === 'selection' ? 'canvas' : action);
+    if (action === 'selection') {
+      $(
+        '#inspector-sections input:not(:disabled), #inspector-sections button:not(:disabled)',
+      )?.focus();
+    } else if (action === 'canvas') {
+      toast('Choose a layer, then adjust one measured value in the inspector.');
+    }
+  },
+  recover: async (action) => {
+    if (action === 'reindex' || action === 'reindex-project') {
+      await reindexProjectDesign({ throwOnError: true });
+    } else if (action === 'retry-preview' || action === 'reconnect-preview') {
+      reconnectCanvasPreview();
+    } else if (action === 'review') {
+      $('#readiness-dialog').close();
+      setMode('review');
+    } else {
+      await loadSession();
+    }
+  },
+});
 await loadSession();
 setInterval(() => void loadSession({ deferRender: true, isPoll: true }), 1500);
 setInterval(pingPreviewFrames, 2000);

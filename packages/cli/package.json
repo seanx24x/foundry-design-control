@@ -1,6 +1,6 @@
 {
   "name": "foundry-design",
-  "version": "0.2.0-beta.22",
+  "version": "0.2.0-beta.23",
   "description": "Install and run the local-first Foundry visual design control plane",
   "type": "module",
   "files": [
@@ -12,7 +12,7 @@
     "foundry-design": "dist/index.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.9.0"
   },
   "license": "MIT",
   "homepage": "https://github.com/seanx24x/foundry-design-control#readme",
@@ -41,6 +41,8 @@
   },
   "dependencies": {
     "foundry-design-protocol": "workspace:*",
-    "foundry-design-runtime": "workspace:*"
+    "foundry-design-runtime": "workspace:*",
+    "playwright": "^1.62.1",
+    "sharp": "0.35.4"
   }
 }

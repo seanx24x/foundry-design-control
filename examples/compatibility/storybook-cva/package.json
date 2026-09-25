@@ -1,0 +1,19 @@
+{
+  "name": "foundry-compat-storybook-cva",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "storybook build --quiet --disable-telemetry",
+    "dev": "storybook dev --port 6006 --no-open --disable-telemetry"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "class-variance-authority": "0.7.1"
+  },
+  "devDependencies": {
+    "@storybook/react-vite": "10.6.0",
+    "storybook": "10.6.0",
+    "vite": "8.3.0"
+  }
+}

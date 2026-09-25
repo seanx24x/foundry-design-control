@@ -9,8 +9,9 @@ import {
   validateStressConditions,
 } from './stress-testing.js';
 
-test('scopes health findings to a stressed selection without narrowing ordinary scans', () => {
-  assert.equal(designHealthScope([], 'selection'), 'canvas');
+test('clearing conditions preserves the explicitly requested scan scope', () => {
+  assert.equal(designHealthScope([], 'selection'), 'selection');
+  assert.equal(designHealthScope([], 'canvas'), 'canvas');
   assert.equal(designHealthScope(['keyboard-only'], 'selection'), 'selection');
   assert.equal(designHealthScope(['long-content'], 'canvas'), 'canvas');
 });

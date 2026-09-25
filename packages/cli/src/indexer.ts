@@ -449,12 +449,17 @@ export async function indexProjectDesign(
         const value = match[2]!.trim();
         if (!value || value.includes('${') || value.includes('\\s*')) continue;
         const index = stylesheet.offset + (match.index ?? 0);
+        const declarations = [
+          ...(tokens.get(name)?.declarations ?? []),
+          { value, source: { file, line: lineAt(content, index) } },
+        ];
         tokens.set(name, {
           id: stableId('tok', name),
           name,
           value,
           category: tokenCategory(name, value),
           cssVariable: name,
+          declarations,
           source: { file, line: lineAt(content, index) },
           confidence: 'instrumented',
           evidence: ['CSS custom property'],
@@ -665,6 +670,9 @@ export async function indexProjectDesign(
     if (nativeAxes.length) component.evidence.push('Source-backed variant axis');
   }
 
+  // Explicit project contracts let non-framework HTML components retain their
+  // real authoring locations instead of borrowing an unrelated inferred export.
+  for (const component of config?.design?.components ?? []) components.set(component.id, component);
   resolveTokenAliases(tokens);
   const tokenList = [...tokens.values()];
   const tokenUsages: DesignTokenUsage[] = [];

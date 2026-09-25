@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  renderedMotionEasing,
+  setRenderedMotionEasing,
   analyzeMotionPerformance,
   describeCssMotion,
   editableKeyframes,
@@ -25,6 +27,34 @@ import {
   updateMotionKeyframe,
   type MotionStyleSnapshot,
 } from './motion.js';
+
+test('CSS segment easing is not mistaken for the linear outer timeline', () => {
+  const frames = [0, 1].map((offset, index) => ({
+    index,
+    offset,
+    easing: 'ease-out',
+    composite: 'replace' as const,
+    values: { opacity: String(offset) },
+  }));
+  assert.equal(renderedMotionEasing('linear', frames, 'ease'), 'ease-out');
+  assert.equal(renderedMotionEasing('ease-in', frames, 'ease'), 'ease-in');
+  let updatedFrames: Keyframe[] = [],
+    updatedTiming: OptionalEffectTiming | undefined;
+  setRenderedMotionEasing(
+    {
+      getKeyframes: () => frames,
+      setKeyframes: (value: Keyframe[]) => {
+        updatedFrames = value;
+      },
+      updateTiming: (value: OptionalEffectTiming) => {
+        updatedTiming = value;
+      },
+    } as unknown as KeyframeEffect,
+    'ease-in',
+  );
+  assert.ok(updatedFrames.every((frame) => frame.easing === 'linear'));
+  assert.deepEqual(updatedTiming, { easing: 'ease-in' });
+});
 
 const snapshot = (partial: Partial<MotionStyleSnapshot> = {}): MotionStyleSnapshot => ({
   animationName: 'none',

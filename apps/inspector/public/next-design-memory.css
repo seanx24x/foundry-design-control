@@ -1,0 +1,540 @@
+[data-next][data-mode='memory'] #inspector-dock {
+  display: none;
+}
+[data-next][data-mode='memory'] .canvas-mode[hidden] {
+  display: grid !important;
+  visibility: visible;
+  opacity: 0;
+  pointer-events: none;
+  overflow: clip;
+}
+[data-next] .next-design-memory:not([hidden]) {
+  display: grid;
+  position: relative;
+  z-index: 1;
+  grid-template: 44px minmax(0, 1fr) 44px / minmax(0, 1fr);
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  background: var(--surface);
+}
+[data-next] .next-design-memory [hidden] {
+  display: none !important;
+}
+[data-next] .next-design-memory > .mode-head {
+  height: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  gap: 16px;
+}
+[data-next] .next-design-memory .mode-head :is(h1, p) {
+  font: 500 12px/20px var(--sans);
+}
+[data-next] .next-design-memory .mode-head h1 {
+  font-weight: 600;
+}
+[data-next] .next-design-memory .mode-actions button,
+[data-next] .next-design-memory .decision-memory-footer button {
+  height: 24px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font: 500 12px/20px var(--sans);
+}
+[data-next] .next-design-memory .decision-memory-shell {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 300px;
+  height: auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  gap: 0;
+}
+[data-next]
+  .next-design-memory
+  :is(.decision-memory-browser, .decision-memory-capture, .next-memory-detail) {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  background: var(--surface);
+}
+[data-next] .next-design-memory .decision-memory-browser {
+  display: flex;
+  flex-direction: column;
+}
+[data-next] .next-design-memory .next-memory-detail {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+}
+[data-next] .next-design-memory .decision-memory-capture {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr) auto;
+}
+[data-next]
+  .next-design-memory
+  :is(
+    .decision-memory-browser > header,
+    .decision-memory-capture > header,
+    .next-memory-detail-head
+  ) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-direction: row;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 16px;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+}
+[data-next]
+  .next-design-memory
+  :is(
+    .decision-memory-browser > header,
+    .decision-memory-capture > header,
+    .next-memory-detail-head
+  )
+  strong {
+  margin: 0;
+  font: 600 12px/20px var(--sans);
+}
+[data-next] .next-design-memory :is(.next-memory-count, .next-memory-detail-status) {
+  color: var(--muted);
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .next-design-memory .decision-memory-browser > .search-field {
+  width: auto;
+  height: 32px;
+  min-height: 32px;
+  margin: 12px 16px 8px;
+  padding: 0 8px;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+[data-next] .next-design-memory .search-field input {
+  min-width: 0;
+  height: 30px;
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .next-design-memory .decision-memory-filters {
+  padding: 0 16px 12px;
+  gap: 0;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--line);
+}
+[data-next] .next-design-memory .decision-memory-filters > button {
+  flex: 1 0 auto;
+}
+[data-next] .next-design-memory :is(.decision-memory-filters, .decision-outcome-picker) button {
+  min-width: 0;
+  min-height: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  font: 400 12px/20px var(--sans);
+}
+[data-next]
+  .next-design-memory
+  :is(.decision-memory-filters, .decision-outcome-picker)
+  button.is-active {
+  color: var(--selection-ink);
+  background: var(--selection-soft);
+  box-shadow: none;
+}
+[data-next] .next-design-memory .decision-memory-list {
+  padding: 8px;
+  overflow: auto;
+}
+[data-next] .next-design-memory .decision-memory-row {
+  height: auto;
+  min-height: 64px;
+  padding: 12px 8px;
+  gap: 8px;
+  border-radius: 4px;
+}
+[data-next] .next-design-memory .decision-memory-row :is(strong, small) {
+  line-height: 20px;
+}
+[data-next] .next-design-memory .decision-memory-row small {
+  margin: 0;
+}
+[data-next] .next-design-memory .decision-memory-row[data-enabled='false'] {
+  opacity: 1;
+}
+[data-next] .next-design-memory .decision-memory-row[data-enabled='false'] strong {
+  color: var(--muted);
+}
+[data-next] .next-design-memory .decision-memory-row.is-active {
+  box-shadow: none;
+  background: var(--selection-soft);
+}
+[data-next] .next-design-memory .decision-memory-row.is-active :is(strong, svg) {
+  color: var(--selection-ink);
+}
+[data-next] .next-design-memory .decision-memory-browser > footer {
+  padding: 12px 16px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+[data-next] .next-design-memory .decision-memory-browser > footer button {
+  min-height: 32px;
+  height: 32px;
+  border-radius: 4px;
+  font: 500 12px/20px var(--sans);
+}
+[data-next] .next-design-memory .decision-memory-stage {
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+}
+[data-next] .next-design-memory .decision-memory-stage > section,
+[data-next] .next-design-memory .decision-memory-edit {
+  width: 100%;
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  margin: 0 0 24px;
+  overflow: visible;
+  background: transparent;
+}
+[data-next] .next-design-memory .decision-memory-overview > header {
+  padding: 0;
+  gap: 16px;
+  flex-direction: row;
+}
+[data-next] .next-design-memory .decision-memory-overview > header > div {
+  min-width: 0;
+}
+[data-next] .next-design-memory .decision-memory-overview h2 {
+  margin: 4px 0 8px;
+  font: 600 16px/24px var(--sans);
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+[data-next] .next-design-memory .decision-memory-overview p {
+  font: 400 13px/20px var(--sans);
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+[data-next] .next-design-memory .decision-state {
+  flex-shrink: 0;
+  font: 500 12px/20px var(--sans);
+}
+[data-next] .next-design-memory .decision-state[data-enabled='false'] {
+  color: var(--muted);
+  background: var(--surface-2);
+}
+[data-next] .next-design-memory .decision-relevance {
+  margin-top: 16px;
+  padding: 12px;
+  border: 0;
+  border-radius: 4px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+[data-next] .next-design-memory .decision-relevance[data-conflict='true'] {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+[data-next] .next-design-memory .next-memory-scope h3 {
+  margin: 0 0 12px;
+  font: 600 13px/20px var(--sans);
+}
+[data-next] .next-design-memory .next-memory-scope dl {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .next-design-memory .next-memory-scope dt {
+  color: var(--muted);
+}
+[data-next] .next-design-memory .next-memory-scope dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+[data-next] .next-design-memory :is(.decision-memory-rules, .decision-memory-evidence) > header {
+  height: auto;
+  min-height: 0;
+  padding: 0 0 12px;
+  margin: 0;
+  border: 0;
+  font: 600 13px/20px var(--sans);
+}
+[data-next] .next-design-memory .decision-memory-rules > div {
+  border-top: 1px solid var(--line);
+}
+[data-next] .next-design-memory .decision-memory-rules article {
+  grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1.2fr);
+  min-height: 48px;
+  padding: 12px 0;
+  gap: 12px;
+  line-height: 20px;
+}
+[data-next] .next-design-memory .decision-memory-rules article :is(strong, code) {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+[data-next] .next-design-memory .decision-memory-evidence > div {
+  padding: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+[data-next] .next-design-memory .decision-memory-evidence article {
+  padding: 12px;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+}
+[data-next] .next-design-memory .decision-memory-evidence article :is(strong, small) {
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+[data-next] .next-design-memory .decision-memory-evidence > :is(code, p) {
+  margin: 12px 0 0;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  line-height: 20px;
+}
+[data-next] .next-design-memory .next-memory-correction {
+  border-top: 1px solid var(--line);
+}
+[data-next] .next-design-memory .next-memory-correction > summary {
+  padding: 12px 0;
+  cursor: pointer;
+  font: 600 13px/20px var(--sans);
+}
+[data-next] .next-design-memory .decision-memory-edit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+  gap: 16px;
+}
+[data-next] .next-design-memory .decision-memory-edit > footer {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+[data-next] .next-design-memory .decision-memory-edit > footer button {
+  height: 32px;
+  min-height: 32px;
+  border-radius: 4px;
+  padding: 0 8px;
+  font: 500 12px/20px var(--sans);
+}
+[data-next] .next-design-memory .next-memory-capture-fields {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+[data-next] .next-design-memory .next-memory-capture-fields > * {
+  flex-shrink: 0;
+}
+[data-next] .next-design-memory .next-memory-label {
+  margin: 0 0 -8px;
+  font: 500 12px/20px var(--sans);
+}
+[data-next] .next-design-memory .decision-memory-context {
+  padding: 12px;
+  gap: 4px;
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+[data-next] .next-design-memory .decision-memory-context :is(strong, code, span) {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  line-height: 20px;
+}
+[data-next] .next-design-memory .decision-outcome-picker {
+  padding: 4px;
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+[data-next] .next-design-memory :is(.next-memory-help, .next-memory-edit-help) {
+  margin: 0;
+  color: var(--muted);
+  font: 400 12px/20px var(--sans);
+  overflow-wrap: anywhere;
+}
+[data-next] .next-design-memory .next-memory-edit-help {
+  margin-bottom: 16px;
+}
+[data-next] .next-design-memory :is(.decision-memory-edit, .decision-memory-capture) label {
+  gap: 8px;
+  font: 400 12px/20px var(--sans);
+}
+[data-next]
+  .next-design-memory
+  :is(
+    .decision-memory-edit textarea,
+    .decision-memory-capture input,
+    .decision-memory-capture textarea
+  ) {
+  min-width: 0;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  padding: 8px;
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .next-design-memory .decision-memory-capture input {
+  height: 32px;
+  padding: 0 8px;
+}
+[data-next] .next-design-memory :is(.decision-memory-edit, .decision-memory-capture) textarea {
+  min-height: 96px;
+}
+[data-next] .next-design-memory .next-memory-save-area {
+  display: grid;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+[data-next] .next-design-memory #decision-memory-save {
+  height: 32px;
+  min-height: 32px;
+  border-radius: 4px;
+  font: 500 12px/20px var(--sans);
+}
+[data-next] .next-design-memory .next-memory-help[data-error='true'] {
+  color: var(--amber);
+}
+[data-next] .next-design-memory .decision-memory-empty {
+  min-height: 0;
+  height: auto;
+  padding: 32px 16px;
+  gap: 8px;
+}
+[data-next] .next-design-memory .decision-memory-empty.is-stage {
+  min-height: 100%;
+  align-content: center;
+}
+[data-next] .next-design-memory .decision-memory-empty.is-stage > strong {
+  font: 600 16px/24px var(--sans);
+}
+[data-next] .next-design-memory .decision-memory-empty p {
+  max-width: 400px;
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .next-design-memory .next-memory-start {
+  display: grid;
+  gap: 16px;
+  margin: 24px 0 0;
+  padding: 0;
+  max-width: 400px;
+  list-style: none;
+  text-align: left;
+  counter-reset: memory-step;
+}
+[data-next] .next-design-memory .next-memory-start li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: 12px;
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .next-design-memory .next-memory-start li::before {
+  counter-increment: memory-step;
+  content: counter(memory-step);
+  grid-row: span 2;
+  align-self: start;
+  line-height: 24px;
+  text-align: center;
+  background: var(--surface-2);
+  border-radius: 4px;
+}
+[data-next] .next-design-memory .next-memory-start span {
+  grid-column: 2;
+}
+[data-next] .next-design-memory .decision-memory-footer {
+  display: flex !important;
+  min-height: 44px;
+  height: auto;
+  padding: 8px 16px;
+  gap: 16px;
+  background: var(--surface);
+}
+[data-next] .next-design-memory .decision-memory-footer > span {
+  display: block;
+  line-height: 20px;
+}
+[data-next] .next-design-memory :is(button, input, textarea, summary):focus-visible {
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+}
+[data-next] .next-design-memory .search-field:focus-within {
+  border-color: var(--selection);
+  box-shadow: none;
+}
+[data-next] .next-design-memory .search-field input:focus-visible {
+  outline: none;
+}
+[data-next] .next-design-memory :is(button, input, textarea):disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+[data-next] .next-design-memory svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+@media (max-width: 1100px) {
+  [data-next] .next-design-memory .decision-memory-shell {
+    grid-template-columns: 240px minmax(0, 1fr) 280px;
+  }
+  [data-next] .next-design-memory .mode-head p {
+    display: none;
+  }
+  [data-next] .next-design-memory .decision-memory-filters {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  [data-next] .next-design-memory .next-memory-detail-status {
+    display: none;
+  }
+  [data-next] .next-design-memory .decision-memory-stage {
+    padding: 16px;
+  }
+}
+@media (max-width: 800px) {
+  [data-next] .next-design-memory:not([hidden]) {
+    overflow: auto;
+    grid-template-rows: 44px auto auto;
+  }
+  [data-next] .next-design-memory .decision-memory-shell {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+  }
+  [data-next] .next-design-memory .decision-memory-browser {
+    max-height: 320px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  [data-next] .next-design-memory .next-memory-detail {
+    min-height: 320px;
+  }
+  [data-next] .next-design-memory .decision-memory-capture {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    grid-template-rows: 44px auto auto;
+  }
+  [data-next] .next-design-memory .next-memory-capture-fields {
+    overflow: visible;
+  }
+  [data-next] .next-design-memory .decision-memory-footer {
+    flex-wrap: wrap;
+  }
+}

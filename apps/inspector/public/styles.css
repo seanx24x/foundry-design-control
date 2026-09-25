@@ -1,4 +1,18 @@
 @font-face {
+  font-family: 'Google Sans Flex';
+  src: url('/fonts/google-sans-flex.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 1 1000;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Google Sans Code';
+  src: url('/fonts/google-sans-code.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+}
+@font-face {
   font-family: 'Foundry Inter';
   src: url('/fonts/inter.woff2') format('woff2');
   font-style: normal;
@@ -544,7 +558,8 @@ kbd {
 }
 .canvas-mode {
   display: grid;
-  grid-template-rows: 48px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 .canvas-mode[hidden] {
   position: absolute;
@@ -555,6 +570,7 @@ kbd {
 }
 .canvas-context {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -580,6 +596,8 @@ kbd {
 .context-fields {
   display: flex;
   gap: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .context-fields label {
   height: 32px;
@@ -8692,6 +8710,10 @@ textarea:focus-visible {
   gap: 12px;
   padding: 0 8px;
   background: var(--surface);
+  height: auto;
+  min-height: 48px;
+  flex-wrap: wrap;
+  padding-block: 4px;
 }
 .canvas-title-group {
   min-width: 0;
@@ -11162,12 +11184,16 @@ textarea:focus-visible,
   place-items: center;
   padding: 24px;
   overflow: hidden;
+  position: relative;
+  height: 176px;
 }
 
 .typography-comparison-specimen {
   min-width: 0;
-  max-width: 100%;
-  max-height: 100%;
+  max-width: none;
+  max-height: none;
+  position: absolute;
+  transform-origin: center;
 }
 
 .typography-comparison-card dl {
@@ -11536,7 +11562,7 @@ textarea:focus-visible,
   padding: 12px 16px;
 }
 .motion-selection-summary .eyebrow {
-  display: block;
+  display: none;
   margin: 0;
   color: var(--quiet);
   font: 600 10px/16px var(--mono);
@@ -12185,7 +12211,7 @@ textarea:focus-visible,
   text-align: left;
 }
 .typography-selection-summary .eyebrow {
-  display: block;
+  display: none;
   margin: 0;
   color: var(--quiet);
   font: 600 10px/16px var(--mono);
@@ -13913,6 +13939,19 @@ textarea:focus-visible,
 }
 .design-system-detail-head {
   box-shadow: none;
+}
+.design-system-detail-head > div > small {
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+.typography-properties-head .eyebrow {
+  display: none;
+}
+.typography-comparison-card > footer {
+  min-height: 52px;
 }
 
 /* Search uses tone and icon emphasis without nested selection lines. */

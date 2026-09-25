@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { sanitizeDeliveryText, sanitizeProjectPath } from './delivery.js';
+import { renderDeliveryValue, sanitizeDeliveryText, sanitizeProjectPath } from './delivery.js';
+
+test('delivery values append units only to unitless numeric values', () => {
+  assert.equal(renderDeliveryValue(44, 'px'), '44px');
+  assert.equal(renderDeliveryValue('44', 'px'), '44px');
+  assert.equal(renderDeliveryValue('44px', 'px'), '44px');
+  assert.equal(renderDeliveryValue('calc(100% - 4px)', 'px'), 'calc(100% - 4px)');
+  assert.equal(renderDeliveryValue('auto', 'px'), 'auto');
+});
 
 test('sanitizes project paths and runtime credentials for portable delivery output', () => {
   assert.equal(

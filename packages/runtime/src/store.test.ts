@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import type { VerificationResult } from 'foundry-design-protocol';
-import { reviewedSourceFiles, SessionStore, type SessionStoreOptions } from './store.js';
+import {
+  previewCapabilityMatches,
+  reviewedSourceFiles,
+  SessionStore,
+  type SessionStoreOptions,
+} from './store.js';
 
 const BASELINE_HASH = 'a'.repeat(64);
 const APPLIED_HASH = 'b'.repeat(64);
@@ -261,7 +266,7 @@ test('preserves concurrent changes and always leaves valid session JSON', async 
         category: 'layout',
         property: 'width',
         before: 100,
-        after: 100 + index,
+        after: 101 + index,
         unit: 'px',
         scope: 'instance',
         context: { breakpoint: 'current', theme: 'current', state: 'current' },
@@ -358,6 +363,13 @@ test('isolates, composes, and promotes design branches into review', async () =>
 
   let stored = await store.createDesignBranch(id, { name: 'Option A' });
   const optionA = stored.activeDesignBranchId!;
+  const emptySnapshot = await store.read(id);
+  await assert.rejects(store.promoteDesignBranch(id, optionA), /No saved changes/);
+  assert.deepEqual(
+    await store.read(id),
+    emptySnapshot,
+    'Empty promotion must not alter the ledger, active direction or decision history',
+  );
   stored = await store.addChange(id, change('width', 600, 640));
   assert.equal(stored.changeSet.changes.length, 0);
   assert.equal(stored.designBranches[0]?.changes.length, 1);
@@ -1723,6 +1735,75 @@ test('recovers an abandoned claim and rejects updates from the stale agent', asy
   assert.equal(stored.applyRuns[0]?.claimExpiresAt, '2026-09-02T20:00:03.000Z');
 });
 
+test('queued session reconnect rotates preview credentials without replacing its reviewed run', async () => {
+  let now = new Date('2026-09-15T12:00:00.000Z');
+  const { store, session, changeId } = await reviewedSession({
+    claimLeaseMs: 1000,
+    now: () => now,
+  });
+  const id = session.changeSet.sessionId;
+  const first = 'first-preview-capability-'.repeat(2);
+  const second = 'second-preview-capability-'.repeat(2);
+  const third = 'third-preview-capability-'.repeat(2);
+  await store.setPreviewCapability(id, first);
+  let stored = await store.createApplyRun(id, { reviews: [{ changeId, approved: true }] });
+  const reviewed = structuredClone(stored.applyRuns[0]!);
+  stored = await store.setPreviewCapability(id, second);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(stored.applyRuns[0])),
+    JSON.parse(JSON.stringify(reviewed)),
+  );
+  assert.equal(previewCapabilityMatches(stored.previewCapabilityHash, first), false);
+  assert.equal(previewCapabilityMatches(stored.previewCapabilityHash, second), true);
+  stored = await store.claimApplyRun(id, reviewed.id, {
+    agent: { name: 'rehearsal' },
+    revision: 'rev-1',
+    designGraphRevision: null,
+    sourceProof: projectSourceProof(),
+  });
+  const staleClaimId = stored.applyRuns[0]!.claimAttemptId!;
+  await assert.rejects(store.setPreviewCapability(id, third), /active Apply run/);
+  now = new Date('2026-09-15T12:00:02.000Z');
+  // The same mutation path used by CLI startup recovers an expired claim first.
+  stored = await store.setPreviewCapability(id, third);
+  assert.equal(stored.applyRuns[0]!.state, 'queued');
+  assert.equal(stored.applyRuns[0]!.id, reviewed.id);
+  assert.deepEqual(stored.applyRuns[0]!.reviewedChangeSet, reviewed.reviewedChangeSet);
+  assert.equal(stored.applyRuns[0]!.requeueCount, 1);
+  assert.equal(previewCapabilityMatches(stored.previewCapabilityHash, second), false);
+  assert.equal(previewCapabilityMatches(stored.previewCapabilityHash, third), true);
+  stored = await store.claimApplyRun(id, reviewed.id, {
+    agent: { name: 'reconnected' },
+    revision: 'rev-1',
+    designGraphRevision: null,
+    sourceProof: projectSourceProof(),
+  });
+  assert.notEqual(stored.applyRuns[0]!.claimAttemptId, staleClaimId);
+  await assert.rejects(
+    store.updateApplyRun(id, reviewed.id, {
+      state: 'applying',
+      claimAttemptId: staleClaimId,
+    }),
+    /claim is no longer active/,
+  );
+});
+
+test('preview credentials cannot rotate during active source work or verification', async () => {
+  const { store, session, changeId } = await reviewedSession();
+  const id = session.changeSet.sessionId;
+  const first = 'original-preview-capability-'.repeat(2);
+  await store.setPreviewCapability(id, first);
+  const queued = await store.createApplyRun(id, { reviews: [{ changeId, approved: true }] });
+  await moveRunToVerifying(store, id, queued.applyRuns[0]!.id);
+  await assert.rejects(
+    store.setPreviewCapability(id, 'replacement-capability-'.repeat(2)),
+    /active Apply run/,
+  );
+  const stored = await store.read(id);
+  assert.equal(stored.applyRuns[0]!.state, 'verifying');
+  assert.equal(previewCapabilityMatches(stored.previewCapabilityHash, first), true);
+});
+
 test('marks interrupted source work for explicit resume and preserves run identity', async () => {
   let now = new Date('2026-09-02T20:00:00.000Z');
   const { store, session, changeId } = await reviewedSession({
@@ -2141,6 +2222,17 @@ test('previews one reusable proposal branch and promotes it without dropping mai
   const previewed = await store.updateVisualAgentProposal(id, requestId, proposalId, 'previewed');
   assert.equal(previewed.visualAgentRequests[0]!.proposals[0]!.status, 'previewing');
   assert.equal(previewed.activeDesignBranchId, branchId);
+  const cancelled = await store.activateDesignBranch(id);
+  assert.equal(cancelled.activeDesignBranchId, undefined);
+  assert.equal(cancelled.visualAgentRequests[0]!.proposals[0]!.status, 'proposed');
+  assert.deepEqual(cancelled.changeSet.changes, changed.changeSet.changes);
+  assert.equal(cancelled.designBranches.find((item) => item.id === branchId)?.changes.length, 2);
+  await assert.rejects(
+    store.updateVisualAgentProposal(id, requestId, proposalId, 'promote'),
+    /Confirm this proposal in Preview/,
+  );
+  await store.updateVisualAgentProposal(id, requestId, proposalId, 'preview');
+  await store.updateVisualAgentProposal(id, requestId, proposalId, 'previewed');
   const promoted = await store.updateVisualAgentProposal(id, requestId, proposalId, 'promote');
   assert.equal(promoted.changeSet.changes.length, 2);
   assert.equal(promoted.designBranches.find((item) => item.id === branchId)?.status, 'chosen');

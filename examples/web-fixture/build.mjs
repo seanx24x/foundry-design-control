@@ -5,7 +5,14 @@ import { fileURLToPath } from 'node:url';
 import { validateSourceAnnotations } from './validate-source-annotations.mjs';
 
 const fixtureRoot = dirname(fileURLToPath(import.meta.url));
-const sourceFiles = ['index.html', 'style.css'];
+const sourceFiles = [
+  'index.html',
+  'style.css',
+  'fonts/inter.woff2',
+  'fonts/inter-OFL.txt',
+  'fonts/google-sans-flex.woff2',
+  'fonts/google-sans-flex-OFL.txt',
+];
 
 function sha256(content) {
   return createHash('sha256').update(content).digest('hex');
@@ -26,7 +33,10 @@ export async function buildFixture(sourceRoot = fixtureRoot, outputRoot) {
   );
   await rm(output, { recursive: true, force: true });
   await mkdir(output, { recursive: true });
-  for (const [file, content] of entries) await writeFile(join(output, file), content);
+  for (const [file, content] of entries) {
+    await mkdir(dirname(join(output, file)), { recursive: true });
+    await writeFile(join(output, file), content);
+  }
   const manifest = {
     version: 1,
     sourceAnnotations: annotations,

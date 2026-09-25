@@ -1,5 +1,8 @@
 import { z } from 'zod';
 export { verificationValueMatches } from './verification-value.js';
+export * from './readiness.js';
+export * from './visual-check.js';
+export { engineeringVerification, matchingDeliveryCaptures } from './engineering-verification.js';
 
 export const PROTOCOL_VERSION = '1.3.0' as const;
 export const PREVIOUS_PROTOCOL_VERSION = '1.2.0' as const;
@@ -151,6 +154,7 @@ export const designTokenSchema = z.object({
     'other',
   ]),
   cssVariable: z.string().optional(),
+  declarations: z.array(z.object({ value: z.string(), source: sourceRefSchema })).optional(),
   aliasOfTokenId: z.string().optional(),
   aliasOfTokenName: z.string().optional(),
   resolvedValue: z.string().optional(),
@@ -466,6 +470,28 @@ export const designChangeSchema = designChangeInputSchema
     }
   });
 
+export const deliveryCaptureProvenanceSchema = z.object({
+  version: z.literal(1),
+  phase: z.enum(['before', 'preview', 'rebuilt']),
+  context: changeContextSchema,
+  viewport: z.object({ width: z.number().positive(), height: z.number().positive() }),
+  sourceRevision: z.string().optional(),
+  applyRunId: z.string().optional(),
+  targetId: z.string().optional(),
+  sha256: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
+  conditions: z
+    .object({
+      motion: z.string(),
+      browser: z.string(),
+      platform: z.string(),
+      deviceScaleFactor: z.number().positive(),
+    })
+    .optional(),
+});
+
 const changeSetInputSchema = z.object({
   protocolVersion: readableProtocolVersionSchema,
   sessionId: z.string().min(1),
@@ -479,6 +505,7 @@ const changeSetInputSchema = z.object({
         label: z.string(),
         path: z.string(),
         createdAt: z.string().datetime(),
+        capture: deliveryCaptureProvenanceSchema.optional(),
       }),
     )
     .default([]),
@@ -845,12 +872,14 @@ export const deliveryRecordSchema = z.object({
         label: z.string().min(1),
         path: z.string().min(1),
         createdAt: z.string().datetime(),
+        capture: deliveryCaptureProvenanceSchema.optional(),
       }),
     )
     .default([]),
   revision: z.string().optional(),
   baselineRevision: z.string().optional(),
   appliedRevision: z.string().optional(),
+  captureIssues: z.array(z.string()).default([]),
   designGraphRevision: z.string().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -1223,7 +1252,11 @@ export function coalesceChanges(changes: DesignChange[]): DesignChange[] {
       createdAt: existing.createdAt,
     };
   }
-  return result;
+  return result.filter(
+    (change) =>
+      !['draft', 'unresolved'].includes(change.status) ||
+      JSON.stringify(change.before) !== JSON.stringify(change.after),
+  );
 }
 
 function renderValue(value: unknown, unit?: string): string {

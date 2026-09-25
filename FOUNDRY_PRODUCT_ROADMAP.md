@@ -35,8 +35,8 @@ Every milestone that adds or changes visible interface behavior must update the 
 8. **Visual recipes: core delivered.** Named project-local treatments; semantic intent and component conditions; compatible-target suggestions; exact property mapping; destination-token resolution; ambiguity disclosure; import and export; and explicit handoff through Review and verification.
 9. **Design Decision Memory: core delivered.** Project-local approved directions, rejected experiments, explicit rules, contextual component and source matching, conflict warnings before Review, branch evidence, correction, enable and disable, removal, import, and export.
 10. **Visual agent conversation: core delivered.** Multi-element and region context; rendered comments; exact source, viewport, theme, state, measurement, token, and design-graph grounding; durable agent requests; leased listeners and interrupted-request recovery; concrete proposal reasoning; isolated preview branches; explicit Review promotion; and matching Light/Dark Figma components.
-11. **Foundry Delivery: core delivered.** Versioned readiness-aware handoffs at the reviewed Apply boundary; editable labeled narrative over read-only deterministic evidence; source-backed living documentation with current, stale, and conflicted states; immutable verified history; milestone grouping; and explicit conflict-safe Markdown, JSON, pull-request brief, and repository export below `docs/foundry/`.
-12. **Studio depth completion: delivered.** Spring and cubic Bezier editors, source-backed motion paths, synchronized comparison, framework adapters, source-backed variant creation, container-query scrubbing, alias-aware token promotion, and portable branch decision records are delivered. The functionality roadmap is complete and ready for the full UI overhaul.
+11. **Foundry Delivery: core delivered.** Versioned readiness-aware handoffs at the reviewed Apply boundary; labeled narrative editable before verification over read-only deterministic evidence; source-backed living documentation with current, stale, and conflicted states; immutable verified history; milestone grouping; and explicit conflict-safe Markdown, JSON, pull-request brief, and repository export below `docs/foundry/`.
+12. **Studio depth completion: delivered.** Spring and cubic Bezier editors, source-backed motion paths, synchronized comparison, framework adapters, source-backed variant creation, container-query scrubbing, alias-aware token promotion, and portable branch decision records are delivered. Original studio-depth milestones are complete; ongoing reliability, compatibility and distribution work is tracked below.
 
 ## 7. Content and accessibility stress testing
 
@@ -127,6 +127,37 @@ Product development remains separate from distribution work:
 
 - Complete the paused Codex, Cursor, and Claude directory submissions after the product quality bar is ready.
 - Build Foundry 0.3 as a signed desktop companion with automatic updates and project management.
+
+## Product evolution: connection to ongoing design quality
+
+This implementation extends the existing studios rather than replacing their visual structure.
+It is local, unpublished work on top of beta.22. The earlier studio-completion entries describe
+the original delivery, not a claim that every framework or browser context is supported.
+
+1. **Connection and recovery.** Shared CLI/inspector readiness separates installed configuration,
+   runtime response, live preview, source mapping, session freshness and the active coding-agent
+   listener. Resume preserves compatible drafts. A verified Apply advances the editing baseline;
+   external source drift still requires recovery.
+2. **Real compatibility.** React/Vite/CSS Modules, Next App Router and Storybook/CVA fixtures
+   exercise the public CLI, live MCP listener, reviewed source edit, production rebuild and
+   rendered verification. Capability reports retain unsupported cases explicitly.
+3. **Guided first edit.** A persistent application-bar entry follows Connect, Refine, Review,
+   Apply and Verify. Recovery explains manual agent restarts and terminal commands without
+   claiming to perform them. Existing selection, context and ledger remain intact.
+4. **Engineering delivery.** Frozen reviewed values and exact context coverage accompany source
+   validation, rebuilt measurements and provenance-matched before/rebuilt captures. Narrative
+   is editable before verification; verified records and their evidence are read-only. Portable
+   exports retain unavailable evidence reasons.
+5. **Ongoing visual checks.** Named loopback screens have immutable, explicitly approved baselines,
+   stable screenshot/geometry/health capture, masks, JSON/HTML reports, deterministic exit codes
+   and a read-only Delivery view. No automatic baseline approval or source writes.
+
+Matching editable Figma surfaces are tracked with the implementation evidence. Release
+publication, public-registry validation of these new changes, directory submissions and desktop
+companion development remain separate gates requiring their own scope and approval.
+
+See [Product evolution](docs/product-evolution.md), [Visual checks](docs/visual-checks.md) and
+[Framework compatibility](examples/compatibility/README.md) for operational details and limits.
 
 ## Cross-cutting quality bar
 

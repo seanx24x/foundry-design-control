@@ -24,6 +24,13 @@ test('parses colors and measures WCAG contrast', () => {
   assert.ok((contrastRatio('rgba(0,0,0,.5)', '#fff') ?? 0) > 3.9);
 });
 
+test('preserves authored fill behavior when a separate maximum width is applied', () => {
+  assert.equal(detectSizingMode('100%', '0', 'auto', '448px'), 'fill');
+  assert.equal(detectSizingMode('100%', '1', '120px', '448px'), 'fill');
+  assert.equal(detectSizingMode('448px', '0', 'auto', '448px'), 'min-max');
+  assert.equal(detectSizingMode('clamp(120px, 354px, 448px)', '0', '120px', '448px'), 'min-max');
+});
+
 test('explains component, token, responsive, and unresolved impact', () => {
   assert.deepEqual(
     impactMessages({

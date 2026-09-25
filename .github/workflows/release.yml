@@ -49,6 +49,8 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm check
       - run: pnpm test:e2e
+      - run: pnpm test:next
+      - run: pnpm test:next:apply
       - run: pnpm release:check
       - name: Verify release checks did not rewrite tracked source
         run: git diff --exit-code
@@ -57,6 +59,7 @@ jobs:
       - run: pnpm release:test-install
       - run: pnpm test:golden:packed
       - run: pnpm test:golden:negative
+      - run: pnpm test:compatibility:packed
       - run: pnpm distribution:check
       - run: pnpm mcpb:build
       - name: Recheck release source before registry mutation
@@ -79,6 +82,8 @@ jobs:
         run: pnpm release:verify-public
       - name: Run public-registry golden path
         run: pnpm test:golden:registry
+      - name: Verify public packages across framework fixtures
+        run: pnpm test:compatibility:registry
       - name: Promote latest after public verification
         if: ${{ inputs.promote_latest }}
         env:
@@ -89,6 +94,13 @@ jobs:
       - name: Verify beta and latest tags after promotion
         if: ${{ inputs.promote_latest }}
         run: pnpm release:verify-public -- --tags=beta,latest
+      - name: Retain framework compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: framework-compatibility-release
+          path: artifacts/compatibility/*.json
+          if-no-files-found: ignore
       - name: Create GitHub prerelease and upload Claude Desktop bundle
         env:
           GH_TOKEN: ${{ github.token }}

@@ -1,0 +1,43 @@
+:root,
+[data-theme='light'] {
+  --canvas: #f4f5f2;
+  --surface: #ffffff;
+  --text: #171a17;
+  --muted: #536052;
+  --line: #d3dbd1;
+  --action-background: #244b3f;
+  --action-text: #ffffff;
+  --focus: #39755f;
+  --space-control: 16px;
+  --radius-control: 8px;
+}
+[data-theme='dark'] {
+  --canvas: #111411;
+  --surface: #202520;
+  --text: #f4f5f2;
+  --muted: #a7ada5;
+  --line: #424942;
+  --action-background: #8bb7aa;
+  --action-text: #111411;
+  --focus: #8fc2b2;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--text);
+  font:
+    16px/1.5 system-ui,
+    sans-serif;
+}
+h1 {
+  font-size: 32px;
+  line-height: 40px;
+  margin: 8px 0 16px;
+}
+p {
+  margin: 0 0 24px;
+  color: var(--muted);
+}

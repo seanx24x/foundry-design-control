@@ -185,7 +185,8 @@ export function designHealthScope(
   active: readonly StressConditionId[],
   requestedScope: StressScope,
 ): StressScope {
-  return normalizeStressConditions(active).length ? requestedScope : 'canvas';
+  // Clearing temporary conditions does not turn a selection scan into a canvas scan.
+  return requestedScope;
 }
 
 export function groupStressFindings<T extends StressFindingContext>(

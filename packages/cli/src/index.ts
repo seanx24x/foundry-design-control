@@ -15,7 +15,6 @@ import {
 import {
   FoundryRuntime,
   SessionStore,
-  renderDeliveryMarkdown,
   type ReviewedSourceLocation,
   type SourceChangedRange,
 } from 'foundry-design-runtime';
@@ -41,9 +40,14 @@ import { indexProjectDesign } from './indexer.js';
 import { startBasicPreviewProxy, type BasicPreviewProxy } from './proxy.js';
 import { FOUNDRY_VERSION, releasePreflight } from './release.js';
 import { collectDoctorReport } from './doctor.js';
+import { projectRuntimeUrl, selectResumableSession } from './session-resume.js';
+import { sourceLineAnchor } from './source-anchor.js';
+import { listVisualCheckReports, runVisualCheckCli } from './visual-check.js';
+import { captureDeliveryEvidence, readDeliveryEvidence } from './delivery-capture.js';
 import { CompanionStore } from './companion.js';
 import {
   DeliveryExportConflictError,
+  renderEngineeringBrief,
   renderPortableDeliveryJson,
   writeRepositoryDeliveryExport,
 } from './delivery-export.js';
@@ -83,9 +87,10 @@ Usage:
   foundry-design reset [--project PATH] [--agent codex,cursor,claude] [--url URL] [--yes]
   foundry-design companion [--json]
   foundry-design init <web|swiftui|react-native> [--project PATH]
-  foundry-design start [--project PATH] [--url URL] [--platform PLATFORM] [--new] [--no-open] [--no-dev]
+  foundry-design start [--project PATH] [--url URL] [--runtime-port PORT] [--platform PLATFORM] [--new] [--no-open] [--no-dev]
   foundry-design doctor [--project PATH] [--repair] [--json]
   foundry-design status [--project PATH] [--json]
+  foundry-design visual-check <register|run|approve|list> [--project PATH] [--name NAME] [--json]
   foundry-design index [--project PATH] [--output FILE]
   foundry-design uninstall [--project PATH] [--global] [--agent codex,cursor,claude] [--yes]
   foundry-design export <SESSION_ID> [--format json|prompt|full] [--output FILE]
@@ -106,6 +111,7 @@ async function gitOutput(root: string, gitArgs: string[]): Promise<string | unde
     const child = spawn('git', gitArgs, {
       cwd: root,
       stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5000,
     });
     let output = '';
     child.stdout.on('data', (chunk) => {
@@ -176,14 +182,7 @@ async function sourceFileSnapshot(
                 )
                 .map((location) => [
                   JSON.stringify([location.line, location.symbol]),
-                  {
-                    line: location.line!,
-                    endLine: location.line!,
-                    symbol: location.symbol,
-                    sha256: createHash('sha256')
-                      .update(sourceLines[location.line! - 1]!)
-                      .digest('hex'),
-                  },
+                  sourceLineAnchor(safePath, sourceLines, location.line!, location.symbol),
                 ]),
             ).values(),
           ].sort((left, right) => left.line - right.line),
@@ -317,8 +316,8 @@ async function openUrl(url: string): Promise<void> {
 }
 
 async function urlAvailable(url: string): Promise<boolean> {
-  return fetch(url)
-    .then(() => true)
+  return fetch(url, { signal: AbortSignal.timeout(1500) })
+    .then((response) => response.ok)
     .catch(() => false);
 }
 
@@ -358,6 +357,9 @@ async function setup(): Promise<void> {
   const options = {
     agents: projectAgentSetup ? hostAgents : [],
     targetUrl: normalizeTargetUrl(flag('--url')),
+    runtimeUrl: flag('--runtime-port')
+      ? projectRuntimeUrl(undefined, flag('--runtime-port'))
+      : undefined,
     packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
   };
   const plan = await createSetupPlan(root, options);
@@ -432,6 +434,9 @@ async function update(): Promise<void> {
   const hostAgents = requested ?? (await sharedAgents(root));
   const options = {
     agents: projectAgentSetup ? hostAgents : [],
+    runtimeUrl: flag('--runtime-port')
+      ? projectRuntimeUrl(undefined, flag('--runtime-port'))
+      : undefined,
     packageRoot: has('--local-mcp') ? runtimeRepository : undefined,
   };
   const plan = await createUpdatePlan(root, options);
@@ -548,6 +553,7 @@ async function start(): Promise<void> {
     config?.platform ??
     (await detectPlatform(root));
   const targetUrl = normalizeTargetUrl(flag('--url') ?? config?.targetUrl);
+  const runtimeUrl = projectRuntimeUrl(config?.runtimeUrl, flag('--runtime-port'));
   let basicPreview: BasicPreviewProxy | undefined;
   let developmentServer: ReturnType<typeof spawn> | undefined;
   if (
@@ -599,18 +605,17 @@ async function start(): Promise<void> {
     state: 'current',
   };
   const store = new SessionStore();
-  const resumable = has('--new')
-    ? undefined
-    : (await store.list()).find(
-        (candidate) =>
-          candidate.changeSet.context.projectRoot === root &&
-          candidate.changeSet.context.revision === projectRevision &&
-          candidate.changeSet.context.targetUrl === targetUrl,
-      );
+  const { resumable, stale } = has('--new')
+    ? {}
+    : selectResumableSession(await store.list(), context);
   const session = resumable
     ? await store.read(resumable.changeSet.sessionId)
     : await store.create(context);
-  if (platform === 'web') {
+  if (!resumable && stale)
+    console.log(
+      `Preserved earlier session ${stale.changeSet.sessionId}. Its source revision differs or cannot be confirmed; opening a new session for the current source.`,
+    );
+  if (platform === 'web' && !session.designGraph) {
     const graph = await indexProjectDesign(root, config, projectRevision);
     await store.setDesignGraph(session.changeSet.sessionId, graph);
     console.log(
@@ -619,6 +624,15 @@ async function start(): Promise<void> {
   }
   const runtime = new FoundryRuntime({
     store,
+    host: new URL(runtimeUrl).hostname,
+    port: Number(new URL(runtimeUrl).port || 80),
+    resolveProjectReadiness: async (readinessRoot) => ({
+      checks: (await collectDoctorReport(readinessRoot, { projectOnly: true })).checks,
+      revision: await revision(readinessRoot),
+    }),
+    listVisualCheckReports,
+    captureDeliveryEvidence,
+    readDeliveryEvidence,
     resolveProjectRevision: async ({ projectRoot: revisionRoot, sourcePaths, sourceLocations }) =>
       projectSourceState(revisionRoot, sourcePaths, sourceLocations),
     reindexProjectDesign: async ({ projectRoot: graphRoot }) => {
@@ -637,16 +651,22 @@ async function start(): Promise<void> {
     ownsRuntime = true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error;
-    const healthy = await fetch('http://127.0.0.1:4387/v1/health')
-      .then((response) => response.ok)
+    const healthy = await fetch(`${runtimeUrl}/v1/health`, { signal: AbortSignal.timeout(1500) })
+      .then(
+        async (response) =>
+          response.ok &&
+          ((await response.json()) as { version?: string }).version === FOUNDRY_VERSION,
+      )
       .catch(() => false);
     if (!healthy)
-      throw new Error('Port 4387 is in use by another process. Stop it and run Foundry again.');
+      throw new Error(
+        `${runtimeUrl} is occupied by another process or Foundry release. Use a different --runtime-port or restart the existing runtime.`,
+      );
     console.log('Using the existing local Foundry runtime.');
   }
-  const reviewUrl = `http://127.0.0.1:4387/?session=${encodeURIComponent(session.changeSet.sessionId)}&token=${encodeURIComponent(session.token)}`;
+  const reviewUrl = `${runtimeUrl}/?session=${encodeURIComponent(session.changeSet.sessionId)}&token=${encodeURIComponent(session.token)}`;
   if (platform === 'web' && targetUrl && config && !config.instrumented) {
-    basicPreview = await startBasicPreviewProxy(targetUrl, config.runtimeUrl);
+    basicPreview = await startBasicPreviewProxy(targetUrl, runtimeUrl);
     console.log('Basic mode: Foundry is attached without changing the project entry point.');
     console.log(
       'Run setup again after adding a supported client entry to enable exact source mapping.',
@@ -773,12 +793,20 @@ async function disconnect(): Promise<void> {
 
 async function doctor(): Promise<void> {
   const root = await projectRoot();
-  const report = await collectDoctorReport(root);
+  const report = await collectDoctorReport(root, {
+    runtimeUrl: flag('--runtime-port')
+      ? projectRuntimeUrl(undefined, flag('--runtime-port'))
+      : undefined,
+  });
   if (has('--json')) console.log(JSON.stringify(report, null, 2));
   else {
     for (const check of report.checks) {
       const marker = check.status === 'passed' ? '✓' : check.status === 'warning' ? '△' : '○';
       console.log(`${marker} ${check.label}: ${check.detail}`);
+      if (check.recovery)
+        console.log(
+          `  ${check.recovery.label}${check.recovery.command ? `: ${check.recovery.command}` : ''}`,
+        );
     }
     console.log(
       report.ready
@@ -950,8 +978,8 @@ async function exportDelivery(): Promise<void> {
   }
   const content =
     format === 'markdown'
-      ? renderDeliveryMarkdown(record, session.changeSet.context.projectRoot)
-      : renderPortableDeliveryJson(record, session.changeSet.context.projectRoot);
+      ? renderEngineeringBrief(session, record)
+      : renderPortableDeliveryJson(record, session.changeSet.context.projectRoot, session);
   await mkdir(dirname(resolve(output)), { recursive: true });
   await writeFile(resolve(output), `${content}\n`);
   console.log(`Exported ${format} delivery record to ${resolve(output)}.`);
@@ -1069,6 +1097,8 @@ try {
   else if (command === 'init') await initProject();
   else if (command === 'start') await start();
   else if (command === 'doctor' || command === 'status') await doctor();
+  else if (command === 'visual-check')
+    process.exitCode = await runVisualCheckCli(args.slice(1), await projectRoot());
   else if (command === 'index') await indexDesign();
   else if (command === 'uninstall') await uninstall();
   else if (command === 'export') await exportSession();

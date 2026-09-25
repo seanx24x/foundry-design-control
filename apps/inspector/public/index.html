@@ -6,18 +6,34 @@
     <meta name="color-scheme" content="light dark" />
     <title>Foundry workspace</title>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/workflow.css" />
+    <link rel="stylesheet" href="/experience.css" />
+    <link rel="stylesheet" href="/next-workspace.css" />
   </head>
   <body>
-    <div class="app-shell" id="app-shell" data-mode="canvas">
+    <div class="app-shell" id="app-shell" data-mode="canvas" data-experience="precision">
       <header class="app-bar">
         <div class="app-identity">
           <strong>Foundry</strong>
-          <span class="live-status" id="live-status" data-status="connecting" aria-live="polite"
-            ><i></i><span>Connecting</span></span
+          <button
+            class="live-status"
+            id="live-status"
+            data-status="connecting"
+            aria-haspopup="dialog"
+            aria-label="Connection readiness"
           >
+            <i></i><span>Connecting</span>
+          </button>
           <span class="project-name" id="project-name">Design workspace</span>
         </div>
         <nav class="app-actions" aria-label="Workspace controls">
+          <span class="workflow-status" id="workflow-status" role="status">Connect</span>
+          <button class="workflow-trigger" id="workflow-trigger">
+            <span>Start first edit</span><i data-icon="chevronRight"></i>
+          </button>
+          <button class="persistent-review" id="persistent-review" data-workspace-mode="review">
+            <i data-icon="file"></i><span>Review</span><span id="persistent-review-count">0</span>
+          </button>
           <button class="icon-button" id="command-trigger" aria-label="Open commands">
             <i data-icon="command"></i>
           </button>
@@ -84,63 +100,97 @@
       </header>
 
       <main class="workspace">
-        <nav class="workspace-rail" aria-label="Foundry workspaces">
-          <button
-            class="rail-button is-active"
-            data-workspace-mode="canvas"
-            aria-label="Canvas"
-            aria-current="page"
-          >
-            <i data-icon="cursor"></i>
-          </button>
-          <button class="rail-button" data-workspace-mode="states" aria-label="State workbench">
-            <i data-icon="layers"></i>
-          </button>
-          <button class="rail-button" data-workspace-mode="health" aria-label="Content stress lab">
-            <i data-icon="activity"></i>
-          </button>
-          <button class="rail-button" data-workspace-mode="memory" aria-label="Design memory">
-            <i data-icon="bookmark"></i>
-          </button>
-          <button
-            class="rail-button"
-            data-workspace-mode="components"
-            aria-label="Component workshop"
-          >
-            <i data-icon="component"></i>
-          </button>
-          <button
-            class="rail-button"
-            data-workspace-mode="responsive"
-            aria-label="Responsive design lab"
-          >
-            <i data-icon="layout"></i>
-          </button>
-          <button class="rail-button" data-workspace-mode="system" aria-label="Design system">
-            <i data-icon="sparkles"></i>
-          </button>
-          <button class="rail-button" data-workspace-mode="motion" aria-label="Motion studio">
-            <i data-icon="play"></i>
-          </button>
-          <button
-            class="rail-button"
-            data-workspace-mode="typography"
-            aria-label="Typography studio"
-          >
-            <i data-icon="typography"></i>
-          </button>
-          <button class="rail-button" data-workspace-mode="branches" aria-label="Design branches">
-            <i data-icon="branch"></i>
-          </button>
-          <button class="rail-button" data-workspace-mode="recipes" aria-label="Visual recipes">
-            <i data-icon="copy"></i>
-          </button>
-          <button class="rail-button" data-workspace-mode="agent" aria-label="Visual agent">
-            <i data-icon="message"></i>
-          </button>
-          <button class="rail-button" data-workspace-mode="delivery" aria-label="Delivery">
-            <i data-icon="fileCheck"></i>
-          </button>
+        <nav class="workspace-rail" aria-label="Foundry workspaces" id="studio-navigation">
+          <div class="studio-nav-heading">
+            <span>Workspace</span>
+            <button
+              class="icon-button"
+              id="studio-nav-toggle"
+              aria-label="Collapse studio navigation"
+              aria-expanded="true"
+              aria-controls="studio-links"
+            >
+              <i data-icon="panelLeft"></i>
+            </button>
+          </div>
+          <div class="studio-links" id="studio-links">
+            <section class="studio-nav-group" aria-label="Design">
+              <h2>Design</h2>
+              <button
+                class="rail-button is-active"
+                data-workspace-mode="canvas"
+                aria-label="Canvas"
+                aria-current="page"
+              >
+                <i data-icon="cursor"></i><span>Canvas</span>
+              </button>
+              <button
+                class="rail-button"
+                data-workspace-mode="components"
+                aria-label="Component workshop"
+              >
+                <i data-icon="component"></i><span>Components</span>
+              </button>
+              <button class="rail-button" data-workspace-mode="system" aria-label="Design system">
+                <i data-icon="sparkles"></i><span>Design system</span>
+              </button>
+              <button class="rail-button" data-workspace-mode="motion" aria-label="Motion studio">
+                <i data-icon="play"></i><span>Motion</span>
+              </button>
+              <button
+                class="rail-button"
+                data-workspace-mode="typography"
+                aria-label="Typography studio"
+              >
+                <i data-icon="typography"></i><span>Typography</span>
+              </button>
+              <button class="rail-button" data-workspace-mode="recipes" aria-label="Visual recipes">
+                <i data-icon="copy"></i><span>Recipes</span>
+              </button>
+            </section>
+            <section class="studio-nav-group" aria-label="Test">
+              <h2>Test</h2>
+              <button class="rail-button" data-workspace-mode="states" aria-label="State workbench">
+                <i data-icon="layers"></i><span>State workbench</span>
+              </button>
+              <button
+                class="rail-button"
+                data-workspace-mode="responsive"
+                aria-label="Responsive design lab"
+              >
+                <i data-icon="layout"></i><span>Responsive</span>
+              </button>
+              <button
+                class="rail-button"
+                data-workspace-mode="health"
+                aria-label="Content stress lab"
+              >
+                <i data-icon="activity"></i><span>Content stress lab</span>
+              </button>
+            </section>
+            <section class="studio-nav-group" aria-label="Collaborate">
+              <h2>Collaborate</h2>
+              <button class="rail-button" data-workspace-mode="agent" aria-label="Visual agent">
+                <i data-icon="message"></i><span>Visual agent</span>
+              </button>
+              <button
+                class="rail-button"
+                data-workspace-mode="branches"
+                aria-label="Design branches"
+              >
+                <i data-icon="branch"></i><span>Branches</span>
+              </button>
+              <button class="rail-button" data-workspace-mode="memory" aria-label="Design memory">
+                <i data-icon="bookmark"></i><span>Design memory</span>
+              </button>
+              <button class="rail-button" data-workspace-mode="delivery" aria-label="Delivery">
+                <i data-icon="fileCheck"></i><span>Delivery</span>
+              </button>
+            </section>
+          </div>
+          <div class="studio-nav-footer">
+            <span id="agent-connection-status">Agent offline</span><span>Local workspace</span>
+          </div>
         </nav>
         <aside class="dock layers-dock" id="layers-dock" aria-label="Layers and components">
           <header class="dock-head">
@@ -216,6 +266,22 @@
               </div>
             </header>
             <div class="canvas-stage" id="canvas-stage">
+              <div class="canvas-action-error" id="canvas-action-error" role="alert" hidden>
+                <div>
+                  <strong>Preview action needs attention</strong>
+                  <p id="canvas-action-error-detail"></p>
+                </div>
+                <button class="secondary-button" id="canvas-action-connection">
+                  Connection details
+                </button>
+                <button
+                  class="icon-button"
+                  id="canvas-action-dismiss"
+                  aria-label="Dismiss preview action error"
+                >
+                  <i data-icon="close"></i>
+                </button>
+              </div>
               <div class="preview-frame" id="preview-frame">
                 <iframe id="product-preview" title="Live product preview"></iframe>
                 <div class="preview-loading" id="preview-loading">
@@ -223,9 +289,15 @@
                   <p>Foundry is waiting for the local adapter.</p>
                 </div>
                 <div class="preview-fallback" id="preview-fallback" hidden>
-                  <i data-icon="external"></i><strong>This product blocks embedded previews</strong>
-                  <p>Open the direct overlay preview. Your session and changes stay connected.</p>
-                  <a class="primary-button" id="direct-preview" target="_blank"
+                  <i data-icon="external"></i><strong>Live preview unavailable</strong>
+                  <p>
+                    Start or restart your project’s preview server, then reconnect. Your saved edits
+                    are safe in Review.
+                  </p>
+                  <button class="primary-button" id="reconnect-preview" type="button">
+                    Reconnect preview
+                  </button>
+                  <a class="secondary-button" id="direct-preview" target="_blank"
                     >Open overlay preview</a
                   >
                 </div>
@@ -278,7 +350,9 @@
                 <p id="review-context">Current viewport</p>
               </div>
               <div class="mode-actions">
-                <button class="secondary-button" id="review-compare">Compare on canvas</button>
+                <button class="secondary-button" id="review-compare">
+                  Compare batch on canvas
+                </button>
                 <span class="mode-count" id="review-count">0 included</span>
               </div>
             </header>
@@ -287,10 +361,13 @@
               <aside class="review-summary" id="review-summary" aria-label="Review summary">
                 <header>
                   <strong>Review summary</strong>
-                  <p>Only included, exactly mapped changes are sent to the agent.</p>
+                  <p>
+                    Preview edits stay temporary until you send this reviewed batch to an agent.
+                  </p>
                 </header>
                 <div class="review-summary-content" id="review-summary-content"></div>
                 <footer class="review-footer">
+                  <p id="review-apply-error" role="alert" hidden></p>
                   <button class="primary-button" id="apply-agent">Apply with agent</button>
                   <button class="secondary-button" id="review-return" data-workspace-mode="canvas">
                     Back to canvas
@@ -325,7 +402,7 @@
                 <p>Create, compare, and source-back component variants in one focused workspace.</p>
               </div>
               <div class="mode-actions">
-                <button class="secondary-button" id="component-open-canvas">Open on canvas</button>
+                <button class="secondary-button" id="component-open-canvas">View on Canvas</button>
                 <button class="primary-button" data-studio-action="component-create">
                   Create variant
                 </button>
@@ -582,8 +659,11 @@
                 <button class="secondary-button" data-studio-action="motion-compare">
                   Compare motion
                 </button>
+                <button class="secondary-button" data-view-selection-on-canvas>
+                  View on Canvas
+                </button>
                 <button class="primary-button" data-studio-action="motion-preview">
-                  Preview motion
+                  Preview on Canvas
                 </button>
               </div>
             </header>
@@ -802,10 +882,13 @@
                   >No temporary conditions</span
                 >
                 <button class="secondary-button" data-studio-action="stress-reset">
-                  Reset scenario
+                  Clear tests
                 </button>
                 <button class="primary-button" data-studio-action="stress-run">
                   Run stress test
+                </button>
+                <button class="secondary-button" data-view-selection-on-canvas>
+                  View on Canvas
                 </button>
               </div>
             </header>
@@ -824,8 +907,8 @@
                 </div>
                 <div class="stress-profile-list" id="stress-profile-list"></div>
                 <footer>
-                  <button class="secondary-button" id="clear-stress">Clear</button>
-                  <button class="primary-button" id="apply-stress">Apply and scan</button>
+                  <button class="secondary-button" id="clear-stress">Clear tests</button>
+                  <button class="primary-button" id="apply-stress">Select a condition</button>
                 </footer>
               </aside>
               <section class="stress-lab-results">
@@ -1008,6 +1091,7 @@
                   <strong>Capture a decision</strong>
                   <p>Connect guidance to the selected component and edited properties.</p>
                 </header>
+                <div class="decision-memory-context" id="decision-memory-context"></div>
                 <div class="decision-outcome-picker" role="group" aria-label="Decision outcome">
                   <button class="is-active" data-decision-outcome="approved" aria-pressed="true">
                     Approved
@@ -1039,7 +1123,6 @@
                   ></textarea>
                 </label>
                 <button class="primary-button" id="decision-memory-save">Save decision</button>
-                <div class="decision-memory-context" id="decision-memory-context"></div>
               </aside>
             </div>
             <footer class="decision-memory-footer">
@@ -1172,6 +1255,9 @@
                 <button data-delivery-tab="history" role="tab" aria-selected="false">
                   History
                 </button>
+                <button data-delivery-tab="checks" role="tab" aria-selected="false">
+                  Visual checks
+                </button>
               </nav>
               <section class="delivery-content" id="delivery-content" aria-live="polite"></section>
             </div>
@@ -1185,8 +1271,20 @@
             </div>
             <button class="icon-button" id="compare" aria-label="Compare changes" disabled>
               <i data-icon="contrast"></i>
+              <span id="compare-label">Compare</span>
             </button>
             <button class="primary-button compact" data-workspace-mode="review">Review</button>
+            <button class="quiet-button compact" id="visual-preview-back" hidden>
+              Back to conversation
+            </button>
+            <button
+              class="secondary-button compact"
+              id="visual-preview-cancel"
+              title="Restore Main direction and keep this proposal"
+              hidden
+            >
+              Cancel preview
+            </button>
           </section>
         </section>
 
@@ -1249,6 +1347,41 @@
       </main>
     </div>
 
+    <dialog class="readiness-dialog" id="readiness-dialog" aria-labelledby="readiness-title">
+      <header>
+        <div>
+          <span class="eyebrow">This project</span>
+          <h2 id="readiness-title">Connection &amp; first edit</h2>
+        </div>
+        <button class="icon-button" id="readiness-close" aria-label="Close connection readiness">
+          <i data-icon="close"></i>
+        </button>
+      </header>
+      <div class="readiness-body">
+        <p id="readiness-summary" role="status"></p>
+        <section class="workflow-journey" aria-label="Reviewed design workflow">
+          <ol>
+            <li data-workflow-step="0">Connect</li>
+            <li data-workflow-step="1">Refine</li>
+            <li data-workflow-step="2">Review</li>
+            <li data-workflow-step="3">Apply</li>
+            <li data-workflow-step="4">Verify</li>
+          </ol>
+          <strong id="workflow-phase"></strong>
+          <p id="workflow-detail"></p>
+          <button class="primary-button" id="workflow-next">Start first edit</button>
+        </section>
+        <ul id="readiness-checks" aria-label="Readiness checks"></ul>
+        <section class="readiness-command" id="readiness-command" hidden>
+          <strong>Next step in your terminal</strong><code></code>
+          <p></p>
+        </section>
+      </div>
+      <footer>
+        <span id="readiness-updated"></span
+        ><button class="secondary-button" id="readiness-refresh">Check again</button>
+      </footer>
+    </dialog>
     <dialog class="command-dialog" id="command-dialog">
       <div class="command-search">
         <i data-icon="search"></i

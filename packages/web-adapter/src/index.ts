@@ -1,4 +1,14 @@
 import { cssPath, parseSource } from './locator.js';
+import { inspectorVariantAttributes, restoreVariantAttributes } from './inspector-variants.js';
+import {
+  inspectorStyleProperties,
+  inspectorAttributes,
+  sharedInspectorControls,
+  inspectorEditProperties,
+  supportsInspectorObjectLayout,
+} from './next-inspector.js';
+import { PROTOCOL_VERSION } from 'foundry-design-protocol';
+import packageJson from '../package.json' with { type: 'json' };
 import { createDebouncedChangeRecorder } from './recording.js';
 import {
   emptyReviewDraft,
@@ -132,6 +142,7 @@ import {
 } from './typography.js';
 import {
   discoverElementMotion,
+  setRenderedMotionEasing,
   editableKeyframes,
   findDiscoveredMotion,
   motionCurveSnapshot,
@@ -1430,6 +1441,7 @@ export function installFoundryInspector(
 ): FoundryInspectorController {
   const query = new URLSearchParams(location.search);
   const verificationChild = query.get('__foundry_verification') === '1';
+  const componentSpecimen = query.get('__foundry_frame') === 'component-specimen';
   if (query.get('__foundry_child') === '1' && !verificationChild) {
     return {
       inspect() {},
@@ -1438,11 +1450,26 @@ export function installFoundryInspector(
       destroy() {},
     };
   }
-  const runtimeUrl = (options.runtimeUrl ?? 'http://127.0.0.1:4387').replace(/\/$/, '');
+  const importedRuntime = new URL(import.meta.url);
+  const runtimeUrl = (
+    options.runtimeUrl ??
+    (importedRuntime.protocol === 'http:' &&
+    ['127.0.0.1', 'localhost'].includes(importedRuntime.hostname)
+      ? importedRuntime.origin
+      : 'http://127.0.0.1:4387')
+  ).replace(/\/$/, '');
   const sessionId = options.sessionId ?? query.get('__foundry_session') ?? '';
   const token = options.token ?? query.get('__foundry_token') ?? '';
   const previewCapability =
     options.previewCapability ?? query.get('__foundry_preview_capability') ?? '';
+  const readinessFrameId = crypto.randomUUID();
+  const readinessFrameKind = verificationChild
+    ? 'verification'
+    : query.has('__foundry_responsive_lab')
+      ? 'responsive'
+      : query.get('__foundry_frame') === 'state-workbench'
+        ? 'workbench'
+        : 'canvas';
   const embeddedWorkspace =
     (query.get('__foundry_embedded') === '1' || verificationChild) && window.parent !== window;
   const runtimeOrigin = new URL(runtimeUrl).origin;
@@ -2023,6 +2050,126 @@ export function installFoundryInspector(
   let clickCycle = { x: -1, y: -1, at: 0, index: -1, signature: '' };
   let inspecting = options.startInspecting ?? true;
   let selectedControls: Control[] = [];
+  let nextInspectorRevision = 0;
+  // A transient inspector gesture is separate from the reviewed change ledger.
+  let inspectorDraft: {
+    element: HTMLElement;
+    property: string;
+    restores: Array<() => void>;
+  } | null = null;
+  let focusSpotlight: HTMLDivElement | null = null;
+
+  function cancelInspectorDraft(): void {
+    if (!inspectorDraft) return;
+    inspectorDraft.restores.forEach((restore) => restore());
+    inspectorDraft = null;
+    if (selected) selectedControls = controlsFor(selected);
+    updateOutline();
+  }
+
+  function clearInspectorFocus(): void {
+    focusSpotlight?.remove();
+    focusSpotlight = null;
+  }
+
+  function measureVariantMutation(element: HTMLElement, mutate: () => void): void {
+    const style = element.getAttribute('style');
+    element.style.setProperty('transition-property', 'none', 'important');
+    try {
+      mutate();
+      void getComputedStyle(element).backgroundColor;
+    } finally {
+      if (style === null) {
+        element.style.cssText = '';
+        void element.getAttribute('style');
+        element.removeAttribute('style');
+      } else element.setAttribute('style', style);
+    }
+  }
+
+  function variantRestoration(element: HTMLElement, names: string[]): () => void {
+    const restore = restoreVariantAttributes(element, names);
+    return () => measureVariantMutation(element, restore);
+  }
+
+  function inspectorRestore(element: HTMLElement, property: string): () => void {
+    const style = element.getAttribute('style');
+    const attribute = element.getAttribute(property);
+    const nodes = [...element.childNodes];
+    return () => {
+      if (inspectorAttributes.has(property)) {
+        if (attribute === null) element.removeAttribute(property);
+        else element.setAttribute(property, attribute);
+      } else if (property === 'textContent') element.replaceChildren(...nodes);
+      if (style === null) element.removeAttribute('style');
+      else element.setAttribute('style', style);
+      element.style.setProperty('transition-property', 'none', 'important');
+      void getComputedStyle(element).fontSize;
+      if (style === null) {
+        element.style.cssText = '';
+        void element.getAttribute('style');
+        element.removeAttribute('style');
+      } else element.setAttribute('style', style);
+    };
+  }
+
+  function nextControlsFor(element: HTMLElement): Control[] {
+    const computed = getComputedStyle(element);
+    const media = ['IMG', 'VIDEO', 'AUDIO', 'PICTURE'].includes(element.tagName);
+    const controls = controlsFor(element);
+    if (supportsInspectorObjectLayout(element.tagName))
+      controls.push(
+        styleControl(element, computed, 'layout', 'objectFit', 'Object fit', 'select', [
+          'fill',
+          'contain',
+          'cover',
+          'none',
+          'scale-down',
+        ]),
+        styleControl(element, computed, 'layout', 'objectPosition', 'Object position'),
+      );
+    return controls
+      .filter(
+        (control) =>
+          !media ||
+          (!['typography', 'content'].includes(control.category) && control.property !== 'color'),
+      )
+      .filter(
+        (control) =>
+          (inspectorStyleProperties.has(control.property) &&
+            (!['gap', 'rowGap', 'columnGap'].includes(control.property) ||
+              /flex|grid/.test(computed.display))) ||
+          inspectorAttributes.has(control.property) ||
+          (control.property === 'textContent' &&
+            element.childElementCount === 0 &&
+            !['INPUT', 'TEXTAREA', 'SELECT', 'SCRIPT', 'STYLE'].includes(element.tagName)),
+      )
+      .map((control) => {
+        // Do not turn CSS keywords or unequal shorthand values into an invented zero
+        // or a misleading first number. Such values remain explicit CSS fields.
+        const cssValue = String(computed[control.property as keyof CSSStyleDeclaration]);
+        if (control.unit === 'px' && !/^-?[\d.]+px$/.test(cssValue))
+          return styleControl(
+            element,
+            computed,
+            control.category,
+            control.property as keyof CSSStyleDeclaration,
+            control.label,
+          );
+        return control;
+      });
+  }
+
+  function applyInspectorValue(control: Control, value: string | number, element = selected): void {
+    if (!element) return;
+    const transition = element.style.getPropertyValue('transition-property');
+    const priority = element.style.getPropertyPriority('transition-property');
+    element.style.setProperty('transition-property', 'none', 'important');
+    control.apply(value);
+    void control.read();
+    if (transition) element.style.setProperty('transition-property', transition, priority);
+    else element.style.removeProperty('transition-property');
+  }
   let resizeObserver: ResizeObserver | undefined;
   let activeReviewPayload: any = null;
   let activeAgentPresence: {
@@ -2129,12 +2276,16 @@ export function installFoundryInspector(
     unit?: string;
     category: Category;
     label: string;
+    gestureId?: string;
+    inspectorRestore?: { before: () => void; after: () => void };
   }
   interface BrowserHealthIssue extends HealthFinding {
     id: string;
     element: HTMLElement;
     elementLabel: string;
     previewed: boolean;
+    recordedBranchId?: string;
+    recordedBranchName?: string;
     source?: string;
     stressConditions: StressConditionId[];
   }
@@ -2213,6 +2364,7 @@ export function installFoundryInspector(
   let layerScrollFrame = 0;
   let healthIssues: BrowserHealthIssue[] = [];
   let healthScanError = '';
+  let healthScannedAt = '';
   let healthFilter = 'all';
   const ignoredHealthIssues = new Set<string>();
   try {
@@ -2380,6 +2532,7 @@ export function installFoundryInspector(
     return {
       version: 1,
       ...(verificationChild ? { verificationReady: hydratedOnce } : {}),
+      ...(componentSpecimen ? { specimenReady: hydratedOnce } : {}),
       capabilities: configuredPreviewCapabilities(),
       currentPreviewContext,
       lastPreviewApplication,
@@ -2490,6 +2643,20 @@ export function installFoundryInspector(
         step: control.step,
         options: control.options,
       })),
+      nextControls: sharedInspectorControls(
+        selectedElements.map((element) =>
+          nextControlsFor(element).map(({ read, apply, ...control }) => ({
+            ...control,
+            value: read(),
+          })),
+        ),
+      ),
+      nextInspectorRevision,
+      nextVariantPreviewId: inspectorDraft?.property.startsWith('variant:')
+        ? inspectorDraft.property.slice(8)
+        : null,
+      nextVariants:
+        selected && selectedElements.length === 1 ? nextVariantSnapshot(selected) : null,
       typography: selected ? workspaceTypographySnapshot(selected) : null,
       motions: selected ? workspaceMotionSnapshot(selected) : [],
       history: {
@@ -2498,6 +2665,16 @@ export function installFoundryInspector(
       },
       project: {
         tokens: designGraph?.tokens ?? [],
+        renderedTokens: Object.fromEntries(
+          (designGraph?.tokens ?? [])
+            .filter((token) => token.cssVariable)
+            .map((token) => [
+              token.id,
+              getComputedStyle(document.documentElement)
+                .getPropertyValue(token.cssVariable!)
+                .trim(),
+            ]),
+        ),
         components: designGraph?.components ?? [],
         breakpoints: designGraph?.breakpoints ?? [],
         containerQueries: designGraph?.containerQueries ?? [],
@@ -2518,12 +2695,15 @@ export function installFoundryInspector(
         stressConditions: issue.stressConditions,
         canFix: Boolean(issue.fix),
         previewed: issue.previewed,
+        recordedBranchId: issue.recordedBranchId,
+        recordedBranchName: issue.recordedBranchName,
       })),
       stressTesting: {
         profiles: STRESS_CONDITIONS,
         active: activeStressConditions,
         scope: activeStressScope,
         appliedAt: stressAppliedAt || null,
+        scannedAt: healthScannedAt || null,
         error: healthScanError || null,
         target:
           activeStressScope === 'selection'
@@ -2820,7 +3000,7 @@ export function installFoundryInspector(
     for (const restore of stressRestore.reverse()) restore();
     stressRestore = [];
     activeStressConditions = [];
-    activeStressTarget = null;
+    if (!announce) activeStressTarget = null;
     healthScanError = '';
     stressAppliedAt = '';
     document.documentElement.removeAttribute('data-foundry-stress');
@@ -3577,6 +3757,9 @@ export function installFoundryInspector(
         width,
         height,
         boxSizing: computed.boxSizing,
+        display: computed.display,
+        alignItems: computed.alignItems,
+        justifyContent: computed.justifyContent,
         paddingTop: computed.paddingTop,
         paddingRight: computed.paddingRight,
         paddingBottom: computed.paddingBottom,
@@ -3895,6 +4078,380 @@ export function installFoundryInspector(
     command: string,
     payload: Record<string, unknown>,
   ): Promise<unknown> {
+    // A specimen is a read-only rendering endpoint, never an editing/Apply endpoint.
+    if (componentSpecimen && !['preview-ping', 'render-component-specimen'].includes(command)) {
+      throw new Error('Component specimens are read-only. Return to Canvas to edit source.');
+    }
+    if (command === 'render-component-specimen') {
+      if (!componentSpecimen || !embeddedWorkspace)
+        throw new Error('Component specimens require an isolated preview frame.');
+      await initialHydration;
+      if (!hydratedOnce) throw new Error('The project index has not loaded.');
+      const componentId = String(payload.componentId ?? '');
+      const entry = workshopCatalog().find(
+        (item) =>
+          item.id === componentId ||
+          item.definition?.id === componentId ||
+          item.name === componentId,
+      );
+      const target = entry?.elements[Number(payload.instanceIndex ?? 0)];
+      if (!entry || !target)
+        throw new Error('No live instance of this component exists on this page.');
+      const variantId = String(payload.variantId ?? '');
+      const variant = variantId
+        ? entry.definition?.variants.find((item) => item.id === variantId)
+        : undefined;
+      if (variantId && (!variant || !Object.keys(variant.props).length))
+        throw new Error('This variant has no authored preview mapping.');
+      if (variant) {
+        const support = nextVariantSnapshot(target)?.variants.find(
+          (item) => item.id === variant.id,
+        );
+        if (!support?.supported)
+          throw new Error(support?.reason ?? 'This variant has no confirmed live CSS hook.');
+      }
+      // Preserve the original element, ancestors, layout constraints and project styles.
+      // Do not call select(), previewWorkshopVariant() or record(): those own user state.
+      const context = await applyPreviewContext({
+        version: 1,
+        requestRevision: currentPreviewContext.requestRevision + 1,
+        viewport: { id: 'current', width: innerWidth, height: innerHeight },
+        theme: String(payload.theme ?? 'current'),
+        state: String(payload.state ?? 'current'),
+        motionPreference: 'system',
+        selectedTarget: { id: foundryTargetId(target), selector: foundrySelector(target) },
+      });
+      if (!context.applied && context.reloadQuery)
+        return {
+          rendered: false,
+          reloadQuery: context.reloadQuery,
+          managedStateKeys: [
+            ...new Set(
+              (designGraph?.states ?? []).flatMap((state) => Object.keys(state.query ?? {})),
+            ),
+          ],
+        };
+      if (!context.applied)
+        throw new Error(
+          context.failureReason ??
+            'This state requires a route reload. Preview it in State Workbench.',
+        );
+      for (const [attribute, value] of variant ? inspectorVariantAttributes(variant) : [])
+        target.setAttribute(attribute, value);
+      const stability = await waitForResponsiveAuditStability();
+      if (!stability.fontsReady || !stability.stable)
+        throw new Error('Fonts or layout did not settle. Retry when the project is ready.');
+      // Scroll only this document. scrollIntoView also scrolls the parent Workshop.
+      const beforeScroll = target.getBoundingClientRect();
+      window.scrollTo({
+        top: scrollY + beforeScroll.y + beforeScroll.height / 2 - innerHeight / 2,
+        left: 0,
+        behavior: 'instant',
+      });
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const rect = target.getBoundingClientRect();
+      const style = getComputedStyle(target);
+      if (!rect.width || !rect.height || style.visibility === 'hidden' || style.display === 'none')
+        throw new Error('This variant is not visible in the current context.');
+      if (rect.width > innerWidth || rect.height > innerHeight)
+        throw new Error('This component exceeds the preview viewport. Inspect it on Canvas.');
+      const background = opaqueBackground(target.parentElement ?? document.body);
+      target.setAttribute('data-foundry-specimen-target', '');
+      const isolation = document.createElement('style');
+      isolation.textContent =
+        'body { visibility: hidden !important; } body *:not([data-foundry-specimen-target]):not([data-foundry-specimen-target] *):not(:has([data-foundry-specimen-target])) { visibility: hidden !important; } [data-foundry-specimen-target] { visibility: visible !important; } [data-foundry-overlay] { display: none !important; }';
+      document.head.append(isolation);
+      return {
+        rendered: true,
+        componentId,
+        variantId,
+        targetId: foundryTargetId(target),
+        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        background,
+        viewport: { width: innerWidth, height: innerHeight },
+        evidence: { fontsReady: true, stable: true, method: 'authored-dom-in-isolated-frame' },
+      };
+    }
+    if (command === 'inspector-variant') {
+      const element = selected;
+      if (
+        !element ||
+        selectedElements.length !== 1 ||
+        foundryTargetId(element) !== payload.targetId
+      )
+        throw new Error('The selection changed. Select one component before choosing a variant.');
+      if (payload.action === 'cancel') {
+        if (inspectorDraft?.property.startsWith('variant:')) cancelInspectorDraft();
+        publishWorkspaceState();
+        return { cancelled: true };
+      }
+      if (!['preview', 'commit'].includes(String(payload.action)))
+        throw new Error('Unknown variant action.');
+      const snapshot = nextVariantSnapshot(element);
+      const definition = nextVariantDefinition(element);
+      const variant = definition?.variants.find((item) => item.id === payload.variantId);
+      const support = snapshot?.variants.find((item) => item.id === payload.variantId);
+      if (!variant || !support?.supported)
+        throw new Error(
+          support?.reason ?? 'This authored variant is unavailable for the selected component.',
+        );
+      if (!targetFor(element).source)
+        throw new Error('This component needs an exact source mapping before editing variants.');
+      const attributes = inspectorVariantAttributes(variant);
+      cancelInspectorDraft();
+      if (payload.action === 'preview') {
+        inspectorDraft = {
+          element,
+          property: `variant:${variant.id}`,
+          restores: [
+            variantRestoration(
+              element,
+              attributes.map(([name]) => name),
+            ),
+          ],
+        };
+        measureVariantMutation(element, () =>
+          attributes.forEach(([name, value]) => element.setAttribute(name, value)),
+        );
+        selectedControls = controlsFor(element);
+        updateOutline();
+        publishWorkspaceState();
+        return { previewed: true, recorded: false, variantId: variant.id };
+      }
+      const gestureId = crypto.randomUUID();
+      let recordedCount = 0;
+      for (const [attribute, value] of attributes) {
+        const key = Object.keys(variant.props).find(
+          (key) =>
+            `data-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}` === attribute,
+        )!;
+        const before = element.getAttribute(attribute) ?? '';
+        if (before === value && element.hasAttribute(attribute)) continue;
+        const restoreBefore = variantRestoration(element, [attribute]);
+        measureVariantMutation(element, () => element.setAttribute(attribute, value));
+        const control: Control = {
+          category: 'content',
+          property: `variant.${key}`,
+          label: `${definition!.name} ${key}`,
+          kind: 'text',
+          value,
+          read: () => element.getAttribute(attribute) ?? '',
+          apply: (next) => element.setAttribute(attribute, String(next)),
+        };
+        const recorded = await record(
+          control,
+          before,
+          value,
+          element,
+          `Set ${variant.name} variant`,
+          [
+            `Inspector gesture ${gestureId}`,
+            `Authored variant: ${variant.name}`,
+            `Variant source: ${workshopSourceLabel(variant.source)}`,
+            `Live CSS hook: ${attribute}`,
+          ],
+        );
+        if (!recorded) {
+          restoreBefore();
+          if (recordedCount) nextInspectorRevision++;
+          publishWorkspaceState();
+          throw new Error(
+            recordedCount
+              ? `${recordedCount} of ${attributes.length} variant properties added to Review. Undo restores the recorded group.`
+              : 'The variant could not be added to Review. The preview was restored; your choice is retained.',
+          );
+        }
+        recordedCount++;
+        pushHistory({
+          element,
+          property: control.property,
+          category: control.category,
+          label: control.label,
+          before,
+          after: value,
+          gestureId,
+          inspectorRestore: {
+            before: restoreBefore,
+            after: variantRestoration(element, [attribute]),
+          },
+        });
+      }
+      if (recordedCount) nextInspectorRevision++;
+      selectedControls = selected ? controlsFor(selected) : [];
+      updateOutline();
+      publishWorkspaceState();
+      return {
+        recorded: recordedCount > 0,
+        recordedCount,
+        variantId: variant.id,
+        revision: nextInspectorRevision,
+      };
+    }
+    if (command === 'inspector-draft' || command === 'inspector-focus') {
+      if (!selected || foundryTargetId(selected) !== payload.targetId)
+        throw new Error('The selection changed. Choose the layer again before editing.');
+      if (command === 'inspector-focus') {
+        if (selectedElements.length !== 1) throw new Error('Focus requires one selected layer.');
+        clearInspectorFocus();
+        if (payload.enabled) {
+          focusSpotlight = document.createElement('div');
+          focusSpotlight.style.cssText =
+            'position:fixed;pointer-events:none;z-index:2147483644;box-shadow:0 0 0 100vmax rgb(0 0 0 / 36%);border-radius:0';
+          shadow.append(focusSpotlight);
+          updateOutline();
+        }
+        return { focused: Boolean(focusSpotlight), targetId: payload.targetId };
+      }
+      const elements = [...selectedElements];
+      const ids = elements.map(foundryTargetId).sort();
+      const requestedIds = Array.isArray(payload.targetIds)
+        ? [...payload.targetIds].sort()
+        : [payload.targetId];
+      if (JSON.stringify(ids) !== JSON.stringify(requestedIds))
+        throw new Error('The selection changed. Review the selected layers before editing.');
+      const property = String(payload.property ?? '');
+      const properties = inspectorEditProperties(property);
+      const edits = elements.flatMap((element) =>
+        properties.map((name) => ({
+          element,
+          control: nextControlsFor(element).find((item) => item.property === name),
+        })),
+      );
+      const control = edits[0]?.control;
+      if (
+        !control ||
+        edits.some(
+          ({ control: item }) => !item || item.kind !== control.kind || item.unit !== control.unit,
+        ) ||
+        (elements.length > 1 &&
+          (properties.some((name) => !inspectorStyleProperties.has(name)) ||
+            property === 'fontFamily'))
+      )
+        throw new Error('This property does not support a temporary inspector edit.');
+      if (payload.action === 'cancel') {
+        const restores = inspectorDraft?.restores ?? [];
+        cancelInspectorDraft();
+        publishWorkspaceState();
+        restores.forEach((restore) => restore());
+        return { cancelled: true, value: control.read() };
+      }
+      if (!['preview', 'commit'].includes(String(payload.action)))
+        throw new Error('Unknown inspector edit action.');
+      const value =
+        property === 'fontFamily' && !String(payload.value).includes(',')
+          ? fontFamilyDeclaration(String(payload.value), String(control.read()))
+          : (payload.value as string | number);
+      // Preflight every edge on every target before changing any of them.
+      for (const { control: item } of edits) {
+        const candidate = item!;
+        const cssProperty = candidate.property.replace(
+          /[A-Z]/g,
+          (letter) => `-${letter.toLowerCase()}`,
+        );
+        const cssValue = `${value}${candidate.unit ?? ''}`;
+        if (
+          (candidate.kind === 'number' &&
+            (String(value).trim() === '' ||
+              !Number.isFinite(Number(value)) ||
+              (candidate.min != null && Number(value) < candidate.min) ||
+              (candidate.max != null && Number(value) > candidate.max))) ||
+          (inspectorStyleProperties.has(candidate.property) &&
+            !CSS.supports(cssProperty, cssValue)) ||
+          (candidate.kind === 'select' && !candidate.options?.includes(String(value)))
+        )
+          throw new Error(
+            `Enter a valid ${candidate.label.toLowerCase()}${candidate.unit ? ` in ${candidate.unit}` : ''}.`,
+          );
+      }
+      if (
+        inspectorDraft &&
+        (inspectorDraft.element !== selected || inspectorDraft.property !== property)
+      )
+        cancelInspectorDraft();
+      if (payload.action === 'commit') {
+        cancelInspectorDraft();
+        const gestureId = crypto.randomUUID();
+        let recordedCount = 0;
+        for (const { element, control: candidate } of edits) {
+          const item = candidate!;
+          const before = item.read();
+          const restoreBefore = inspectorRestore(element, item.property);
+          applyInspectorValue(item, value, element);
+          const after = item.read();
+          if (String(before) === String(after)) {
+            restoreBefore();
+            continue;
+          }
+          const recorded = await record(item, before, after, element, `Adjust ${item.label}`, [
+            `Inspector gesture ${gestureId}`,
+            `${elements.length} selected layers`,
+            ...(properties.length > 1 ? [`Linked ${property}: ${properties.join(', ')}`] : []),
+          ]);
+          if (!recorded) {
+            restoreBefore();
+            publishWorkspaceState();
+            throw new Error(
+              recordedCount
+                ? `${recordedCount} of ${edits.length} property changes added to Review. The remaining properties were not changed. Undo to revert the recorded group.`
+                : 'The edit could not be added to Review. The preview was restored; your input is retained.',
+            );
+          }
+          recordedCount++;
+          pushHistory({
+            element,
+            property: item.property,
+            before,
+            after,
+            unit: item.unit,
+            category: item.category,
+            label: item.label,
+            gestureId,
+            inspectorRestore: {
+              before: restoreBefore,
+              after: inspectorRestore(element, item.property),
+            },
+          });
+        }
+        if (recordedCount) nextInspectorRevision++;
+        selectedControls = selected ? controlsFor(selected) : [];
+        publishWorkspaceState();
+        return {
+          applied: recordedCount > 0,
+          recorded: recordedCount > 0,
+          recordedCount,
+          revision: nextInspectorRevision,
+          value: control.read(),
+        };
+      }
+      if (!inspectorDraft)
+        inspectorDraft = {
+          element: selected,
+          property,
+          restores: elements.map((element) => inspectorRestore(element, properties[0]!)),
+        };
+      if (property === 'fontFamily') {
+        const families = collectProjectFonts(document, selected);
+        const family = parseFontFamilyStack(String(value))[0] ?? String(value);
+        if (!families.some((font) => font.family === family))
+          throw new Error('Choose an indexed project font.');
+        await document.fonts.load(`16px "${family.replaceAll('"', '')}"`);
+        if (!selected || inspectorDraft?.element !== selected)
+          throw new Error('The selection changed while loading the font.');
+      }
+      edits.forEach(({ control: item, element }) => applyInspectorValue(item!, value, element));
+      updateOutline();
+      return { previewed: true, recorded: false, value: control.read() };
+    }
+    if (
+      ['apply-preview-context', 'set-context', 'audit-responsive'].includes(command) &&
+      !hydratedOnce
+    ) {
+      await initialHydration;
+      if (!hydratedOnce)
+        throw new Error(
+          'The project graph has not loaded. Reconnect the preview before applying a context.',
+        );
+    }
     if (command === 'preview-ping') {
       return {
         alive: true,
@@ -4040,6 +4597,8 @@ export function installFoundryInspector(
       const element = resolveFoundrySelector(document, selector);
       if (!element) throw new Error(`Target ${selector} did not resolve in this preview`);
       select(element, Boolean(payload.additive));
+      if (payload.reveal)
+        element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
       return { selected: true, id: foundryTargetId(element), selector: foundrySelector(element) };
     }
     if (command === 'select-component-instance') {
@@ -4153,8 +4712,10 @@ export function installFoundryInspector(
     }
     if (command === 'clear-health-stress') {
       stressDraftConditions = [];
-      restoreStressConditions();
-      return { cleared: true };
+      const target = activeStressTarget;
+      restoreStressConditions(false);
+      activeStressTarget = target;
+      return { cleared: true, findings: scanDesignHealthOrThrow() };
     }
     if (command === 'select-health-issue' || command === 'preview-health-fix') {
       const issueId = String(payload.issueId ?? '');
@@ -4507,6 +5068,11 @@ export function installFoundryInspector(
       return { preference, resolved: resolvedInterfaceTheme() };
     }
     if (command === 'scan-health') {
+      activeStressScope = payload.scope === 'selection' ? 'selection' : 'canvas';
+      activeStressTarget =
+        activeStressScope === 'selection' && selected
+          ? { element: selected, label: layerLabel(selected) }
+          : null;
       return { scanned: true, findings: scanDesignHealthOrThrow() };
     }
     throw new Error(`Unknown workspace command: ${command}`);
@@ -5064,6 +5630,7 @@ export function installFoundryInspector(
 
   async function hydrateSession(): Promise<void> {
     if (!sessionId || !token) return;
+    const firstHydration = !hydratedOnce;
     try {
       const [response, presence] = await Promise.all([
         fetch(`${runtimeUrl}/v1/sessions/${sessionId}`, {
@@ -5124,7 +5691,7 @@ export function installFoundryInspector(
         showToast('Click any element. Shift-click builds a selection.');
       }
       hydratedOnce = true;
-      if (verificationChild) publishWorkspaceState();
+      if (verificationChild || firstHydration) publishWorkspaceState();
     } catch (error) {
       runtimeConnected = false;
       setSessionStatus(
@@ -5134,12 +5701,12 @@ export function installFoundryInspector(
     }
   }
 
-  void hydrateSession();
+  const initialHydration = hydrateSession();
   function startSessionPolling(): void {
     clearInterval(sessionPoll);
     sessionPoll = setInterval(() => void hydrateSession(), 5000);
   }
-  if (!verificationChild) startSessionPolling();
+  if (!verificationChild && !componentSpecimen) startSessionPolling();
 
   function showToast(message: string): void {
     const toast = shadow.querySelector<HTMLElement>('.toast')!;
@@ -5152,7 +5719,7 @@ export function installFoundryInspector(
     try {
       writeDesignMemory(localStorage, projectRoot, designMemory);
     } catch {
-      showToast('Design memory could not be saved in this browser');
+      throw new Error('Design memory could not be saved in this browser.');
     }
   }
 
@@ -6034,7 +6601,11 @@ export function installFoundryInspector(
   }
 
   function isVisibleLayer(element: HTMLElement): boolean {
-    if (element === host || host.contains(element) || ignoredLayerTags.has(element.tagName)) {
+    if (
+      element === host ||
+      host.contains(element) ||
+      ignoredLayerTags.has(element.tagName.toUpperCase())
+    ) {
       return false;
     }
     const style = getComputedStyle(element);
@@ -6078,6 +6649,9 @@ export function installFoundryInspector(
 
   function meaningfulLayer(element: HTMLElement): boolean {
     if (!isVisibleLayer(element)) return false;
+    // SVG roots support the existing CSS/attribute inspector. Individual paths
+    // remain outside the editable layer model until path-level mapping exists.
+    if (element instanceof SVGSVGElement) return true;
     const signals = layerSignals(element, 0);
     const style = getComputedStyle(element);
     return (
@@ -6224,6 +6798,90 @@ export function installFoundryInspector(
         Number(b.elements.length > 0) - Number(a.elements.length > 0) ||
         a.name.localeCompare(b.name),
     );
+  }
+
+  function nextVariantDefinition(element: HTMLElement): ComponentWorkshopDefinition | null {
+    const path = element.dataset.foundryComponent;
+    const matches = (designGraph?.components ?? []).filter((component) => {
+      if (!component.variants.length) return false;
+      if (
+        path &&
+        [component.id, component.name].some(
+          (name) => name === path || name === path.split('/').at(-1),
+        )
+      )
+        return true;
+      try {
+        return Boolean(component.selector && element.matches(component.selector));
+      } catch {
+        return false;
+      }
+    });
+    return matches.length === 1 ? matches[0]! : null;
+  }
+
+  function nextVariantSnapshot(element: HTMLElement) {
+    const component = nextVariantDefinition(element);
+    if (!component) return null;
+    const selectors: string[] = [];
+    const visit = (rules: CSSRuleList): void => {
+      for (const rule of rules) {
+        if (rule instanceof CSSStyleRule && rule.style.length)
+          selectors.push(...rule.selectorText.split(','));
+        if ('cssRules' in rule) visit((rule as CSSGroupingRule).cssRules);
+      }
+    };
+    for (const sheet of document.styleSheets) {
+      try {
+        if (sheet.href && new URL(sheet.href, location.href).origin !== location.origin) continue;
+        visit(sheet.cssRules);
+      } catch {
+        /* Cross-origin styles cannot substantiate a live preview hook. */
+      }
+    }
+    const hasHook = (attribute: string) =>
+      selectors.some((selector) => {
+        selector = selector.trim();
+        const pattern = new RegExp(`\\[${attribute}(?:\\s*[~|^$*]?=[^\\]]*)?\\s*\\]`);
+        const match = pattern.exec(selector);
+        if (!match) return false;
+        // The hook must be on the selected subject, not on one of its ancestors.
+        if (/[\s>+~]/.test(selector.slice(match.index + match[0].length))) return false;
+        try {
+          return element.matches(selector.replace(pattern, '').trim() || '*');
+        } catch {
+          return false;
+        }
+      });
+    return {
+      componentId: component.id,
+      name: component.name,
+      variants: component.variants.map((variant) => {
+        let reason: string | null = null;
+        let attributes: Array<[string, string]> = [];
+        try {
+          attributes = inspectorVariantAttributes(variant);
+          const unsupported = attributes.find(([name]) => !hasHook(name));
+          if (unsupported)
+            reason = `No authored live CSS hook for ${unsupported[0]}. Use Component Workshop for source planning.`;
+          if (!targetFor(element).source)
+            reason = 'The selected instance has no exact source mapping.';
+        } catch (error) {
+          reason = error instanceof Error ? error.message : 'Variant unavailable.';
+        }
+        return {
+          id: variant.id,
+          name: variant.name,
+          source: variant.source,
+          props: variant.props,
+          supported: !reason,
+          reason,
+          current:
+            attributes.length > 0 &&
+            attributes.every(([name, value]) => element.getAttribute(name) === value),
+        };
+      }),
+    };
   }
 
   function workshopCatalog(): Array<{
@@ -7204,7 +7862,10 @@ export function installFoundryInspector(
     const hitElements = (root: Document | ShadowRoot): HTMLElement[] => {
       const elements = root
         .elementsFromPoint(x, y)
-        .filter((element): element is HTMLElement => element instanceof HTMLElement);
+        .filter(
+          (element): element is HTMLElement =>
+            element instanceof HTMLElement || element instanceof SVGSVGElement,
+        );
       return elements.flatMap((element) => [
         ...(element.shadowRoot ? hitElements(element.shadowRoot) : []),
         element,
@@ -7266,6 +7927,23 @@ export function installFoundryInspector(
   }
 
   async function replayHistory(direction: -1 | 1): Promise<{ recorded: boolean }> {
+    cancelInspectorDraft();
+    const grouped =
+      direction < 0 ? previewHistory[historyCursor - 1] : previewHistory[historyCursor];
+    if (grouped?.gestureId) {
+      const gestureId = grouped.gestureId;
+      do {
+        await replayHistoryEntry(direction);
+      } while (
+        (direction < 0 ? previewHistory[historyCursor - 1] : previewHistory[historyCursor])
+          ?.gestureId === gestureId
+      );
+      return { recorded: true };
+    }
+    return replayHistoryEntry(direction);
+  }
+
+  async function replayHistoryEntry(direction: -1 | 1): Promise<{ recorded: boolean }> {
     const entry = direction < 0 ? previewHistory[historyCursor - 1] : previewHistory[historyCursor];
     if (!entry)
       throw new Error(direction < 0 ? 'There is nothing to undo' : 'There is nothing to redo');
@@ -7298,6 +7976,7 @@ export function installFoundryInspector(
       );
     }
     historyCursor = nextCursor;
+    nextInspectorRevision++;
     updateHistoryActions();
     return { recorded };
   }
@@ -7964,8 +8643,21 @@ export function installFoundryInspector(
     cancelled: 'Apply cancelled',
   };
 
+  function ownsApplyVerification(): boolean {
+    return (
+      readinessFrameKind === 'canvas' &&
+      !verificationChild &&
+      !query.has('__foundry_design_branch') &&
+      (!embeddedWorkspace || query.get('__foundry_frame') === 'canvas')
+    );
+  }
+
   function maybeVerifyRun(run: any): void {
-    if (verificationChild || run.state !== 'verifying' || verifyingRuns.has(run.id)) return;
+    // Auxiliary previews share this session (and sessionStorage) with Canvas,
+    // but can be hidden or unmounted when another workspace is active. Only
+    // Canvas coordinates Apply verification; isolated children measure the
+    // frozen context when explicitly requested by that coordinator.
+    if (!ownsApplyVerification() || run.state !== 'verifying' || verifyingRuns.has(run.id)) return;
     if (!run.claimAttemptId) {
       showToast('The active Apply claim is missing. Reclaim the run before verifying.');
       return;
@@ -8282,6 +8974,15 @@ export function installFoundryInspector(
   }
 
   function updateOutline(): void {
+    if (focusSpotlight && selected) {
+      const rect = selected.getBoundingClientRect();
+      Object.assign(focusSpotlight.style, {
+        left: `${rect.left}px`,
+        top: `${rect.top}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+      });
+    }
     shadow.querySelectorAll('.multi-outline').forEach((item) => item.remove());
     shadow.querySelectorAll('.spacing-guide').forEach((item) => item.remove());
     if (!selected || !selected.isConnected) {
@@ -8457,6 +9158,8 @@ export function installFoundryInspector(
     options: {
       source?: ComponentWorkshopSource;
       scope?: ComponentWorkshopScope;
+      requireRecordedChange?: boolean;
+      onRecorded?: (destination: { branchId?: string; branchName?: string }) => void;
     } = {},
   ): Promise<boolean> {
     if (!element || !sessionId || !token) {
@@ -8564,15 +9267,46 @@ export function installFoundryInspector(
           },
         }),
       });
-      const activeChanges = responsePayload.changeSet.changes.filter(
+      const activeBranch = responsePayload.activeDesignBranchId
+        ? responsePayload.designBranches?.find(
+            (branch: any) => branch.id === responsePayload.activeDesignBranchId,
+          )
+        : undefined;
+      if (responsePayload.activeDesignBranchId && !Array.isArray(activeBranch?.changes)) {
+        throw new Error('The active direction could not be confirmed in the runtime response');
+      }
+      const activeChanges = (activeBranch?.changes ?? responsePayload.changeSet.changes).filter(
         (change: any) =>
           change.status !== 'rejected' && String(change.before) !== String(change.after),
       );
+      if (
+        options.requireRecordedChange &&
+        !activeChanges.some(
+          (change: any) =>
+            change.operationId === operationId &&
+            change.target.id === target.id &&
+            change.property === control.property &&
+            JSON.stringify(change.after) === JSON.stringify(after),
+        )
+      ) {
+        throw new Error(
+          activeBranch
+            ? 'The runtime did not retain the requested correction in the active direction'
+            : 'The runtime did not retain the requested correction in Review',
+        );
+      }
       recordedChangeCount = activeChanges.length;
       completeOnboardingStep('change');
       lastRecordedSummary = `${target.label} · ${control.label} ${before}${control.unit ?? ''} → ${after}${control.unit ?? ''}`;
       updateChangeCount(activeChanges.length, activeChanges.at(-1));
-      showToast(ambiguous ? 'Choose the source intent in review' : 'Change recorded');
+      options.onRecorded?.({ branchId: activeBranch?.id, branchName: activeBranch?.name });
+      showToast(
+        activeBranch
+          ? `Change saved to direction “${activeBranch.name}”. ${ambiguous ? 'Resolve its source intent before promotion.' : 'Promote the direction to add it to Review.'}`
+          : ambiguous
+            ? 'Choose the source intent in review'
+            : 'Change recorded',
+      );
       recorded = true;
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not record change');
@@ -9205,12 +9939,15 @@ export function installFoundryInspector(
 
   function measuredTextLineCount(element: HTMLElement): number | undefined {
     const range = element.ownerDocument.createRange();
-    range.selectNodeContents(element);
-    const tops = new Set(
-      [...range.getClientRects()]
-        .filter((rect) => rect.width > 0 && rect.height > 0)
-        .map((rect) => Math.round(rect.top * 2) / 2),
-    );
+    const tops = new Set<number>();
+    // Element ranges also include child boxes (such as a button icon), which
+    // falsely count as extra text lines. Measure actual visible text only.
+    for (const node of textNodesInside(element)) {
+      range.selectNodeContents(node);
+      for (const rect of range.getClientRects()) {
+        if (rect.width > 0 && rect.height > 0) tops.add(Math.round(rect.top * 2) / 2);
+      }
+    }
     return tops.size || undefined;
   }
 
@@ -10266,6 +11003,10 @@ export function installFoundryInspector(
   }
 
   function rawHistoryValue(entry: HistoryEntry, value: string | number): void {
+    if (entry.inspectorRestore) {
+      entry.inspectorRestore[String(value) === String(entry.before) ? 'before' : 'after']();
+      return;
+    }
     rawElementValue(entry.element, entry.property, value, entry.unit);
   }
 
@@ -10718,7 +11459,7 @@ export function installFoundryInspector(
   }
 
   function resolveActiveStressTarget(): HTMLElement | null {
-    if (!activeStressTarget) return null;
+    if (!activeStressTarget) return selected?.isConnected ? selected : null;
     return activeStressTarget.element.isConnected ? activeStressTarget.element : null;
   }
 
@@ -10813,18 +11554,22 @@ export function installFoundryInspector(
       });
       for (const finding of findings) {
         const id = `${foundrySelector(element)}:${finding.ruleId}`;
+        const previousIssue = healthIssues.find((issue) => issue.id === id);
         nextIssues.push({
           ...finding,
           id,
           element,
           elementLabel: layerLabel(element),
-          previewed: healthIssues.find((issue) => issue.id === id)?.previewed ?? false,
+          previewed: previousIssue?.previewed ?? false,
+          recordedBranchId: previousIssue?.recordedBranchId,
+          recordedBranchName: previousIssue?.recordedBranchName,
           source: element.dataset.foundrySource ?? undefined,
           stressConditions: [...activeStressConditions],
         });
       }
     }
     healthIssues = nextIssues;
+    healthScannedAt = new Date().toISOString();
     renderHealthPanel();
   }
 
@@ -10859,7 +11604,7 @@ export function installFoundryInspector(
       ? filtered
           .map(
             (issue) =>
-              `<article class="health-card" data-health-issue="${escapeHtml(issue.id)}"><div class="health-card-top"><span class="health-severity ${issue.severity}"></span><strong>${escapeHtml(issue.title)}</strong><span>${escapeHtml(issue.severity)}</span></div><p>${escapeHtml(issue.description)}</p><div class="health-evidence"><strong>${escapeHtml(issue.elementLabel)}</strong><br/>${escapeHtml(issue.evidence)}</div><div class="health-actions"><button data-health-select="${escapeHtml(issue.id)}">Select</button><button class="health-ignore" data-health-ignore="${escapeHtml(issue.id)}">Ignore</button>${issue.fix ? `<button class="health-fix ${issue.previewed ? 'previewed' : ''}" data-health-fix="${escapeHtml(issue.id)}" ${issue.previewed ? 'disabled' : ''}>${issue.previewed ? '<i data-foundry-icon="check"></i> Added to review' : escapeHtml(issue.fix.label)}</button>` : ''}</div></article>`,
+              `<article class="health-card" data-health-issue="${escapeHtml(issue.id)}"><div class="health-card-top"><span class="health-severity ${issue.severity}"></span><strong>${escapeHtml(issue.title)}</strong><span>${escapeHtml(issue.severity)}</span></div><p>${escapeHtml(issue.description)}</p><div class="health-evidence"><strong>${escapeHtml(issue.elementLabel)}</strong><br/>${escapeHtml(issue.evidence)}</div><div class="health-actions"><button data-health-select="${escapeHtml(issue.id)}">Select</button><button class="health-ignore" data-health-ignore="${escapeHtml(issue.id)}">Ignore</button>${issue.fix ? `<button class="health-fix ${issue.previewed ? 'previewed' : ''}" data-health-fix="${escapeHtml(issue.id)}" ${issue.previewed ? 'disabled' : ''}>${issue.previewed ? `<i data-foundry-icon="check"></i> ${issue.recordedBranchId ? 'Saved to direction' : 'Added to review'}` : escapeHtml(issue.fix.label)}</button>` : ''}</div></article>`,
           )
           .join('')
       : `<div class="health-empty"><i data-foundry-icon="${healthScanError || visibleIssues.length ? 'triangle-alert' : 'check'}"></i>${healthScanError || (visibleIssues.length ? 'No issues match this filter.' : 'This viewport is looking healthy.')}</div>`;
@@ -10953,7 +11698,10 @@ export function installFoundryInspector(
     healthList.querySelectorAll<HTMLButtonElement>('[data-health-fix]').forEach((button) =>
       button.addEventListener('click', () => {
         const issue = healthIssues.find((item) => item.id === button.dataset.healthFix);
-        if (issue && !issue.previewed) void previewHealthFix(issue);
+        if (issue && !issue.previewed)
+          void previewHealthFix(issue).catch((error) => {
+            showToast(error instanceof Error ? error.message : 'Could not record this correction');
+          });
       }),
     );
   }
@@ -10972,7 +11720,9 @@ export function installFoundryInspector(
   }
 
   async function previewHealthFix(issue: BrowserHealthIssue): Promise<void> {
-    if (!issue.fix || !issue.element.isConnected) return;
+    if (!issue.fix || !issue.element.isConnected)
+      throw new Error('This correction is no longer available. Run the check again.');
+    let recordedCorrections = 0;
     for (const change of issue.fix.changes) {
       const control = simpleStyleControl(
         issue.element,
@@ -10982,8 +11732,42 @@ export function installFoundryInspector(
         change.unit,
       );
       const before = control.read();
-      control.apply(change.value);
-      const after = control.read();
+      const cssProperty = change.property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+      const originalValue = issue.element.style.getPropertyValue(cssProperty);
+      const originalPriority = issue.element.style.getPropertyPriority(cssProperty);
+      // Computed values can still be at their transition's starting point.
+      // Review records the explicit correction, not an intermediate rendered frame.
+      const after = change.value;
+      control.apply(after);
+      const recorded = await record(
+        control,
+        before,
+        after,
+        issue.element,
+        `Design health: ${issue.title}`,
+        [],
+        {
+          requireRecordedChange: true,
+          onRecorded: (destination) => {
+            issue.recordedBranchId = destination.branchId;
+            issue.recordedBranchName = destination.branchName;
+          },
+        },
+      );
+      if (!recorded) {
+        if (originalValue)
+          issue.element.style.setProperty(cssProperty, originalValue, originalPriority);
+        else issue.element.style.removeProperty(cssProperty);
+        updateOutline();
+        renderHealthPanel();
+        publishWorkspaceState();
+        throw new Error(
+          recordedCorrections
+            ? `${recordedCorrections} correction(s) are saved, but the next correction could not be recorded. Its preview was restored. Check the connection before trying again.`
+            : 'This correction could not be saved. Its preview was restored. Check the connection before trying again.',
+        );
+      }
+      recordedCorrections += 1;
       pushHistory({
         element: issue.element,
         property: change.property,
@@ -10993,13 +11777,16 @@ export function installFoundryInspector(
         category: control.category,
         label: control.label,
       });
-      await record(control, before, after, issue.element, `Design health: ${issue.title}`);
     }
     issue.previewed = true;
     select(issue.element);
     updateOutline();
     renderHealthPanel();
-    showToast('Health correction added to review');
+    showToast(
+      issue.recordedBranchId
+        ? `Health correction saved to direction “${issue.recordedBranchName ?? issue.recordedBranchId}”. Promote the direction to add it to Review.`
+        : 'Health correction added to review',
+    );
   }
 
   function openHealth(): void {
@@ -11191,7 +11978,7 @@ export function installFoundryInspector(
   function applyMotionEasingValue(effect: KeyframeEffect, value: string | number): void {
     const sourceValue = String(value);
     const snapshot = motionCurveSnapshot(parseMotionCurve(sourceValue));
-    effect.updateTiming({ easing: snapshot.previewValue });
+    setRenderedMotionEasing(effect, snapshot.previewValue);
   }
 
   async function applyMotionCurve(
@@ -11203,14 +11990,14 @@ export function installFoundryInspector(
     if (!animation || !effect) return { applied: false, recorded: false };
     ensureMotionComparisonBaseline(motion);
     const current = previewMotionCurves.get(animation);
-    const before = current?.sourceValue ?? String(effect.getTiming().easing ?? 'linear');
+    const before = current?.sourceValue ?? motion.descriptor.timing.easing;
     const snapshot = motionCurveSnapshot(requested);
     if (before === snapshot.sourceValue) return { applied: false, recorded: false };
-    effect.updateTiming({ easing: snapshot.previewValue });
+    setRenderedMotionEasing(effect, snapshot.previewValue);
     previewMotionCurves.set(animation, snapshot);
     const applyValue = (value: string | number): void => {
       const next = motionCurveSnapshot(parseMotionCurve(String(value)));
-      effect.updateTiming({ easing: next.previewValue });
+      setRenderedMotionEasing(effect, next.previewValue);
       previewMotionCurves.set(animation, next);
     };
     const recorded = await record(
@@ -11254,7 +12041,10 @@ export function installFoundryInspector(
     const effect = motion.animation?.effect as KeyframeEffect | null;
     if (!effect) return { applied: false, recorded: false };
     ensureMotionComparisonBaseline(motion);
-    const before = effect.getTiming()[property] as string | number;
+    const before =
+      property === 'easing'
+        ? motion.descriptor.timing.easing
+        : (effect.getTiming()[property] as string | number);
     if (property === 'easing') applyMotionEasingValue(effect, after);
     else effect.updateTiming({ [property]: after });
     if (String(before) === String(after)) return { applied: false, recorded: false };
@@ -12070,6 +12860,10 @@ export function installFoundryInspector(
 
   function select(element: HTMLElement, additive = false): void {
     if (element === host || host.contains(element)) return;
+    if (selected !== element || additive) {
+      cancelInspectorDraft();
+      clearInspectorFocus();
+    }
     if (selected && selected !== element && workshopStateId !== 'current') {
       clearWorkshopStatePreview();
       workshopStateId = 'current';
@@ -12190,6 +12984,8 @@ export function installFoundryInspector(
   }
 
   function clearSelection(): void {
+    cancelInspectorDraft();
+    clearInspectorFocus();
     clearWorkshopStatePreview();
     workshopStateId = 'current';
     closeTypographyStudio(false);
@@ -12382,7 +13178,9 @@ export function installFoundryInspector(
       index,
       signature,
     };
-    if (candidates.length > 1 && !event.shiftKey) {
+    // The embedded workspace already identifies selection in Layers and the inspector.
+    // Keep the standalone cycling hint without covering the embedded product on each click.
+    if (!embeddedWorkspace && candidates.length > 1 && !event.shiftKey) {
       showToast(`${layerLabel(element)} · ${index + 1} of ${candidates.length}`);
     }
   }
@@ -13481,7 +14279,8 @@ export function installFoundryInspector(
     else clearSelection();
   }
   document.addEventListener('keydown', handleGlobalShortcuts);
-  if (!verificationChild && sessionStorage.getItem('__foundry_verifying_run')) void openReview();
+  if (!verificationChild && !componentSpecimen && sessionStorage.getItem('__foundry_verifying_run'))
+    void openReview();
   let mutationFrame = 0;
   const layerMutationObserver = new MutationObserver(() => {
     cancelAnimationFrame(mutationFrame);
@@ -13502,7 +14301,7 @@ export function installFoundryInspector(
     subtree: true,
   });
   const persistedSelector = sessionStorage.getItem('__foundry_selected_selector');
-  if (persistedSelector) {
+  if (persistedSelector && !componentSpecimen) {
     try {
       const persistedElement = resolveFoundrySelector(document, persistedSelector);
       if (persistedElement) select(persistedElement);
@@ -13515,7 +14314,60 @@ export function installFoundryInspector(
     publishWorkspaceState();
   }
 
+  // This lease is issued by the preview itself, after session hydration. A page
+  // returning HTTP 200 or an inspector-side status label is not preview evidence.
+  let readinessStopped = false;
+  let readinessPending = false;
+  async function publishPreviewPresence(connected = true): Promise<void> {
+    // Branch comparisons and unmarked auxiliary embeds are not Canvas liveness
+    // evidence, even though the backward-compatible frame-kind union has no
+    // branch member. Their own acknowledged commands still report availability.
+    if (readinessFrameKind === 'canvas' && !ownsApplyVerification()) return;
+    if (
+      !sessionId ||
+      !token ||
+      !previewCapability ||
+      (connected && (!hydratedOnce || readinessStopped || readinessPending))
+    )
+      return;
+    readinessPending = true;
+    try {
+      const targets = connected
+        ? collectLayerElements(document).filter(meaningfulLayer).slice(0, 10_000)
+        : [];
+      await fetch(`${runtimeUrl}/v1/sessions/${encodeURIComponent(sessionId)}/preview-presence`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-foundry-token': token },
+        signal: AbortSignal.timeout(1800),
+        body: JSON.stringify({
+          version: 1,
+          previewCapability,
+          frameId: readinessFrameId,
+          frameKind: readinessFrameKind,
+          protocolVersion: PROTOCOL_VERSION,
+          adapterVersion: packageJson.version,
+          targetCount: targets.length,
+          mappedTargetCount: targets.filter((element) =>
+            Boolean(parseSource(element.dataset.foundrySource)),
+          ).length,
+          connected,
+        }),
+      });
+    } catch {
+      // The runtime expires the last acknowledgement; no optimistic success.
+    } finally {
+      readinessPending = false;
+    }
+  }
+  const readinessHeartbeat = window.setInterval(() => void publishPreviewPresence(), 2000);
+  void publishPreviewPresence();
+
   function destroyInspector(): void {
+    cancelInspectorDraft();
+    clearInspectorFocus();
+    readinessStopped = true;
+    window.clearInterval(readinessHeartbeat);
+    void publishPreviewPresence(false);
     restorePreviewState();
     restoreConfiguredPreviewTheme();
     restoreTypographyPreview();

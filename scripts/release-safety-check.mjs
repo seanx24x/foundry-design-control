@@ -14,7 +14,28 @@ const publicArchiveScript = readFileSync(
 const verifyPublicScript = readFileSync(join(root, 'scripts', 'verify-public-release.mjs'), 'utf8');
 const pnpmFile = readFileSync(join(root, '.pnpmfile.cjs'), 'utf8');
 const rootPackage = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+const ciWorkflow = readFileSync(join(root, '.github', 'workflows', 'ci.yml'), 'utf8');
 const failures = [];
+
+if (!rootPackage.scripts?.check?.includes('pnpm test:compatibility:contract')) {
+  failures.push('pnpm check must validate the framework fixture source and capability contracts');
+}
+for (const [name, contents] of [
+  ['ci.yml', ciWorkflow],
+  ['release.yml', workflow],
+]) {
+  const packed = contents.indexOf('pnpm test:compatibility:packed');
+  const pack = contents.indexOf('pnpm release:pack');
+  if (packed < 0 || pack < 0 || packed <= pack) {
+    failures.push(
+      `${name} must test framework compatibility against the existing packed artifacts`,
+    );
+  }
+  const publish = contents.indexOf('pnpm release:publish');
+  if (publish >= 0 && packed >= publish) {
+    failures.push(`${name} must pass packed framework compatibility before publishing`);
+  }
+}
 
 const bridgeIndex = RELEASE_PACKAGE_DIRECTORIES.indexOf('packages/mcp-server');
 const cliIndex = RELEASE_PACKAGE_DIRECTORIES.indexOf('packages/cli');
@@ -115,6 +136,7 @@ const orderedSteps = [
   'pnpm release:tag-beta',
   'pnpm release:verify-public',
   'pnpm test:golden:registry',
+  'pnpm test:compatibility:registry',
   'pnpm release:promote',
 ];
 let previous = -1;
