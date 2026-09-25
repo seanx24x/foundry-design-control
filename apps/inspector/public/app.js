@@ -1093,11 +1093,11 @@ function currentWorkshopComponent() {
 function renderComponentWorkshop() {
   const workshop = $('.component-workshop-mode');
   const isNext = params.get('ui') === 'next';
-  if (isNext && openCustomSelect && workshop.contains(openCustomSelect.select)) {
+  if (openCustomSelect && workshop.contains(openCustomSelect.select)) {
     workshopRenderDeferred = true;
     return;
   }
-  if (isNext) rememberWorkshopDraft(workshop);
+  rememberWorkshopDraft(workshop);
   const list = $('#component-workshop-list');
   const detail = $('#component-workshop-detail');
   const contract = $('#component-workshop-contract');
@@ -1177,6 +1177,7 @@ function renderComponentWorkshop() {
     }),
   );
   if (!component) {
+    workshop.dataset.workshopKey = '';
     if (isNext) workshopGallery?.destroy();
     detail.innerHTML = query
       ? '<div class="workshop-empty foundry-empty-state"><i data-icon="search"></i><strong>No matching component</strong><p>Clear the search to return to the component catalog.</p></div>'
@@ -1185,7 +1186,6 @@ function renderComponentWorkshop() {
       '<div class="workshop-empty foundry-empty-state is-compact"><i data-icon="file"></i><strong>No source contract</strong><p>Choose an indexed component.</p></div>';
     $('#component-workshop-readiness').textContent = 'Instrument a component to begin.';
     if (isNext) {
-      workshop.dataset.workshopKey = '';
       $('#component-open-canvas').disabled = true;
       $('#component-workshop-readiness').textContent = query
         ? 'No matching components'
@@ -1332,7 +1332,7 @@ function renderComponentWorkshop() {
     renderIcons(workshop);
   }
   upgradeSelects(detail);
-  if (isNext) restoreWorkshopDraft(workshop, component.key, syncCustomSelect);
+  restoreWorkshopDraft(workshop, component.key, syncCustomSelect);
   $$('[data-workshop-scope]', workshop).forEach((button) =>
     button.addEventListener('click', async () => {
       const nextScope = button.dataset.workshopScope;
@@ -6297,6 +6297,12 @@ function renderMotionCurveEditor(selection, motion, disabled) {
 }
 
 function renderMotionStudio() {
+  const focused = document.activeElement;
+  if (
+    $('.motion-studio-mode')?.contains(focused) &&
+    focused.matches('input:not([type="search"]):not([type="range"]), textarea, select')
+  )
+    return;
   if (params.get('ui') === 'next') {
     nextMotionStudio ??= createNextMotionStudio($('.motion-studio-mode'));
     if (nextMotionStudio.isEditing()) return;

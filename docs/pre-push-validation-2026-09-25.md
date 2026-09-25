@@ -110,3 +110,10 @@ the capture regression and complete browser suite pass afterward. Fresh packed
 Morrow, React/Vite, Next.js, and Storybook source-Apply checks also passed after
 pinning the CLI and test harness to the same exact Playwright version. Hosted CI
 and publication must still run against the final release commit.
+
+The hosted showcase also exposed legacy form refreshes discarding uncommitted
+motion duration and source-variant fields. Explicit bridge-refresh regressions
+reproduced both losses; focused motion fields and component drafts are now
+preserved, and all 29 local source-backed showcase checks pass with those
+regressions enabled. The browser suite also waits for replacement responsive
+frames to connect before starting its separate edit-scope transaction.

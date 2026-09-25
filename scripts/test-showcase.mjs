@@ -59,6 +59,34 @@ async function capture(name) {
     ),
   );
 }
+async function refreshPreviewState() {
+  await page.evaluate(
+    (sessionId) =>
+      new Promise((resolve, reject) => {
+        const frame = document.querySelector('#product-preview');
+        const timer = setTimeout(() => {
+          window.removeEventListener('message', onState);
+          reject(new Error('No live state arrived during the form edit.'));
+        }, 5000);
+        function onState(event) {
+          if (
+            event.source !== frame.contentWindow ||
+            event.data?.type !== 'foundry:workspace-state'
+          )
+            return;
+          clearTimeout(timer);
+          window.removeEventListener('message', onState);
+          resolve();
+        }
+        window.addEventListener('message', onState);
+        frame.contentWindow.postMessage(
+          { type: 'foundry:workspace-command', sessionId, command: 'request-state' },
+          new URL(frame.src).origin,
+        );
+      }),
+    session.sessionId,
+  );
+}
 try {
   await h.assertPortFree(h.runtimePort);
   await h.assertPortFree(h.previewPort);
@@ -237,6 +265,9 @@ try {
     assert.match(await page.locator('.component-workshop-contract').innerText(), /style.css:/);
     await page.locator('[data-workshop-variant-label]').fill('Outline');
     await page.locator('[data-workshop-variant-value]').fill('Outline');
+    await refreshPreviewState();
+    assert.equal(await page.locator('[data-workshop-variant-label]').inputValue(), 'Outline');
+    assert.equal(await page.locator('[data-workshop-variant-value]').inputValue(), 'Outline');
     await page.getByRole('button', { name: 'Stage source variant', exact: true }).click();
     const stored = await h.waitFor(async () => {
       const s = await h.sessionRequest(session);
@@ -381,6 +412,9 @@ try {
     }, 'rendered scrub position');
     assert.ok(opacity > 0 && opacity < 1, `scrub opacity ${opacity}`);
     await page.locator('[data-studio-property="duration"]').fill('600');
+    // A live bridge refresh while typing must not replace the focused field.
+    await refreshPreviewState();
+    assert.equal(await page.locator('[data-studio-property="duration"]').inputValue(), '600');
     await page.locator('[data-studio-property="duration"]').press('Tab');
     await h.waitFor(async () => {
       const stored = await h.sessionRequest(session);
