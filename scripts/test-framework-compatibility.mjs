@@ -604,12 +604,19 @@ async function ambiguity(session, state, prepared) {
   await state.product
     .locator('[data-foundry-id="compat-action"]')
     .click({ modifiers: ['Alt'], position: { x: 20, y: 20 } });
-  const width = state.page
-    .locator('.property-row')
-    .filter({ has: state.page.locator('.property-label[title="Width"]') })
-    .locator('input');
+  const nextUI = (await state.page.locator('#app-shell').getAttribute('data-next')) === 'true';
+  if (nextUI) {
+    const layout = state.page.locator('[data-section="Layout"]');
+    if ((await layout.getAttribute('aria-expanded')) !== 'true') await layout.click();
+  }
+  const width = nextUI
+    ? state.page.locator('[data-next-field="width"]')
+    : state.page
+        .locator('.property-row')
+        .filter({ has: state.page.locator('.property-label[title="Width"]') })
+        .locator('input');
   await width.fill('48');
-  await width.press('Tab');
+  await width.press(nextUI ? 'Enter' : 'Tab');
   const stored = await waitFor(async () => {
     const result = await sessionRequest(session);
     return result.changeSet.changes.some(({ status }) => status === 'unresolved')
