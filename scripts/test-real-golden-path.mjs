@@ -1571,11 +1571,16 @@ async function runDisconnectedPreview(tooling) {
     const keyboardProfile = browserState.page.locator('[data-stress-condition="keyboard-only"]');
     if ((await keyboardProfile.getAttribute('aria-pressed')) !== 'true')
       await keyboardProfile.click();
-    await browserState.page.locator('#apply-stress').click();
-    await browserState.page
-      .locator('.toast')
-      .filter({ hasText: /preview|offline|disconnected/i })
-      .waitFor({ timeout: 10_000 });
+    assert.equal(await browserState.page.locator('#apply-stress').isDisabled(), true);
+    assert.equal(await browserState.page.locator('#run-health').isDisabled(), true);
+    assert.match(
+      await browserState.page.locator('.next-stress-draft').textContent(),
+      /Reconnect the preview.*Choices are preserved/i,
+    );
+    assert.equal(
+      await browserState.product.locator('html').getAttribute('data-foundry-stress'),
+      null,
+    );
     const stored = await sessionRequest(session);
     assert.equal(stored.changeSet.changes.length, 0);
     assert.equal(stored.applyRuns.length, 0);
