@@ -1,4 +1,11 @@
-export { FoundryRuntime, type ReindexProjectDesignInput, type RuntimeOptions } from './server.js';
+export {
+  FoundryRuntime,
+  type ReindexProjectDesignInput,
+  type RuntimeOptions,
+  type DeliveryCaptureRequest,
+  type DeliveryCaptureResult,
+  type DeliveryEvidenceRequest,
+} from './server.js';
 export {
   SessionStore,
   type DocumentationExportMetadata,

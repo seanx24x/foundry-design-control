@@ -406,6 +406,22 @@ test('rolls back every managed file when setup introduces a project failure', as
   await assert.rejects(readFile(join(root, '.foundry', 'setup-transaction.json'), 'utf8'));
 });
 
+test('HTML setup does not invent a TypeScript check from a shared tooling dependency', async () => {
+  const root = await fixture('html-no-tsconfig');
+  await mkdir(join(root, 'node_modules', '.bin'), { recursive: true });
+  await writeFile(join(root, 'node_modules', '.bin', 'tsc'), 'not a configured validation command');
+  await writeFile(join(root, 'package.json'), JSON.stringify({ private: true }));
+  await writeFile(join(root, 'index.html'), '<!doctype html><html><body>Morrow</body></html>');
+  await setupProject(root, { agents: [] });
+  const manifest = JSON.parse(
+    await readFile(join(root, '.foundry', 'install-manifest.json'), 'utf8'),
+  );
+  assert.equal(
+    manifest.validation.find((item: { name: string }) => item.name === 'typecheck').status,
+    'skipped',
+  );
+});
+
 test('recovers an interrupted setup before applying a new transaction', async () => {
   const root = await fixture('recover');
   await mkdir(join(root, 'app'), { recursive: true });

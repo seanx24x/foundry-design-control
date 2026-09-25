@@ -136,6 +136,7 @@ serveStdio(() => {
               body: JSON.stringify({
                 agent: resolvedAgent,
                 listening: true,
+                bridgeVersion: packageJson.version,
                 ttlMs: Math.min(Math.max(waitMs + 10_000, 15_000), 70_000),
               }),
             },
@@ -269,6 +270,7 @@ serveStdio(() => {
               body: JSON.stringify({
                 agent: resolvedAgent,
                 listening: true,
+                bridgeVersion: packageJson.version,
                 ttlMs: Math.min(Math.max(waitMs + 10_000, 15_000), 70_000),
               }),
             },
@@ -357,6 +359,7 @@ serveStdio(() => {
               body: JSON.stringify({
                 agent: resolvedAgent,
                 listening: true,
+                bridgeVersion: packageJson.version,
                 ttlMs: Math.min(Math.max(waitMs + 10_000, 15_000), 70_000),
               }),
             },

@@ -40,7 +40,14 @@
         >
           <div class="story-copy">
             <span class="story-eyebrow">A workspace for ideas in progress</span>
-            <h1 id="story-title">Make room for the work that matters.</h1>
+            <h1
+              id="story-title"
+              data-foundry-id="story-title"
+              data-foundry-component="Signup/HeroHeading"
+              data-foundry-source="index.html:43:12"
+            >
+              Make room for the work that matters.
+            </h1>
             <p>
               Bring briefs, feedback, and decisions into one calm place your whole team can shape.
             </p>
@@ -51,7 +58,7 @@
             data-foundry-id="working-note"
             data-foundry-label="Shared working note"
             data-foundry-component="Signup/WorkingNote"
-            data-foundry-source="index.html:49:10"
+            data-foundry-source="index.html:56:10"
           >
             <header>
               <div>
@@ -97,11 +104,18 @@
           data-foundry-id="signup-form"
           data-foundry-label="Create workspace form"
           data-foundry-component="Signup/Form"
-          data-foundry-source="index.html:94:8"
+          data-foundry-source="index.html:101:8"
         >
           <div class="form-intro">
             <span>Start with Morrow</span>
-            <h2 id="form-title">Create your workspace</h2>
+            <h2
+              id="form-title"
+              data-foundry-id="form-title"
+              data-foundry-component="Signup/FormHeading"
+              data-foundry-source="index.html:111:12"
+            >
+              Create your workspace
+            </h2>
             <p>No credit card. Set up takes less than a minute.</p>
           </div>
 
@@ -124,7 +138,7 @@
               data-foundry-id="name-field"
               data-foundry-label="Name field"
               data-foundry-component="Signup/Field"
-              data-foundry-source="index.html:122:12"
+              data-foundry-source="index.html:136:12"
             >
               <label for="name">Full name</label>
               <div class="input-shell">
@@ -146,7 +160,7 @@
               data-foundry-id="email-field"
               data-foundry-label="Email field"
               data-foundry-component="Signup/Field"
-              data-foundry-source="index.html:144:12"
+              data-foundry-source="index.html:158:12"
             >
               <label for="email">Work email</label>
               <div class="input-shell">
@@ -175,7 +189,7 @@
               data-foundry-id="password-field"
               data-foundry-label="Password field"
               data-foundry-component="Signup/PasswordField"
-              data-foundry-source="index.html:173:12"
+              data-foundry-source="index.html:187:12"
             >
               <label for="password">Password</label>
               <div class="input-shell">
@@ -218,7 +232,7 @@
               data-foundry-id="terms-checkbox"
               data-foundry-label="Terms agreement"
               data-foundry-component="Signup/Checkbox"
-              data-foundry-source="index.html:216:12"
+              data-foundry-source="index.html:230:12"
             >
               <input id="terms" name="terms" type="checkbox" />
               <span class="custom-checkbox" aria-hidden="true">
@@ -237,7 +251,7 @@
               data-foundry-id="create-workspace-button"
               data-foundry-label="Create workspace button"
               data-foundry-component="Signup/PrimaryAction"
-              data-foundry-source="index.html:233:12"
+              data-foundry-source="index.html:247:12"
               data-story="Primary"
             >
               <span>Create workspace</span>
@@ -269,6 +283,8 @@
       const authoredState = new URLSearchParams(location.search).get('morrow-state');
 
       if (authoredState === 'loading') {
+        submitButton.classList.add('is-loading');
+        submitButton.disabled = true;
         submitButton.dataset.foundryState = 'loading';
         submitButton.setAttribute('aria-busy', 'true');
         submitButton.querySelector('span').textContent = 'Creating workspace';
@@ -349,10 +365,12 @@
         if (!fieldsValid || !termsInput.checked) return;
 
         submitButton.disabled = true;
+        submitButton.setAttribute('aria-busy', 'true');
         submitButton.classList.add('is-loading');
         submitButton.querySelector('span').textContent = 'Creating workspace';
         await new Promise((resolve) => window.setTimeout(resolve, 900));
         submitButton.classList.remove('is-loading');
+        submitButton.setAttribute('aria-busy', 'false');
         submitButton.classList.add('is-success');
         submitButton.querySelector('span').textContent = 'Workspace created';
         submitButton.querySelector('b').innerHTML =

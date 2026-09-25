@@ -16,6 +16,8 @@ export function detectSizingMode(
   minValue = '0px',
   maxValue = 'none',
 ): SizingMode {
+  // Constraints cap fluid sizing; they do not replace its authored fill intent.
+  if (authoredValue.trim() === '100%') return 'fill';
   const constrainedMinimum = !['0', '0px', 'auto', 'none', ''].includes(minValue.trim());
   const constrainedMaximum = !['none', 'auto', ''].includes(maxValue.trim());
   if (constrainedMinimum || constrainedMaximum) return 'min-max';

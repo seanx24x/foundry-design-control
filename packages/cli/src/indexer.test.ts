@@ -5,6 +5,32 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { indexProjectDesign } from './indexer.js';
 
+test('preserves an explicit HTML component authoring contract', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'foundry-html-component-'));
+  await writeFile(join(root, 'index.html'), '<button class="action">Continue</button>');
+  const component = {
+    id: 'action',
+    name: 'Action',
+    source: { file: 'index.html', line: 1 },
+    selector: '.action',
+    instances: 1,
+    variants: [],
+    variantAxes: [],
+    evidence: ['Project-authored HTML contract'],
+  };
+  const graph = await indexProjectDesign(root, {
+    version: 2,
+    platform: 'web',
+    runtimeUrl: 'http://127.0.0.1:4387',
+    instrumented: true,
+    design: { components: [component] },
+  });
+  assert.deepEqual(
+    graph.components.find((item) => item.id === 'action'),
+    component,
+  );
+});
+
 test('indexes project-native tokens, breakpoints, components, stories, and motion', async () => {
   const root = await mkdtemp(join(tmpdir(), 'foundry-index-'));
   await mkdir(join(root, 'src'), { recursive: true });
@@ -71,6 +97,12 @@ export function SpringNotice() { return useSpring({ from: { opacity: 0 }, to: { 
   assert.equal(graph.revision, 'rev-1');
   assert.ok(graph.tokens.some((token) => token.name === '--space-3'));
   assert.ok(graph.tokens.some((token) => token.category === 'color'));
+  assert.deepEqual(
+    graph.tokens
+      .find((token) => token.name === '--accent')
+      ?.declarations?.map((item) => item.value),
+    ['#0070f3', '#5aa7ff'],
+  );
   const actionToken = graph.tokens.find((token) => token.name === '--accent-action');
   assert.equal(actionToken?.aliasOfTokenName, '--accent-semantic');
   assert.deepEqual(actionToken?.aliasChain, [

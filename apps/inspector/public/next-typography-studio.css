@@ -1,0 +1,623 @@
+/* Next Typography: font discovery, measured comparison, contextual refinement. */
+[data-next][data-mode='typography'] #inspector-dock {
+  display: none;
+}
+[data-next][data-mode='typography'] .canvas-mode[hidden] {
+  display: grid !important;
+  visibility: visible;
+  opacity: 0;
+  pointer-events: none;
+  overflow: clip;
+}
+[data-next] .typography-studio-mode:not([hidden]) {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 44px minmax(0, 1fr) 44px;
+  padding: 0;
+  gap: 0;
+  background: var(--surface);
+  overflow: hidden;
+}
+[data-next] .typography-studio-mode > .mode-head {
+  height: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  gap: 16px;
+}
+[data-next] .typography-studio-mode > .mode-head h1 {
+  font: 600 12px/20px var(--sans);
+}
+[data-next] .typography-studio-mode > .mode-head p {
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .typography-studio-mode .mode-actions {
+  gap: 8px;
+}
+[data-next] .typography-studio-mode .mode-actions button,
+[data-next] .typography-studio-footer button {
+  height: 24px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font: 500 12px/20px var(--sans);
+}
+[data-next] .typography-studio-shell {
+  position: static;
+  inset: auto;
+  grid-row: 2;
+  width: 100%;
+  height: auto;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 300px !important;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+}
+[data-next] .typography-studio-browser {
+  padding: 0;
+  gap: 0;
+  min-width: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+}
+[data-next] .typography-selection-summary,
+[data-next] .next-type-heading {
+  height: 44px;
+  min-height: 44px;
+  flex: none;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  overflow: hidden;
+}
+[data-next] .typography-selection-summary strong,
+[data-next] .next-type-heading h2 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 600 12px/20px var(--sans);
+}
+[data-next] .typography-selection-summary :is(.eyebrow, code, p) {
+  display: none;
+}
+[data-next] .next-type-heading > span {
+  flex: none;
+  color: var(--muted);
+  font: 400 11px/20px var(--sans);
+}
+[data-next] .typography-source-tabs {
+  height: 44px;
+  min-height: 44px;
+  padding: 8px 16px;
+  gap: 4px;
+  border: 0;
+}
+[data-next] .typography-source-tabs button {
+  min-height: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 4px;
+  font: 500 12px/20px var(--sans);
+}
+[data-next] .typography-source-tabs button.is-active {
+  background: var(--surface-2);
+  color: var(--ink);
+  box-shadow: none;
+}
+[data-next] .typography-studio-browser > .search-field {
+  width: calc(100% - 32px);
+  flex: none;
+  height: 24px;
+  min-height: 24px;
+  margin: 8px 16px 12px;
+  padding: 0 8px;
+  gap: 8px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+[data-next] .typography-studio-browser > .search-field svg {
+  width: 16px;
+  height: 16px;
+}
+[data-next] .typography-studio-browser > .search-field input {
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .typography-font-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 8px 16px;
+  gap: 0;
+}
+[data-next] .typography-font-row {
+  min-height: 32px;
+  height: 32px;
+  padding: 0 8px;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  border: 0;
+  border-radius: 4px;
+}
+[data-next] .typography-font-row::before {
+  display: none;
+}
+[data-next] .typography-font-row svg {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+[data-next] .typography-font-row.is-active svg {
+  color: var(--selection);
+}
+[data-next] .typography-font-row strong {
+  font: 400 12px/20px var(--sans);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+[data-next] .typography-font-row code {
+  display: none;
+}
+[data-next] .typography-font-row.is-active {
+  color: var(--selection);
+  background: var(--selection-soft);
+}
+[data-next] .typography-font-row.is-active strong {
+  font-weight: 500;
+}
+[data-next] .typography-source-note {
+  padding: 8px;
+  color: var(--muted);
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .typography-studio-stage,
+[data-next] .typography-studio-properties {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+  background: var(--surface);
+}
+[data-next] .typography-studio-stage {
+  border: 0;
+}
+[data-next] .typography-studio-properties {
+  border-left: 1px solid var(--line);
+}
+[data-next] .next-type-scroll,
+[data-next] .next-type-property-scroll {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+[data-next] .next-type-scroll {
+  container-type: inline-size;
+}
+[data-next] .next-type-content {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  padding: 24px max(0px, calc(24px - var(--type-scrollbar-width, 0px))) 24px 24px;
+}
+[data-next] .next-type-property-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 16px;
+}
+[data-next] .next-type-help {
+  margin: 0;
+  color: var(--muted);
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .typography-comparison {
+  border: 0;
+  background: transparent;
+}
+[data-next] .typography-comparison > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+[data-next] .typography-comparison-card,
+[data-next] .typography-comparison-card:last-child,
+[data-next] .typography-comparison-placeholder {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface);
+}
+[data-next] .typography-comparison-card {
+  grid-template-rows: 64px 240px auto minmax(56px, auto);
+}
+[data-next] .typography-comparison-card > header {
+  padding: 12px 16px;
+  min-height: 64px;
+  align-content: center;
+  gap: 4px;
+  border: 0;
+}
+[data-next] .typography-comparison-card > header .eyebrow {
+  font: 400 12px/20px var(--sans);
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+[data-next] .typography-comparison-card > header strong {
+  font: 500 13px/20px var(--sans);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-next] .typography-comparison-specimen-stage,
+[data-next] .next-type-unmeasured {
+  height: 240px;
+  min-height: 240px;
+  padding: 16px;
+  background: var(--surface-2);
+}
+[data-next] .next-type-unmeasured {
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+[data-next] .typography-comparison-card dl {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 0;
+  padding: 12px 16px;
+  gap: 12px 8px;
+}
+[data-next] .typography-comparison-card dl > div {
+  padding: 0;
+  border: 0;
+  gap: 4px;
+}
+[data-next] .typography-comparison-card dt,
+[data-next] .typography-comparison-card dd {
+  font: 400 11px/20px var(--sans);
+}
+[data-next] .typography-comparison-card > footer {
+  min-height: 56px;
+  padding: 12px 16px;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+}
+[data-next] .typography-comparison-card > footer span {
+  font: 400 11px/20px var(--sans);
+}
+[data-next] .typography-comparison-card > footer button {
+  min-height: 24px;
+  height: 24px;
+  border-radius: 4px;
+  padding: 0 8px;
+  font: 500 12px/20px var(--sans);
+}
+[data-next] .typography-comparison-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  gap: 8px;
+}
+[data-next] .typography-comparison-placeholder > svg {
+  width: 24px;
+  height: 24px;
+}
+[data-next] .typography-comparison-placeholder strong {
+  font: 500 13px/20px var(--sans);
+}
+[data-next] .typography-comparison-placeholder p {
+  font: 400 12px/20px var(--sans);
+  max-width: 32ch;
+}
+[data-next] .typography-rendered-section,
+[data-next] .typography-audit,
+[data-next] .typography-saved-styles,
+[data-next] .typography-google-review,
+[data-next] .typography-treatment-panel,
+[data-next] .typography-usage-panel {
+  flex: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+[data-next] .typography-studio-mode section > header {
+  min-height: 20px;
+  padding: 0;
+  margin-bottom: 16px;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+}
+[data-next] .typography-studio-mode section > header strong {
+  font: 500 13px/20px var(--sans);
+}
+[data-next] .typography-studio-mode section > header :is(code, span) {
+  font: 400 11px/20px var(--sans);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+[data-next] .typography-property-fields {
+  padding: 0;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+[data-next] .typography-property-fields label {
+  min-width: 0;
+  gap: 4px;
+  grid-column: auto;
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .typography-property-fields [data-type-property='fontFamily'],
+[data-next] .typography-property-fields [data-type-property='fontVariationSettings'] {
+  grid-column: 1 / -1;
+}
+[data-next] .typography-property-fields input,
+[data-next] .typography-saved-styles input,
+[data-next] .typography-google-review .foundry-select-trigger {
+  min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 4px;
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .next-type-disclosure {
+  flex: none;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+[data-next] .next-type-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  cursor: pointer;
+  list-style: none;
+  font: 500 12px/20px var(--sans);
+}
+[data-next] .next-type-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+[data-next] .next-type-disclosure > summary::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(45deg);
+  margin-right: 4px;
+}
+[data-next] .next-type-disclosure[open] > summary::after {
+  transform: rotate(225deg);
+}
+[data-next] .next-type-disclosure > :not(summary) {
+  display: block;
+  margin-top: 12px;
+}
+[data-next] .next-type-disclosure:not([open]) > :not(summary) {
+  display: none;
+}
+[data-next] .next-type-source {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font: 400 11px/20px var(--mono);
+}
+[data-next] .typography-treatment-panel > header {
+  margin: 16px 0;
+}
+[data-next] .typography-treatment-panel > header strong {
+  font-size: 12px;
+}
+[data-next] .typography-treatment-panel > header button {
+  min-height: 24px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font: 400 11px/20px var(--sans);
+}
+[data-next] .typography-treatment-grid {
+  grid-template-columns: 1fr;
+  padding: 0;
+  gap: 4px;
+}
+[data-next] .typography-treatment-grid button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  gap: 8px;
+}
+[data-next] .typography-treatment-grid button strong,
+[data-next] .typography-treatment-grid button span {
+  font: 400 11px/20px var(--sans);
+}
+[data-next] .typography-scale-panel {
+  padding: 16px 0 0;
+  gap: 8px;
+}
+[data-next] .typography-scale-panel label {
+  grid-template-columns: 60px minmax(0, 1fr) 40px;
+  gap: 8px;
+  min-height: 32px;
+}
+[data-next] .typography-scale-options {
+  gap: 4px;
+  flex-wrap: wrap;
+}
+[data-next] .typography-scale-options > span {
+  width: 44px;
+}
+[data-next] .typography-scale-options button,
+[data-next] .typography-scale-result button {
+  height: 24px;
+  min-height: 24px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font: 400 11px/20px var(--sans);
+}
+[data-next] .typography-scale-result {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+[data-next] .typography-audit article {
+  padding: 0;
+  margin-top: 12px;
+  gap: 8px;
+}
+[data-next] .typography-audit article strong,
+[data-next] .typography-audit article p {
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .typography-saved-styles label {
+  padding: 0;
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .typography-saved-styles > button {
+  margin: 8px 0 0;
+  width: 100%;
+  min-height: 32px;
+  border-radius: 4px;
+  font: 500 12px/20px var(--sans);
+}
+[data-next] .typography-usage-panel > div {
+  grid-template-columns: 1fr;
+}
+[data-next] .typography-usage-panel article {
+  min-height: 48px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 12px;
+}
+[data-next] .typography-usage-panel article svg {
+  width: 16px;
+  height: 16px;
+}
+[data-next] .typography-usage-panel article strong {
+  font: 500 12px/20px var(--sans);
+}
+[data-next] .typography-usage-panel article code {
+  font: 400 11px/20px var(--sans);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+[data-next] .typography-studio-empty {
+  min-height: 120px;
+  padding: 24px 16px;
+}
+[data-next] .typography-studio-empty :is(strong, p) {
+  font: 400 12px/20px var(--sans);
+}
+[data-next] .typography-studio-mode :is(button, input, summary):focus-visible {
+  outline: 1px solid var(--selection);
+  outline-offset: -1px;
+  box-shadow: none;
+}
+[data-next] .typography-studio-footer {
+  position: static;
+  inset: auto;
+  grid-row: 3;
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+[data-next] .typography-studio-footer span {
+  display: block;
+  font: 400 12px/20px var(--sans);
+  color: var(--muted);
+}
+@container (max-width: 560px) {
+  [data-next] .typography-comparison > div {
+    grid-template-columns: 1fr;
+  }
+  [data-next] .typography-comparison-placeholder {
+    min-height: 240px;
+  }
+}
+@media (max-width: 1100px) {
+  [data-next] .typography-studio-shell {
+    grid-template-columns: 240px minmax(0, 1fr) !important;
+    grid-template-rows: minmax(560px, 1fr) auto;
+    overflow: auto;
+  }
+  [data-next] .typography-studio-browser {
+    grid-row: 1 / 3;
+  }
+  [data-next] .typography-studio-properties {
+    grid-column: 2;
+    grid-row: 2;
+    min-height: 400px;
+    max-height: 640px;
+    border-top: 1px solid var(--line);
+  }
+  [data-next] .typography-studio-mode > .mode-head p {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  [data-next] .typography-studio-shell {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: 260px 720px 560px;
+  }
+  [data-next] .typography-studio-browser {
+    grid-row: 1;
+  }
+  [data-next] .typography-studio-stage {
+    grid-row: 2;
+  }
+  [data-next] .typography-studio-properties {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  [data-next] .typography-studio-mode .mode-actions [data-studio-action='typography-apply'],
+  [data-next] .typography-studio-mode .mode-actions [data-next-type-canvas] {
+    display: none;
+  }
+  [data-next] .typography-studio-footer span {
+    font-size: 11px;
+    line-height: 16px;
+  }
+  [data-next] .typography-studio-footer button {
+    flex: none;
+  }
+}

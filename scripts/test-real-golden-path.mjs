@@ -18,8 +18,10 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
+import { pathToFileURL } from 'node:url';
 import { chromium } from '@playwright/test';
 import { verifyReleaseArtifacts } from './release-artifacts.mjs';
+import { assertEngineeringDelivery } from './assert-delivery-evidence.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const fixtureSource = join(root, 'examples', 'web-fixture');
@@ -46,8 +48,33 @@ const valueAfter = (flag) => {
 const mode = valueAfter('--mode') ?? 'packed';
 const negative = valueAfter('--negative');
 const registry = 'https://registry.npmjs.org';
-const runtimeUrl = 'http://127.0.0.1:4387';
-const previewUrl = 'http://127.0.0.1:4390';
+const runtimeUrl = process.env.FOUNDRY_TEST_RUNTIME_URL ?? 'http://127.0.0.1:4387';
+const previewUrl = process.env.FOUNDRY_TEST_PREVIEW_URL ?? 'http://127.0.0.1:4390';
+const runtimePort = Number(new URL(runtimeUrl).port);
+const previewPort = Number(new URL(previewUrl).port);
+for (const value of [runtimeUrl, previewUrl]) {
+  const url = new URL(value);
+  assert.equal(url.protocol, 'http:');
+  assert.equal(url.hostname, '127.0.0.1', 'Test servers must stay on loopback.');
+  assert.ok(Number.isInteger(Number(url.port)) && Number(url.port) > 1024);
+}
+assert.notEqual(runtimePort, previewPort, 'Test servers must use distinct ports.');
+
+function configureFixturePorts(project) {
+  const serverPath = join(project, 'server.mjs');
+  writeFileSync(
+    serverPath,
+    readFileSync(serverPath, 'utf8').replaceAll('4390', String(previewPort)),
+  );
+  const htmlPath = join(project, 'index.html');
+  writeFileSync(
+    htmlPath,
+    readFileSync(htmlPath, 'utf8').replaceAll(
+      'http://127.0.0.1:4387/adapter.js',
+      `${runtimeUrl}/adapter.js`,
+    ),
+  );
+}
 
 function resolvePlaywrightBrowsersPath() {
   if (process.env.PLAYWRIGHT_BROWSERS_PATH) return process.env.PLAYWRIGHT_BROWSERS_PATH;
@@ -59,8 +86,8 @@ function resolvePlaywrightBrowsersPath() {
   throw new Error('Could not resolve the installed Playwright browser cache.');
 }
 
-if (!['packed', 'registry'].includes(mode)) {
-  throw new Error('--mode must be packed or registry.');
+if (!['workspace', 'packed', 'registry'].includes(mode)) {
+  throw new Error('--mode must be workspace, packed or registry.');
 }
 if (
   negative &&
@@ -123,6 +150,9 @@ function isolatedEnvironment(home) {
     INIT_CWD: home,
     npm_config_cache: join(home, '.npm-cache'),
     npm_config_registry: registry,
+    // Keep all application/cache state isolated while sharing the installed,
+    // read-only browser executable used by CLI-owned source image capture.
+    PLAYWRIGHT_BROWSERS_PATH: resolvePlaywrightBrowsersPath(),
     NO_COLOR: '1',
   };
 }
@@ -139,7 +169,7 @@ const registryEntrypoints = {
 };
 
 function toolingCommand(tooling, entrypoint, commandArgs = []) {
-  if (tooling.mode === 'packed') {
+  if (tooling.mode === 'packed' || tooling.mode === 'workspace') {
     return {
       executable: process.execPath,
       args: [tooling[entrypoint], ...commandArgs],
@@ -170,6 +200,18 @@ function assertFreshCache(cache, label) {
 }
 
 function installTooling() {
+  if (mode === 'workspace') {
+    const tooling = {
+      mode,
+      root,
+      cli: join(root, 'packages/cli/dist/index.js'),
+      mcp: join(root, 'packages/mcp-server/dist/index.js'),
+    };
+    for (const path of [tooling.cli, tooling.mcp]) {
+      assert.ok(existsSync(path), `Missing ${path}; run pnpm build first.`);
+    }
+    return tooling;
+  }
   if (mode === 'registry') {
     const releasePackageNames = new Set(packages.map(({ name }) => name));
     assert.ok(releasePackageNames.has('foundry-design'));
@@ -239,7 +281,7 @@ async function assertPortFree(port) {
 }
 
 async function waitForOwnedPortsToClose() {
-  for (const port of [4387, 4390]) {
+  for (const port of [runtimePort, previewPort]) {
     await waitFor(
       async () => {
         try {
@@ -473,6 +515,7 @@ function prepareProject(name, tooling) {
   }
   assert.equal(existsSync(join(project, '.foundry', 'install-manifest.json')), false);
   assert.equal(existsSync(join(project, '.foundry', 'foundry.config.json')), false);
+  configureFixturePorts(project);
   initializeGit(project);
   const nodeModules = join(project, 'node_modules');
   if (!existsSync(nodeModules)) symlinkSync(join(root, 'node_modules'), nodeModules, 'dir');
@@ -511,6 +554,8 @@ function prepareProject(name, tooling) {
     'none',
     '--url',
     previewUrl,
+    '--runtime-port',
+    String(runtimePort),
     '--yes',
   ]);
   command(toolingCwd, setupCommand.executable, setupCommand.args, cliEnvironment, {
@@ -534,8 +579,8 @@ function prepareProject(name, tooling) {
 }
 
 async function startSession(prepared, tooling) {
-  await assertPortFree(4387);
-  await assertPortFree(4390);
+  await assertPortFree(runtimePort);
+  await assertPortFree(previewPort);
   const fixture = startProcess('fixture', process.execPath, ['server.mjs'], {
     cwd: prepared.project,
     env: {
@@ -886,7 +931,7 @@ async function stageTouchTargetCorrection(session, browserState) {
   await product
     .locator('[data-foundry-id="password-reveal"]')
     .click({ modifiers: ['Alt'], position: { x: 20, y: 20 } });
-  await page.locator('.workspace-rail [data-workspace-mode="health"]').click();
+  await openWorkspaceMode(page, 'health');
   const keyboardProfile = page.locator('[data-stress-condition="keyboard-only"]');
   await keyboardProfile.waitFor();
   if ((await keyboardProfile.getAttribute('aria-pressed')) !== 'true')
@@ -937,7 +982,7 @@ async function stageTouchTargetCorrection(session, browserState) {
     'Morrow must expose one mapped touch-target finding.',
   );
   await revealFinding.locator('[data-stress-fix]').click();
-  await revealFinding.getByText('Added to review', { exact: true }).waitFor({ timeout: 15_000 });
+  await revealFinding.getByText(/^Added to review$/i).waitFor({ timeout: 15_000 });
   const stored = await waitFor(async () => {
     const candidate = await sessionRequest(session);
     const changes = candidate.changeSet?.changes ?? [];
@@ -987,9 +1032,16 @@ function runDeterministicFixtureBuild(prepared, expectedHeight) {
     const manifestText = readFileSync(join(output, 'build-manifest.json'), 'utf8');
     const manifest = JSON.parse(manifestText);
     assert.equal(manifest.version, 1);
-    assert.deepEqual(Object.keys(manifest.files), ['index.html', 'style.css']);
+    assert.deepEqual(Object.keys(manifest.files), [
+      'index.html',
+      'style.css',
+      'fonts/inter.woff2',
+      'fonts/inter-OFL.txt',
+      'fonts/google-sans-flex.woff2',
+      'fonts/google-sans-flex-OFL.txt',
+    ]);
     assert.deepEqual(manifest.sourceAnnotations, {
-      count: 11,
+      count: 13,
       files: ['index.html', 'style.css'],
     });
     for (const file of Object.keys(manifest.files)) {
@@ -1060,11 +1112,21 @@ async function listenerPresence(session) {
   return response.ok ? response.json() : { connected: false };
 }
 
+async function openWorkspaceMode(page, mode) {
+  if (mode === 'review') {
+    await page.locator('#persistent-review').click();
+    return;
+  }
+  if ((await page.locator('#app-shell').getAttribute('data-next')) === 'true') {
+    const tools = page.locator('[data-next-tools]');
+    if ((await tools.getAttribute('aria-expanded')) !== 'true') await tools.click();
+  }
+  await page.locator(`.workspace-rail [data-workspace-mode="${mode}"]`).click();
+}
+
 async function enterReview(page) {
-  await page
-    .locator('#workspace-menu [data-workspace-mode="review"]')
-    .evaluate((button) => button.click());
-  await page.getByText('Review and apply', { exact: true }).waitFor();
+  await openWorkspaceMode(page, 'review');
+  await page.getByRole('heading', { name: 'Review and apply', exact: true }).waitFor();
 }
 
 async function approveReviewedChange(page) {
@@ -1274,6 +1336,16 @@ async function assertPositiveResult(prepared, session, browserState, applyResult
   assert.deepEqual(delivery.changeIds, run.changeIds);
   assert.deepEqual(delivery.validationResults, run.validationResults);
   assert.deepEqual(delivery.verificationResults, run.verificationResults);
+  const engineering = await assertEngineeringDelivery({
+    project: prepared.project,
+    runtimeUrl,
+    session,
+    stored,
+    runId: run.id,
+  });
+  log(
+    `Engineering delivery proof passed for ${engineering.reviewedContexts} reviewed context(s), with ${engineering.sourceImagePairs} matched before/rebuilt source image pair(s).`,
+  );
   const history = stored.designHistory.find((entry) => entry.applyRunId === run.id);
   assert.ok(history, 'A verified Apply run must create a Design History entry.');
   assert.equal(history.deliveryRecordId, delivery.id);
@@ -1315,9 +1387,14 @@ async function assertPositiveResult(prepared, session, browserState, applyResult
   const target = browserState.product.locator('[data-foundry-id="password-reveal"]');
   const rebuiltBox = await target.boundingBox();
   assert.ok(rebuiltBox, 'The rebuilt password reveal must remain visible.');
-  assert.equal(Math.round(rebuiltBox.height), 44);
+  // Playwright's outer bounding box includes the workspace canvas zoom. The
+  // source property and verification evidence are measured in preview CSS pixels.
+  assert.equal(
+    Math.round(await target.evaluate((element) => element.getBoundingClientRect().height)),
+    44,
+  );
   assert.ok(rebuiltBox.width > 0 && rebuiltBox.height > 0);
-  await browserState.page.locator('.workspace-rail [data-workspace-mode="delivery"]').click();
+  await openWorkspaceMode(browserState.page, 'delivery');
   await browserState.page.getByText('1 total', { exact: true }).waitFor({ timeout: 10_000 });
   await browserState.page.getByText('style.css', { exact: true }).first().waitFor();
   await browserState.page.locator('[data-delivery-tab="history"]').click();
@@ -1367,7 +1444,10 @@ async function assertVerificationMismatch(prepared, stored, browserState, applyR
   const target = browserState.product.locator('[data-foundry-id="password-reveal"]');
   const rebuiltBox = await target.boundingBox();
   assert.ok(rebuiltBox);
-  assert.equal(Math.round(rebuiltBox.height), 42);
+  assert.equal(
+    Math.round(await target.evaluate((element) => element.getBoundingClientRect().height)),
+    42,
+  );
 }
 
 async function runPositive(tooling, requestedHeight = 44) {
@@ -1487,15 +1567,20 @@ async function runDisconnectedPreview(tooling) {
       (await browserState.page.locator('#live-status').getAttribute('title')) ?? '',
       /waiting for the embedded preview/i,
     );
-    await browserState.page.locator('.workspace-rail [data-workspace-mode="health"]').click();
+    await openWorkspaceMode(browserState.page, 'health');
     const keyboardProfile = browserState.page.locator('[data-stress-condition="keyboard-only"]');
     if ((await keyboardProfile.getAttribute('aria-pressed')) !== 'true')
       await keyboardProfile.click();
-    await browserState.page.locator('#apply-stress').click();
-    await browserState.page
-      .locator('.toast')
-      .filter({ hasText: /preview|offline|disconnected/i })
-      .waitFor({ timeout: 10_000 });
+    assert.equal(await browserState.page.locator('#apply-stress').isDisabled(), true);
+    assert.equal(await browserState.page.locator('#run-health').isDisabled(), true);
+    assert.match(
+      await browserState.page.locator('.next-stress-draft').textContent(),
+      /Reconnect the preview.*Choices are preserved/i,
+    );
+    assert.equal(
+      await browserState.product.locator('html').getAttribute('data-foundry-stress'),
+      null,
+    );
     const stored = await sessionRequest(session);
     assert.equal(stored.changeSet.changes.length, 0);
     assert.equal(stored.applyRuns.length, 0);
@@ -1507,42 +1592,81 @@ async function runDisconnectedPreview(tooling) {
   }
 }
 
-let failure;
-try {
-  if (
-    existsSync(join(root, 'node_modules')) &&
-    lstatSync(join(root, 'node_modules')).isSymbolicLink()
-  ) {
-    log('Using the installed workspace Playwright runtime through its pnpm node_modules link.');
-  }
-  const tooling = installTooling();
-  if (!negative) {
-    await runPositive(tooling);
-  } else {
-    const scenarios =
-      negative === 'all'
-        ? ['offline-listener', 'disconnected-preview', 'verification-mismatch']
-        : [negative];
-    for (const scenario of scenarios) {
-      log(`Running negative case: ${scenario}.`);
-      if (scenario === 'offline-listener') await runOfflineListener(tooling);
-      if (scenario === 'disconnected-preview') await runDisconnectedPreview(tooling);
-      if (scenario === 'verification-mismatch') await runPositive(tooling, 42);
-    }
-  }
-  log(`Real ${mode} golden path passed${negative ? ` (${negative})` : ''}.`);
-} catch (error) {
-  failure = error;
-} finally {
-  try {
-    await stopOwnedResources();
-    await waitForOwnedPortsToClose();
-  } catch (cleanupError) {
-    diagnostics.push(redact(cleanupError?.stack ?? String(cleanupError)));
-    if (!failure) failure = cleanupError;
-  }
-  if (failure) retainFailureDiagnostics(failure);
-  else rmSync(harnessRoot, { recursive: true, force: true });
-}
+export {
+  assertBrowserVerification,
+  assertPortFree,
+  asynchronousCommand,
+  command,
+  commitSetup,
+  configureFixturePorts,
+  diagnostics,
+  enterReview,
+  openWorkspaceMode,
+  approveReviewedChange,
+  harnessRoot,
+  initializeGit,
+  installTooling,
+  isolatedEnvironment,
+  listenerPresence,
+  McpClient,
+  observeBrowserVerification,
+  ownedBrowsers,
+  redact,
+  runtimeUrl,
+  runtimePort,
+  previewUrl,
+  previewPort,
+  retainFailureDiagnostics,
+  sessionRequest,
+  startProcess,
+  stopOwnedResources,
+  stopProcess,
+  toolingCommand,
+  version,
+  waitFor,
+  waitForHttp,
+};
 
-if (failure) process.exit(1);
+// Shared helpers also power the framework compatibility matrix. Importing the
+// helpers must not accidentally execute the Morrow release gate.
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  let failure;
+  try {
+    if (
+      existsSync(join(root, 'node_modules')) &&
+      lstatSync(join(root, 'node_modules')).isSymbolicLink()
+    ) {
+      log('Using the installed workspace Playwright runtime through its pnpm node_modules link.');
+    }
+    const tooling = installTooling();
+    if (!negative) {
+      await runPositive(tooling);
+    } else {
+      const scenarios =
+        negative === 'all'
+          ? ['offline-listener', 'disconnected-preview', 'verification-mismatch']
+          : [negative];
+      for (const scenario of scenarios) {
+        log(`Running negative case: ${scenario}.`);
+        if (scenario === 'offline-listener') await runOfflineListener(tooling);
+        if (scenario === 'disconnected-preview') await runDisconnectedPreview(tooling);
+        if (scenario === 'verification-mismatch') await runPositive(tooling, 42);
+      }
+    }
+    log(`Real ${mode} golden path passed${negative ? ` (${negative})` : ''}.`);
+  } catch (error) {
+    failure = error;
+  } finally {
+    try {
+      await stopOwnedResources();
+      await waitForOwnedPortsToClose();
+    } catch (cleanupError) {
+      diagnostics.push(redact(cleanupError?.stack ?? String(cleanupError)));
+      if (!failure) failure = cleanupError;
+    }
+    if (failure) retainFailureDiagnostics(failure);
+    else rmSync(harnessRoot, { recursive: true, force: true });
+  }
+
+  if (failure) process.exit(1);
+}

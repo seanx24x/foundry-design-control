@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { inspectorFontAssets } from '../apps/inspector/font-assets.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const artifactDirectory = resolve(root, 'artifacts/npm');
@@ -109,6 +110,20 @@ try {
 
     const isolatedEnvironment = { HOME: isolatedHome };
     run(fixture, 'npm', ['install', '--ignore-scripts', ...tarballs], isolatedEnvironment);
+    const fontDirectory = join(fixture, 'node_modules/foundry-design-inspector/dist/fonts');
+    for (const font of inspectorFontAssets) {
+      const bytes = readFileSync(join(fontDirectory, `${font.package}.woff2`));
+      if (bytes.subarray(0, 4).toString() !== 'wOF2') {
+        throw new Error(`Packed inspector is missing its ${font.family} WOFF2 face.`);
+      }
+      if (
+        !readFileSync(join(fontDirectory, `${font.package}-OFL.txt`), 'utf8').includes(
+          'SIL OPEN FONT LICENSE',
+        )
+      ) {
+        throw new Error(`Packed inspector is missing its ${font.family} redistribution license.`);
+      }
+    }
     run(
       fixture,
       'node',

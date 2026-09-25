@@ -1028,7 +1028,18 @@ export class SessionStore {
       }
       const nextHash = claimCapabilityHash(capability);
       if (stored.previewCapabilityHash !== nextHash) {
-        this.assertNoActiveApplyRun(stored, 'rotating the live preview capability');
+        // Queued batches have no active claimant or browser verification challenge.
+        // Let a restarted CLI reconnect them without changing the frozen review.
+        // Expired claims are recovered by serializeSessionMutation before this check.
+        if (
+          stored.applyRuns.some((run) =>
+            ['claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state),
+          )
+        ) {
+          throw new Error(
+            'Finish or stop the active Apply run before rotating the live preview capability.',
+          );
+        }
       }
       stored.previewCapabilityHash = nextHash;
       stored.changeSet.updatedAt = this.nowIso();
@@ -1359,6 +1370,17 @@ export class SessionStore {
         throw new Error(`Unknown design branch: ${targetBranchId}`);
       }
       stored.activeDesignBranchId = targetBranchId;
+      // A proposal is only "Previewing" while its direction is active.
+      // Leaving the preview keeps the proposal, without promoting or rejecting it.
+      for (const request of stored.visualAgentRequests) {
+        for (const proposal of request.proposals) {
+          if (proposal.status === 'previewing' && proposal.branchId !== targetBranchId) {
+            proposal.status = 'proposed';
+            proposal.updatedAt = this.nowIso();
+            request.updatedAt = proposal.updatedAt;
+          }
+        }
+      }
       stored.changeSet.updatedAt = this.nowIso();
       await this.write(stored);
       return stored;
@@ -1442,8 +1464,19 @@ export class SessionStore {
       }
       const branch = stored.designBranches.find((item) => item.id === targetBranchId);
       if (!branch) throw new Error(`Unknown design branch: ${targetBranchId}`);
+      const reviewable = branch.changes.filter(
+        (change) => !['applied', 'rejected'].includes(change.status),
+      );
+      if (!reviewable.length) {
+        throw new Error(
+          'No saved changes in this direction. Save an edit before moving it to Review.',
+        );
+      }
       const now = this.nowIso();
-      const merged = mergePromotedLedger(stored, branch.changes, branch.operations, now);
+      const merged = mergePromotedLedger(stored, reviewable, branch.operations, now);
+      if (!merged.changes.some((change) => !['applied', 'rejected'].includes(change.status))) {
+        throw new Error('This direction has no new changes to move to Review.');
+      }
       stored.changeSet.changes = merged.changes;
       stored.changeSet.operations = merged.operations;
       for (const item of stored.designBranches) {
@@ -1843,6 +1876,8 @@ export class SessionStore {
       revision?: string | null;
       designGraphRevision?: string | null;
       retryOf?: string;
+      baselineScreenshots?: ChangeSet['screenshots'];
+      captureIssues?: string[];
     },
   ): Promise<StoredSession> {
     return this.serializeChangeMutation(id, async () => {
@@ -1984,9 +2019,78 @@ export class SessionStore {
         requestedAt: now,
         updatedAt: now,
       });
+      if (!retrySource && input.baselineScreenshots?.length) {
+        const screenshots = deliveryRecordSchema.shape.evidence.parse(input.baselineScreenshots);
+        for (const screenshot of screenshots) {
+          const capture = screenshot.capture;
+          if (
+            !capture ||
+            capture.phase !== 'before' ||
+            capture.sourceRevision !== run.revision ||
+            !capture.sha256 ||
+            !capture.conditions ||
+            !run.reviewedChangeSet!.changes.some(
+              (change) =>
+                change.target.id === capture.targetId &&
+                expandedChangeContexts(change).some(
+                  (context) => contextKey(context) === contextKey(capture.context),
+                ),
+            )
+          )
+            throw new Error(
+              'Baseline screenshot does not match the reviewed source, target and context.',
+            );
+          capture.applyRunId = run.id;
+        }
+        run.reviewedChangeSet!.screenshots.push(...screenshots);
+      }
       stored.applyRuns.push(run);
-      this.syncDeliveryForRun(stored, run, now);
+      const delivery = this.syncDeliveryForRun(stored, run, now);
+      delivery.captureIssues = [...new Set(input.captureIssues ?? [])];
       stored.changeSet.updatedAt = now;
+      await this.write(stored);
+      return stored;
+    });
+  }
+
+  /** Trusted CLI capture evidence only; no route accepts screenshot paths from clients. */
+  async attachDeliveryCapture(
+    id: string,
+    runId: string,
+    input: { screenshots: ChangeSet['screenshots']; unavailable: string[] },
+  ): Promise<StoredSession> {
+    return this.serializeApplyRunMutation(id, async () => {
+      const stored = await this.read(id);
+      const run = stored.applyRuns.find((candidate) => candidate.id === runId);
+      const record = stored.deliveryRecords.find((candidate) => candidate.applyRunId === runId);
+      if (!run?.reviewedChangeSet || run.state !== 'passed' || !record || !run.appliedRevision)
+        throw new Error('Rebuilt visual evidence requires a completed verified Apply run.');
+      const screenshots = deliveryRecordSchema.shape.evidence.parse(input.screenshots);
+      for (const screenshot of screenshots) {
+        const capture = screenshot.capture;
+        if (
+          !capture ||
+          capture.phase !== 'rebuilt' ||
+          capture.applyRunId !== run.id ||
+          capture.sourceRevision !== run.appliedRevision ||
+          !capture.sha256 ||
+          !capture.conditions ||
+          !run.reviewedChangeSet.changes.some(
+            (change) =>
+              change.target.id === capture.targetId &&
+              expandedChangeContexts(change).some(
+                (context) => contextKey(context) === contextKey(capture.context),
+              ),
+          )
+        )
+          throw new Error(
+            'Rebuilt screenshot does not match the verified source, target and context.',
+          );
+        if (!record.evidence.some((existing) => existing.path === screenshot.path))
+          record.evidence.push(screenshot);
+      }
+      record.captureIssues = [...new Set([...record.captureIssues, ...input.unavailable])];
+      record.updatedAt = this.nowIso();
       await this.write(stored);
       return stored;
     });
@@ -2559,6 +2663,9 @@ export class SessionStore {
           if (run.reviewedChangeSet.changes.some((change) => !appliedIds.has(change.id))) {
             throw new Error('Every frozen reviewed change must transition to applied atomically');
           }
+          // Only complete, claim-authorized verification with unchanged applied source can
+          // advance the next editing baseline. Frozen Review/Delivery keep their old revision.
+          stored.changeSet.context.revision = run.appliedRevision;
         }
         run.claimAttemptId = undefined;
         run.claimCapabilityHash = undefined;

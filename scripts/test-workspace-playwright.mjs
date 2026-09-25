@@ -3,8 +3,10 @@ import { createServer } from 'node:http';
 import { mkdtemp, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { chromium } from '@playwright/test';
+import { chromium, expect } from '@playwright/test';
 import { FoundryRuntime, SessionStore } from '../packages/runtime/dist/index.js';
+import { verifyConnectionWorkflow, verifyDeliveryWorkflow } from './verify-product-workflow.mjs';
+import { verifyInspectorFonts } from './verify-inspector-fonts.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const runtimePort = 47_000 + Math.floor(Math.random() * 500);
@@ -257,6 +259,10 @@ const preview = createServer((_request, response) => {
             result = { armed: true };
           } else if (command === 'clear-agent-region') {
             result = { cleared: true };
+          }
+          if (command === 'set-responsive-edit-scope' && window.__holdResponsiveScope) {
+            window.__releaseResponsiveScope = () => reply(event, result);
+            return;
           }
           reply(event, result);
         } catch (error) {
@@ -517,15 +523,20 @@ try {
 
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+  page.setDefaultTimeout(30_000);
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   const url = new URL(`http://127.0.0.1:${runtimePort}`);
+  // Preserve the legacy geometry regression suite alongside test:next.
+  url.searchParams.set('ui', 'legacy');
   url.searchParams.set('session', sessionId);
   url.searchParams.set('token', session.token);
   url.searchParams.set('preview', `http://127.0.0.1:${previewPort}`);
   await page.goto(url.href, { waitUntil: 'networkidle' });
+  await verifyInspectorFonts(page);
   const artifactDirectory = join(root, 'artifacts', 'e2e');
   await mkdir(artifactDirectory, { recursive: true });
+  await verifyConnectionWorkflow(page, artifactDirectory);
   const settleBeforeScreenshot = async ({ waitForToasts = true } = {}) => {
     await page.mouse.move(Math.min(640, page.viewportSize()?.width ?? 640), 24);
     await page.evaluate(() => {
@@ -811,6 +822,7 @@ try {
       const canvasStyle = canvas ? getComputedStyle(canvas) : null;
       const probe = document.createElement('span');
       probe.style.color = 'var(--selection)';
+      probe.style.borderColor = 'var(--selection-ink, var(--selection))';
       probe.style.backgroundColor = 'var(--selection-soft)';
       document.body.append(probe);
       const probeStyle = getComputedStyle(probe);
@@ -818,9 +830,10 @@ try {
         activeCount: active.length,
         activeMode: selected?.dataset.workspaceMode,
         selection: probeStyle.color,
+        selectionInk: probeStyle.borderColor,
         selectionSoft: probeStyle.backgroundColor,
         selectedColor: selectedStyle?.color,
-        selectedBorder: selectedStyle?.borderColor,
+        selectedBorderWidth: selectedStyle?.borderWidth,
         selectedBackground: selectedStyle?.backgroundColor,
         canvasColor: canvasStyle?.color,
       };
@@ -829,8 +842,8 @@ try {
     }, mode);
     assert.equal(selection.activeCount, 1, 'the rail must expose one active destination');
     assert.equal(selection.activeMode, mode);
-    assert.equal(selection.selectedColor, selection.selection);
-    assert.equal(selection.selectedBorder, selection.selection);
+    assert.equal(selection.selectedColor, selection.selectionInk);
+    assert.equal(selection.selectedBorderWidth, '0px');
     assert.equal(selection.selectedBackground, selection.selectionSoft);
     if (mode !== 'canvas') assert.notEqual(selection.canvasColor, selection.selection);
   };
@@ -1285,6 +1298,7 @@ try {
   await page.waitForFunction(
     () => document.querySelector('.visual-agent-proposal')?.dataset.status === 'previewing',
   );
+  await page.getByRole('button', { name: 'Back to conversation', exact: true }).click();
   assert.equal(await page.getByRole('button', { name: 'Move to Review' }).isEnabled(), true);
   const previewedAgentSession = await store.read(sessionId);
   const previewedAgentRequest = previewedAgentSession.visualAgentRequests.find(
@@ -1472,7 +1486,10 @@ try {
     (await page.locator('#design-system-detail').textContent()) ?? '',
     /near-duplicate literal/,
   );
-  assert.match((await page.locator('#design-system-detail').textContent()) ?? '', /Alias chain/);
+  assert.match(
+    (await page.locator('#design-system-detail').textContent()) ?? '',
+    /Indexed alias chain/,
+  );
   await page.locator('#design-system-reindex').click();
   await page.waitForFunction(() =>
     document.querySelector('#design-system-status')?.textContent?.includes('2 tokens'),
@@ -1728,12 +1745,39 @@ try {
     document.documentElement.dataset.theme = 'light';
   });
   await page.locator('[data-responsive-open="mobile"]').click();
+  // The legacy layout rebuilds its frames after the context change is accepted.
+  // Wait for those replacement frames before starting a separate scope transaction.
+  await page.locator('[data-responsive-card="mobile"].is-active').waitFor();
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('[data-responsive-frame]')].every(
+      (frame) =>
+        frame.dataset.responsiveLoaded === 'true' && frame.dataset.responsiveReady === 'true',
+    ),
+  );
   await page.locator('[data-responsive-scope="all"]').click();
   await page.waitForFunction(
     () =>
       document.querySelector('[data-responsive-scope="all"]')?.getAttribute('aria-pressed') ===
       'true',
   );
+  // Hold a frame synchronization acknowledgement across navigation. A stale sync
+  // must not reapply its container width after the exit cleanup has completed.
+  const customResponsiveFrame = page.frameLocator('[data-responsive-frame="custom"]');
+  await customResponsiveFrame.locator('html').evaluate(() => {
+    window.__holdResponsiveScope = true;
+  });
+  await page.locator('[data-responsive-frame="custom"]').evaluate((frame, sessionId) => {
+    frame.dataset.responsiveNeedsSync = 'true';
+    frame.contentWindow.postMessage(
+      { type: 'foundry:workspace-command', sessionId, command: 'request-state' },
+      new URL(frame.src).origin,
+    );
+  }, sessionId);
+  await expect
+    .poll(() =>
+      customResponsiveFrame.locator('html').evaluate(() => typeof window.__releaseResponsiveScope),
+    )
+    .toBe('function');
   await page.locator('#responsive-open-canvas').click();
   await page.locator('[data-mode-surface="canvas"]:not([hidden])').waitFor();
   await page.locator('#canvas-responsive-scope:not([hidden])').waitFor();
@@ -1750,21 +1794,28 @@ try {
     shellSelector: '.stress-lab-shell',
     regionSelectors: ['.stress-lab-browser', '.stress-result-toolbar', '.stress-summary-grid'],
   });
-  await page
-    .frameLocator('[data-responsive-frame="custom"]')
-    .locator('main')
-    .evaluate(
-      (element) =>
-        new Promise((resolve) => {
-          const done = () => element.style.inlineSize === '' && resolve();
-          done();
-          const observer = new MutationObserver(() => {
-            done();
-            if (element.style.inlineSize === '') observer.disconnect();
-          });
-          observer.observe(element, { attributes: true, attributeFilter: ['style'] });
-        }),
-    );
+  await expect
+    .poll(
+      () =>
+        page
+          .frameLocator('[data-responsive-frame="custom"]')
+          .locator('main')
+          .evaluate((element) => element.style.inlineSize),
+      { timeout: 10_000, message: 'Leaving Responsive must clear its temporary container width' },
+    )
+    .toBe('');
+  await customResponsiveFrame.locator('html').evaluate(() => {
+    window.__holdResponsiveScope = false;
+    window.__releaseResponsiveScope();
+  });
+  // Give the released acknowledgement and any incorrectly continued commands
+  // time to cross the frame boundary before checking the restored state again.
+  await page.waitForTimeout(300);
+  assert.equal(
+    await customResponsiveFrame.locator('main').evaluate((element) => element.style.inlineSize),
+    '',
+    'A late responsive sync must not reapply temporary width after navigation',
+  );
   assert.equal(await page.locator('.stress-profile').count(), 3);
   const stressScopeGeometry = await page.evaluate(() => {
     const scope = document.querySelector('.stress-scope');
@@ -2565,6 +2616,7 @@ try {
       reason: 'Rendered value matches the reviewed value.',
       geometry: change.target.geometry,
       evidence: ['The workspace fixture returned the reviewed rendered value.'],
+      context: change.context,
       verifiedAt: new Date().toISOString(),
     })),
     deliveryRun.id,
@@ -2611,6 +2663,51 @@ try {
     document.documentElement.dataset.theme = 'dark';
   });
   await captureWorkspace('delivery-history-dark.png');
+  await verifyDeliveryWorkflow(page, artifactDirectory);
+  // A selector is not an exact source mapping. This previously enabled Apply
+  // and failed only after the user clicked it during a real recording.
+  await store.addChange(sessionId, {
+    target: {
+      id: 'unmapped-heading',
+      platform: 'web',
+      semanticRole: 'h1',
+      label: 'Make room for the work that matters.',
+      componentPath: [],
+      geometry: { x: 0, y: 0, width: 573, height: 106, scale: 1 },
+      locator: { selector: 'h1#story-title' },
+      confidence: 'measured',
+      evidence: ['getBoundingClientRect', 'computed styles'],
+    },
+    category: 'typography',
+    property: 'fontSize',
+    before: 76,
+    after: 54,
+    unit: 'px',
+    scope: 'instance',
+    context: { breakpoint: 'desktop', theme: 'current', state: 'current' },
+    confidence: 'inferred',
+    evidence: ['computed styles'],
+    status: 'approved',
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('#workspace-menu-trigger').click();
+  await page.locator('#workspace-menu [data-workspace-mode="review"]').click();
+  await page.getByText(/Preview only: this layer has no stable source identity/).waitFor();
+  assert.equal(await page.locator('#apply-agent').isDisabled(), true);
+  assert.equal(
+    await page
+      .locator('.change-group')
+      .filter({ hasText: 'Make room for the work that matters.' })
+      .getByRole('checkbox', { name: 'Include fontSize', exact: true })
+      .isDisabled(),
+    true,
+  );
+  assert.equal(
+    (await store.read(sessionId)).changeSet.changes.find(
+      (change) => change.target.id === 'unmapped-heading',
+    ).after,
+    54,
+  );
   console.log(
     'Workspace Playwright flow passed: session, native viewport, Canvas, State Workbench, Component Workshop, Design System, Responsive Lab, Content and Accessibility Lab, Motion Studio, Typography Studio, Design Branches, change summary, Review, Apply, and Delivery.',
   );

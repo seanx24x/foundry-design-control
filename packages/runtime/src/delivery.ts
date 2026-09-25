@@ -49,9 +49,12 @@ function unique(values: Array<string | undefined>): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
-function renderValue(value: unknown, unit?: string): string {
+export function renderDeliveryValue(value: unknown, unit?: string): string {
   const rendered = typeof value === 'string' ? value : JSON.stringify(value);
-  return `${rendered}${unit ?? ''}`;
+  const numeric =
+    typeof value === 'number' ||
+    (typeof value === 'string' && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim()));
+  return `${rendered}${numeric ? (unit ?? '') : ''}`;
 }
 
 function changeContexts(change: DesignChange): DeliveryRecord['contexts'] {
@@ -129,7 +132,7 @@ export function createDeliveryRecord(
     .slice(0, 4)
     .map(
       (change) =>
-        `${change.target.label} ${change.property}: ${renderValue(change.before, change.unit)} to ${renderValue(change.after, change.unit)}`,
+        `${change.target.label} ${change.property}: ${renderDeliveryValue(change.before, change.unit)} to ${renderDeliveryValue(change.after, change.unit)}`,
     )
     .join('; ');
   return {
@@ -156,7 +159,7 @@ export function createDeliveryRecord(
       const affectedContexts = changeContexts(change);
       return {
         id: `criterion_${change.id}`,
-        label: `${change.target.label} renders ${change.property} as ${renderValue(change.after, change.unit)}${affectedContexts.length > 1 ? ` in all ${affectedContexts.length} reviewed contexts` : ''}`,
+        label: `${change.target.label} renders ${change.property} as ${renderDeliveryValue(change.after, change.unit)}${affectedContexts.length > 1 ? ` in all ${affectedContexts.length} reviewed contexts` : ''}`,
         status: 'pending',
         evidence: [
           ...change.evidence,
@@ -176,6 +179,7 @@ export function createDeliveryRecord(
     revision: run.revision,
     baselineRevision: run.revision,
     appliedRevision: run.appliedRevision,
+    captureIssues: [],
     designGraphRevision: run.designGraphRevision,
     createdAt: now,
     updatedAt: now,

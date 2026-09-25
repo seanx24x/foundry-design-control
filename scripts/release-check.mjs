@@ -38,6 +38,11 @@ const marketplacePaths = [
 
 const failures = [];
 const readJson = (path) => JSON.parse(readFileSync(join(root, path), 'utf8'));
+const capturePlaywright = readJson('packages/cli/package.json').dependencies.playwright;
+const testPlaywright = readJson('package.json').devDependencies['@playwright/test'];
+if (!/^\d+\.\d+\.\d+$/.test(capturePlaywright) || capturePlaywright !== testPlaywright) {
+  failures.push('CLI capture and browser tests must pin the same exact Playwright version');
+}
 const rootReadmeDigest = createHash('sha256')
   .update(readFileSync(join(root, 'README.md')))
   .digest('hex');

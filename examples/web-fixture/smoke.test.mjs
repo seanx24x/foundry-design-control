@@ -16,6 +16,16 @@ test('signup fixture contains mapped form surfaces and accessible interaction st
   assert.match(html, /data-foundry-id="working-note"/);
   assert.match(html, /data-foundry-id="create-workspace-button"/);
   assert.match(html, /data-foundry-id="password-reveal"/);
+  assert.match(html, /data-foundry-id="story-title"/);
+  assert.match(html, /data-foundry-id="form-title"/);
+  assert.match(
+    html,
+    /data-foundry-component="Signup\/HeroHeading"\s+data-foundry-source="index.html:43:12"/,
+  );
+  assert.match(
+    html,
+    /data-foundry-component="Signup\/FormHeading"\s+data-foundry-source="index.html:111:12"/,
+  );
   assert.match(html, /data-foundry-component="Signup\/PasswordReveal"/);
   assert.match(html, /data-foundry-source="style\.css:660:20"/);
   assert.match(html, /data-foundry-source-anchor="\/\* foundry: password-reveal \*\/"/);
@@ -45,6 +55,9 @@ test('Morrow exposes a fixture-authored query state to Foundry', async () => {
   try {
     await mkdir(join(root, '.foundry'), { recursive: true });
     await cp(new URL('foundry.design.json', import.meta.url), join(root, 'foundry.design.json'));
+    for (const file of ['index.html', 'style.css']) {
+      await cp(new URL(file, import.meta.url), join(root, file));
+    }
     await writeFile(
       join(root, '.foundry', 'foundry.config.json'),
       `${JSON.stringify({ version: 2, design: { themes: [{ id: 'light' }] } }, null, 2)}\n`,
@@ -61,6 +74,15 @@ test('Morrow exposes a fixture-authored query state to Foundry', async () => {
     const configured = JSON.parse(configuredOnce);
     assert.deepEqual(configured.design.themes, [{ id: 'light' }]);
     assert.deepEqual(configured.design.states, authored.states);
+    assert.deepEqual(configured.design.components[0].source, { file: 'index.html', line: 247 });
+    assert.deepEqual(
+      configured.design.components[0].variants.map((item) => item.value),
+      ['Primary', 'Quiet', 'Danger'],
+    );
+    assert.ok(
+      configured.design.components[0].variants.every((item) => item.source.file === 'style.css'),
+    );
+    assert.ok(configured.design.exclude.includes('PrimaryAction.tsx'));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -72,14 +94,22 @@ test('fixture build output is deterministic and source-identical', async () => {
     for (const file of ['index.html', 'style.css']) {
       await cp(new URL(file, import.meta.url), join(root, file));
     }
+    await cp(new URL('fonts/', import.meta.url), join(root, 'fonts'), { recursive: true });
     const first = await buildFixture(root);
     const firstManifest = await readFile(join(root, 'dist', 'build-manifest.json'), 'utf8');
     const second = await buildFixture(root);
     const secondManifest = await readFile(join(root, 'dist', 'build-manifest.json'), 'utf8');
     assert.deepEqual(second, first);
     assert.equal(secondManifest, firstManifest);
-    assert.deepEqual(Object.keys(second.files), ['index.html', 'style.css']);
-    assert.deepEqual(second.sourceAnnotations, { count: 11, files: ['index.html', 'style.css'] });
+    assert.deepEqual(Object.keys(second.files), [
+      'index.html',
+      'style.css',
+      'fonts/inter.woff2',
+      'fonts/inter-OFL.txt',
+      'fonts/google-sans-flex.woff2',
+      'fonts/google-sans-flex-OFL.txt',
+    ]);
+    assert.deepEqual(second.sourceAnnotations, { count: 13, files: ['index.html', 'style.css'] });
     for (const file of Object.keys(second.files)) {
       assert.equal(
         await readFile(join(root, 'dist', file), 'utf8'),
@@ -94,7 +124,7 @@ test('fixture build output is deterministic and source-identical', async () => {
 
 test('source annotations are current and remain inside the fixture', () => {
   assert.deepEqual(validateSourceAnnotations(), {
-    count: 11,
+    count: 13,
     files: ['index.html', 'style.css'],
   });
 });
@@ -362,6 +392,27 @@ test('rendered Morrow target and dark surfaces match the demonstration contract'
   );
 
   await page.goto(`http://127.0.0.1:${address.port}/?morrow-state=loading`);
+  await page.evaluate(() => document.fonts.ready);
+  assert.equal(await page.locator('.submit-button').isDisabled(), true);
+  assert.equal(
+    await page.locator('.submit-button b').evaluate((el) => getComputedStyle(el).animationName),
+    'button-spin',
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        document.fonts.check('16px "Morrow Sans"') && document.fonts.check('16px "Morrow Display"'),
+    ),
+    true,
+  );
+  const note = page.locator('.working-note');
+  assert.equal(await note.evaluate((el) => getComputedStyle(el).animationName), 'note-arrive');
+  assert.equal(await note.evaluate((el) => el.getAnimations()[0].effect.getTiming().duration), 480);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  assert.ok(
+    (await note.evaluate((el) => parseFloat(getComputedStyle(el).animationDuration))) <= 0.00001,
+  );
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   const authoredLoadingState = await page.locator('.submit-button').evaluate((button) => ({
     state: button.getAttribute('data-foundry-state'),
     busy: button.getAttribute('aria-busy'),

@@ -5,7 +5,7 @@ import { access, mkdir, readFile, readdir, rm, rmdir, writeFile } from 'node:fs/
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import type { Platform } from 'foundry-design-protocol';
+import type { Platform, ComponentDefinition } from 'foundry-design-protocol';
 import { detectPlatform, normalizeTargetUrl } from './project.js';
 import { FOUNDRY_MCP_PACKAGE_SPEC, FOUNDRY_VERSION } from './release.js';
 
@@ -25,6 +25,7 @@ export interface FoundryProjectConfig {
   design?: {
     tokenFiles?: string[];
     componentRoots?: string[];
+    components?: ComponentDefinition[];
     exclude?: string[];
     viewports?: Array<{ id: string; label: string; width: number; height?: number }>;
     themes?: Array<{
@@ -227,7 +228,10 @@ async function validationCommands(root: string): Promise<ValidationCommand[]> {
       command: manager.command,
       args: manager.runArgs('typecheck'),
     });
-  } else if (existsSync(join(root, 'node_modules', '.bin', 'tsc'))) {
+  } else if (
+    existsSync(join(root, 'tsconfig.json')) &&
+    existsSync(join(root, 'node_modules', '.bin', 'tsc'))
+  ) {
     commands.push({
       name: 'typecheck',
       command: join(root, 'node_modules', '.bin', 'tsc'),

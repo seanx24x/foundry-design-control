@@ -146,8 +146,8 @@ test('review distinguishes the live preview from the active agent listener', asy
   assert.match(source, /\/v1\/sessions\/\$\{sessionId\}\/agent-presence/);
   assert.match(source, /const listenerConnected = Boolean\(activeAgentPresence\.connected\)/);
   assert.match(source, /Queue \$\{included\} for agent/);
-  assert.match(source, /Apply listener ready/);
-  assert.match(source, /Agent currently offline/);
+  assert.match(source, /Agent listener connected/);
+  assert.match(source, /Agent offline/);
   assert.match(source, /Waiting for agent/);
   assert.match(source, /Agent handoff/);
   assert.match(source, /Queue resume for agent/);
@@ -414,7 +414,9 @@ test('design system resolves aliases and stages recurring-value promotion throug
   assert.match(source, /project\.tokenUsages/);
   assert.match(source, /project\.designSystemFindings/);
   assert.match(source, /project\.tokenPromotions/);
-  assert.match(source, /Alias chain/);
+  assert.match(source, /Indexed alias chain/);
+  assert.match(source, /renderedTokens/);
+  assert.match(source, /token\.declarations/);
   assert.match(source, /Add plan to Review/);
   assert.match(source, /stage-token-promotion/);
   assert.match(source, /Changing this token can affect/);
@@ -558,7 +560,7 @@ test('active source runs require an explicit second action before cancellation',
   assert.match(source, /Stop apply/);
   assert.match(source, /Confirm stop/);
   assert.match(source, /Press Confirm stop within 5 seconds/);
-  assert.match(source, /Foundry is keeping the handoff active while source work begins/);
+  assert.match(source, /const lifecycle = applyLifecyclePresentation\(run,/);
   assert.match(source, /cancelConfirmationUntil = now \+ 5_000/);
 });
 

@@ -1,0 +1,6 @@
+<script type="module">
+  if (new URLSearchParams(location.search).has('__foundry_session')) {
+    const { installFoundryInspector } = await import('http://127.0.0.1:4387/adapter.js');
+    installFoundryInspector();
+  }
+</script>

@@ -236,6 +236,16 @@ test('coalesces repeated edits while preserving the original before value', () =
   assert.equal(changes[0]?.id, 'chg_1');
 });
 
+test('net-zero exploratory edits disappear without removing reviewed history', () => {
+  const forward = { ...base, status: 'draft' as const };
+  const back = { ...forward, id: 'chg_back', before: base.after, after: base.before };
+  assert.deepEqual(coalesceChanges([forward, back]), []);
+  for (const status of ['approved', 'applied'] as const) {
+    assert.equal(coalesceChanges([{ ...back, status }]).length, 1);
+  }
+  assert.equal(coalesceChanges([forward, back, { ...forward, id: 'chg_again' }]).length, 1);
+});
+
 test('migrates legacy change contexts to singleton context sets', () => {
   const parsed = designChangeSchema.parse({ ...base, contextSet: undefined });
   assert.deepEqual(parsed.contextSet, {

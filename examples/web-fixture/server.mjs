@@ -6,6 +6,7 @@ const fixtureRoot = resolve(import.meta.dirname, process.env.FOUNDRY_FIXTURE_ROO
 const contentTypes = new Map([
   ['.css', 'text/css; charset=utf-8'],
   ['.html', 'text/html; charset=utf-8'],
+  ['.woff2', 'font/woff2'],
 ]);
 
 const server = createServer(async (request, response) => {

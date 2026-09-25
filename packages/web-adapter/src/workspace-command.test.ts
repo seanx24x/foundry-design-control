@@ -4,6 +4,25 @@ import test from 'node:test';
 
 const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
 
+test('embedded selection keeps cycling without covering the product with a selection toast', () => {
+  const start = source.indexOf('function handlePointer(event: MouseEvent)');
+  const end = source.indexOf('let selectionHoverFrame', start);
+  const handler = source.slice(start, end);
+  assert.ok(start > 0 && end > start);
+  assert.match(handler, /nextCycleIndex\(clickCycle.index, candidates.length\)/);
+  assert.match(handler, /select\(element, event.shiftKey\)/);
+  assert.match(
+    handler,
+    /if \(!embeddedWorkspace && candidates.length > 1 && !event.shiftKey\) \{\s*showToast\(/,
+  );
+  // Suppress only this informational hint, never the shared action/error notification channel.
+  const toastStart = source.indexOf('function showToast(message: string)');
+  const toastEnd = source.indexOf('function persistDesignMemory', toastStart);
+  const toast = source.slice(toastStart, toastEnd);
+  assert.doesNotMatch(toast, /embeddedWorkspace/);
+  assert.match(toast, /toast.classList.add\('show'\)/);
+});
+
 test('routes every correlated workspace command through one acknowledgement boundary', () => {
   assert.match(source, /async function executeWorkspaceCommand\(/);
   assert.match(source, /Unknown workspace command:/);

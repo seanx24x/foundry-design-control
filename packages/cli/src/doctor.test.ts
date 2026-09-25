@@ -134,3 +134,34 @@ test('deduplicates host and project agent paths when the project is the home fol
   });
   assert.deepEqual(report.configuredAgentFiles, [join(home, '.codex', 'config.toml')]);
 });
+
+test('bounds unresponsive probes and never treats a successful HTTP page as a rendered preview', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'foundry-doctor-timeout-'));
+  await mkdir(join(root, '.foundry'), { recursive: true });
+  await writeFile(join(root, 'package.json'), '{}');
+  await writeFile(
+    join(root, '.foundry', 'foundry.config.json'),
+    JSON.stringify({
+      platform: 'web',
+      targetUrl: 'http://127.0.0.1:4490',
+      runtimeUrl: 'http://127.0.0.1:4487',
+    }),
+  );
+  const urls: string[] = [];
+  const start = Date.now();
+  const report = await collectDoctorReport(root, {
+    home: root,
+    store: new SessionStore(join(root, 'sessions')),
+    timeoutMs: 25,
+    fetcher: async (url) => {
+      urls.push(String(url));
+      if (String(url).endsWith('/v1/health')) return new Promise<Response>(() => {});
+      return new Response('ordinary product page');
+    },
+  });
+  assert.ok(Date.now() - start < 1000);
+  assert.ok(urls.includes('http://127.0.0.1:4487/v1/health'));
+  assert.equal(report.checks.find((check) => check.id === 'preview')?.status, 'passed');
+  assert.equal(report.readiness.capabilities.inspect, false);
+  assert.equal(report.ready, false);
+});

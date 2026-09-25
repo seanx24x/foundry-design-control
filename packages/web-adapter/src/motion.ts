@@ -1138,7 +1138,16 @@ export function discoverElementMotion(element: HTMLElement): DiscoveredMotion[] 
       descriptor: {
         ...item,
         properties,
-        timing: match?.timing ?? item.timing,
+        timing: match
+          ? {
+              ...match.timing,
+              easing: renderedMotionEasing(
+                match.timing.easing,
+                match.keyframes,
+                item.timing.easing,
+              ),
+            }
+          : item.timing,
         performance: analyzeMotionPerformance(properties),
         keyframes: match?.keyframes ?? item.keyframes,
       },
@@ -1162,6 +1171,28 @@ export function discoverElementMotion(element: HTMLElement): DiscoveredMotion[] 
     });
   });
   return [...nativeDiscovered, ...discovered];
+}
+
+// CSS animations apply animation-timing-function per keyframe segment. Their
+// outer Web Animations timing is normally linear and is not the authored curve.
+export function renderedMotionEasing(
+  outer: string,
+  frames: MotionKeyframe[],
+  fallback: string,
+): string {
+  if (outer !== 'linear') return outer;
+  const segments = [...new Set(frames.slice(0, -1).map((frame) => frame.easing))];
+  return segments.length === 1 ? segments[0]! : fallback;
+}
+
+export function setRenderedMotionEasing(effect: KeyframeEffect, easing: string): void {
+  const frames = effect.getKeyframes();
+  // One uniform CSS segment curve must not be multiplied by a second outer
+  // curve when the designer changes easing. Explicit mixed segments survive.
+  if (new Set(frames.slice(0, -1).map((frame) => frame.easing)).size === 1) {
+    effect.setKeyframes(frames.map((frame) => ({ ...frame, easing: 'linear' })));
+  }
+  effect.updateTiming({ easing });
 }
 
 export function motionTimingValue(

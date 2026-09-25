@@ -104,9 +104,49 @@ test('protects and serves the apply-run lifecycle over loopback HTTP', async () 
   const store = new SessionStore(await mkdtemp(join(tmpdir(), 'foundry-runtime-')));
   let sourceRevision = 'rev-1';
   let sourceHash = 'a'.repeat(64);
+  const capturePhases: string[] = [];
+  let evidenceReads = 0;
+  let evidenceFailure = false;
   const runtime = new FoundryRuntime({
     port,
     store,
+    readDeliveryEvidence: async ({ projectRoot, evidence }) => {
+      evidenceReads += 1;
+      assert.equal(projectRoot, '/project');
+      assert.equal(evidence.capture?.phase, 'rebuilt');
+      if (evidenceFailure) throw new Error('Private file path must never be exposed');
+      return Buffer.from('test-png');
+    },
+    captureDeliveryEvidence: async ({ phase, changeSet, revision, applyRunId }) => {
+      capturePhases.push(phase);
+      return {
+        screenshots: [
+          {
+            label: phase,
+            path: `.foundry/sessions/${phase}.png`,
+            createdAt: new Date().toISOString(),
+            capture: {
+              version: 1,
+              phase,
+              context: changeSet.changes[0]!.context,
+              viewport: { width: 1440, height: 900 },
+              sourceRevision: revision,
+              applyRunId,
+              targetId: changeSet.changes[0]!.target.id,
+              sha256: 'a'.repeat(64),
+              conditions: {
+                motion: 'reduce',
+                browser: 'chromium-test',
+                platform: 'test',
+                deviceScaleFactor: 1,
+              },
+            },
+          },
+        ],
+        unavailable: [],
+      };
+    },
+    resolveProjectReadiness: async () => ({ checks: [], revision: sourceRevision }),
     resolveProjectRevision: async ({ sourcePaths, sourceLocations }) => ({
       supported: true,
       scope: 'mapped-files',
@@ -146,6 +186,7 @@ test('protects and serves the apply-run lifecycle over loopback HTTP', async () 
       state: 'current',
     });
     const id = session.changeSet.sessionId;
+    const token = session.token;
     const unauthorized = await fetch(`http://127.0.0.1:${port}/v1/sessions/${id}/apply-runs`);
     assert.equal(unauthorized.status, 401);
 
@@ -686,6 +727,92 @@ test('protects and serves the apply-run lifecycle over loopback HTTP', async () 
       applyRuns: Array<{ id: string; state: string }>;
     };
     assert.equal(verifiedPayload.applyRuns.find((run) => run.id === runId)?.state, 'passed');
+    assert.deepEqual(capturePhases, ['before', 'rebuilt']);
+    const delivery = (await store.read(id)).deliveryRecords.find(
+      (record) => record.applyRunId === runId,
+    )!;
+    assert.deepEqual(
+      delivery.evidence.map((item) => item.capture?.phase),
+      ['before', 'rebuilt'],
+    );
+    assert.equal(delivery.evidence[0]?.capture?.sourceRevision, delivery.baselineRevision);
+    assert.equal(delivery.evidence[1]?.capture?.sourceRevision, delivery.appliedRevision);
+    assert.equal(delivery.evidence[1]?.capture?.applyRunId, runId);
+    const imageUrl = `http://127.0.0.1:${port}/v1/sessions/${id}/delivery-records/${delivery.id}/evidence/1`;
+    assert.equal((await fetch(imageUrl)).status, 401);
+    assert.equal(evidenceReads, 0);
+    const image = await fetch(imageUrl, { headers: { 'x-foundry-token': token } });
+    assert.equal(image.status, 200);
+    assert.equal(image.headers.get('content-type'), 'image/png');
+    assert.equal(image.headers.get('cache-control'), 'private, no-store');
+    assert.equal(image.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(await image.text(), 'test-png');
+    assert.equal(evidenceReads, 1);
+    for (const invalid of ['-1', '1.0', '999', '1/more']) {
+      assert.equal(
+        (
+          await fetch(imageUrl.replace('/evidence/1', `/evidence/${invalid}`), {
+            headers: { 'x-foundry-token': token },
+          })
+        ).status,
+        404,
+      );
+    }
+    assert.equal(
+      (
+        await fetch(imageUrl.replace(delivery.id, 'missing'), {
+          headers: { 'x-foundry-token': token },
+        })
+      ).status,
+      404,
+    );
+    assert.equal(evidenceReads, 1);
+    evidenceFailure = true;
+    const invalidImage = await fetch(imageUrl, { headers: { 'x-foundry-token': token } });
+    assert.equal(invalidImage.status, 404);
+    assert.equal((await invalidImage.text()).includes('Private file'), false);
+    const afterApply = await store.read(id);
+    assert.equal(afterApply.changeSet.context.revision, sourceRevision);
+    assert.equal(delivery.baselineRevision, 'rev-1');
+    const readiness = await fetch(`http://127.0.0.1:${port}/v1/sessions/${id}/readiness`, {
+      headers: { 'x-foundry-token': token },
+    });
+    const readinessPayload = (await readiness.json()) as {
+      checks: Array<{ id: string; status: string }>;
+    };
+    assert.equal(
+      readinessPayload.checks.find((item) => item.id === 'session-current')?.status,
+      'passed',
+    );
+    const second = await store.addChange(id, {
+      ...afterApply.changeSet.changes[0]!,
+      id: undefined,
+      before: 120,
+      after: 124,
+      status: 'draft',
+    });
+    const secondChange = second.changeSet.changes.find((change) => change.status === 'draft')!;
+    const nextApplyRequest = {
+      method: 'POST',
+      headers: { 'x-foundry-token': token, 'content-type': 'application/json' },
+      body: JSON.stringify({ reviews: [{ changeId: secondChange.id, approved: true }] }),
+    };
+    sourceRevision = 'external-drift';
+    const driftedApply = await fetch(
+      `http://127.0.0.1:${port}/v1/sessions/${id}/apply-runs`,
+      nextApplyRequest,
+    );
+    assert.equal(driftedApply.status, 409);
+    assert.equal(
+      (await store.read(id)).changeSet.context.revision,
+      afterApply.changeSet.context.revision,
+      'external source edits never silently advance the editing baseline',
+    );
+    sourceRevision = afterApply.changeSet.context.revision!;
+    const secondApply = await fetch(`http://127.0.0.1:${port}/v1/sessions/${id}/apply-runs`, {
+      ...nextApplyRequest,
+    });
+    assert.equal(secondApply.status, 201, await secondApply.text());
   } finally {
     await runtime.stop();
   }

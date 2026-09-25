@@ -1,0 +1,66 @@
+.action {
+  width: 44px;
+  min-height: 40px; /* foundry: compat-action */
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--action-background);
+  color: var(--action-text);
+  font: inherit;
+  cursor: pointer;
+}
+.action:hover {
+  filter: brightness(1.1);
+}
+.action:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+}
+.action[data-tone='quiet'],
+.quiet {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.primary {
+  font-weight: 600;
+}
+.canvas {
+  min-height: 100vh;
+  padding: 64px 32px;
+}
+.card {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 32px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.actions {
+  display: flex;
+  gap: var(--space-control);
+  align-items: center;
+}
+.secondary {
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+@media (max-width: 640px) {
+  .canvas {
+    padding: 32px 16px;
+  }
+  .card {
+    padding: 24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .action {
+    transition: none;
+  }
+}

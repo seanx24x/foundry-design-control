@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0-beta.23 - 2026-09-25
+
+- Made the redesigned Foundry workspace the default, with an explicit `ui=legacy` fallback and continued support for existing `ui=next` links.
+- Refined the application chrome, browser-style workspace tabs, Layers panel, floating tools, and all design studios around shared spacing, typography, icons, and light/dark surfaces.
+- Added contextual inspector controls, inline advanced settings, authored variant previews, mixed-selection editing, and explicit local-preview and reviewed-source boundaries.
+- Rendered authored Component Workshop variants directly in the workspace and refined Design System, Motion, Typography, Recipes, State Workbench, Responsive, Content Stress, Visual Agent, Branches, Memory, and Delivery.
+- Improved Visual Agent preview navigation and cancellation, queued-agent guidance, pending Review priority after completed Apply, and reconnection of saved local edits.
+- Preserved inspector selections and pending variant candidates when the preview disconnects, without reporting failed previews as accepted.
+- Expanded source-backed delivery evidence, exact source anchors, session recovery, local visual checks, isolated browser regressions, and packed framework/install verification.
+- Waited for client-rendered targets before screenshot capture, pinned capture and test browser versions, and prevented late Responsive Lab updates from restoring temporary widths after navigation.
+- Preserved Component Workshop drafts and focused Motion Studio fields during live preview refreshes in the legacy fallback.
+
 ## 0.2.0-beta.22 - 2026-09-13
 
 - Scoped Content Stress Lab findings to the exact stressed selection and stopped honestly when that rendered target disconnects or is replaced.

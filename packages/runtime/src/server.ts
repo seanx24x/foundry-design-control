@@ -5,14 +5,21 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
   PROTOCOL_VERSION,
+  createReadinessReport,
+  previewPresenceInputSchema,
+  type ReadinessCheck,
+  type PreviewPresenceInput,
+  type VisualCheckReport,
   previewCommandSchema,
   projectDesignGraphSchema,
   renderChangePrompt,
   surfaceSnapshotSchema,
   type ApplyRunState,
   type ApplyRun,
+  type ChangeSet,
   type DesignChange,
   type DesignChangeInput,
+  type DeliveryRecord,
   type DesignOperationInput,
   type PreviewCommand,
   type ProjectDesignGraphInput,
@@ -35,6 +42,7 @@ import {
   type StoredSession,
 } from './store.js';
 import { GoogleFontsCatalog } from './google-fonts.js';
+import packageJson from '../package.json' with { type: 'json' };
 
 export interface RuntimeOptions {
   host?: string;
@@ -42,6 +50,14 @@ export interface RuntimeOptions {
   store?: SessionStore;
   googleFontsCatalog?: GoogleFontsCatalog;
   reindexProjectDesign?: (input: ReindexProjectDesignInput) => Promise<ProjectDesignGraphInput>;
+  /** CLI owns filesystem/project knowledge. Runtime owns observed connection leases. */
+  resolveProjectReadiness?: (projectRoot: string) => Promise<{
+    checks: ReadinessCheck[];
+    revision?: string;
+  }>;
+  listVisualCheckReports?: (projectRoot: string) => Promise<VisualCheckReport[]>;
+  captureDeliveryEvidence?: (input: DeliveryCaptureRequest) => Promise<DeliveryCaptureResult>;
+  readDeliveryEvidence?: (input: DeliveryEvidenceRequest) => Promise<Uint8Array>;
   resolveProjectRevision?: (input: {
     sessionId: string;
     projectRoot: string;
@@ -56,6 +72,25 @@ export interface RuntimeOptions {
     changedRanges?: SourceChangedRange[];
     reason?: string;
   }>;
+}
+
+export interface DeliveryCaptureRequest {
+  phase: 'before' | 'rebuilt';
+  changeSet: ChangeSet;
+  designGraph: ProjectDesignGraphInput | null;
+  revision: string;
+  applyRunId?: string;
+  signal: AbortSignal;
+}
+
+export interface DeliveryCaptureResult {
+  screenshots: ChangeSet['screenshots'];
+  unavailable: string[];
+}
+
+export interface DeliveryEvidenceRequest {
+  projectRoot: string;
+  evidence: DeliveryRecord['evidence'][number];
 }
 
 export interface ReindexProjectDesignInput {
@@ -80,6 +115,7 @@ interface AgentPresence {
   listening: boolean;
   lastSeenAt: string;
   expiresAt: string;
+  bridgeVersion?: string;
 }
 
 const inspectorRoot = dirname(
@@ -218,6 +254,24 @@ export class FoundryRuntime {
   readonly googleFontsCatalog: GoogleFontsCatalog;
   readonly reindexProjectDesign?: RuntimeOptions['reindexProjectDesign'];
   readonly resolveProjectRevision?: RuntimeOptions['resolveProjectRevision'];
+  readonly resolveProjectReadiness?: RuntimeOptions['resolveProjectReadiness'];
+  readonly listVisualCheckReports?: RuntimeOptions['listVisualCheckReports'];
+  readonly captureDeliveryEvidence?: RuntimeOptions['captureDeliveryEvidence'];
+  readonly readDeliveryEvidence?: RuntimeOptions['readDeliveryEvidence'];
+  private previewPresence = new Map<
+    string,
+    Map<
+      string,
+      Omit<PreviewPresenceInput, 'previewCapability'> & {
+        receivedAt: number;
+        capabilityHash?: string;
+      }
+    >
+  >();
+  private projectReadinessCache = new Map<
+    string,
+    { at: number; value: Promise<{ checks: ReadinessCheck[]; revision?: string }> }
+  >();
   private surfaces = new Map<string, SurfaceSnapshot>();
   private commands = new Map<string, PreviewCommand[]>();
   private agentPresence = new Map<string, AgentPresence>();
@@ -240,6 +294,10 @@ export class FoundryRuntime {
     this.googleFontsCatalog = options.googleFontsCatalog ?? new GoogleFontsCatalog();
     this.reindexProjectDesign = options.reindexProjectDesign;
     this.resolveProjectRevision = options.resolveProjectRevision;
+    this.resolveProjectReadiness = options.resolveProjectReadiness;
+    this.listVisualCheckReports = options.listVisualCheckReports;
+    this.captureDeliveryEvidence = options.captureDeliveryEvidence;
+    this.readDeliveryEvidence = options.readDeliveryEvidence;
   }
 
   async start(): Promise<void> {
@@ -257,6 +315,38 @@ export class FoundryRuntime {
     await new Promise<void>((resolveStop, reject) =>
       this.server.close((error) => (error ? reject(error) : resolveStop())),
     );
+  }
+
+  private async captureDelivery(
+    input: Omit<DeliveryCaptureRequest, 'signal'>,
+  ): Promise<DeliveryCaptureResult> {
+    if (!this.captureDeliveryEvidence || input.changeSet.context.platform !== 'web')
+      return { screenshots: [], unavailable: ['Visual capture is unavailable in this runtime.'] };
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        this.captureDeliveryEvidence({ ...input, signal: controller.signal }),
+        new Promise<DeliveryCaptureResult>((resolveTimeout) => {
+          timer = setTimeout(() => {
+            controller.abort();
+            resolveTimeout({
+              screenshots: [],
+              unavailable: [`${input.phase} screenshot capture exceeded the 20 second limit.`],
+            });
+          }, 20_000);
+        }),
+      ]);
+    } catch (error) {
+      return {
+        screenshots: [],
+        unavailable: [
+          `${input.phase} screenshot unavailable: ${error instanceof Error ? error.message : 'capture failed'}`,
+        ],
+      };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private async sourceProofForRun(stored: StoredSession, runId: string): Promise<ApplySourceProof> {
@@ -327,6 +417,7 @@ export class FoundryRuntime {
         sendJson(response, 200, {
           status: 'ok',
           protocolVersion: PROTOCOL_VERSION,
+          version: packageJson.version,
         });
         return;
       }
@@ -353,6 +444,232 @@ export class FoundryRuntime {
           sendJson(response, 200, publicSession(stored));
           return;
         }
+        if (request.method === 'GET' && parts[3] === 'visual-checks') {
+          sendJson(response, 200, {
+            supported: Boolean(this.listVisualCheckReports),
+            reports: this.listVisualCheckReports
+              ? await this.listVisualCheckReports(stored.changeSet.context.projectRoot)
+              : [],
+          });
+          return;
+        }
+        if (request.method === 'POST' && parts[3] === 'preview-presence') {
+          const input = previewPresenceInputSchema.parse(await body(request));
+          const expectedOrigin =
+            stored.changeSet.context.previewOrigin ??
+            (stored.changeSet.context.targetUrl
+              ? new URL(stored.changeSet.context.targetUrl).origin
+              : undefined);
+          if (
+            !expectedOrigin ||
+            request.headers.origin !== expectedOrigin ||
+            !previewCapabilityMatches(stored.previewCapabilityHash, input.previewCapability)
+          ) {
+            throw new RuntimeRequestError(
+              'Preview presence requires the configured origin and private preview capability.',
+              403,
+            );
+          }
+          const frames = this.previewPresence.get(id) ?? new Map();
+          if (!input.connected) frames.delete(input.frameId);
+          else {
+            const { previewCapability: _capability, ...presence } = input;
+            frames.set(input.frameId, {
+              ...presence,
+              receivedAt: Date.now(),
+              capabilityHash: stored.previewCapabilityHash,
+            });
+          }
+          for (const [key, frame] of frames)
+            if (Date.now() - frame.receivedAt >= 5000) frames.delete(key);
+          this.previewPresence.set(id, frames);
+          sendJson(response, 200, { acknowledged: true, expiresInMs: 5000 });
+          return;
+        }
+        if (request.method === 'GET' && parts[3] === 'readiness') {
+          const root = stored.changeSet.context.projectRoot;
+          let project = this.projectReadinessCache.get(root);
+          if (!project || Date.now() - project.at >= 5000) {
+            const value = this.resolveProjectReadiness
+              ? Promise.race([
+                  this.resolveProjectReadiness(root),
+                  new Promise<never>((_resolve, reject) => {
+                    const timer = setTimeout(
+                      () => reject(new Error('Project readiness check timed out.')),
+                      2500,
+                    );
+                    timer.unref();
+                  }),
+                ]).catch((error) => ({
+                  checks: [
+                    {
+                      id: 'config',
+                      label: 'Project configuration',
+                      status: 'failed' as const,
+                      detail:
+                        error instanceof Error ? error.message : 'Project readiness unavailable.',
+                      recovery: { id: 'start' as const, label: 'Restart from the project CLI' },
+                    },
+                  ],
+                }))
+              : Promise.resolve({
+                  checks: [
+                    {
+                      id: 'config',
+                      label: 'Project configuration',
+                      status: 'warning' as const,
+                      detail: 'Start Foundry from the project CLI to inspect its configuration.',
+                      recovery: { id: 'start' as const, label: 'Start from the project CLI' },
+                    },
+                  ],
+                });
+            project = { at: Date.now(), value };
+            this.projectReadinessCache.set(root, project);
+          }
+          const projectResult = await project.value;
+          const now = Date.now();
+          const frames = [...(this.previewPresence.get(id)?.values() ?? [])].filter(
+            (frame) =>
+              now - frame.receivedAt < 5000 &&
+              frame.capabilityHash === stored.previewCapabilityHash,
+          );
+          const canvas = frames
+            .filter((frame) => frame.frameKind === 'canvas')
+            .sort((a, b) => b.receivedAt - a.receivedAt)[0];
+          const nativeSurface = this.surfaces.get(id);
+          const liveNative =
+            stored.changeSet.context.platform !== 'web' &&
+            nativeSurface &&
+            now - Date.parse(nativeSurface.updatedAt) < 5000;
+          const live = Boolean(canvas || liveNative);
+          const mapped =
+            canvas?.mappedTargetCount ??
+            (liveNative ? nativeSurface.targets.filter((target) => target.source).length : 0);
+          const presence = this.agentPresence.get(id);
+          const listening = Boolean(presence?.listening && Date.parse(presence.expiresAt) > now);
+          const current = Boolean(
+            projectResult.revision && projectResult.revision === stored.changeSet.context.revision,
+          );
+          const hasRevision = Boolean(projectResult.revision && stored.changeSet.context.revision);
+          const checks: ReadinessCheck[] = [
+            ...projectResult.checks,
+            {
+              id: 'runtime',
+              label: 'Runtime',
+              status: 'passed',
+              detail: `Foundry ${packageJson.version} is responding.`,
+            },
+            {
+              id: 'preview-connection',
+              label: 'Rendered preview',
+              status: live ? 'passed' : 'warning',
+              detail: live
+                ? 'The rendered product has acknowledged a live connection.'
+                : 'No live Canvas preview acknowledgement within five seconds.',
+              recovery: live ? undefined : { id: 'retry-preview', label: 'Reconnect preview' },
+            },
+            {
+              id: 'preview-version',
+              label: 'Preview compatibility',
+              status: canvas
+                ? canvas.protocolVersion === PROTOCOL_VERSION &&
+                  canvas.adapterVersion === packageJson.version
+                  ? 'passed'
+                  : 'failed'
+                : liveNative
+                  ? 'passed'
+                  : 'warning',
+              detail: canvas
+                ? `Adapter ${canvas.adapterVersion}; protocol ${canvas.protocolVersion}. Runtime ${packageJson.version}; protocol ${PROTOCOL_VERSION}.`
+                : liveNative
+                  ? 'Native surface available.'
+                  : 'Waiting for the preview version.',
+              recovery:
+                canvas &&
+                (canvas.protocolVersion !== PROTOCOL_VERSION ||
+                  canvas.adapterVersion !== packageJson.version)
+                  ? { id: 'retry-preview', label: 'Reload the current adapter' }
+                  : undefined,
+            },
+            {
+              id: 'source-mapping',
+              label: 'Source mapping',
+              status: mapped > 0 ? 'passed' : 'warning',
+              detail:
+                mapped > 0
+                  ? `${mapped} rendered targets carry source locations. Each edit still requires a resolved mapping in Review.`
+                  : 'No rendered source locations reported. Inspecting remains available; source edits require instrumentation.',
+              recovery:
+                mapped > 0
+                  ? undefined
+                  : {
+                      id: 'repair',
+                      label: 'Check project instrumentation',
+                      command: 'foundry-design doctor --repair',
+                    },
+            },
+            {
+              id: 'session-current',
+              label: 'Session source',
+              status: current ? 'passed' : hasRevision ? 'failed' : 'warning',
+              detail: current
+                ? 'Session matches the current project revision.'
+                : hasRevision
+                  ? 'Source changed since this session was captured. Draft changes are preserved; review against the current source before applying.'
+                  : 'The current source revision could not be confirmed.',
+              recovery: current
+                ? undefined
+                : {
+                    id: 'resume',
+                    label: 'Open a session for the current source',
+                    command: 'foundry-design start',
+                  },
+            },
+            {
+              id: 'agent-listening',
+              label: 'Active agent listener',
+              status: listening ? 'passed' : 'warning',
+              detail: listening
+                ? `${presence!.agent.name} is actively listening.`
+                : 'The agent is not listening. Open this project in your coding agent and ask it to keep listening for Foundry work.',
+              recovery: listening
+                ? undefined
+                : {
+                    id: 'restart-agent',
+                    label: 'Reconnect the coding agent',
+                    requiresAgentRestart: true,
+                  },
+            },
+            {
+              id: 'bridge-version',
+              label: 'Active bridge version',
+              status:
+                listening && presence?.bridgeVersion === packageJson.version
+                  ? 'passed'
+                  : listening && presence?.bridgeVersion
+                    ? 'failed'
+                    : 'warning',
+              detail:
+                listening && presence?.bridgeVersion
+                  ? `Bridge ${presence.bridgeVersion}; runtime ${packageJson.version}.`
+                  : 'An active bridge has not reported its package version.',
+              recovery:
+                listening && presence?.bridgeVersion === packageJson.version
+                  ? undefined
+                  : {
+                      id: 'restart-agent',
+                      label: 'Restart the updated coding agent',
+                      requiresAgentRestart: true,
+                    },
+            },
+          ];
+          sendJson(
+            response,
+            200,
+            createReadinessReport({ projectRoot: root, sessionId: id, checks }),
+          );
+          return;
+        }
         if (parts[3] === 'agent-presence') {
           if (request.method === 'GET') {
             const presence = this.agentPresence.get(id);
@@ -371,6 +688,7 @@ export class FoundryRuntime {
               agent: AgentPresence['agent'];
               listening?: boolean;
               ttlMs?: number;
+              bridgeVersion?: string;
             };
             if (!input.agent?.name) throw new Error('Agent presence requires an agent name.');
             if (input.listening === false) {
@@ -385,6 +703,7 @@ export class FoundryRuntime {
               listening: true,
               lastSeenAt: now.toISOString(),
               expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
+              bridgeVersion: input.bridgeVersion,
             };
             this.agentPresence.set(id, presence);
             sendJson(response, 200, { connected: true, presence });
@@ -757,7 +1076,7 @@ export class FoundryRuntime {
             authority = 'browser-preview';
           }
           const sourceProof = await this.sourceProofForRun(stored, input.runId);
-          const updated = await this.store.addVerifications(
+          let updated = await this.store.addVerifications(
             id,
             input.results,
             input.runId,
@@ -766,10 +1085,64 @@ export class FoundryRuntime {
             sourceProof,
             input.claimCapability,
           );
+          const completed = updated.applyRuns.find((run) => run.id === input.runId);
+          if (completed?.state === 'passed')
+            this.projectReadinessCache.delete(updated.changeSet.context.projectRoot);
+          if (
+            completed?.state === 'passed' &&
+            completed.reviewedChangeSet &&
+            completed.appliedRevision
+          ) {
+            const capture = await this.captureDelivery({
+              phase: 'rebuilt',
+              changeSet: completed.reviewedChangeSet,
+              designGraph: updated.designGraph,
+              revision: completed.appliedRevision,
+              applyRunId: completed.id,
+            });
+            try {
+              const afterCapture = await this.sourceProofForRun(updated, completed.id);
+              if (afterCapture.revision !== completed.appliedRevision)
+                throw new Error('Source changed during rebuilt screenshot capture.');
+            } catch (error) {
+              capture.screenshots = [];
+              capture.unavailable.push(
+                `${error instanceof Error ? error.message : 'Source proof unavailable.'} No matched visual evidence was retained.`,
+              );
+            }
+            updated = await this.store.attachDeliveryCapture(id, completed.id, capture);
+          }
           sendJson(response, 200, publicSession(updated));
           return;
         }
         if (parts[3] === 'delivery-records') {
+          if (request.method === 'GET' && parts[5] === 'evidence' && parts.length === 7) {
+            const record = stored.deliveryRecords.find((candidate) => candidate.id === parts[4]);
+            const index = /^(0|[1-9]\d*)$/.test(parts[6] ?? '') ? Number(parts[6]) : -1;
+            const evidence = Number.isSafeInteger(index) ? record?.evidence[index] : undefined;
+            if (!this.readDeliveryEvidence || !evidence?.capture) {
+              sendJson(response, 404, { error: 'Delivery image evidence is unavailable.' });
+              return;
+            }
+            try {
+              const png = await this.readDeliveryEvidence({
+                projectRoot: stored.changeSet.context.projectRoot,
+                evidence,
+              });
+              response.writeHead(200, {
+                'content-type': 'image/png',
+                'content-length': png.byteLength,
+                'cache-control': 'private, no-store',
+                'x-content-type-options': 'nosniff',
+              });
+              response.end(png);
+            } catch {
+              sendJson(response, 404, {
+                error: 'Delivery image evidence is unavailable or invalid.',
+              });
+            }
+            return;
+          }
           if (request.method === 'GET' && parts.length === 4) {
             sendJson(response, 200, { records: stored.deliveryRecords });
             return;
@@ -926,10 +1299,33 @@ export class FoundryRuntime {
                 409,
               );
             }
+            const capture = currentSource.revision
+              ? await this.captureDelivery({
+                  phase: 'before',
+                  changeSet: reviewedSubset,
+                  designGraph: stored.designGraph,
+                  revision: currentSource.revision,
+                })
+              : {
+                  screenshots: [],
+                  unavailable: ['Baseline screenshot requires an exact source revision.'],
+                };
+            const afterCapture = await this.resolveSourceProof(
+              stored,
+              sourcePaths,
+              reviewedSourceLocations(reviewedSubset),
+            );
+            if (afterCapture.revision !== currentSource.revision)
+              throw new RuntimeRequestError(
+                'Source changed while capturing the review baseline. Review the current source before applying.',
+                409,
+              );
             const updated = await this.store.createApplyRun(id, {
               ...input,
               revision: currentSource.revision,
               designGraphRevision: stored.changeSet.designGraphRevision ?? null,
+              baselineScreenshots: capture.screenshots,
+              captureIssues: capture.unavailable,
             });
             sendJson(response, 201, publicSession(updated));
             return;
