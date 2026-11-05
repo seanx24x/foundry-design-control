@@ -1,5 +1,59 @@
 // Logical axes, not invented physical left/top mappings. CSS resolves direction,
 // reversed flex flow and writing mode in the actual selected product.
+import { inspectorInputValue } from './inspector-inputs.js';
+
+const fullWidthProperties = new Set([
+  'fontFamily',
+  'fontVariationSettings',
+  'color',
+  'backgroundColor',
+  'borderColor',
+  'boxShadow',
+  'textContent',
+  'alt',
+  'aria-label',
+  'gridTemplateColumns',
+  'gridTemplateRows',
+  'backgroundImage',
+]);
+export function inspectorFieldIsFull(control, studio = false) {
+  return Boolean(
+    control.full ||
+    fullWidthProperties.has(control.property) ||
+    (studio && (control.kind !== 'number' || inspectorInputValue(control).length > 6)),
+  );
+}
+
+// Pack consecutive compact fields in pairs. A full-width item ends a run;
+// the last compact field in an odd run owns the otherwise empty row.
+export function inspectorSingletons(fullWidths) {
+  const singles = [];
+  let run = [];
+  const flush = () => {
+    if (run.length % 2) singles.push(run.at(-1));
+    run = [];
+  };
+  fullWidths.forEach((full, index) => {
+    if (full) flush();
+    else run.push(index);
+  });
+  flush();
+  return singles;
+}
+
+export function expandInspectorRows(root) {
+  for (const grid of root.querySelectorAll('.next-fields')) {
+    const fields = [...grid.children].filter((node) => !node.hidden);
+    fields.forEach((node) => node.removeAttribute('data-inspector-single'));
+    const full = fields.map(
+      (node) => !node.classList.contains('next-property') || node.classList.contains('next-full'),
+    );
+    inspectorSingletons(full).forEach((index) => {
+      fields[index].dataset.inspectorSingle = '';
+    });
+  }
+}
+
 export function inspectorAxisControl(control, controls) {
   const axis = { justifyContent: 'Main axis', alignItems: 'Cross axis' }[control.property];
   if (!axis || control.kind !== 'select') return null;

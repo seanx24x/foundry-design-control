@@ -115,7 +115,7 @@ export function nextWorkshopPresentation({
     <div class="next-workshop-properties">
       ${
         selectedVariant
-          ? `<section class="next-workshop-section workshop-variant-properties">${header(pilot ? 'Variant properties' : 'Selected variant', selectedVariant.name)}<dl class="next-workshop-facts">${Object.entries(
+          ? `<section class="next-workshop-section workshop-variant-properties">${header(pilot ? 'Variant properties · Read only' : 'Selected variant', selectedVariant.name)}<dl class="next-workshop-facts">${Object.entries(
               selectedVariant.props,
             )
               .map(([key, value]) => `<div><dt>${escape(key)}</dt><dd>${escape(value)}</dd></div>`)

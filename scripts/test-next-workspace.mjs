@@ -12,6 +12,30 @@ const root = resolve(import.meta.dirname, '..');
 const artifacts = join(root, 'artifacts/next-workspace');
 mkdirSync(artifacts, { recursive: true });
 const checks = [];
+async function openCompactLibrary(page) {
+  const toggle = page.locator('.craft-library-toggle:visible').first();
+  if ((await toggle.count()) && (await toggle.getAttribute('aria-expanded')) === 'false') {
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  }
+}
+async function visibleInspectorEntry(select) {
+  return (await select.getAttribute('data-foundry-select')) === 'true'
+    ? select.locator('..').locator('.foundry-select-trigger')
+    : select;
+}
+// Exercise the visible chooser, preserving the native fallback for legacy UI.
+async function chooseInspectorOption(select, value) {
+  if ((await select.getAttribute('data-foundry-select')) !== 'true')
+    return select.selectOption(value);
+  const index = await select.evaluate(
+    (node, chosen) => [...node.options].findIndex((option) => option.value === chosen),
+    value,
+  );
+  assert.ok(index >= 0, `Missing option ${value}`);
+  await select.locator('..').locator('.foundry-select-trigger').click();
+  await select.page().locator(`.foundry-select-menu [data-option-index="${index}"]`).click();
+}
 const previewOnly = process.argv.includes('--preview');
 const motionControlsOnly = process.argv.includes('--motion-controls');
 const typographyControlsOnly = process.argv.includes('--typography-controls');
@@ -250,7 +274,7 @@ try {
       );
       assert.equal(
         (await page.locator('[data-property="fontSize"] .next-field').boundingBox()).width,
-        130,
+        268,
       );
       assert.equal(
         (await page.locator('[data-property="fontFamily"] .next-field').boundingBox()).width,
@@ -433,11 +457,15 @@ try {
       const scrub = page.locator('[data-property="fontSize"] .next-scrub');
       await fontSize().focus();
       await expect(fontSize()).toBeFocused();
-      await scrub.evaluate((el) =>
-        el.addEventListener(
+      // A pre-drag snapshot may replace the idle handle. Capture the actual
+      // pointer event at document scope rather than on a soon-stale node.
+      await page.evaluate(() =>
+        document.addEventListener(
           'pointerdown',
-          (event) => (el.dataset.testPointerId = String(event.pointerId)),
-          { once: true },
+          (event) => {
+            window.testScrubPointerId = event.pointerId;
+          },
+          { once: true, capture: true },
         ),
       );
       const box = await scrub.boundingBox();
@@ -446,7 +474,7 @@ try {
       await page.mouse.move(box.x + 22, box.y + 12, { steps: 4 });
       await expect.poll(renderedSize).toBe(before + 10);
       const originalInput = await fontSize().elementHandle();
-      await scrub.evaluate((el) => el.releasePointerCapture(Number(el.dataset.testPointerId)));
+      await scrub.evaluate((el) => el.releasePointerCapture(window.testScrubPointerId));
       await page.mouse.up();
       await expect.poll(renderedSize).toBe(before);
       await expect.poll(() => originalInput.evaluate((el) => !el.isConnected)).toBe(true);
@@ -530,6 +558,16 @@ try {
       if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click();
     };
     const edit = async (property, value) => {
+      if (property === 'objectPosition') {
+        await page.getByRole('button', { name: 'Edit object position', exact: true }).click();
+        const css = page.getByRole('textbox', { name: 'Object position CSS', exact: true });
+        if (!(await css.isVisible())) await page.locator('.next-position-css summary').click();
+        await css.fill(String(value));
+        await page.getByRole('button', { name: 'Use position', exact: true }).click();
+        await expect(page.locator(`[data-property="${property}"].is-changed`)).toBeVisible();
+        await expect(page.locator('.next-edit-error')).toBeHidden();
+        return;
+      }
       const input = page.locator(`[data-next-field="${property}"]`);
       await input.fill(String(value));
       await input.press('Enter');
@@ -1000,6 +1038,10 @@ try {
         await expect(target).toHaveCSS('font-size', '20px');
         await expect(target).toHaveCSS('font-weight', '400');
         await expect(target).toHaveCSS('color', 'rgb(10, 20, 30)');
+        // Undo's adapter acknowledgement arrives before its refreshed Inspector
+        // snapshot. The next edit must start from the visible restored baseline.
+        await expect(page.locator('[data-next-field="fontSize"]')).toHaveValue('20');
+        await expect(page.locator('[data-next-field="fontWeight"]')).toHaveValue('400');
       },
     );
     await check(
@@ -1471,6 +1513,9 @@ try {
           0,
         );
         await page.locator('[data-curve-preset="ease-in-out"]').click();
+        assert.deepEqual(await changes(), ledger);
+        await expect(page.locator('[data-use-easing]')).toBeEnabled();
+        await page.locator('[data-use-easing]').click();
         await expect(page.locator('[data-curve-preset="ease-in-out"]')).toHaveAttribute(
           'aria-pressed',
           'true',
@@ -1494,7 +1539,17 @@ try {
           'true',
         );
         await expect(page.locator('[data-curve-field="stiffness"]')).toHaveValue('120');
+        await page.locator('[data-use-easing]').click();
+        await expect(page.locator('.motion-curve-editor')).toHaveAttribute(
+          'data-easing-busy',
+          'false',
+        );
         await page.locator('[data-curve-kind-select="cubic-bezier"]').click();
+        await page.locator('[data-use-easing]').click();
+        await expect(page.locator('.motion-curve-editor')).toHaveAttribute(
+          'data-easing-busy',
+          'false',
+        );
         await expect(page.locator('[data-curve-handle="1"]')).toBeVisible();
       },
     );
@@ -1515,6 +1570,8 @@ try {
           });
         });
         await page.locator('[data-curve-preset="linear"]').click();
+        assert.equal(posts, 0);
+        await page.locator('[data-use-easing]').click();
         await expect(page.locator('#toast')).toContainText('could not be recorded');
         assert.equal(posts, 1);
         assert.deepEqual(await changes(), ledger);
@@ -1526,7 +1583,52 @@ try {
           )
           .toBe(before);
         await context.unroute('**/change-records');
+        await expect(page.locator('[data-easing-status]')).toContainText('draft is retained');
+        await page.locator('[data-cancel-easing]').click();
         await page.getByRole('button', { name: 'Dismiss notification', exact: true }).click();
+      },
+    );
+    await check(
+      'Motion easing Cancel discards only the local draft and external changes require reinspection',
+      async () => {
+        const ledger = await changes();
+        const before = await frame
+          .locator('#next-motion-fixture')
+          .evaluate(() => window.__motionControlFixture.effect.getTiming().easing);
+        await page.locator('[data-curve-preset="linear"]').click();
+        await expect(page.locator('.motion-curve-editor')).toHaveAttribute(
+          'data-easing-draft',
+          'true',
+        );
+        await expect(page.locator('[data-studio-action="motion-preview"]')).toBeDisabled();
+        assert.equal(
+          await frame
+            .locator('#next-motion-fixture')
+            .evaluate(() => window.__motionControlFixture.effect.getTiming().easing),
+          before,
+        );
+        await page.locator('[data-cancel-easing]').click();
+        await expect(page.locator('.motion-curve-editor')).toHaveAttribute(
+          'data-easing-draft',
+          'false',
+        );
+        assert.deepEqual(await changes(), ledger);
+        await page.locator('[data-curve-preset="linear"]').click();
+        await frame
+          .locator('#next-motion-fixture')
+          .evaluate(() => window.__motionControlFixture.effect.updateTiming({ easing: 'ease-in' }));
+        await select('#next-motion-fixture');
+        await expect(page.locator('[data-easing-status]')).toContainText('Current easing changed');
+        await expect(page.locator('[data-use-easing]')).toBeDisabled();
+        await page.locator('[data-cancel-easing]').click();
+        await frame
+          .locator('#next-motion-fixture')
+          .evaluate(
+            (_, easing) => window.__motionControlFixture.effect.updateTiming({ easing }),
+            before,
+          );
+        await select('#next-motion-fixture');
+        assert.deepEqual(await changes(), ledger);
       },
     );
     await check(
@@ -1567,6 +1669,16 @@ try {
         await expect(page.locator('[data-curve-field="x1"]')).not.toHaveValue(original);
         const trace = commandTrace.length;
         await page.mouse.up();
+        assert.deepEqual(await changes(), ledger);
+        assert.equal(
+          commandTrace
+            .slice(trace)
+            .filter(
+              (entry) => entry.command === 'motion-action' && entry.payload?.action === 'curve',
+            ).length,
+          0,
+        );
+        await page.locator('[data-use-easing]').click();
         await expect
           .poll(
             () =>
@@ -1605,6 +1717,22 @@ try {
               .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
               .toBe(true);
             const content = page.locator('.next-motion-scroll');
+            const library = page.locator('[data-craft-library="motion"]');
+            if (width === 390) {
+              await expect(library.locator('.craft-library-toggle')).toHaveAttribute(
+                'aria-expanded',
+                'false',
+              );
+              assert.ok((await library.boundingBox()).height < 170);
+              await library.locator('.craft-library-toggle').focus();
+              await page.keyboard.press('Enter');
+              await expect(library).toHaveAttribute('data-craft-library-open', 'true');
+              await expect(library.locator('input[type="search"]')).toBeVisible();
+              await page.keyboard.press('Enter');
+              await expect(library).toHaveAttribute('data-craft-library-open', 'false');
+            } else {
+              assert.equal(Math.round((await library.boundingBox()).width), 320);
+            }
             await content.evaluate((el) => (el.scrollTop = 0));
             // Snapshot scrolling is not a gesture. The native bridge can replace
             // this panel after an acknowledged edit; do not retain its old node
@@ -1615,10 +1743,13 @@ try {
                 .evaluate((el) => el.scrollIntoView({ block: 'center' }));
             const graph = await page.locator('.motion-curve-graph svg').boundingBox();
             assert.ok(Math.abs(graph.width / graph.height - 240 / 156) < 0.01);
-            for (const fontSize of await page
-              .locator('[data-curve-field]')
-              .evaluateAll((fields) => fields.map((field) => getComputedStyle(field).fontSize)))
-              assert.equal(fontSize, '12px');
+            await expect
+              .poll(() =>
+                page
+                  .locator('[data-curve-field]')
+                  .evaluateAll((fields) => fields.map((field) => getComputedStyle(field).fontSize)),
+              )
+              .toEqual(['12px', '12px', '12px', '12px']);
             await expect
               .poll(() =>
                 page
@@ -1656,6 +1787,15 @@ try {
               );
               await page.screenshot({ path: join(artifacts, `motion-timing-${theme}-390.png`) });
             }
+            const direction = page
+              .locator('[data-studio-property="direction"]')
+              .locator('..')
+              .locator('.foundry-select-trigger');
+            await direction.click();
+            const menuBox = await page.locator('.foundry-select-menu:visible').boundingBox();
+            const fieldBox = await direction.locator('xpath=ancestor::label').boundingBox();
+            assert.ok(Math.abs(menuBox.width - fieldBox.width) < 2);
+            await page.keyboard.press('Escape');
           }
         }
         await page.setViewportSize({ width: 1600, height: 1000 });
@@ -1693,6 +1833,9 @@ try {
         await expect(page.locator('.motion-curve-source code')).toContainText('steps(4');
         const ledger = await changes();
         await page.locator('[data-curve-preset="ease-out"]').click();
+        assert.deepEqual(await changes(), ledger);
+        await expect(page.locator('.craft-captured-easing code')).toContainText('steps(4');
+        await page.locator('[data-use-easing]').click();
         await expect(page.locator('[data-curve-preset="ease-out"]')).toHaveAttribute(
           'aria-pressed',
           'true',
@@ -1744,7 +1887,12 @@ try {
         // Persistence can precede the bridge's commit response. Do not blur the
         // accepted field into a disclosure until the UI has acknowledged it.
         await expect(field.locator('xpath=ancestor::label')).toHaveClass(/is-changed/);
+        await field.blur();
         await page.locator('[data-type-section="font-settings"] > summary').click();
+        await expect(page.locator('[data-type-section="font-settings"]')).toHaveAttribute(
+          'open',
+          '',
+        );
         const axes = page.locator('[data-typography-control="fontVariationSettings"]');
         await expect(page.locator('.typography-font-settings input[type="range"]')).toHaveCount(0);
         await axes.fill('bad');
@@ -1929,6 +2077,24 @@ try {
                 )
                 .toBeLessThan(400);
             }
+            for (const property of ['lineHeight', 'letterSpacing']) {
+              const field = page
+                .locator(`[data-typography-control="${property}"]`)
+                .locator('xpath=ancestor::label');
+              const grid = field.locator('..');
+              assert.ok(
+                Math.abs((await field.boundingBox()).width - (await grid.boundingBox()).width) < 2,
+              );
+              const geometry = await field.evaluate((el) => {
+                const label = el.firstElementChild.getBoundingClientRect();
+                const value = el.querySelector('input').getBoundingClientRect();
+                return { labelRight: label.right, valueLeft: value.left };
+              });
+              assert.ok(
+                geometry.valueLeft >= geometry.labelRight,
+                `${property} label cannot overlap its value`,
+              );
+            }
             await page.screenshot({
               path: join(artifacts, `typography-controls-${theme}-${width}.png`),
             });
@@ -1989,7 +2155,10 @@ try {
           .evaluate((el) => getComputedStyle(el).getPropertyValue('--green').trim());
         await expect(page.locator('[data-system-value="canvas"] dd')).toHaveText(live);
         assert.equal(await page.locator('.system-value-rows input').count(), 0);
-        await expect(page.locator('.system-scope')).toContainText('Source-index coverage');
+        await expect(page.locator('.system-scope')).toContainText('Indexed scope');
+        await expect(
+          page.locator('.next-system-property-scroll > .craft-context-help'),
+        ).toContainText('Source-index coverage');
         const source = page.locator('[data-section="Source of truth"]');
         await source.locator('summary').click();
         await expect(source).toHaveAttribute('open', '');
@@ -2097,6 +2266,7 @@ try {
           await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
           for (const width of [1440, 390]) {
             await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+            await openCompactLibrary(page);
             await page.locator('[data-system-view="tokens"]').click();
             const token = systemGraph.tokens.find((item) => item.name === '--green');
             await page.locator(`[data-system-token="${token.id}"]`).click();
@@ -2173,7 +2343,8 @@ try {
         await expect(card).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
         await card.locator('.next-specimen-select').click();
         await expect(card.locator('.next-specimen-select')).toHaveAttribute('aria-pressed', 'true');
-        await expect(page.locator('.workshop-variant-properties')).toContainText(
+        await expect(page.locator('.workshop-variant-properties')).toContainText('Read only');
+        await expect(page.locator('.next-workshop-properties > .craft-context-help')).toContainText(
           'Read-only authored properties',
         );
         assert.equal(await page.locator('.workshop-variant-properties input').count(), 0);
@@ -2732,6 +2903,7 @@ try {
                 }),
               )
               .toBe(true);
+            await openCompactLibrary(page);
             await page
               .locator('.next-state-conditions')
               .evaluate((el) => el.scrollIntoView({ block: 'center' }));
@@ -2905,6 +3077,7 @@ try {
               await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
               true,
             );
+            await openCompactLibrary(page);
             await page
               .locator('.foundry-responsive-resize')
               .evaluate((el) => el.scrollIntoView({ block: 'center' }));
@@ -3070,6 +3243,7 @@ try {
               await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
               true,
             );
+            await openCompactLibrary(page);
             await page
               .locator('[data-stress-condition="long-content"]')
               .evaluate((el) => el.scrollIntoView({ block: 'center' }));
@@ -3398,7 +3572,10 @@ try {
         await expect.poll(() => target.getAttribute('style')).toBe(original);
         const details = page.locator('[data-axis-more="justifyContent"]');
         if (!(await details.evaluate((el) => el.open))) await details.locator('summary').click();
-        await page.locator('[data-next-field="justifyContent"]').selectOption('space-between');
+        await chooseInspectorOption(
+          page.locator('[data-next-field="justifyContent"]'),
+          'space-between',
+        );
         await expect(target).toHaveCSS('justify-content', 'space-between');
         await expect(
           page.locator('[data-align-preset^="justifyContent:"][aria-pressed="true"]'),
@@ -3622,11 +3799,16 @@ try {
         });
       const before = await padding();
       const input = page.locator('[data-next-field="paddingHorizontal"]');
+      const draftNode = await input.elementHandle();
       await input.fill('28');
       await expect.poll(padding).toEqual([before[0], '28px', before[2], '28px']);
       assert.equal((await changes()).length, count);
       await input.press('Escape');
       await expect.poll(() => target.getAttribute('style')).toBe(original);
+      // Adapter restoration precedes the Inspector's acknowledged redraw. Wait
+      // for the actual field/focus handoff before starting another entry.
+      await expect.poll(() => draftNode.evaluate((node) => node.isConnected)).toBe(false);
+      await expect(page.locator('[data-next-field="paddingHorizontal"]')).toBeFocused();
       await edit('paddingHorizontal', 28);
       await send('undo');
       await expect.poll(() => target.getAttribute('style')).toBe(original);
@@ -3827,21 +4009,21 @@ try {
         const snapshot = await send('request-state');
         assert.equal(snapshot.nextVariants.variants.filter((item) => item.supported).length, 3);
         const chooser = page.locator('[data-next-variant]');
-        await chooser.selectOption('morrow-action-quiet');
+        await chooseInspectorOption(chooser, 'morrow-action-quiet');
         await expect(page.locator('[data-variant-use]')).toBeEnabled();
         await expect(target).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         await expect(page.locator('[data-next-field="backgroundColor"]')).toHaveValue(
           'rgba(0, 0, 0, 0)',
         );
         assert.equal((await changes()).length, count);
-        await chooser.selectOption('morrow-action-danger');
+        await chooseInspectorOption(chooser, 'morrow-action-danger');
         await expect(page.locator('[data-variant-use]')).toBeEnabled();
         await expect(target).toHaveCSS('background-color', 'rgb(158, 47, 47)');
         assert.equal((await changes()).length, count);
         await page.locator('[data-variant-cancel]').click();
         await expect.poll(() => target.getAttribute('data-story')).toBe(original);
         assert.equal(await target.getAttribute('style'), style);
-        await expect(chooser).toBeFocused();
+        await expect(await visibleInspectorEntry(chooser)).toBeFocused();
       },
     );
     await check(
@@ -3849,7 +4031,7 @@ try {
       async () => {
         const target = frame.locator('[data-foundry-id="create-workspace-button"]');
         const original = await target.getAttribute('data-story');
-        await page.locator('[data-next-variant]').selectOption('morrow-action-quiet');
+        await chooseInspectorOption(page.locator('[data-next-variant]'), 'morrow-action-quiet');
         await page.locator('[data-variant-use]').click();
         await expect(page.locator('[data-variant-use]')).toHaveCount(0);
         await expect(page.locator('.next-variant-status').first()).toContainText(
@@ -3877,7 +4059,7 @@ try {
         const target = frame.locator('[data-foundry-id="create-workspace-button"]');
         const original = await target.getAttribute('data-story');
         const count = (await changes()).length;
-        await page.locator('[data-next-variant]').selectOption('morrow-action-quiet');
+        await chooseInspectorOption(page.locator('[data-next-variant]'), 'morrow-action-quiet');
         await expect(page.locator('[data-variant-use]')).toBeEnabled();
         await page.locator('.next-focus').click();
         await page.locator('[data-next-canvas]').click();
@@ -3886,7 +4068,7 @@ try {
         await expect.poll(() => target.getAttribute('data-story')).toBe(original);
         await expect(page.locator('.next-unavailable')).toHaveText('No variants exposed');
         await select('[data-foundry-id="create-workspace-button"]');
-        await page.locator('[data-next-variant]').selectOption('morrow-action-danger');
+        await chooseInspectorOption(page.locator('[data-next-variant]'), 'morrow-action-danger');
         await expect(page.locator('[data-variant-use]')).toBeEnabled();
         await page.locator('[data-next-workshop]').click();
         await expect.poll(() => target.getAttribute('data-story')).toBe(original);
@@ -3900,7 +4082,7 @@ try {
         const target = frame.locator('[data-foundry-id="create-workspace-button"]');
         const original = await target.getAttribute('data-story');
         const count = (await changes()).length;
-        await page.locator('[data-next-variant]').selectOption('morrow-action-quiet');
+        await chooseInspectorOption(page.locator('[data-next-variant]'), 'morrow-action-quiet');
         await expect(page.locator('[data-variant-use]')).toBeEnabled();
         await context.route('**/change-records', (route) =>
           route.fulfill({
@@ -4109,26 +4291,43 @@ try {
           .toBe(240);
         const count = (await changes()).length;
         const fit = page.locator('[data-next-field="objectFit"]');
-        const position = page.locator('[data-next-field="objectPosition"]');
         await expect(fit).toHaveValue('fill');
-        await expect(position).toHaveValue('50% 50%');
+        await expect(page.locator('[data-property="objectPosition"]')).toContainText('X 50%');
         await expect(page.locator('[data-next-field="src"]')).toHaveCount(0);
         await expect(page.locator('[data-section="Typography"]')).toHaveCount(0);
         await expect(page.locator('[data-next-field="color"]')).toHaveCount(0);
         await expect(page.locator('[data-next-field="textContent"]')).toHaveCount(0);
+        await page.getByRole('button', { name: 'Edit object position', exact: true }).click();
+        await page.getByRole('button', { name: 'Position top right', exact: true }).click();
+        await expect(image).toHaveCSS('object-position', '100% 0%');
+        assert.equal((await changes()).length, count);
+        await page.getByRole('group', { name: 'Object position pad', exact: true }).focus();
+        await page.keyboard.press('Shift+ArrowDown');
+        await expect(image).toHaveCSS('object-position', '100% 10%');
+        await page.keyboard.press('Escape');
+        await expect.poll(() => image.getAttribute('style')).toBe(original);
+        await page.getByRole('button', { name: 'Edit object position', exact: true }).click();
+        await page.locator('.next-position-css summary').click();
+        const position = page.getByRole('textbox', { name: 'Object position CSS', exact: true });
         await position.fill('left top');
         await expect(image).toHaveCSS('object-position', '0% 0%');
         assert.equal((await changes()).length, count);
         await position.press('Escape');
         await expect.poll(() => image.getAttribute('style')).toBe(original);
+        await page.getByRole('button', { name: 'Edit object position', exact: true }).click();
+        await page.locator('.next-position-css summary').click();
         await position.fill('banana');
-        await position.press('Enter');
-        await expect(page.locator('.next-edit-error')).toContainText('valid object position');
+        await expect(page.locator('#next-position-status')).toContainText(
+          'valid CSS object position',
+        );
+        await expect(
+          page.getByRole('button', { name: 'Use position', exact: true }),
+        ).toBeDisabled();
         await expect(position).toHaveValue('banana');
         assert.equal((await changes()).length, count);
         await position.press('Escape');
         await expect(page.locator('.next-edit-error')).toBeHidden();
-        await fit.selectOption('cover');
+        await chooseInspectorOption(fit, 'cover');
         await expect(page.locator('[data-property="objectFit"].is-changed')).toBeVisible();
         await expect(image).toHaveCSS('object-fit', 'cover');
         assert.equal((await changes()).length, count + 1);
@@ -4167,7 +4366,7 @@ try {
         await select('#next-media-test', true);
         await open('Layout');
         await expect(page.locator('[data-next-field="objectFit"]')).toHaveValue('');
-        await page.locator('[data-next-field="objectFit"]').selectOption('contain');
+        await chooseInspectorOption(page.locator('[data-next-field="objectFit"]'), 'contain');
         await expect(page.locator('[data-property="objectFit"].is-changed')).toBeVisible();
         await expect(frame.locator('#next-media-test')).toHaveCSS('object-fit', 'contain');
         await expect(video).toHaveCSS('object-fit', 'contain');
@@ -4217,13 +4416,15 @@ try {
             body: JSON.stringify({ error: 'Media save unavailable' }),
           }),
         );
-        await page.locator('[data-next-field="objectFit"]').selectOption('contain');
+        await chooseInspectorOption(page.locator('[data-next-field="objectFit"]'), 'contain');
         await expect(page.locator('.next-edit-error')).toBeVisible();
         await expect(page.locator('[data-next-field="objectFit"]')).toHaveValue('contain');
         await expect.poll(() => image.getAttribute('style')).toBe(original);
         assert.equal((await changes()).length, count);
         await context.unroute('**/change-records');
-        await page.locator('[data-next-field="objectFit"]').press('Escape');
+        await (
+          await visibleInspectorEntry(page.locator('[data-next-field="objectFit"]'))
+        ).press('Escape');
         await expect(page.locator('.next-edit-error')).toBeHidden();
       },
     );
@@ -4319,18 +4520,20 @@ try {
             );
             const dock = page.locator('#inspector-dock');
             if (category === 'media') {
-              await expect(page.locator('[data-next-field="objectFit"]')).toBeInViewport();
+              await expect(
+                await visibleInspectorEntry(page.locator('[data-next-field="objectFit"]')),
+              ).toBeInViewport();
               const fit = await page
                 .locator('[data-property="objectFit"] .next-field')
                 .boundingBox();
               const position = await page
                 .locator('[data-property="objectPosition"] .next-field')
                 .boundingBox();
-              assert.equal(fit.width, 130);
+              assert.equal(fit.width, 268);
               assert.equal(fit.height, 32);
-              assert.equal(position.width, 130);
-              assert.equal(position.y, fit.y);
-              assert.equal(position.x - fit.x - fit.width, 8);
+              assert.equal(position.width, 268);
+              assert.equal(position.x, fit.x);
+              assert.equal(position.y - fit.y - fit.height, 8);
             }
             assert.equal((await dock.boundingBox()).width, 300);
             assert.equal((await page.locator('.next-source-footer').boundingBox()).y + 44, height);
@@ -4363,7 +4566,7 @@ try {
           await expect(page.locator('[data-link="paddingLinked"]')).toBeFocused();
           await select('[data-foundry-id="create-workspace-button"]');
           await open('Content');
-          await page.locator('[data-next-variant]').selectOption('morrow-action-quiet');
+          await chooseInspectorOption(page.locator('[data-next-variant]'), 'morrow-action-quiet');
           await expect(page.locator('[data-variant-use]')).toBeEnabled();
           await page.locator('[data-section="Content"]').scrollIntoViewIfNeeded();
           await expect(page.locator('[data-next-field="backgroundColor"]')).toHaveValue(
@@ -4377,7 +4580,9 @@ try {
             .locator('#inspector-dock')
             .screenshot({ path: join(artifacts, `variant-preview-${theme}-${height}.png`) });
           await page.locator('[data-variant-cancel]').press('Escape');
-          await expect(page.locator('[data-next-variant]')).toBeFocused();
+          await expect(
+            await visibleInspectorEntry(page.locator('[data-next-variant]')),
+          ).toBeFocused();
           await select('[data-foundry-id="story-title"]');
         });
       }
@@ -4411,7 +4616,7 @@ try {
         });
         await select('[data-foundry-id="create-workspace-button"]');
         await open('Content');
-        await page.locator('[data-next-variant]').selectOption('morrow-action-quiet');
+        await chooseInspectorOption(page.locator('[data-next-variant]'), 'morrow-action-quiet');
         await expect(page.locator('[data-variant-use]')).toBeEnabled();
         const count = (await changes()).length;
         await page.locator('#product-preview').evaluate((el) => {

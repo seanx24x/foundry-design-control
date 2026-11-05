@@ -40,7 +40,14 @@ export function refinePilotMotion(root, { motion, availability }) {
   const curve = root.querySelector('.motion-curve-editor');
   if (curve) {
     curve.querySelector('header strong').textContent = 'Easing';
-    curve.querySelector('.motion-curve-source > span').textContent = 'Current easing';
+    curve.querySelector('.motion-curve-source > span').textContent =
+      curve.dataset.easingDraft === 'true' ? 'Draft easing' : 'Current easing';
+    const note = curve.querySelector('.motion-controls-note');
+    if (note)
+      note.textContent =
+        'Drag or type to explore. Use easing adds to Review; Cancel discards this local draft.';
+    for (const button of curve.querySelectorAll('[data-curve-preset]'))
+      button.title = `${button.textContent.trim()}: explore locally, then Use easing`;
     const diagnostics = curve.querySelector('.motion-curve-diagnostics');
     diagnostics.append(make('p', 'foundry-motion-caption', model.easingNote));
     curve.querySelector('.motion-curve-presets').setAttribute('role', 'group');
@@ -55,7 +62,7 @@ export function refinePilotMotion(root, { motion, availability }) {
           'aria-pressed',
           String(button.dataset.curveKindSelect === curve.dataset.curveKind),
         );
-        button.title = 'Replaces easing and adds the change to Review';
+        button.title = 'Explore this easing type locally; Use easing adds it to Review';
       }
     }
   }

@@ -1,6 +1,53 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { inspectorAxisControl, inspectorBorderVisibility } from '../public/inspector-layout.js';
+import {
+  inspectorAxisControl,
+  inspectorBorderVisibility,
+  inspectorFieldIsFull,
+  inspectorSingletons,
+} from '../public/inspector-layout.js';
+test('single compact fields span the row without splitting pairs or crossing full-width items', () => {
+  assert.deepEqual(inspectorSingletons([false]), [0]);
+  assert.deepEqual(inspectorSingletons([false, false]), []);
+  assert.deepEqual(inspectorSingletons([false, false, false]), [2]);
+  assert.deepEqual(inspectorSingletons([false, true, false, true]), [0, 2]);
+  assert.deepEqual(inspectorSingletons([false, false, true, false, true, false, false]), [3]);
+  assert.deepEqual(inspectorSingletons([true, true]), []);
+});
+test('compound CSS, option names and authored content get a full studio row without rewriting values', () => {
+  for (const control of [
+    { property: 'objectPosition', kind: 'text', value: '50% 50%' },
+    { property: 'objectPosition', kind: 'text', value: 'left top' },
+    { property: 'objectFit', kind: 'select', value: 'scale-down' },
+    { property: 'minWidth', kind: 'text', value: 'calc(100% - 2rem)' },
+    { property: 'width', kind: 'number', value: 10000000 },
+    { property: 'fontSize', kind: 'number', value: 70, authoredValue: '70.12345px', unit: 'px' },
+  ]) {
+    const before = structuredClone(control);
+    assert.equal(inspectorFieldIsFull(control, true), true);
+    assert.deepEqual(control, before);
+  }
+});
+test('ordinary measurements remain paired; mixed state and legacy layouts are preserved', () => {
+  for (const value of [12, 224, 1024, 70.123456])
+    assert.equal(inspectorFieldIsFull({ property: 'width', kind: 'number', value }, true), false);
+  assert.equal(
+    inspectorFieldIsFull({ property: 'width', kind: 'number', mixed: true, value: 10 }, true),
+    false,
+  );
+  assert.equal(
+    inspectorFieldIsFull({ property: 'objectPosition', kind: 'text', value: '50% 50%' }),
+    false,
+  );
+  assert.equal(
+    inspectorFieldIsFull({ property: 'backgroundImage', kind: 'text', value: 'none' }),
+    true,
+  );
+  assert.equal(
+    inspectorFieldIsFull({ property: 'width', kind: 'number', full: true, value: 10 }),
+    true,
+  );
+});
 const controls = [
   { property: 'display', value: 'flex' },
   { property: 'flexDirection', value: 'row' },

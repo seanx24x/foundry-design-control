@@ -131,6 +131,10 @@ export function createNextMotionStudio(root) {
             section: active.closest('details')?.dataset.motionSection,
             summary: active.tagName === 'SUMMARY',
             curveHandle: active.dataset.curveHandle,
+            curvePreset: active.dataset.curvePreset,
+            curveKind: active.dataset.curveKindSelect,
+            easingAction:
+              active.hasAttribute('data-use-easing') || active.hasAttribute('data-cancel-easing'),
           }
         : null;
       if (!currentKey) return;
@@ -315,6 +319,16 @@ export function createNextMotionStudio(root) {
         root
           .querySelector(`[data-curve-handle="${focus.curveHandle}"]`)
           ?.focus({ preventScroll: true });
+      if (focus?.curvePreset || focus?.curveKind) {
+        const attribute = focus.curvePreset ? 'curve-preset' : 'curve-kind-select';
+        const value = focus.curvePreset ?? focus.curveKind;
+        root.querySelector(`[data-${attribute}="${value}"]`)?.focus({ preventScroll: true });
+      }
+      if (focus?.easingAction) {
+        const source = root.querySelector('.motion-curve-source');
+        source?.setAttribute('tabindex', '-1');
+        source?.focus({ preventScroll: true });
+      }
     },
   };
 }

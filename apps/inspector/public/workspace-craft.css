@@ -1,0 +1,380 @@
+/* Shared field, disclosure and compact-navigation grammar. Product frames and
+   canonical values are never restyled by this file. */
+:root[data-foundry-pilot][data-theme] [data-next] [data-craft-fields] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+:root[data-foundry-pilot][data-theme] [data-next] [data-craft-fields] > [data-craft-field] {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 10px;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--fd-radius-control);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 400 12px/20px var(--sans);
+  grid-column: auto;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  [data-craft-fields]
+  > :is(.craft-field-wide, [data-craft-single]) {
+  grid-column: 1 / -1;
+}
+:root[data-foundry-pilot][data-theme] [data-next] [data-craft-field]:hover {
+  background: var(--surface-3);
+}
+:root[data-foundry-pilot][data-theme] [data-next] [data-craft-field]:has(:focus-visible) {
+  outline: 2px solid var(--fd-color-focus);
+  outline-offset: 2px;
+}
+:root[data-foundry-pilot][data-theme] [data-next] [data-craft-field]:has([aria-invalid='true']) {
+  border-color: var(--fd-color-error);
+  flex-wrap: wrap;
+}
+:root[data-foundry-pilot][data-theme] [data-next] [data-craft-field] > :is(span, b):first-child {
+  flex: 0 1 auto;
+  max-width: 52%;
+  min-width: 0;
+  font: inherit;
+  white-space: nowrap;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  [data-craft-field]
+  :is(input, select, .foundry-select-trigger) {
+  height: 30px;
+  min-height: 30px;
+  border: 0;
+  outline: none;
+  box-shadow: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: right;
+}
+:root[data-foundry-pilot][data-theme] [data-next] [data-craft-field] > input {
+  flex: 1 1 40px;
+  width: 0;
+  min-width: 0;
+  padding-inline: 0;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  [data-craft-field]
+  > :is(.typography-control-value, .motion-field-with-unit) {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  max-width: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  [data-craft-fields]
+  [data-craft-field]
+  :is(.typography-control-value, .motion-field-with-unit)
+  input {
+  width: 0;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  height: 30px;
+  border: 0;
+  background: transparent;
+}
+:root[data-foundry-pilot][data-theme] [data-next] [data-craft-field][data-craft-text='true'] {
+  flex-wrap: wrap;
+  gap: 0;
+  padding-block: 4px;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  [data-craft-field][data-craft-text='true']
+  > :is(input, .typography-control-value) {
+  flex: 1 0 100%;
+  text-align: left;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  [data-craft-field][data-craft-text='true']
+  > .typography-control-value {
+  flex-basis: 100%;
+}
+:root[data-foundry-pilot][data-theme] [data-next] [data-craft-field] > .foundry-select {
+  flex: 1 1 60px;
+  width: 0;
+  min-width: 0;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  [data-craft-field]
+  :is(.motion-field-with-unit, .typography-control-value)
+  i {
+  position: static;
+  flex: none;
+  font: 400 11px/20px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot][data-theme] [data-next] [data-craft-field] > small {
+  font: 400 10px/16px var(--sans);
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  [data-craft-field]
+  > :is(.motion-input-error, .typography-input-error) {
+  flex-basis: 100%;
+  max-width: none;
+  padding-bottom: 6px;
+  color: var(--fd-color-error);
+}
+:root[data-foundry-pilot][data-theme] [data-next] [data-craft-readout] {
+  border-radius: 0;
+  background: transparent;
+  padding-inline: 0;
+  border-bottom: 1px solid var(--line);
+}
+.craft-context-help,
+.craft-editor-help {
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+  margin-top: 12px;
+}
+.craft-context-help > summary,
+.craft-editor-help > summary {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.craft-context-help > summary::before,
+.craft-editor-help > summary::before {
+  content: '›';
+  transform: rotate(0deg);
+}
+:is(.craft-context-help, .craft-editor-help)[open] > summary::before {
+  transform: rotate(90deg);
+}
+.craft-context-help p,
+.craft-editor-help p {
+  margin: 8px 0;
+  font: inherit;
+}
+:root[data-foundry-pilot][data-theme] .craft-editor {
+  box-sizing: border-box;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  border-radius: var(--fd-radius-floating);
+  transition: none !important;
+}
+:root[data-foundry-pilot][data-theme] .craft-editor:not([open]) {
+  display: none;
+}
+:root[data-foundry-pilot][data-theme] .craft-editor > header {
+  margin: 0 0 2px;
+}
+:root[data-foundry-pilot][data-theme] .craft-editor > footer {
+  position: sticky;
+  bottom: -16px;
+  padding-block: 10px;
+  background: var(--fd-color-elevated);
+  border-top: 1px solid var(--line);
+  z-index: 2;
+}
+:root[data-foundry-pilot][data-theme] .craft-editor [role='status'] {
+  margin: 0;
+  min-height: 36px;
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot][data-theme] .craft-editor-help {
+  margin: 0;
+}
+.craft-library-toggle {
+  display: none;
+}
+/* One current section is sticky at a time: it leaves with its own section. */
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(.next-motion-property-scroll, .next-type-property-scroll, .next-system-property-scroll)
+  > :is(section, details)
+  > :is(header, summary):first-child {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  min-height: 28px;
+}
+@media (max-width: 800px) {
+  :root[data-foundry-pilot][data-theme] [data-next] [data-craft-library] {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: min(55dvh, 440px) !important;
+    overflow-y: auto;
+  }
+  :root[data-foundry-pilot][data-theme] [data-next] .craft-library-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: calc(100% - 24px);
+    margin: 0 12px 12px;
+    padding: 6px 10px;
+    min-height: 36px;
+    border: 0;
+    border-radius: 6px;
+    color: var(--fd-shell-ink);
+    background: var(--fd-sidebar-field);
+    font: 400 12px/20px var(--sans);
+    text-align: left;
+  }
+  .craft-library-selection {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .craft-library-toggle > svg {
+    width: 14px;
+    height: 14px;
+    flex: none;
+  }
+  .craft-library-toggle[aria-expanded='true'] > svg {
+    transform: rotate(180deg);
+  }
+  [data-craft-library-open='false'] > :not(.foundry-workspace-switcher):not(.craft-library-toggle) {
+    display: none !important;
+  }
+  :root[data-foundry-pilot][data-theme]
+    [data-next]
+    :is(.next-motion-property-scroll, .next-type-property-scroll, .next-system-property-scroll)
+    > :is(section, details)
+    > :is(header, summary):first-child {
+    position: static;
+  }
+}
+.craft-easing-actions {
+  grid-column: 1 / -1;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--surface);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-block: 10px;
+  border-top: 1px solid var(--line);
+}
+.craft-easing-actions > p {
+  flex: 1 1 200px;
+  margin: 0;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+.craft-easing-actions > button {
+  min-height: 32px;
+}
+.craft-captured-easing {
+  grid-column: 1 / -1;
+  min-width: 0;
+  font: 400 11px/18px var(--sans);
+}
+.craft-captured-easing > summary {
+  cursor: pointer;
+  padding-block: 8px;
+}
+.craft-captured-easing > code {
+  display: block;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 400 11px/18px var(--mono);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='motion'][data-theme]
+  [data-next]
+  .foundry-motion-interior
+  .motion-curve-editor {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.8fr);
+  gap: 12px;
+}
+:root[data-foundry-pilot='motion'][data-theme]
+  [data-next]
+  .foundry-motion-interior
+  .motion-curve-graph {
+  grid-row: 2 / 5;
+}
+:root[data-foundry-pilot='motion'][data-theme]
+  [data-next]
+  .foundry-motion-interior
+  .motion-curve-presets {
+  grid-row: 2;
+}
+:root[data-foundry-pilot='motion'][data-theme]
+  [data-next]
+  .foundry-motion-interior
+  .motion-curve-fields {
+  grid-row: 3;
+}
+:root[data-foundry-pilot='motion'][data-theme]
+  [data-next]
+  .foundry-motion-interior
+  .motion-curve-diagnostics {
+  grid-row: 4;
+  margin: 0;
+}
+:root[data-foundry-pilot='motion'][data-theme]
+  [data-next]
+  .foundry-motion-interior
+  .motion-curve-graph
+  svg {
+  max-width: 360px;
+}
+:root[data-foundry-pilot='motion'][data-theme]
+  [data-next]
+  .foundry-motion-interior
+  .motion-controls-note {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+:root[data-foundry-pilot='motion'][data-theme]
+  [data-next]
+  .foundry-motion-interior
+  .motion-curve-source {
+  grid-column: 1 / -1;
+}
+.motion-curve-graph :is([data-curve-handle], .motion-curve-preview-dot) {
+  transition: none !important;
+}
+@media (max-width: 1200px) {
+  :root[data-foundry-pilot='motion'][data-theme]
+    [data-next]
+    .foundry-motion-interior
+    .motion-curve-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  :root[data-foundry-pilot='motion'][data-theme]
+    [data-next]
+    .foundry-motion-interior
+    :is(
+      .motion-curve-graph,
+      .motion-curve-presets,
+      .motion-curve-fields,
+      .motion-curve-diagnostics
+    ) {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}

@@ -30,6 +30,9 @@ import {
 } from './workshop-controls.js';
 import { systemPromotionState } from './design-system-controls.js';
 import { createNextMotionStudio } from './next-motion-studio.js';
+// Share the canonical curve sampler with the adapter. Bundled into Inspector;
+// this is a local illustration, not a new product preview or source operation.
+import { motionCurveSnapshot } from '../../../packages/web-adapter/src/motion.ts';
 import {
   MOTION_CURVE_PRESETS,
   matchingMotionPreset,
@@ -299,6 +302,7 @@ const designSystemPromotionReceipts = new Map();
 let motionStudioId = '';
 let motionStudioSelectionId = '';
 let motionStudioInteracting = false;
+const motionCurveDrafts = new Map();
 let motionStudioResetPropertiesScroll = false;
 let motionComparisonFrame = 0;
 let motionComparisonStartedAt = 0;
@@ -396,11 +400,15 @@ function renderIcons(root = document) {
   });
   if (params.get('ui') === 'next') refineNextIcons(root);
   refinePilotIcons(root);
+  // Rendered workspaces share the same select owner, including controls created
+  // after bootstrap. This keeps the original select/change handlers intact.
+  upgradeSelects(root);
 }
 
 function closeCustomSelect({ restoreFocus = true } = {}) {
   if (!openCustomSelect) return false;
-  const { trigger, portal } = openCustomSelect;
+  const { trigger, portal, typeaheadTimer } = openCustomSelect;
+  clearTimeout(typeaheadTimer);
   trigger.setAttribute('aria-expanded', 'false');
   portal.remove();
   openCustomSelect = null;
@@ -417,15 +425,23 @@ function closeCustomSelect({ restoreFocus = true } = {}) {
 }
 
 function positionCustomSelect(trigger, portal) {
-  const rect = trigger.getBoundingClientRect();
+  // Inspector fields have a label and a value inside one visual input. Anchor
+  // to that whole input, not just its value portion. Other menus stay local.
+  const field =
+    (trigger.closest('#inspector-dock') && trigger.closest('.next-field')) ||
+    trigger.closest('[data-craft-field]');
+  const rect = (field || trigger).getBoundingClientRect();
   const margin = 8;
-  const maxHeight = Math.min(240, innerHeight - margin * 2);
-  portal.style.minWidth = `${Math.max(160, rect.width)}px`;
-  portal.style.maxWidth = `${Math.max(160, innerWidth - margin * 2)}px`;
+  const width = Math.min(innerWidth - margin * 2, field ? rect.width : Math.max(160, rect.width));
+  portal.style.width = `${width}px`;
+  portal.style.minWidth = '0';
+  portal.style.maxWidth = `${innerWidth - margin * 2}px`;
+  const below = innerHeight - rect.bottom - margin - 4;
+  const above = rect.top - margin - 4;
+  const openAbove = below < Math.min(portal.scrollHeight, 240) && above > below;
+  const maxHeight = Math.max(32, Math.min(240, openAbove ? above : below));
   portal.style.maxHeight = `${maxHeight}px`;
   portal.style.left = `${Math.max(margin, Math.min(rect.left, innerWidth - portal.offsetWidth - margin))}px`;
-  const roomBelow = innerHeight - rect.bottom - margin;
-  const openAbove = roomBelow < Math.min(portal.scrollHeight, maxHeight) && rect.top > roomBelow;
   const top = openAbove
     ? Math.max(margin, rect.top - Math.min(portal.scrollHeight, maxHeight) - 4)
     : Math.min(innerHeight - margin - Math.min(portal.scrollHeight, maxHeight), rect.bottom + 4);
@@ -439,9 +455,18 @@ function syncCustomSelect(select) {
   const option = select.selectedOptions[0] ?? select.options[0];
   if (params.get('ui') === 'next' && select.id === 'canvas-zoom')
     trigger.title = `Canvas zoom: ${option?.textContent ?? ''}`;
-  trigger.querySelector('.foundry-select-value').textContent = option?.textContent ?? '';
+  const value = trigger.querySelector('.foundry-select-value');
+  if (value.textContent !== (option?.textContent ?? ''))
+    value.textContent = option?.textContent ?? '';
+  if (!(params.get('ui') === 'next' && select.id === 'canvas-zoom'))
+    trigger.title = option?.textContent ?? '';
   trigger.disabled = select.disabled;
   trigger.setAttribute('aria-disabled', String(select.disabled));
+  for (const attribute of ['aria-invalid', 'aria-describedby']) {
+    const value = select.getAttribute(attribute);
+    if (value == null) trigger.removeAttribute(attribute);
+    else trigger.setAttribute(attribute, value);
+  }
 }
 
 function openSelectMenu(select, trigger) {
@@ -457,12 +482,13 @@ function openSelectMenu(select, trigger) {
   portal.setAttribute('role', 'listbox');
   portal.setAttribute('aria-label', trigger.getAttribute('aria-label') ?? 'Options');
   portal.innerHTML = [...select.options]
-    .map(
-      (option, index) =>
-        `<button type="button" role="option" data-option-index="${index}" aria-selected="${option.selected}" ${option.disabled ? 'disabled' : ''}><span>${escapeText(option.textContent)}</span>${option.selected ? iconSvg(ICONS.check) : ''}</button>`,
+    .flatMap((option, index) =>
+      option.disabled && option.value === ''
+        ? []
+        : `<button type="button" role="option" data-option-index="${index}" aria-selected="${option.selected}" ${option.matches(':disabled') ? 'disabled' : ''}><span>${escapeText(option.textContent)}</span>${option.selected ? iconSvg(ICONS.check) : ''}</button>`,
     )
     .join('');
-  document.body.append(portal);
+  (trigger.closest('dialog[open]') ?? document.body).append(portal);
   if (params.get('ui') === 'next' && trigger.closest(NEXT_ICON_SCOPE)) {
     portal.dataset.nextIconScope = '';
     refineNextIcons(portal);
@@ -470,7 +496,7 @@ function openSelectMenu(select, trigger) {
   trigger.setAttribute('aria-controls', portal.id);
   trigger.setAttribute('aria-expanded', 'true');
   positionCustomSelect(trigger, portal);
-  const selected = portal.querySelector('[aria-selected="true"]');
+  const selected = portal.querySelector('[aria-selected="true"]:not(:disabled)');
   (selected ?? portal.querySelector('button:not(:disabled)'))?.focus({
     preventScroll: true,
   });
@@ -548,6 +574,21 @@ function upgradeSelect(select) {
   if (params.get('ui') === 'next') refineNextIcons(wrapper);
   trigger.addEventListener('click', () => openSelectMenu(select, trigger));
   trigger.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !openCustomSelect) {
+      // Preserve the field/variant owner's cancellation without moving focus
+      // onto its hidden native select or swallowing a parent dialog's Escape.
+      const cancel = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      select.dispatchEvent(cancel);
+      if (cancel.defaultPrevented) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
     if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(event.key)) {
       event.preventDefault();
       event.stopPropagation();
@@ -558,7 +599,20 @@ function upgradeSelect(select) {
     }
   });
   select.addEventListener('change', () => syncCustomSelect(select));
+  select.addEventListener('foundry-select-sync', () => syncCustomSelect(select));
   syncCustomSelect(select);
+  // Native values/availability remain authoritative when a renderer updates a
+  // control in place. Never leave an open menu pointing at replaced options.
+  new MutationObserver(() => {
+    if (!select.isConnected) return;
+    syncCustomSelect(select);
+    if (openCustomSelect?.select === select) closeCustomSelect();
+  }).observe(select, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['disabled', 'label', 'selected', 'value', 'aria-invalid', 'aria-describedby'],
+  });
 }
 
 function upgradeSelects(root = document) {
@@ -2161,7 +2215,6 @@ let inspectorRenderedSelectionId = null;
 let canvasFitMode = 'fit';
 
 function renderInspector() {
-  if (nextWorkspace?.render(bridgeState)) return;
   const sameSelection = inspectorRenderedSelectionId === bridgeState?.selection?.id;
   if (sameSelection && openCustomSelect?.trigger.closest('#inspector-sections')) {
     inspectorRenderDeferred = true;
@@ -2170,6 +2223,7 @@ function renderInspector() {
   inspectorRenderedSelectionId = bridgeState?.selection?.id;
   if (openCustomSelect?.trigger.closest('#inspector-sections'))
     closeCustomSelect({ restoreFocus: false });
+  if (nextWorkspace?.render(bridgeState)) return;
   const summary = $('#selection-summary');
   const selection = bridgeState?.selection;
   if (!selection) {
@@ -7227,6 +7281,114 @@ function motionBezierPoints(curve) {
   });
 }
 
+function motionCurveDraftKey(motionId) {
+  return `${bridgeState?.selection?.id ?? ''}:${motionId}`;
+}
+function motionCurveSignature(motion) {
+  return JSON.stringify([
+    motion?.timing?.easing,
+    motion?.curve?.kind,
+    motion?.curve?.cubicBezier,
+    motion?.curve?.spring,
+  ]);
+}
+function nativeStudioMotion(id) {
+  return bridgeState?.motions?.find((motion) => motion.id === id);
+}
+function stageMotionCurve(editor, parameters, redraw = false) {
+  const id = editor.dataset.motionId,
+    native = nativeStudioMotion(id);
+  if (!native || !bridgeConnected) return;
+  const key = motionCurveDraftKey(id),
+    previous = motionCurveDrafts.get(key);
+  if (previous?.busy) return;
+  const raw = parameters
+    ? null
+    : Object.fromEntries(
+        $$('[data-curve-field]', editor).map((field) => [field.dataset.curveField, field.value]),
+      );
+  const values = parameters ?? motionCurvePayload(editor);
+  const valid = motionPresetParameters(values.kind, values);
+  const draft = {
+    ...previous,
+    signature: previous?.signature ?? motionCurveSignature(native),
+    values: valid ?? previous?.values,
+    raw,
+    invalid: !valid,
+    error: '',
+  };
+  motionCurveDrafts.set(key, draft);
+  if (motionCurveDrafts.size > 24) motionCurveDrafts.delete(motionCurveDrafts.keys().next().value);
+  if (redraw) renderMotionStudio();
+  else syncMotionCurveDraft(editor);
+}
+function matchingMotionParameters(curve, values) {
+  if (!curve || curve.kind !== values.kind) return false;
+  const original = curve.kind === 'spring' ? curve.spring : curve.cubicBezier;
+  return original && Object.keys(original).every((key) => Number(original[key]) === values[key]);
+}
+function syncMotionCurveDraft(editor) {
+  const draft = motionCurveDrafts.get(motionCurveDraftKey(editor.dataset.motionId));
+  const native = nativeStudioMotion(editor.dataset.motionId);
+  const stale = draft && motionCurveSignature(native) !== draft.signature;
+  const use = $('[data-use-easing]', editor),
+    cancel = $('[data-cancel-easing]', editor);
+  if (!use) return;
+  const same = draft?.values && matchingMotionParameters(native?.curve, draft.values);
+  use.disabled =
+    !draft || draft.invalid || draft.busy || stale || same || !bridgeConnected || !native?.active;
+  cancel.disabled = !draft || draft.busy;
+  editor.dataset.easingDraft = String(Boolean(draft && !same));
+  editor.dataset.easingBusy = String(Boolean(draft?.busy));
+  if (draft?.busy)
+    editor.querySelectorAll('input, button').forEach((node) => {
+      node.disabled = true;
+    });
+  for (const handle of $$('[data-curve-handle]', editor)) {
+    handle.setAttribute(
+      'aria-disabled',
+      String(Boolean(draft?.busy) || !bridgeConnected || !native?.active),
+    );
+  }
+  const preview = $('[data-studio-action="motion-preview"]');
+  if (preview && draft && !same) {
+    preview.disabled = true;
+    preview.title = 'Use easing before previewing the draft on Canvas';
+  }
+  const status = $('[data-easing-status]', editor);
+  status.textContent = stale
+    ? 'Current easing changed. Cancel this draft before editing again.'
+    : draft?.error ||
+      (draft?.invalid
+        ? 'Enter valid parameters before using this easing.'
+        : draft && !same
+          ? 'Local illustration only. Use easing adds this change to Review.'
+          : 'Adjust easing locally, then use it when ready.');
+  if (draft?.values && !draft.invalid) {
+    const snapshot = motionCurveSnapshot(draft.values);
+    const dot = $('.motion-curve-preview-dot', editor);
+    dot?.style.setProperty('--curve-easing', snapshot.previewValue);
+    const duration =
+      draft.values.kind === 'spring'
+        ? snapshot.diagnostics.duration
+        : Number(native?.timing?.duration) || 0;
+    dot?.style.setProperty('--curve-duration', `${duration}ms`);
+    const diagnostics = $$('.motion-curve-diagnostics > span > strong', editor);
+    if (diagnostics[0]) diagnostics[0].textContent = `${Math.round(duration)} ms`;
+    if (diagnostics[1])
+      diagnostics[1].textContent = `${Number(snapshot.diagnostics?.overshoot ?? 0).toFixed(1)}%`;
+    $('.motion-curve-line', editor)?.setAttribute('d', motionCurvePath(snapshot.points));
+    const selected = matchingMotionPreset({
+      kind: draft.values.kind,
+      cubicBezier: draft.values,
+      spring: draft.values,
+    });
+    for (const button of $$('[data-curve-preset]', editor))
+      button.setAttribute('aria-pressed', String(button.dataset.curvePreset === selected));
+    $('.motion-curve-source > span', editor).textContent = same ? 'Current easing' : 'Draft easing';
+    $('.motion-curve-source code', editor).textContent = snapshot.sourceValue;
+  }
+}
 function motionCurvePayload(editor) {
   const values = Object.fromEntries(
     $$('[data-curve-field]', editor).map((field) => [
@@ -7397,12 +7559,14 @@ function renderMotionComparison(motion) {
 
 function renderMotionCurveEditor(selection, motion, disabled) {
   const studio = foundryPilotActive();
-  const curve = motion.curve ?? {
-    kind: 'custom',
-    sourceValue: motion.timing?.easing ?? 'linear',
-    points: [],
-    diagnostics: {},
-  };
+  const draft = studio && motionCurveDrafts.get(motionCurveDraftKey(motion.id));
+  const curve = (draft?.values && motionCurveSnapshot(draft.values)) ||
+    motion.curve || {
+      kind: 'custom',
+      sourceValue: motion.timing?.easing ?? 'linear',
+      points: [],
+      diagnostics: {},
+    };
   const isSpring = curve.kind === 'spring';
   const isBezier = curve.kind === 'cubic-bezier';
   const cubic = curve.cubicBezier ?? { x1: 0.2, y1: 0.8, x2: 0.2, y2: 1 };
@@ -7499,6 +7663,8 @@ function renderMotionStudio() {
   };
   const refineMotion = (motion) => {
     nextMotionStudio?.render({ selection, motion, connected: bridgeConnected });
+    const curve = $('.motion-curve-editor', $('.motion-studio-mode'));
+    if (foundryPilotActive() && curve) syncMotionCurveDraft(curve);
     if (nextMotionStudio) renderIcons($('.motion-studio-mode'));
   };
   $('#motion-studio-status').textContent = selection
@@ -7770,6 +7936,61 @@ function renderMotionStudio() {
   });
   const curveEditor = $('.motion-curve-editor', properties);
   if (curveEditor) {
+    if (foundryPilotActive()) {
+      const key = motionCurveDraftKey(motion.id),
+        draft = motionCurveDrafts.get(key);
+      if (draft?.raw)
+        for (const field of $$('[data-curve-field]', curveEditor)) {
+          if (draft.raw[field.dataset.curveField] != null)
+            field.value = draft.raw[field.dataset.curveField];
+        }
+      curveEditor.insertAdjacentHTML(
+        'beforeend',
+        '<div class="craft-easing-actions"><p data-easing-status role="status"></p><button type="button" class="secondary-button compact" data-cancel-easing>Cancel</button><button type="button" class="primary-button compact" data-use-easing>Use easing</button></div>',
+      );
+      const captured = document.createElement('details');
+      captured.className = 'craft-captured-easing';
+      captured.append(
+        Object.assign(document.createElement('summary'), { textContent: 'Captured easing' }),
+        Object.assign(document.createElement('code'), {
+          textContent: motion.curve?.sourceValue ?? motion.timing?.easing ?? 'Not captured',
+        }),
+      );
+      $('.craft-easing-actions', curveEditor).before(captured);
+      syncMotionCurveDraft(curveEditor);
+      if (draft?.invalid) validateMotionInputs(curveEditor, '[data-curve-field]');
+      $('[data-cancel-easing]', curveEditor).addEventListener('click', () => {
+        motionCurveDrafts.delete(key);
+        renderMotionStudio();
+      });
+      $('[data-use-easing]', curveEditor).addEventListener('click', async () => {
+        const current = motionCurveDrafts.get(key);
+        if (
+          !current ||
+          current.busy ||
+          current.invalid ||
+          !bridgeConnected ||
+          !nativeStudioMotion(motion.id)?.active ||
+          motionCurveSignature(nativeStudioMotion(motion.id)) !== current.signature ||
+          motionCurveDraftKey(motion.id) !== key
+        )
+          return;
+        current.busy = true;
+        syncMotionCurveDraft(curveEditor);
+        curveEditor.querySelectorAll('input,button').forEach((node) => (node.disabled = true));
+        const result = await commitMotionAuthoring(
+          { id: motion.id, action: 'curve', ...current.values },
+          `${selection.id}:motion.${motion.id}.easing`,
+          curveEditor,
+        );
+        if (result?.recorded) motionCurveDrafts.delete(key);
+        else {
+          current.busy = false;
+          current.error = 'Easing was not saved. Your draft is retained; try Use easing again.';
+        }
+        renderMotionStudio();
+      });
+    }
     $$('[data-curve-kind-select]', curveEditor).forEach((button) =>
       button.addEventListener('click', async () => {
         if (
@@ -7777,6 +7998,14 @@ function renderMotionStudio() {
           button.dataset.curveKindSelect === curveEditor.dataset.curveKind
         )
           return;
+        if (foundryPilotActive()) {
+          const parameters =
+            button.dataset.curveKindSelect === 'spring'
+              ? { kind: 'spring', mass: 1, stiffness: 170, damping: 26, velocity: 0 }
+              : { kind: 'cubic-bezier', x1: 0.2, y1: 0.8, x2: 0.2, y2: 1 };
+          stageMotionCurve(curveEditor, parameters, true);
+          return;
+        }
         await commitMotionAuthoring(
           {
             id: motion.id,
@@ -7801,11 +8030,7 @@ function renderMotionStudio() {
         if (foundryPilotActive()) {
           const parameters = motionPresetParameters(button.dataset.presetKind, button.dataset);
           if (!parameters) return;
-          void commitMotionAuthoring(
-            { id: motion.id, action: 'curve', ...parameters },
-            `${selection.id}:motion.${motion.id}.easing`,
-            curveEditor,
-          );
+          stageMotionCurve(curveEditor, parameters, true);
           return;
         }
         $$('[data-curve-field]', curveEditor).forEach((field) => {
@@ -7818,6 +8043,27 @@ function renderMotionStudio() {
     );
     $$('[data-curve-field]', curveEditor).forEach((field) => {
       let previous = String(field.value);
+      if (foundryPilotActive()) {
+        const update = () => {
+          validateMotionInputs(curveEditor, '[data-curve-field]');
+          updateBezierEditorPreview(curveEditor);
+          stageMotionCurve(curveEditor);
+        };
+        field.addEventListener('input', update);
+        field.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            field.value = previous;
+            update();
+          }
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            update();
+          }
+        });
+        return;
+      }
       const commit = async () => {
         if (String(field.value) === previous) return;
         const priorValue = previous;
@@ -7885,9 +8131,10 @@ function renderMotionStudio() {
             $(`[data-curve-field="x${index}"]`, curveEditor).value = String(x);
             $(`[data-curve-field="y${index}"]`, curveEditor).value = String(y);
             updateBezierEditorPreview(curveEditor);
+            stageMotionCurve(curveEditor);
           },
           geometry: () => handle.ownerSVGElement.getBoundingClientRect(),
-          commit: () => commitMotionCurve(curveEditor),
+          commit: () => stageMotionCurve(curveEditor),
           interacting: (value) => {
             motionStudioInteracting = value;
           },
@@ -7911,6 +8158,7 @@ function renderMotionStudio() {
         motionStudioInteracting = false;
       });
       handle.addEventListener('keydown', (event) => {
+        if (handle.getAttribute('aria-disabled') === 'true') return;
         const directions = {
           ArrowLeft: [-1, 0],
           ArrowRight: [1, 0],
@@ -7934,7 +8182,8 @@ function renderMotionStudio() {
             Math.min(3, Number(yField.value) + direction[1] * step),
           ).toFixed(2);
         updateBezierEditorPreview(curveEditor);
-        void commitMotionCurve(curveEditor);
+        if (foundryPilotActive()) stageMotionCurve(curveEditor);
+        else void commitMotionCurve(curveEditor);
       });
     });
   }
@@ -10552,7 +10801,13 @@ document.addEventListener('keydown', (event) => {
       }
       return;
     }
-    if (event.key.length === 1 && /\S/.test(event.key)) {
+    if (
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      event.key.length === 1 &&
+      /\S/.test(event.key)
+    ) {
       clearTimeout(openCustomSelect.typeaheadTimer);
       openCustomSelect.typeahead += event.key.toLowerCase();
       const match = [...portal.querySelectorAll('button:not(:disabled)')].find((button) =>

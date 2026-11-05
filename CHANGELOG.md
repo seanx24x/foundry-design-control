@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0-beta.25 - 2026-11-05
+
+- Simplify Inspector edit feedback with inline restoration and one accessible status instead of repeated raw CSS changes and save paragraphs. Preserve exact Review data, visible failures and source-unchanged boundaries.
+- Replace unstyled dropdowns with shared, keyboard-safe menus anchored to the full field, including grouped and unavailable options, typeahead, native modal layering and viewport bounds.
+- Refine Inspector spacing and row packing: singleton numeric and long fields fill the available width, while genuine compact pairs retain their shared rows.
+- Add a visual Object position editor with explicit X/Y values, nine anchors, direct dragging, Shift axis lock, keyboard nudges and cancellable gestures. Preserve mixed and advanced authored CSS.
+- Carry consistent fields, units, menus, focus and validation into Typography and Motion. Group Motion easing around its graph, presets and local drafts with explicit Use easing and Cancel actions, stale-value guards and failure retention.
+- Unify color, gradient and position popovers; reduce repeated help; improve compact libraries and non-obscuring section headings throughout the studios.
+- Add dedicated light/dark and narrow-viewport Inspector checks to CI and release gates alongside expanded real CLI/adapter regression coverage.
+
 ## 0.2.0-beta.24 - 2026-11-04
 
 - Make the refined studio foundations the default, with local Geist typography, Lucide and property-specific icons, neutral selection states, and shared control geometry in light and dark themes.
