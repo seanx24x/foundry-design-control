@@ -17,6 +17,7 @@
 @import url('./foundry-pilot-overlays.css');
 @import url('./foundry-pilot-readiness.css');
 @import url('./foundry-studio-controls.css');
+@import url('./workspace-craft.css');
 
 /* Shared internal UI. foundations=off retains the previous Next presentation;
    ui=legacy stays outside the foundations boundary entirely. */

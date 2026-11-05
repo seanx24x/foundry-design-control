@@ -5,11 +5,17 @@ import {
   inspectorBoundedFill,
   nudgeInspectorValue,
 } from './inspector-numeric.js';
-import { inspectorAxisControl, inspectorBorderVisibility } from './inspector-layout.js';
+import {
+  inspectorAxisControl,
+  inspectorBorderVisibility,
+  inspectorFieldIsFull,
+  expandInspectorRows,
+} from './inspector-layout.js';
 import { inspectorSectionRestorePlan } from './inspector-restores.js';
 import { openInspectorColorPicker } from './inspector-color-picker.js';
 import { openInspectorGradientEditor } from './inspector-gradient-editor.js';
 import { readInspectorGradient } from './inspector-gradients.js';
+import { openInspectorPositionEditor, readInspectorPosition } from './inspector-position.js';
 import { inspectorPropertyIcon } from './next-icons.js';
 import { foundryPilotRequested } from './foundry-pilot.js';
 import { syncFoundrySidebars } from './foundry-pilot-sidebar.js';
@@ -48,6 +54,13 @@ const escape = (value) =>
     (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char],
   );
 const icon = (name) => `<i data-icon="${name}"></i>`;
+const positionSummary = (control) => {
+  const point = !control.mixed && readInspectorPosition(inspectorInputValue(control));
+  const display = (value) => Math.round(value * 10) / 10;
+  return point
+    ? `<span><small>X</small> ${display(point.x)}<small>%</small></span><span><small>Y</small> ${display(point.y)}<small>%</small></span>`
+    : `<span>${control.mixed ? 'Mixed' : 'Custom CSS'}</span>`;
+};
 const textKinds = new Set([
   'h1',
   'h2',
@@ -469,11 +482,16 @@ export function createNextWorkspace({
   let current = null;
   let lastSnapshot = null;
   let activeEdit = null;
+  let editAnnouncement = '';
   let restoringEntryFocus = false;
   const focusEntry = (input) => {
     restoringEntryFocus = true;
     try {
-      input?.focus({ preventScroll: true });
+      const visible =
+        input?.tagName === 'SELECT'
+          ? (input.closest('.foundry-select')?.querySelector('.foundry-select-trigger') ?? input)
+          : input;
+      visible?.focus({ preventScroll: true });
     } finally {
       restoringEntryFocus = false;
     }
@@ -750,9 +768,13 @@ export function createNextWorkspace({
       await enqueue(() => command('inspector-draft', payload(control, 'preview', value, targetId)));
       if (activeEdit === edit) {
         showError('', field);
-        const status = field?.closest('.next-property')?.querySelector('.next-field-status');
+        const status = foundryPilotRequested()
+          ? $('#next-inspector-status')
+          : field?.closest('.next-property')?.querySelector('.next-field-status');
         if (status) {
-          status.textContent = inspectorEditHint(state().direction, 'preview');
+          status.textContent = foundryPilotRequested()
+            ? 'Preview only. Not saved.'
+            : inspectorEditHint(state().direction, 'preview');
           status.hidden = false;
         }
       }
@@ -768,6 +790,7 @@ export function createNextWorkspace({
       await enqueue(() => command('inspector-draft', payload(control, 'cancel', '', targetId)));
       if (activeEdit === edit) {
         activeEdit = null;
+        editAnnouncement = '';
         const cancelledLink = pendingLink === control.property;
         if (cancelledLink) pendingLink = null;
         showError('');
@@ -790,6 +813,7 @@ export function createNextWorkspace({
       );
       const key = editKey;
       if (result.recorded) {
+        editAnnouncement = inspectorEditHint(state().direction, 'saved');
         const entry = accepted.get(key) ?? {
           before: control.mixed ? 'Mixed' : control.value,
           mixed: control.mixed,
@@ -932,22 +956,7 @@ export function createNextWorkspace({
     const change = accepted.get(key);
     const accessibleLabel = control.accessibleLabel ?? control.label;
     const propertyIcon = inspectorPropertyIcon(control.property);
-    const full =
-      control.full ||
-      [
-        'fontFamily',
-        'fontVariationSettings',
-        'color',
-        'backgroundColor',
-        'borderColor',
-        'boxShadow',
-        'textContent',
-        'alt',
-        'aria-label',
-        'gridTemplateColumns',
-        'gridTemplateRows',
-        'backgroundImage',
-      ].includes(control.property);
+    const full = inspectorFieldIsFull(control, foundryPilotRequested());
     const studioField = foundryPilotRequested();
     const studioLabel = studioField
       ? `<span class="next-studio-label">${escape({ fontWeight: 'Weight', letterSpacing: 'Tracking', fontStyle: 'Style', textTransform: 'Case', borderWidth: 'Width', borderColor: 'Color' }[control.property] ?? control.label)}</span>`
@@ -955,7 +964,9 @@ export function createNextWorkspace({
     let input;
     if (control.property === 'fontFamily')
       input = `<button type="button" class="next-font-trigger" data-font-picker aria-label="Choose font family" title="Choose font family: ${escape(control.value)}">${inspectorPropertyIcon('fontFamily')}<span>${escape(control.value)}</span>${icon('chevronDown')}</button>`;
-    else if (control.property === 'backgroundImage' && studioField) {
+    else if (control.property === 'objectPosition' && studioField) {
+      input = `<button type="button" class="next-position-trigger" data-position-picker aria-label="Edit object position" aria-description="${escape(control.mixed ? 'Mixed positions' : inspectorInputValue(control))}" aria-haspopup="dialog" title="${escape(control.mixed ? 'Mixed positions' : inspectorInputValue(control))}"><span>Object position</span><span class="next-position-summary">${positionSummary(control)}</span>${icon('chevronDown')}</button>`;
+    } else if (control.property === 'backgroundImage' && studioField) {
       const gradient = !control.mixed && readInspectorGradient(control.value);
       const label = control.mixed
         ? 'Mixed fills'
@@ -966,10 +977,16 @@ export function createNextWorkspace({
             : 'Native fill';
       input = `<button type="button" class="next-gradient-trigger" data-gradient-picker aria-label="Edit background gradient" aria-haspopup="dialog"><span>Gradient</span><span>${escape(label)}</span>${icon('chevronDown')}</button>`;
     } else if (control.kind === 'select')
-      input = `${studioLabel}<select data-next-field="${escape(control.property)}" aria-label="${escape(control.label)}">${control.mixed ? '<option value="" selected disabled>Mixed</option>' : !(control.options ?? []).includes(String(control.value)) ? `<option selected>${escape(control.value)}</option>` : ''}${(control.options ?? []).map((option) => `<option ${!control.mixed && String(option) === String(control.value) ? 'selected' : ''}>${escape(option)}</option>`).join('')}</select>`;
+      input = `${studioLabel}<select data-next-field="${escape(control.property)}" aria-label="${escape(control.label)}" aria-describedby="next-edit-error">${control.mixed ? '<option value="" selected disabled>Mixed</option>' : !(control.options ?? []).includes(String(control.value)) ? `<option selected>${escape(control.value)}</option>` : ''}${(control.options ?? []).map((option) => `<option ${!control.mixed && String(option) === String(control.value) ? 'selected' : ''}>${escape(option)}</option>`).join('')}</select>`;
     else
       input = `${control.kind === 'color' ? `${studioLabel}<button type="button" class="next-color-trigger${control.mixed ? ' is-mixed' : ''}" data-color-picker="${escape(control.property)}" aria-label="Choose ${escape(control.label.toLowerCase())}" aria-haspopup="dialog" title="Choose ${escape(control.label.toLowerCase())}"><span style="${!control.mixed && CSS.supports('color', control.value) ? `background-color:${escape(control.value)}` : ''}"></span></button>` : ''}${control.kind === 'number' && !control.mixed && propertyIcon ? `<button type="button" class="next-scrub" aria-label="Scrub ${escape(accessibleLabel)}" title="${escape(accessibleLabel)}: drag to preview; release to ${state().direction?.id && state().direction.id !== 'main' ? 'save to this direction' : 'add to Review'}. Escape cancels. Shift for faster, Alt for slower.">${propertyIcon}${studioLabel}</button>` : control.kind !== 'color' ? studioLabel : ''}<input data-next-field="${escape(control.property)}" aria-label="${escape(accessibleLabel)}" aria-describedby="next-edit-error" type="text" ${control.kind === 'number' ? 'inputmode="decimal"' : ''} ${control.mixed ? 'placeholder="Mixed"' : ''} value="${escape(inspectorInputValue(control))}">${control.unit ? `<span class="next-unit">${escape(control.unit)}</span>` : ''}`;
-    return `<div class="next-property${studioField && control.property !== 'fontFamily' ? ' next-studio-property' : ''}${full ? ' next-full' : ''}${change ? ' is-changed' : ''}" data-property="${escape(control.property)}"><span class="next-property-label">${escape(control.label)}</span><div class="next-field">${input}</div><p class="next-field-status" role="status" hidden></p>${change ? `<div class="next-change"><span>${escape(change.before)} → ${escape(change.after)}</span>${change.mixed || current.count > 1 ? '<span>Undo to restore each original</span>' : `<button type="button" data-reset="${escape(control.property)}" title="Reset ${escape(control.label)}" aria-label="Reset ${escape(control.label)}">${icon('undo')}</button>`}</div><p class="next-field-status">${escape(inspectorEditHint(state().direction, 'saved'))}</p>` : ''}</div>`;
+    const restore =
+      change && studioField
+        ? change.mixed || current.count > 1
+          ? '<span class="next-change-marker" role="img" aria-label="Changed. Use Undo to restore each original." title="Changed. Use Undo to restore each original."></span>'
+          : `<button type="button" class="next-field-restore" data-reset="${escape(control.property)}" title="Restore ${escape(control.label)}" aria-label="Restore ${escape(control.label)}">${icon('undo')}</button>`
+        : '';
+    return `<div class="next-property${studioField && control.property !== 'fontFamily' ? ' next-studio-property' : ''}${full ? ' next-full' : ''}${change ? ' is-changed' : ''}" data-property="${escape(control.property)}"><span class="next-property-label">${escape(control.label)}</span><div class="next-field">${input}${restore}</div>${studioField ? '' : '<p class="next-field-status" role="status" hidden></p>'}${change && !studioField ? `<div class="next-change"><span>${escape(change.before)} → ${escape(change.after)}</span>${change.mixed || current.count > 1 ? '<span>Undo to restore each original</span>' : `<button type="button" data-reset="${escape(control.property)}" title="Reset ${escape(control.label)}" aria-label="Reset ${escape(control.label)}">${icon('undo')}</button>`}</div><p class="next-field-status">${escape(inspectorEditHint(state().direction, 'saved'))}</p>` : ''}</div>`;
   }
   function linkedGroup(property, controls) {
     const names = LINKED_INSPECTOR_GROUPS[property];
@@ -1074,10 +1091,11 @@ export function createNextWorkspace({
       edit.error = error.message;
     }
     redrawVariant();
-    (action === 'cancel' || action === 'commit'
-      ? $('[data-next-variant]')
-      : $('[data-variant-cancel]')
-    )?.focus({ preventScroll: true });
+    focusEntry(
+      action === 'cancel' || action === 'commit'
+        ? $('[data-next-variant]')
+        : $('[data-variant-cancel]'),
+    );
     if (shell.dataset.mode !== 'canvas' && variantEdit?.ready) void variantAction('cancel');
   }
   function section(name, controls, advanced = [], allControls = [], extra = '') {
@@ -1308,7 +1326,7 @@ export function createNextWorkspace({
     if (variantEdit)
       root
         .querySelectorAll(
-          '[data-next-field], .next-scrub, [data-reset], [data-link], [data-independent], [data-font-picker], [data-color-picker], [data-gradient-picker], [data-align-preset], [data-reveal-border], [data-section-restore]',
+          '[data-next-field], .next-scrub, [data-reset], [data-link], [data-independent], [data-font-picker], [data-color-picker], [data-gradient-picker], [data-position-picker], [data-align-preset], [data-reveal-border], [data-section-restore]',
         )
         .forEach((control) => {
           control.disabled = true;
@@ -1399,6 +1417,23 @@ export function createNextWorkspace({
         error: () =>
           $('.next-edit-error')?.textContent || 'Preview unavailable. Your fill is retained.',
         restoreFocus: () => root.querySelector('[data-gradient-picker]')?.focus(),
+      });
+    });
+    root.querySelector('[data-position-picker]')?.addEventListener('click', async () => {
+      if (activeEdit && !(await cancel(activeEdit.control, activeEdit.targetId))) return;
+      const control = controls.find((item) => item.property === 'objectPosition');
+      const targetId = current.id;
+      activeEdit = { control, targetId };
+      openInspectorPositionEditor({
+        control,
+        anchor: root.querySelector('[data-position-picker]'),
+        renderIcons,
+        preview: (value) => preview(control, value, null, targetId),
+        commit: (value) => commit(control, value, null, targetId),
+        cancel: () => cancel(control, targetId),
+        error: () =>
+          $('.next-edit-error')?.textContent || 'Preview unavailable. Your position is retained.',
+        restoreFocus: () => root.querySelector('[data-position-picker]')?.focus(),
       });
     });
     root.querySelectorAll('[data-color-picker]').forEach((button) =>
@@ -1525,7 +1560,10 @@ export function createNextWorkspace({
         }
       });
       if (input.tagName === 'SELECT')
-        input.addEventListener('change', () => void commit(control, input.value, input, targetId));
+        input.addEventListener('change', () => {
+          begin();
+          void commit(control, input.value, input, targetId);
+        });
       const scrub = input.parentElement.querySelector('.next-scrub');
       if (scrub)
         bindInspectorScrub({
@@ -1570,6 +1608,7 @@ export function createNextWorkspace({
       .join('|');
     const sameSelection = selectionKey === nextKey;
     if (selectionKey !== nextKey) {
+      editAnnouncement = '';
       restoreDialog?.dispatchEvent(new Event('foundry-selection-change'));
       document
         .querySelector('.next-color-picker')
@@ -1620,9 +1659,19 @@ export function createNextWorkspace({
       // Keep the chooser/actions stable while refreshing the read-only measurements.
       const measurements = (snapshot.nextControls ?? []).map(inspectorUIControl);
       for (const control of [...measurements, ...linkedInspectorControls(measurements)]) {
+        if (control.property === 'objectPosition') {
+          const button = $('[data-position-picker]');
+          if (button) {
+            button.querySelector('.next-position-summary').innerHTML = positionSummary(control);
+            const value = control.mixed ? 'Mixed positions' : inspectorInputValue(control);
+            button.title = value;
+            button.setAttribute('aria-description', value);
+          }
+        }
         const input = $(`[data-next-field="${control.property}"]`);
         if (!input) continue;
         input.value = inspectorInputValue(control);
+        if (input.tagName === 'SELECT') input.dispatchEvent(new Event('foundry-select-sync'));
         const unit = input.parentElement.querySelector('.next-unit');
         if (unit) unit.textContent = control.unit ?? '';
       }
@@ -1647,10 +1696,11 @@ export function createNextWorkspace({
     }
     const root = $('#inspector-sections');
     renderedControls = controls;
+    const activeEntry =
+      document.activeElement?.closest('.foundry-select')?.querySelector('select') ??
+      document.activeElement;
     const focusedField =
-      sameSelection && root.contains(document.activeElement)
-        ? document.activeElement.dataset.nextField
-        : null;
+      sameSelection && root.contains(document.activeElement) ? activeEntry.dataset.nextField : null;
     // Snapshot updates must not throw keyboard users back to the document body.
     const focusedButton =
       sameSelection && root.contains(document.activeElement)
@@ -1663,13 +1713,15 @@ export function createNextWorkspace({
             'data-section',
             'data-more',
             'data-color-picker',
+            'data-position-picker',
+            'data-gradient-picker',
             'data-next-variant',
             'data-variant-cancel',
             'data-variant-use',
             'data-variant-retry',
           ].flatMap((attribute) =>
-            document.activeElement.hasAttribute(attribute)
-              ? [[attribute, document.activeElement.getAttribute(attribute)]]
+            activeEntry.hasAttribute(attribute)
+              ? [[attribute, activeEntry.getAttribute(attribute)]]
               : [],
           )[0]
         : null;
@@ -1711,14 +1763,25 @@ export function createNextWorkspace({
       (snapshot.motions?.length
         ? `<div class="next-context-note"><strong>Motion</strong><p>${snapshot.motions.length} detected motion ${snapshot.motions.length === 1 ? 'track' : 'tracks'}</p><button type="button" data-next-motion>Open Motion Studio</button></div>`
         : '') +
-      `<p class="next-edit-help">${escape(inspectorEditHint(state().direction))}</p><p id="next-edit-error" class="next-edit-error" role="alert" hidden></p>`;
+      `<p class="next-edit-help">${escape(inspectorEditHint(state().direction))}</p>${foundryPilotRequested() ? `<p id="next-inspector-status" class="sr-only" role="status">${escape(editAnnouncement)}</p>` : ''}<p id="next-edit-error" class="next-edit-error" role="alert" hidden></p>`;
+    if (foundryPilotRequested()) {
+      expandInspectorRows(root);
+      const help = document.createElement('details');
+      help.className = 'next-inspector-help';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Editing help';
+      help.append(summary);
+      help.append(...root.querySelectorAll('.next-media-help, :scope > .next-edit-help'));
+      const boundary = document.createElement('p');
+      boundary.className = 'next-inspector-boundary';
+      boundary.textContent = 'Preview edits. Source is unchanged.';
+      root.querySelector('#next-inspector-status').before(help, boundary);
+    }
     renderIcons(root);
     bind(root, snapshot, controls);
     if (!sameSelection) $('#inspector-dock .inspector-scroll').scrollTop = 0;
     if (focusedButton)
-      root
-        .querySelector(`[${focusedButton[0]}="${focusedButton[1]}"]`)
-        ?.focus({ preventScroll: true });
+      focusEntry(root.querySelector(`[${focusedButton[0]}="${focusedButton[1]}"]`));
     else if (focusedField) focusEntry(root.querySelector(`[data-next-field="${focusedField}"]`));
     root
       .querySelector('[data-next-workshop]')

@@ -113,6 +113,7 @@ export function createNextStateWorkbench(root, { selectState, syncControls }) {
         'next-state-help',
         'Only states indexed from the project are listed. Current restores the authored baseline.',
       );
+      coverageNote.dataset.craftSupporting = '';
       const conditions = node('section', 'next-state-conditions');
       conditions.append(node('h2', '', 'Conditions'));
       conditions.append(...left.querySelectorAll(':scope > label'));

@@ -1,4 +1,5 @@
 import { foundryPilotIcon } from './foundry-pilot-icons.js';
+const compactLibraries = new Map();
 
 // Presentation only. Keep each library in the subtree owned by its renderer.
 export const FOUNDRY_SIDEBAR_PAGES = Object.freeze([
@@ -126,6 +127,45 @@ export function syncFoundrySidebars(root = document) {
     }
     const switcher = panel.querySelector(':scope > .foundry-workspace-switcher');
     if (panel.children[0] !== switcher) panel.prepend(switcher);
+    if (!['canvas', 'review', 'delivery'].includes(page.mode)) {
+      panel.dataset.craftLibrary = page.mode;
+      if (!panel.id) panel.id = `craft-library-${page.mode}`;
+      let toggle = panel.querySelector(':scope > .craft-library-toggle');
+      if (!toggle) {
+        toggle = root.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'craft-library-toggle';
+        const label = root.createElement('span');
+        label.className = 'craft-library-selection';
+        toggle.append(label);
+        toggle.insertAdjacentHTML('beforeend', foundryPilotIcon('chevronDown') ?? '');
+        toggle.setAttribute('aria-controls', panel.id);
+        switcher.after(toggle);
+        toggle.addEventListener('click', () => {
+          const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+          compactLibraries.set(page.mode, expanded);
+          panel.dataset.craftLibraryOpen = String(expanded);
+          toggle.setAttribute('aria-expanded', String(expanded));
+          toggle.setAttribute(
+            'aria-label',
+            `${expanded ? 'Hide' : 'Show'} ${page.label.toLowerCase()} library`,
+          );
+        });
+      }
+      const expanded = compactLibraries.get(page.mode) ?? false;
+      panel.dataset.craftLibraryOpen = String(expanded);
+      toggle.setAttribute('aria-expanded', String(expanded));
+      toggle.setAttribute(
+        'aria-label',
+        `${expanded ? 'Hide' : 'Show'} ${page.label.toLowerCase()} library`,
+      );
+      const selected = panel.querySelector(
+        '.is-active strong, [aria-selected="true"] strong, [aria-pressed="true"] strong',
+      );
+      const label = selected?.textContent?.trim() || `Browse ${page.label.toLowerCase()}`;
+      toggle.querySelector('span').textContent = label;
+      toggle.title = label;
+    }
   }
   // Delivery replaces this subtree on every tab/record change; never move it.
   root

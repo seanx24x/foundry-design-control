@@ -51,6 +51,7 @@ jobs:
       - run: pnpm test:e2e
       - run: pnpm test:next
       - run: pnpm test:studio:icons
+      - run: pnpm test:inspector:controls
       - run: pnpm test:next:apply
       - run: pnpm release:check
       - name: Verify release checks did not rewrite tracked source

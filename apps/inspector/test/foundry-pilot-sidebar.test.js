@@ -58,12 +58,28 @@ class Element {
     child.parentNode = this;
   }
 
+  after(child) {
+    if (child.parentNode) child.remove();
+    this.parentNode.children.splice(this.parentNode.children.indexOf(this) + 1, 0, child);
+    child.parentNode = this.parentNode;
+  }
+
+  insertAdjacentHTML(position, html) {
+    assert.equal(position, 'beforeend');
+    this.iconHTML = html;
+  }
+
+  addEventListener(type, handler) {
+    this[`on${type}`] = handler;
+  }
+
   remove() {
     this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
     this.parentNode = null;
   }
 
   matches(selector) {
+    if (selector === 'span') return this.tagName === 'SPAN';
     if (selector.startsWith('.')) return this.classList.contains(selector.slice(1));
     if (selector.startsWith('#')) return this.id === selector.slice(1);
     const mode = selector.match(/^\[data-mode-surface="(.+)"\]$/);
@@ -192,6 +208,24 @@ test('late-created rails and replaced Delivery records are refined without dupli
   assert.equal(previousRecords.parentNode, null);
 });
 
+test('compact library disclosure retains its owner, native controls and expanded state', () => {
+  const { root, records } = fixture();
+  syncFoundrySidebars(root);
+  const { panel, control } = records.get('motion');
+  const toggle = panel.querySelector('.craft-library-toggle');
+  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+  assert.equal(toggle.getAttribute('aria-controls'), panel.id);
+  toggle.onclick();
+  assert.equal(panel.dataset.craftLibraryOpen, 'true');
+  syncFoundrySidebars(root);
+  assert.equal(panel.querySelector('.craft-library-toggle'), toggle);
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+  assert.equal(control.parentNode, panel);
+  assert.equal(control.onchange(), 'existing handler');
+  toggle.onclick();
+  assert.equal(panel.dataset.craftLibraryOpen, 'false');
+});
+
 test('a renderer prepending a heading cannot displace the shared navigation', () => {
   const { root, records } = fixture();
   syncFoundrySidebars(root);
@@ -201,7 +235,7 @@ test('a renderer prepending a heading cannot displace the shared navigation', ()
   panel.prepend(heading);
   syncFoundrySidebars(root);
   assert.equal(panel.children[0], switcher);
-  assert.equal(panel.children[1], heading);
+  assert.equal(panel.children.includes(heading), true);
   assert.equal(panel.querySelectorAll('.foundry-workspace-switcher').length, 1);
 });
 

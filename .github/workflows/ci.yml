@@ -24,6 +24,7 @@ jobs:
       - run: pnpm test:e2e
       - run: pnpm test:next
       - run: pnpm test:studio:icons
+      - run: pnpm test:inspector:controls
       - run: pnpm test:next:apply
       - name: Retain redesigned inspector regression evidence
         if: always()
@@ -33,6 +34,7 @@ jobs:
           path: |
             artifacts/next-workspace/
             artifacts/next-apply/
+            artifacts/inspector-controls/
           if-no-files-found: ignore
       - run: pnpm test:recording
       - run: pnpm test:showcase

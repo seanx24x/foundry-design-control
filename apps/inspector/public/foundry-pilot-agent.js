@@ -63,6 +63,9 @@ export function mountPilotVisualAgent(root) {
   connection.append(connectionDetails);
   const safety = context.querySelector('.visual-agent-safety');
   form.append(box, connection, safety);
+  // One visible connection owner. The attached-context pane no longer repeats
+  // the same status; the original live node and update owner remain intact.
+  context.querySelector('.next-agent-connection').hidden = true;
   const dock = make('div', 'foundry-agent-composer-dock');
   form.before(dock);
   dock.append(form);

@@ -1,5 +1,6 @@
 // Presentation only. Reads native selection; never changes form values, selection,
 // focus, event propagation, requests, authored data or workflow status.
+import { refineWorkspaceCraft } from './workspace-craft.js';
 export const STUDIO_SEGMENTS = '.segmented, .typography-source-tabs, .motion-curve-tabs';
 export function selectedStudioSegment(buttons) {
   const selected = buttons.filter(
@@ -22,6 +23,7 @@ export function refineStudioControls(root = globalThis.document) {
   const doc = root?.ownerDocument ?? root,
     win = doc?.defaultView;
   if (!win?.requestAnimationFrame || !doc?.documentElement?.dataset?.foundryPilot) return;
+  refineWorkspaceCraft(root);
   for (const [element, controller] of groups)
     if (!element.isConnected) {
       controller.dispose();

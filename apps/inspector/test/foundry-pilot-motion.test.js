@@ -20,6 +20,9 @@ function node(text = '') {
     querySelector(selector) {
       return this.selectors.get(selector) ?? null;
     },
+    querySelectorAll() {
+      return [];
+    },
     append(...children) {
       this.children.push(...children);
     },
