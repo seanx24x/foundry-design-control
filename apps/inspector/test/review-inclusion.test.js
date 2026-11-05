@@ -96,6 +96,7 @@ function transactionHarness({ pilot = true } = {}) {
     runtimeConnected: true,
     lastSessionLoadError: '',
     nextVisualAgent: null,
+    syncReviewAgentPresence() {},
     lastRenderedSessionSnapshot: '',
     sessionRenderSnapshot: (payload) => JSON.stringify(payload),
     sessionRenderBlocked: () => false,
@@ -589,7 +590,9 @@ test('actual Review renderer and generic draft capture preserve pilot-only state
   assert.match(render, /foundryPilotActive\(\)\s*\? captureReviewEditState/);
   assert.match(render, /if \(foundryPilotActive\(\)\) restoreReviewEditState/);
   assert.match(render, /dataset\.reviewIdentity/);
-  assert.match(render, /\$\('#apply-agent'\)\.disabled\s*=[^;]*reviewStatusBlocked\(\)/);
+  assert.match(render, /syncReviewAgentPresence\(included\)/);
+  const presence = slice('function syncReviewAgentPresence(', 'function renderReview()');
+  assert.match(presence, /button\.disabled\s*=[^;]*reviewStatusBlocked\(\)/);
   assert.match(render, /\[data-delete-change\][\s\S]*?if \(reviewStatusBlocked\(\)\) return/);
   const dirty = slice('function captureDirtyDrafts()', 'function restoreDirtyDrafts(');
   assert.match(dirty, /foundryPilotActive\(\)/);

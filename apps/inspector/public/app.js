@@ -2731,6 +2731,39 @@ function changeContextSummary(change) {
   return `${contexts.breakpoints.join(', ')} · ${contexts.themes.join(', ')} · ${contexts.states.join(', ')} · ${combinations} ${combinations === 1 ? 'context' : 'contexts'}`;
 }
 
+// Connection chrome must not wait for the full draft-preserving session render.
+// A focused checkbox or text field can legitimately keep that render deferred.
+function syncReviewAgentPresence(included) {
+  const button = $('#apply-agent');
+  if (!button) return;
+  const changes = (activeSession?.changeSet?.changes ?? []).filter(
+    (change) => change.status !== 'applied',
+  );
+  included ??= reviewBatchSummary(changes, activeSession?.changeSet?.operations).included;
+  const listenerConnected = Boolean(activeAgentPresence.connected);
+  const submitting = button.dataset.submitting === 'true';
+  if (!submitting) {
+    const label = included
+      ? listenerConnected
+        ? `Apply ${included} with agent`
+        : `Queue ${included} for agent`
+      : 'Review changes first';
+    if (button.textContent !== label) button.textContent = label;
+  }
+  button.disabled = included === 0 || submitting || reviewStatusBlocked();
+  const state = $('.review-agent-state');
+  if (!state) return;
+  state.dataset.connected = String(listenerConnected);
+  const title = state.querySelector('strong');
+  const detail = state.querySelector('span');
+  const titleText = listenerConnected ? 'Agent listener connected' : 'Agent offline';
+  const detailText = listenerConnected
+    ? 'The listener can claim this batch after you choose Apply. Source edits begin only after that handoff.'
+    : 'Queue this batch to save it for a listener. Queuing does not begin source work.';
+  if (title && title.textContent !== titleText) title.textContent = titleText;
+  if (detail && detail.textContent !== detailText) detail.textContent = detailText;
+}
+
 function renderReview() {
   const reviewContext = reviewContextKey();
   const reviewEdit = foundryPilotActive()
@@ -2790,13 +2823,7 @@ function renderReview() {
     : 'No source changes have been requested.';
   $('#review-count').textContent = `${included} included`;
   $('#review-compare').disabled = changes.length === 0 || !bridgeConnected;
-  $('#apply-agent').textContent = included
-    ? listenerConnected
-      ? `Apply ${included} with agent`
-      : `Queue ${included} for agent`
-    : 'Review changes first';
-  $('#apply-agent').disabled =
-    included === 0 || $('#apply-agent').dataset.submitting === 'true' || reviewStatusBlocked();
+  syncReviewAgentPresence(included);
   $('#changes').innerHTML = groups.size
     ? [...groups.values()]
         .map(
@@ -8973,6 +9000,7 @@ function commitLoadedSession(payload, presence, { deferRender = false } = {}) {
   activeAgentPresence = presence?.connected ? presence : { connected: false, presence: null };
   // Presence must stay current while typing even when the full session render is deferred.
   nextVisualAgent?.updateConnection({ listener: activeAgentPresence.connected });
+  syncReviewAgentPresence();
   const snapshot = sessionRenderSnapshot(payload, activeAgentPresence);
   if (snapshot === lastRenderedSessionSnapshot && !reviewRefreshRecovered && !applyRefreshRecovered)
     return;

@@ -126,6 +126,7 @@ function harness({ pilot = true, initialRun = run(), connected = true } = {}) {
     lastSessionLoadError: '',
     lastRenderedSessionSnapshot: '',
     nextVisualAgent: null,
+    syncReviewAgentPresence() {},
     reviewStatusPending: null,
     reviewStatusError: null,
     reviewContextKey: () => 'synthetic-review',
