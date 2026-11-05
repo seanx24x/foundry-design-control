@@ -1412,7 +1412,7 @@ async function assertPositiveResult(prepared, session, browserState, applyResult
       .waitFor();
   }
   await browserState.page.locator('[data-delivery-tab="history"]').click();
-  await browserState.page.getByText(run.id, { exact: true }).waitFor();
+  await browserState.page.locator('#delivery-content').getByText(run.id, { exact: true }).waitFor();
 }
 
 async function assertVerificationMismatch(prepared, stored, browserState, applyResult) {
