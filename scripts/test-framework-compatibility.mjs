@@ -465,6 +465,13 @@ async function apply(prepared, fixture, tooling, session, state) {
   });
   let work;
   try {
+    // Approve before the listener connects and retain focus in the checkbox.
+    // This deterministic ordering covers the slow-CI presence/render race.
+    await enterReview(state.page);
+    await approveReviewedChange(state.page);
+    const reviewCheckbox = state.page.locator('[data-change-id]').first();
+    await reviewCheckbox.focus();
+    const focusedReviewControl = await reviewCheckbox.elementHandle();
     await mcp.initialize();
     work = mcp.call(
       'foundry_design_wait_for_work',
@@ -477,13 +484,19 @@ async function apply(prepared, fixture, tooling, session, state) {
       70_000,
     );
     await waitFor(async () => (await listenerPresence(session)).connected, 'real MCP listener');
-    await enterReview(state.page);
-    await approveReviewedChange(state.page);
     await waitFor(
       async () =>
         (await state.page.locator('#apply-agent').textContent()).includes('Apply 1 with agent'),
       'agent acknowledgement',
     );
+    assert.equal(
+      await focusedReviewControl.evaluate(
+        (node) => node.isConnected && document.activeElement === node,
+      ),
+      true,
+      'Agent readiness must update without replacing or blurring the focused Review control.',
+    );
+    await focusedReviewControl.dispose();
     await state.page.locator('#apply-agent').click();
     const claimed = await work;
     assert.equal(claimed.kind, 'apply_run');
@@ -591,6 +604,7 @@ async function apply(prepared, fixture, tooling, session, state) {
       sourceRevision: revision,
       appliedRevision: stored.applyRuns.find(({ id }) => id === run.id).appliedRevision,
       deliveryStatus: 'verified',
+      agentReadiness: { connectedAfterApproval: true, originalReviewControlRetainsFocus: true },
       engineering,
     };
   } finally {
@@ -721,6 +735,25 @@ try {
     } catch (error) {
       entry.status = 'failed';
       entry.error = shared.redact(error.stack ?? error);
+      if (state) {
+        entry.readiness = await state.page
+          .evaluate(() => {
+            const button = document.querySelector('#apply-agent');
+            const focused = document.activeElement;
+            return {
+              applyLabel: button?.textContent,
+              disabled: button?.disabled,
+              submitting: button?.dataset.submitting === 'true',
+              agentConnected: document.querySelector('.review-agent-state')?.dataset.connected,
+              focus: {
+                tag: focused?.tagName,
+                type: focused?.getAttribute('type'),
+                id: focused?.id,
+              },
+            };
+          })
+          .catch(() => null);
+      }
       failure ??= error;
       if (state)
         await state.page

@@ -1,4 +1,7 @@
+import { foundryFoundationsEnabled } from './foundry-foundations.js';
 // Presentation only. Existing commands own branch activation and Review promotion.
+import { mountPilotDesignBranches, refinePilotDesignBranches } from './foundry-pilot-branches.js';
+
 export function branchReviewableChanges(direction) {
   return (direction?.changes ?? []).filter(
     (change) => !['applied', 'rejected'].includes(change.status),
@@ -18,6 +21,9 @@ export function branchPreviewKey(directions, viewport, url) {
 export function branchPreviewScale(width, viewport) {
   return Math.max(0.01, Math.min(1, Math.max(1, width) / viewport.width, 480 / viewport.height));
 }
+export function branchNoteLabel(value, saved) {
+  return `${value.length} / 280 · ${value === (saved ?? '') ? 'Saved note' : 'Unsaved note'}`;
+}
 const node = (tag, className, text) => {
   const e = document.createElement(tag);
   e.className = className;
@@ -25,6 +31,7 @@ const node = (tag, className, text) => {
   return e;
 };
 export function createNextDesignBranches(root) {
+  const pilot = foundryFoundationsEnabled();
   root.classList.add('next-design-branches');
   root.dataset.nextIconScope = '';
   root.querySelector('.mode-head h1').textContent = 'Design branches';
@@ -89,6 +96,7 @@ export function createNextDesignBranches(root) {
     'Design directions are local alternatives, not Git branches. Source changes require reviewed Apply.',
   );
   root.append(footer);
+  if (pilot) mountPilotDesignBranches(root);
   const notes = new Map();
   let activeId, noteFocus, scroll;
   function capture() {
@@ -112,10 +120,20 @@ export function createNextDesignBranches(root) {
         width: Number(frame.width),
         height: Number(frame.height),
       });
-      viewport.style.setProperty('--branch-scale', String(scale));
+      const nextScale = String(scale);
+      if (!pilot || viewport.style.getPropertyValue('--branch-scale') !== nextScale) {
+        viewport.style.setProperty('--branch-scale', nextScale);
+      }
     }
   }
-  new ResizeObserver(fit).observe(root.querySelector('#design-branch-previews'));
+  let fitFrame;
+  new ResizeObserver(() => {
+    if (!pilot) return fit();
+    // Scaling changes the observed preview height. Write after delivery so a
+    // responsive reflow does not trigger an undelivered observer notification.
+    cancelAnimationFrame(fitFrame);
+    fitFrame = requestAnimationFrame(fit);
+  }).observe(root.querySelector('#design-branch-previews'));
   function update({ active, directions, comparisonCount, recordsCount }) {
     const changed = activeId !== active.id;
     activeId = active.id;
@@ -149,6 +167,17 @@ export function createNextDesignBranches(root) {
     recordSummary.textContent = `Saved decisions${recordsCount ? ` · ${recordsCount}` : ''}`;
     const note = detail.querySelector('#design-branch-note');
     if (note && notes.has(activeId)) note.value = notes.get(activeId);
+    if (note && pilot) {
+      const status = node('p', 'next-branch-note-status');
+      status.id = 'next-branch-note-status';
+      note.setAttribute('aria-describedby', status.id);
+      note.after(status);
+      const syncNote = () => {
+        status.textContent = branchNoteLabel(note.value, active.rejectionReason);
+      };
+      note.addEventListener('input', syncNote);
+      syncNote();
+    }
     if (note && noteFocus && !changed) {
       note.focus({ preventScroll: true });
       note.setSelectionRange(noteFocus.start, noteFocus.end);
@@ -166,6 +195,8 @@ export function createNextDesignBranches(root) {
       root.querySelector('#design-branch-list').scrollTop = scroll.list;
     }
     fit();
+    if (pilot)
+      refinePilotDesignBranches(root, { active, directions, comparisonCount, recordsCount });
   }
   return { capture, update, fit };
 }

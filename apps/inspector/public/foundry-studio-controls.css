@@ -1,0 +1,690 @@
+/* Shared control/material ownership for every Next workspace. Product frames,
+   source values, workflow statuses and action handlers are not changed here. */
+:root[data-foundry-pilot][data-theme] .next-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+:root[data-foundry-pilot][data-theme] .next-section-heading .next-section-head {
+  flex: 1;
+  min-width: 0;
+}
+:root[data-foundry-pilot][data-theme] .next-section-restore {
+  flex: none;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot][data-theme] .next-section-restore:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+:root[data-foundry-pilot][data-theme] .next-section-restore[aria-disabled='true'] {
+  color: var(--muted);
+}
+:root[data-foundry-pilot][data-theme] .next-section-restore-dialog {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--fd-color-elevated);
+  color: var(--ink);
+  font: 400 12px/20px var(--sans);
+  box-shadow: var(--shadow);
+}
+:root[data-foundry-pilot][data-theme] .next-section-restore-dialog::backdrop {
+  background: #0005;
+}
+:root[data-foundry-pilot][data-theme] .next-section-restore-dialog header {
+  font-weight: 550;
+}
+:root[data-foundry-pilot][data-theme] .next-section-restore-dialog p {
+  color: var(--muted);
+  margin: 12px 0;
+}
+:root[data-foundry-pilot][data-theme] .next-section-restore-dialog ul {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+}
+:root[data-foundry-pilot][data-theme] .next-section-restore-dialog li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+:root[data-foundry-pilot][data-theme] .next-section-restore-dialog code {
+  font: 400 11px/18px var(--fd-font-code);
+  overflow-wrap: anywhere;
+}
+:root[data-foundry-pilot][data-theme] .next-section-restore-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+:root[data-foundry-pilot][data-theme] .next-section-restore-dialog button {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 12px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot][data-theme] .next-section-restore-dialog [data-confirm-restore] {
+  background: var(--ink);
+  color: var(--surface);
+}
+:root[data-foundry-pilot][data-theme] .next-color-formats {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot][data-theme] .next-color-formats button {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot][data-theme] .next-color-formats [aria-pressed='true'] {
+  background: var(--selection-soft);
+  color: var(--ink);
+}
+:root[data-foundry-pilot][data-theme] .next-color-channels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+:root[data-foundry-pilot][data-theme] .next-color-channels label {
+  min-width: 0;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot][data-theme] .next-color-channels input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: 400 12px/20px var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+:root[data-foundry-pilot][data-theme] .next-color-channels [aria-invalid='true'] {
+  border-color: var(--fd-color-error);
+}
+:root[data-foundry-pilot][data-theme] .next-color-format-help {
+  font: 400 11px/18px var(--sans);
+  color: var(--muted);
+  margin: 0;
+}
+:root[data-foundry-pilot][data-theme] .next-color-values:has([data-color-text-field][hidden]) {
+  grid-template-columns: 1fr;
+}
+:root[data-foundry-pilot][data-theme]
+  .next-color-values:has([data-color-text-field][hidden])
+  > label:not([hidden]) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding-left: 8px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot][data-theme]
+  .next-color-values:has([data-color-text-field][hidden])
+  input {
+  text-align: right;
+  background: transparent;
+}
+:root[data-foundry-pilot][data-theme]
+  :is(.next-color-channels input, .next-section-restore-dialog button):focus-visible {
+  outline: 2px solid var(--fd-color-focus);
+  outline-offset: 2px;
+}
+@media (pointer: coarse) {
+  :root[data-foundry-pilot][data-theme] .next-color-channels input:focus {
+    font-size: 16px;
+  }
+}
+:root[data-foundry-pilot][data-theme] [data-next] {
+  font-variant-numeric: tabular-nums;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(.next-field, .search-field, .next-motion-search) {
+  border: 1px solid transparent;
+  border-radius: var(--fd-radius-control);
+  background: var(--surface-2);
+  box-shadow: none;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(.next-field, .search-field, .next-motion-search):hover,
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(.next-field, .search-field, .next-motion-search):focus-within {
+  background: var(--surface-3);
+  border-color: transparent;
+  outline: none;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(.next-field, .search-field, .next-motion-search):has(:focus-visible) {
+  outline: var(--fd-focus-width) solid var(--selection);
+  outline-offset: var(--fd-focus-offset);
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(.next-field, .search-field, .next-motion-search)
+  :is(input, select) {
+  font: 400 12px/20px var(--sans);
+  font-variant-numeric: tabular-nums;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-property.is-changed .next-field {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 var(--fd-color-control);
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-field:has([aria-invalid='true']) {
+  border-color: var(--fd-color-error);
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-unit {
+  color: var(--muted);
+  font-size: 10px;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-studio-property > .next-property-label {
+  display: none;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-studio-property .next-field {
+  padding-inline: 10px;
+  gap: 7px;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-studio-label {
+  flex: none;
+  max-width: 58%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font: 400 12px/20px var(--sans);
+  text-align: left;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-studio-property .next-scrub {
+  width: auto;
+  flex: 0 1 auto;
+  margin-left: 0;
+  min-width: 24px;
+  max-width: 58%;
+  justify-content: flex-start;
+  padding: 0;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-studio-property .next-scrub > svg {
+  display: none;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  .next-studio-property
+  .next-scrub
+  .next-studio-label {
+  max-width: 100%;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-studio-property :is(input, select) {
+  text-align: right;
+  min-width: 20px;
+  width: 0;
+  flex: 1 1 0;
+  padding-inline: 0;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-studio-property .next-unit {
+  flex: 0 0 auto;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-field[data-bounded] {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-field[data-bounded]::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--fd-control-fill, 0%);
+  background: var(--selection-soft);
+  z-index: -1;
+  pointer-events: none;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-field[data-scrubbing] {
+  outline: 1px solid var(--fd-color-control);
+  outline-offset: -1px;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-axis-control {
+  min-width: 0;
+  margin-block: 4px;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-axis-row {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font: 400 12px/20px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-axis-presets {
+  display: flex;
+  min-width: 0;
+  height: 32px;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-axis-presets > button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: 4px;
+  font-size: 12px;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  .next-axis-presets
+  > button:active:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface-3);
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-axis-more {
+  margin-top: 4px;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-axis-more > summary {
+  cursor: pointer;
+  padding-block: 2px;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-axis-more .next-property {
+  margin-top: 6px;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-border-controls {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-border-controls > .next-linked-head {
+  margin-bottom: 8px;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-border-controls > .next-fields {
+  margin-top: 8px;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-border-hint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-studio-property .next-color-trigger {
+  order: 4;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is([data-mode-surface], #inspector-dock)
+  :is(
+    input[type='text'],
+    input[type='number'],
+    input[type='search'],
+    input:not([type]),
+    select,
+    textarea
+  ):not(.next-field *):not(.search-field *):not(.next-motion-search *) {
+  border: 1px solid transparent;
+  border-radius: var(--fd-radius-control);
+  background-color: var(--surface-2);
+  color: var(--ink);
+  box-shadow: none;
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is([data-mode-surface], #inspector-dock)
+  :is(
+    input[type='text'],
+    input[type='number'],
+    input[type='search'],
+    input:not([type]),
+    select
+  ):not(.next-field *):not(.search-field *):not(.next-motion-search *) {
+  min-height: var(--fd-control-height);
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is([data-mode-surface], #inspector-dock)
+  :is(
+    input[type='text'],
+    input[type='number'],
+    input[type='search'],
+    input:not([type]),
+    select,
+    textarea
+  ):hover:not(:disabled):not([readonly]) {
+  background-color: var(--surface-3);
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is([data-mode-surface], #inspector-dock)
+  :is(input, select, textarea)[aria-invalid='true'] {
+  border-color: var(--fd-color-error);
+}
+:root[data-foundry-pilot][data-theme] [data-next] :is(.foundry-select-trigger, .next-font-trigger) {
+  border-radius: var(--fd-radius-control);
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot][data-theme] [data-next] .foundry-select-trigger {
+  border: 1px solid transparent;
+  background: var(--surface-2);
+  color: var(--ink);
+  min-height: var(--fd-control-height);
+}
+:root[data-foundry-pilot][data-theme] [data-next] .foundry-select-trigger:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(.segmented, .typography-source-tabs, .motion-curve-tabs) {
+  border: 0;
+  border-radius: var(--fd-radius-control);
+  background: var(--surface-2);
+  padding: 3px;
+  gap: 3px;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(.segmented, .typography-source-tabs, .motion-curve-tabs)
+  > button {
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  font: 400 12px/20px var(--sans);
+  box-shadow: none;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(.segmented, .typography-source-tabs, .motion-curve-tabs)
+  > :is(.is-active, .is-selected, [aria-selected='true'], [aria-pressed='true']) {
+  color: var(--ink);
+  background: var(--selection-soft);
+  box-shadow: none;
+}
+/* The indicator is a pseudo-element: no native control is moved/replaced. */
+:root[data-foundry-pilot][data-theme] [data-next] [data-fd-studio-segment] {
+  position: relative;
+  isolation: isolate;
+}
+:root[data-foundry-pilot][data-theme] [data-next] [data-fd-studio-segment]::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  top: var(--fd-segment-top, 3px);
+  height: var(--fd-segment-height, 26px);
+  left: var(--fd-segment-left, 3px);
+  width: var(--fd-segment-width, 0px);
+  border-radius: 5px;
+  background: var(--selection-soft);
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  [data-fd-studio-segment]
+  > :is(.is-active, .is-selected, [aria-selected='true'], [aria-pressed='true']) {
+  background: transparent;
+}
+:root[data-foundry-pilot][data-theme] [data-next] .foundry-sidebar {
+  border-right: 1px solid var(--fd-sidebar-divider);
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  .foundry-sidebar
+  :is(.search-field, .next-motion-search) {
+  background: var(--fd-sidebar-field);
+  border-color: transparent;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(
+    .next-property-label,
+    .next-section-head strong,
+    .next-linked-head,
+    .next-motion-heading h2,
+    .next-system-heading h2,
+    .next-type-heading h2
+  ) {
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 500;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(
+    .next-section-head,
+    .next-motion-disclosure > summary,
+    .next-system-disclosure > summary,
+    .next-type-disclosure > summary
+  ) {
+  border-radius: 0;
+  color: var(--ink);
+}
+:root[data-foundry-pilot][data-theme] [data-next] .next-fields {
+  row-gap: 8px;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(.next-section, .next-motion-disclosure, .next-system-disclosure, .next-type-disclosure)
+  + :is(.next-section, .next-motion-disclosure, .next-system-disclosure, .next-type-disclosure) {
+  margin-top: 8px;
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(.next-system-property-scroll, .next-motion-property-scroll, .next-type-property-scroll)
+  > header {
+  background: var(--surface);
+}
+:root[data-foundry-pilot][data-theme]
+  [data-next]
+  :is(input[type='range'], input[type='checkbox'], input[type='radio']) {
+  accent-color: var(--fd-color-control);
+}
+:root[data-foundry-pilot][data-theme]
+  :is(.next-color-picker, .next-font-picker, .foundry-select-menu, .next-connection-popover) {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--fd-radius-floating);
+  background: var(--fd-color-elevated);
+  box-shadow: var(--shadow);
+}
+:root[data-foundry-pilot][data-theme] :is(.next-color-values input, .next-font-picker input) {
+  border: 1px solid transparent;
+  border-radius: var(--fd-radius-control);
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot][data-theme] .next-color-values input[aria-invalid='true'] {
+  border-color: var(--fd-color-error);
+}
+@media (pointer: coarse) {
+  :root[data-foundry-pilot][data-theme] [data-next] :is(input, textarea, select):focus {
+    font-size: 16px;
+  }
+  :root[data-foundry-pilot][data-theme] [data-next] input[readonly]:focus {
+    font-size: 12px;
+  }
+}
+.next-gradient-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.next-gradient-trigger > span:first-child {
+  color: var(--muted);
+}
+.next-gradient-trigger > span:nth-child(2) {
+  margin-left: auto;
+}
+.next-gradient-trigger svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.next-gradient-trigger:focus-visible {
+  outline: 1px solid var(--selection);
+  outline-offset: 2px;
+}
+.next-gradient-editor {
+  width: 320px;
+  box-sizing: border-box;
+}
+.next-gradient-editor [role='status'] {
+  min-height: 80px;
+}
+.next-gradient-editor [hidden] {
+  display: none !important;
+}
+.next-gradient-preview {
+  height: 104px;
+  border-radius: 8px;
+  background-color: var(--surface-2);
+}
+.next-gradient-track {
+  position: relative;
+  height: 40px;
+  margin: 0 12px;
+  touch-action: none;
+}
+.next-gradient-editor .next-gradient-track button {
+  position: absolute;
+  top: 6px;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 2px solid var(--surface);
+  border-radius: 5px;
+  box-shadow: 0 0 0 1px var(--muted);
+  cursor: ew-resize;
+  touch-action: none;
+}
+.next-gradient-editor .next-gradient-track button[data-selected='true'] {
+  box-shadow: 0 0 0 2px var(--selection);
+}
+.next-gradient-fields > label {
+  display: grid;
+  grid-template-columns: 1fr auto 72px;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+.next-gradient-editor input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.next-gradient-editor input[aria-invalid='true'] {
+  border-color: var(--fd-color-error, var(--selection));
+}
+.next-gradient-stop-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 12px 0 8px;
+}
+.next-gradient-stop-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 68px 28px;
+  gap: 6px;
+  margin-top: 6px;
+}
+.next-gradient-stop-row > label {
+  position: relative;
+}
+.next-gradient-stop-row > label input {
+  padding-right: 20px;
+  text-align: right;
+}
+.next-gradient-stop-row > label span {
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.next-gradient-editor .next-gradient-stop-row button {
+  padding: 0;
+}
+.next-gradient-help {
+  color: var(--muted);
+  margin: 10px 0;
+}
+.next-gradient-original {
+  margin-top: 12px;
+  color: var(--muted);
+}
+.next-gradient-original summary {
+  cursor: pointer;
+}
+.next-gradient-original pre {
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 100px;
+  overflow: auto;
+}
+@media (pointer: coarse) {
+  .next-gradient-editor input:focus {
+    font-size: 16px;
+  }
+}
+@media (forced-colors: active) {
+  :root[data-foundry-pilot][data-theme]
+    [data-next]
+    :is(.next-field, .search-field, .foundry-select-trigger, input, select, textarea) {
+    border-color: CanvasText;
+  }
+  :root[data-foundry-pilot][data-theme] [data-next] [data-fd-studio-segment]::before {
+    background: Highlight;
+  }
+  :root[data-foundry-pilot][data-theme]
+    [data-next]
+    [data-fd-studio-segment]
+    > :is(.is-active, .is-selected, [aria-selected='true'], [aria-pressed='true']) {
+    color: HighlightText;
+  }
+}

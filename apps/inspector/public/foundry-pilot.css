@@ -1,0 +1,546 @@
+@import url('./foundry-pilot-tokens.css');
+@import url('./foundry-pilot-fonts.css');
+@import url('./foundry-pilot-workshop.css');
+@import url('./foundry-pilot-sidebar.css');
+@import url('./foundry-pilot-system.css');
+@import url('./foundry-pilot-motion.css');
+@import url('./foundry-pilot-typography.css');
+@import url('./foundry-pilot-recipes.css');
+@import url('./foundry-pilot-state.css');
+@import url('./foundry-pilot-responsive.css');
+@import url('./foundry-pilot-stress.css');
+@import url('./foundry-pilot-agent.css');
+@import url('./foundry-pilot-branches.css');
+@import url('./foundry-pilot-memory.css');
+@import url('./foundry-pilot-delivery.css');
+@import url('./foundry-pilot-review.css');
+@import url('./foundry-pilot-overlays.css');
+@import url('./foundry-pilot-readiness.css');
+@import url('./foundry-studio-controls.css');
+
+/* Shared internal UI. foundations=off retains the previous Next presentation;
+   ui=legacy stays outside the foundations boundary entirely. */
+.foundry-workspace-switcher {
+  display: none;
+}
+:root[data-foundry-pilot],
+:root[data-foundry-pilot][data-theme] {
+  --sans: 'Foundry Geist', Arial, sans-serif;
+  --bg: var(--fd-color-canvas);
+  --surface: var(--fd-color-panel);
+  --surface-2: var(--fd-color-field);
+  --surface-3: var(--fd-color-hover);
+  --ink: var(--fd-color-ink);
+  --muted: var(--fd-color-muted);
+  --quiet: var(--fd-color-muted);
+  --line: var(--fd-color-divider);
+  --line-strong: var(--fd-color-boundary);
+  --selection: var(--fd-color-focus);
+  --selection-ink: var(--fd-color-selection-ink);
+  --selection-soft: var(--fd-color-selected);
+  --red: var(--fd-color-error);
+  --shadow: var(--fd-color-shadow);
+  --chrome-bg: var(--surface);
+  --chrome-ink: var(--ink);
+  --chrome-muted: var(--muted);
+  --chrome-hover: var(--surface-3);
+  --chrome-focus: var(--fd-color-focus);
+  --chrome-control: var(--ink);
+  --chrome-control-ink: var(--surface);
+  --chrome-control-muted: var(--surface);
+}
+:root[data-foundry-pilot] body {
+  background: var(--fd-shell-background);
+}
+:root[data-foundry-pilot] .foundry-pilot-icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+}
+:root[data-foundry-pilot] .foundry-pilot-property-icon {
+  stroke-width: calc(4 / 3);
+}
+:root[data-foundry-pilot] .foundry-pilot-icon [vector-effect] {
+  vector-effect: none;
+}
+:root[data-foundry-pilot] .app-shell[data-next] {
+  --layers-dock-width: 320px;
+  height: 100dvh;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: var(--fd-shell-background);
+  grid-template-rows: 44px minmax(0, 1fr);
+  overflow: hidden;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] [data-next] .workspace {
+  /* The shell must show through pane corner cut-outs, not a rectangular canvas. */
+  background: transparent;
+}
+:root[data-foundry-pilot] [data-next] .app-bar {
+  height: 44px;
+  min-height: 44px;
+  grid-template-columns: var(--layers-dock-width) minmax(0, 1fr) max-content;
+  gap: 0;
+  padding: 0;
+  background: transparent;
+  align-items: stretch;
+}
+:root[data-foundry-pilot] [data-next] .app-identity {
+  padding: 0 12px;
+  gap: 8px;
+  min-width: 0;
+  color: var(--fd-shell-ink);
+  --chrome-ink: var(--fd-shell-ink);
+  --chrome-muted: var(--fd-shell-muted);
+  --chrome-hover: var(--fd-shell-hover);
+  --chrome-focus: var(--fd-shell-focus);
+}
+:root[data-foundry-pilot] [data-next] .app-identity > strong {
+  color: var(--fd-shell-ink);
+}
+:root[data-foundry-pilot] [data-next] .next-tabs {
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 12px 0 0;
+  background: var(--surface);
+  box-shadow: inset 0 -1px var(--line);
+}
+:root[data-foundry-pilot] [data-next] .app-actions {
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 0 12px 0 0;
+  background: var(--surface);
+  box-shadow: inset 0 -1px var(--line);
+}
+:root[data-foundry-pilot] [data-next] .next-tab {
+  --tab-focus: var(--fd-color-focus);
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-radius: 6px;
+  font: 500 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] [data-next] .next-tab.is-selected {
+  background: var(--selection-soft);
+  color: var(--selection-ink);
+  box-shadow: none;
+}
+:root[data-foundry-pilot='canvas'] [data-next] .center-workspace {
+  border-radius: 0 0 0 12px;
+  overflow: hidden;
+  background: var(--bg);
+}
+:root[data-foundry-pilot='canvas'] [data-next] .workspace {
+  /* The existing Next grid is important; keep the scoped track and dock equal. */
+  grid-template-columns:
+    minmax(var(--studio-nav-width, 0px), max-content) var(--layers-dock-width)
+    minmax(0, 1fr) var(--dock) !important;
+}
+:root[data-foundry-pilot='canvas'] [data-next] .inspector-dock {
+  border-radius: 0 0 12px;
+}
+:root[data-foundry-pilot] [data-next] .layers-dock {
+  width: var(--layers-dock-width);
+  background: var(--fd-shell-background);
+  color: var(--fd-shell-ink);
+  box-shadow: none;
+  --surface: var(--fd-shell-background);
+  --surface-2: var(--fd-sidebar-field);
+  --surface-3: var(--fd-sidebar-hover);
+  --ink: var(--fd-shell-ink);
+  --muted: var(--fd-shell-muted);
+  --quiet: var(--fd-shell-subtle);
+  --line: var(--fd-sidebar-divider);
+  --line-strong: var(--fd-sidebar-boundary);
+  --selection: var(--fd-shell-focus);
+  --selection-soft: var(--fd-shell-selected);
+  --selection-ink: var(--fd-shell-ink);
+}
+:root[data-foundry-pilot] .foundry-workspace-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  min-height: 32px;
+  margin: 12px 10px 16px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--fd-shell-hover);
+  color: var(--fd-shell-ink);
+  font: 500 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] .foundry-workspace-switcher > svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+:root[data-foundry-pilot] .foundry-workspace-switcher > svg:last-child {
+  margin-left: auto;
+  color: var(--fd-shell-muted);
+}
+:root[data-foundry-pilot] .foundry-workspace-switcher:hover {
+  background: var(--fd-sidebar-hover);
+}
+:root[data-foundry-pilot] [data-next].next-tools-open.next-tools-from-sidebar .workspace-rail {
+  top: var(--next-tools-top);
+  left: var(--next-tools-left);
+  bottom: auto;
+  transform: none;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - var(--next-tools-top) - 16px);
+}
+:root[data-foundry-pilot] [data-next] .layers-dock > .dock-head {
+  border: 0;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 16px;
+}
+:root[data-foundry-pilot] [data-next] .dock-head strong,
+:root[data-foundry-pilot] [data-next] #canvas-detail .next-selection-name {
+  font: 500 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] [data-next] .layers-dock > .segmented {
+  height: 40px;
+  padding: 8px 12px;
+}
+:root[data-foundry-pilot] [data-next] .layers-dock .segmented button {
+  border-radius: 6px;
+  color: var(--muted);
+}
+:root[data-foundry-pilot] [data-next] .layers-dock .segmented button.is-active {
+  background: var(--fd-sidebar-hover);
+  color: var(--ink);
+}
+:root[data-foundry-pilot] [data-next] .layers-dock .search-field {
+  height: 32px;
+  min-height: 32px;
+  margin: 8px 12px 12px;
+  padding: 0 8px;
+  border: 1px solid var(--fd-sidebar-boundary);
+  border-bottom-color: var(--fd-sidebar-control);
+  border-radius: 6px;
+  background: var(--fd-sidebar-field);
+}
+:root[data-foundry-pilot] [data-next] .layers-dock .search-field input {
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] [data-next] .layers-dock .search-field input::placeholder {
+  color: var(--fd-shell-muted);
+  opacity: 1;
+}
+:root[data-foundry-pilot] [data-next] .layer-row {
+  border-radius: 6px;
+  color: var(--muted);
+}
+:root[data-foundry-pilot] [data-next] .layer-row:hover {
+  background: var(--fd-sidebar-hover);
+  color: var(--ink);
+}
+:root[data-foundry-pilot] [data-next] .layer-row.is-selected,
+:root[data-foundry-pilot] [data-next] .layer-row.is-selected:hover {
+  background: var(--selection-soft);
+  color: var(--ink);
+  box-shadow: none;
+}
+:root[data-foundry-pilot] [data-next] .layer-row.is-selected :is(.layer-icon, .chevron) {
+  color: var(--ink);
+}
+:root[data-foundry-pilot] [data-next] .layer-row .layer-meta {
+  max-width: 38px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:root[data-foundry-pilot='canvas'] [data-next] .canvas-stage {
+  background: var(--bg);
+  background-image: none;
+}
+:root[data-foundry-pilot] [data-next] .next-section {
+  box-shadow: none;
+  padding-block: 10px;
+}
+:root[data-foundry-pilot] [data-next] .next-section + .next-section {
+  margin-top: 4px;
+}
+:root[data-foundry-pilot] [data-next] .next-section-head strong {
+  font: 600 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] [data-next] .next-section-body {
+  padding: 10px 0 6px;
+}
+:root[data-foundry-pilot] [data-next] .next-fields {
+  column-gap: 8px;
+  row-gap: 12px;
+}
+:root[data-foundry-pilot] [data-next] .next-property-label {
+  margin-bottom: 4px;
+}
+:root[data-foundry-pilot] [data-next] .next-field {
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--fd-color-boundary);
+  border-bottom-color: var(--fd-color-control);
+  background: var(--surface-2);
+  box-shadow: none;
+}
+:root[data-foundry-pilot] [data-next] .next-field:hover {
+  background: var(--surface-3);
+  border-color: var(--fd-color-control);
+}
+:root[data-foundry-pilot] [data-next] .next-field :is(input, select),
+:root[data-foundry-pilot] [data-next] :is(.next-font-trigger, .next-unit) {
+  font: 400 12px/20px var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+:root[data-foundry-pilot] [data-next] .next-field:has(input[readonly]) {
+  border-color: transparent;
+}
+:root[data-foundry-pilot] [data-next] .next-field:has([aria-invalid='true']) {
+  border-color: var(--fd-color-error);
+}
+:root[data-foundry-pilot] [data-next] .next-property.is-changed .next-field {
+  background: var(--selection-soft);
+}
+:root[data-foundry-pilot] [data-next] .next-source-dock {
+  box-shadow: inset 0 1px var(--line);
+}
+:root[data-foundry-pilot] [data-next] :is(.canvas-toolbar, #change-summary) {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+:root[data-foundry-pilot='canvas'] [data-next] .canvas-toolbar .tool-rule {
+  border-radius: 0;
+  background: var(--line);
+}
+:root[data-foundry-pilot='canvas'] [data-next] .canvas-toolbar .tool-button.is-active {
+  background: var(--selection-soft);
+  color: var(--selection-ink);
+}
+:root[data-foundry-pilot]
+  [data-next]
+  :is(.canvas-toolbar button, .next-context-select button, .next-more, .next-focus) {
+  border-radius: 4px;
+}
+:root[data-foundry-pilot]
+  :is(.next-color-picker, .next-font-picker, .foundry-select-menu, .next-connection-popover),
+:root[data-foundry-pilot] [data-next] :is(.workspace-menu, .workspace-rail) {
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] :is(.next-color-picker, .next-font-picker) {
+  padding: 16px;
+}
+:root[data-foundry-pilot] .next-color-picker header strong {
+  font: 600 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] :is(.next-color-values input, .next-font-picker input) {
+  border-radius: 6px;
+  border-color: var(--fd-color-boundary);
+  border-bottom-color: var(--fd-color-control);
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] .next-color-values input[aria-invalid='true'] {
+  border-color: var(--fd-color-error);
+}
+:root[data-foundry-pilot] [data-next] .workspace-rail .rail-button {
+  border-radius: 6px;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] [data-next] .workspace-rail .rail-button.is-active {
+  background: var(--selection-soft);
+  color: var(--selection-ink);
+}
+
+/* Focus has one owner; selection never substitutes for keyboard focus. */
+:root[data-foundry-pilot] [data-next] :is(.next-field, .search-field):focus-within {
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+  box-shadow: none;
+  border-color: transparent;
+}
+:root[data-foundry-pilot]
+  [data-next]
+  :is(.next-field, .search-field)
+  :is(input, select, button):focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+:root[data-foundry-pilot]
+  [data-next]
+  :is(button, a, .layer-row, .next-source-details):focus-visible,
+:root[data-foundry-pilot]
+  :is(.next-color-picker, .next-font-picker, .foundry-select-menu)
+  :focus-visible {
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+:root[data-foundry-pilot] [data-next] .layers-dock :is(.layer-row, .component-card):focus-visible {
+  outline-offset: -2px;
+}
+:root[data-foundry-pilot] [data-next] .next-source-details:focus-visible {
+  outline-offset: -2px;
+}
+:root[data-foundry-pilot] [data-next] .foundry-workspace-switcher:focus-visible {
+  outline-color: var(--fd-shell-focus);
+}
+@media (max-width: 1100px) {
+  :root[data-foundry-pilot] .app-shell[data-next] {
+    --layers-dock-width: 320px;
+    --dock: 268px;
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .inspector-dock {
+    width: 268px;
+  }
+  :root[data-foundry-pilot] [data-next] #canvas-detail .next-selection-size {
+    display: none;
+  }
+}
+@media (max-width: 800px) {
+  :root[data-foundry-pilot] .app-shell[data-next] {
+    --layers-dock-width: 176px;
+    --dock: 248px;
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .inspector-dock {
+    width: 248px;
+  }
+  :root[data-foundry-pilot] [data-next] .app-identity {
+    gap: 0;
+    padding: 0 8px;
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .canvas-context {
+    gap: 4px;
+    padding-inline: 8px;
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .canvas-title-group {
+    display: none;
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .context-fields {
+    min-width: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
+  :root[data-foundry-pilot] [data-next] .structure-list {
+    padding-inline: 4px;
+  }
+  :root[data-foundry-pilot] [data-next] .layer-row {
+    gap: 4px;
+  }
+}
+@media (max-width: 1050px) {
+  /* Retain the existing narrow-layout decision: Layers yields to the editor. */
+  :root[data-foundry-pilot='canvas'] [data-next] .layers-dock {
+    /* Match the shared sidebar's specificity so it cannot revive a dock whose
+       compact grid track is intentionally zero. The hidden attribute stays owned
+       by the original dock controls and still wins at every breakpoint. */
+    display: none;
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .workspace {
+    grid-template-columns: 0 0 minmax(0, 1fr) var(--dock) !important;
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .inspector-dock {
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+  }
+}
+@media (max-width: 720px) {
+  /* Keep the real Canvas usable: stack the editor below it rather than clipping
+     the product to zero width. The workspace, not the document, owns scrolling. */
+  :root[data-foundry-pilot] [data-next] .app-bar {
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+  }
+  :root[data-foundry-pilot] [data-next] .app-identity {
+    gap: 4px;
+    padding-inline: 6px;
+  }
+  :root[data-foundry-pilot] [data-next] .app-identity .live-status {
+    padding-inline: 4px;
+    gap: 4px;
+  }
+  :root[data-foundry-pilot] [data-next] .next-tabs {
+    padding-inline: 4px;
+  }
+  :root[data-foundry-pilot] [data-next] .app-actions {
+    padding-inline: 6px;
+    gap: 4px;
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .workspace {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+    overscroll-behavior: contain;
+    border-radius: 0 0 12px 12px;
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .center-workspace {
+    width: 100%;
+    min-height: 440px;
+    height: max(440px, 58dvh);
+    flex: none;
+    border-radius: 0;
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .canvas-mode {
+    position: relative;
+    height: 100%;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: 44px minmax(0, 1fr);
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .canvas-context {
+    align-items: center;
+    min-height: 44px;
+    height: 44px;
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .canvas-stage {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .inspector-dock {
+    position: relative;
+    inset: auto;
+    display: flex;
+    width: 100%;
+    height: 560px;
+    min-height: 560px;
+    flex: none;
+    border-radius: 0;
+    box-shadow: inset 0 1px var(--line);
+  }
+  :root[data-foundry-pilot='canvas'] [data-next] .canvas-toolbar {
+    bottom: 16px;
+    max-width: calc(100% - 16px);
+  }
+  :root[data-foundry-pilot] [data-next] #change-summary {
+    bottom: 64px;
+  }
+}
+@media (pointer: coarse) {
+  :root[data-foundry-pilot] [data-next] .next-field input:focus,
+  :root[data-foundry-pilot] :is(.next-color-values, .next-font-picker) input:focus {
+    font-size: 16px;
+  }
+  :root[data-foundry-pilot] [data-next] .next-field input[readonly] {
+    font-size: 12px;
+  }
+}
+@media (forced-colors: active) {
+  :root[data-foundry-pilot] [data-next] :is(.next-field, .search-field) {
+    border: 1px solid CanvasText;
+  }
+  :root[data-foundry-pilot] [data-next] .layer-row.is-selected {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+}

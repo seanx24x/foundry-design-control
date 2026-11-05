@@ -696,6 +696,7 @@ async function start(): Promise<void> {
     platform === 'web' && targetUrl
       ? `${reviewUrl}&preview=${encodeURIComponent(productUrl)}`
       : reviewUrl;
+  const ownsResources = ownsRuntime || Boolean(basicPreview) || Boolean(developmentServer);
   console.log(`Foundry session ${session.changeSet.sessionId}`);
   if (resumable) console.log('Resumed the most recent session for this project revision.');
   console.log(`Platform: ${platform}`);
@@ -708,13 +709,20 @@ async function start(): Promise<void> {
     console.log('  2. Drag a blue handle or use the inspector for exact values.');
     console.log('  3. Review the semantic mapping, then Apply with agent.');
     console.log('\nAgent handoff:');
-    console.log('  Keep this process running while you design.');
+    console.log(
+      ownsResources
+        ? '  Keep this process running while you design.'
+        : '  Keep the existing runtime process running while you design; this attachment is complete.',
+    );
     console.log('  Foundry will show “Agent is ready” only while a coding agent is listening.');
     console.log(
       '  If it is not ready, ask the agent: “Keep listening for Apply with agent requests.”',
     );
   }
   if (!has('--no-open')) await openUrl(workspaceUrl);
+  // A reused runtime keeps its own process alive. With no local services to own,
+  // an unsettled await here would exit with Node's top-level-await warning.
+  if (!ownsResources) return;
   const shutdown = async () => {
     if (ownsRuntime) await runtime.stop();
     await basicPreview?.stop();

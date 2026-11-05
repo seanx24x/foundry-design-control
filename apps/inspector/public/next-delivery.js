@@ -1,4 +1,7 @@
+import { foundryFoundationsEnabled } from './foundry-foundations.js';
 import { deliveryNarrativeReadOnly } from './workflow.js';
+import { createPilotDelivery } from './foundry-pilot-delivery.js';
+import { captureDeliveryFocus, restoreDeliveryFocus } from './delivery-focus.js';
 
 // Commands are copied for an explicit terminal action, never executed here.
 export function deliveryShellArgument(value) {
@@ -68,6 +71,7 @@ export function createNextDelivery(root, { saveNarrative, receiveSession, openRe
   review.addEventListener('click', openReview);
   foot.append(review);
   root.append(foot);
+  const pilot = foundryFoundationsEnabled() ? createPilotDelivery(root) : null;
   const tabs = [...root.querySelectorAll('[data-delivery-tab]')];
   for (const tab of tabs) {
     tab.id = `next-delivery-tab-${tab.dataset.deliveryTab}`;
@@ -90,7 +94,7 @@ export function createNextDelivery(root, { saveNarrative, receiveSession, openRe
       tabs[next].focus();
     });
   }
-  let activeKey, activeRecord, base, focus;
+  let activeKey, activeRecord, base, focus, pilotFocus;
   const drafts = new Map(),
     positions = new Map(),
     disclosures = new Map(),
@@ -100,6 +104,7 @@ export function createNextDelivery(root, { saveNarrative, receiveSession, openRe
   const readDraft = () =>
     Object.fromEntries(fields().map((field) => [field.dataset.deliveryField, field.value]));
   function capture() {
+    if (pilot) pilotFocus = captureDeliveryFocus(content);
     if (!activeKey) return;
     positions.set(
       activeKey,
@@ -160,6 +165,7 @@ export function createNextDelivery(root, { saveNarrative, receiveSession, openRe
     layout.append(context);
     const grid = detail.querySelector('.delivery-detail-grid');
     const [intent, source, risks, contexts] = [...grid.children];
+    intent.classList.add('next-delivery-intent');
     body.append(source, contexts);
     const identity = detail.querySelector(':scope > header > code');
     if (identity) {
@@ -169,11 +175,31 @@ export function createNextDelivery(root, { saveNarrative, receiveSession, openRe
     }
     for (const label of root.querySelectorAll('.eyebrow'))
       label.classList.add('next-delivery-label');
-    risks.querySelector('.eyebrow').textContent = 'Risks';
+    for (const [section, title] of [
+      [intent, 'Intent'],
+      [risks, 'Risks'],
+    ])
+      section.querySelector('.eyebrow').replaceWith(node('h3', 'next-delivery-label', title));
     const question = risks.querySelector(
       '[data-delivery-field="questions"], [data-delivery-readonly-field="questions"]',
     );
-    question?.before(node('span', 'next-delivery-label', 'Open questions'));
+    if (question) {
+      const questions = node('section', 'next-delivery-questions');
+      questions.append(node('h3', 'next-delivery-label', 'Open questions'), question);
+      risks.after(questions);
+    }
+    const criteriaLabel = detail.querySelector('.delivery-criteria .eyebrow');
+    criteriaLabel?.replaceWith(node('h3', 'next-delivery-label', 'Acceptance criteria'));
+    for (const label of detail.querySelectorAll('.delivery-validation .eyebrow'))
+      label.replaceWith(node('h3', 'next-delivery-label', label.textContent));
+    for (const [selector, title] of [
+      ['.engineering-evidence', 'Engineering evidence'],
+      ['.delivery-capture-evidence', 'Recorded screenshots'],
+    ]) {
+      const header = detail.querySelector(`${selector} > header`);
+      header?.querySelector('.eyebrow')?.remove();
+      if (header) header.querySelector('h3').textContent = title;
+    }
     for (const field of fields())
       field.setAttribute(
         'aria-label',
@@ -324,10 +350,11 @@ export function createNextDelivery(root, { saveNarrative, receiveSession, openRe
       button.setAttribute('aria-pressed', String(button.classList.contains('is-active')));
       button.title = button.querySelector('strong')?.textContent ?? '';
     }
+    pilot?.update({ tab, record: activeRecord });
     if (activeRecord && !deliveryNarrativeReadOnly(activeRecord)) {
       const draft = drafts.get(activeRecord.id);
       if (draft) for (const field of fields()) field.value = draft[field.dataset.deliveryField];
-      if (!changed && focus) {
+      if (!pilot && !changed && focus) {
         const field = fields().find((e) => e.dataset.deliveryField === focus.key);
         field?.focus({ preventScroll: true });
         field?.setSelectionRange(focus.start, focus.end);
@@ -353,6 +380,10 @@ export function createNextDelivery(root, { saveNarrative, receiveSession, openRe
     ].entries())
       e.scrollTop = positions.get(key)?.[index] ?? 0;
     syncEditor();
+    if (pilot) {
+      if (!changed) restoreDeliveryFocus(content, pilotFocus);
+      pilotFocus = null;
+    }
   }
-  return { capture, update };
+  return { capture, update, needsConnectionRender: (value) => connected !== value };
 }

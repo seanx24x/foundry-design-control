@@ -43,6 +43,18 @@ test('linked edits expand only named groups to real CSS properties', async () =>
 });
 
 const width = (value: number) => ({ property: 'width', kind: 'number', unit: 'px', value });
+test('background image keeps its native CSS and shares only with matching capabilities', () => {
+  assert.ok(inspectorStyleProperties.has('backgroundImage'));
+  const image = {
+    property: 'backgroundImage',
+    kind: 'text',
+    value: 'linear-gradient(90deg, red, blue)',
+  };
+  assert.equal(sharedInspectorControls([[image]])[0]?.value, image.value);
+  assert.equal(sharedInspectorControls([[image], [{ ...image, value: 'none' }]])[0]?.mixed, true);
+  assert.deepEqual(sharedInspectorControls([[image], []]), []);
+  assert.deepEqual(inspectorEditProperties('backgroundImage'), ['backgroundImage']);
+});
 test('shared inspector reports mixed values without replacing them with zero', () => {
   const [control] = sharedInspectorControls([[width(44)], [width(120)]]);
   assert.equal(control?.mixed, true);
@@ -53,6 +65,14 @@ test('intersection requires matching property kind and unit across every target'
   assert.deepEqual(sharedInspectorControls([[width(44)], []]), []);
   assert.deepEqual(sharedInspectorControls([[width(44)], [{ ...width(44), unit: '%' }]]), []);
   assert.deepEqual(sharedInspectorControls([[width(44)], [{ ...width(44), kind: 'text' }]]), []);
+});
+test('shared values retain authored precision only when every target agrees', () => {
+  const first = { ...width(70.2812), authoredValue: '70.293px' };
+  assert.equal(sharedInspectorControls([[first], [first]])[0]?.authoredValue, '70.293px');
+  assert.equal(
+    sharedInspectorControls([[first], [{ ...first, authoredValue: '70.29px' }]])[0]?.authoredValue,
+    undefined,
+  );
 });
 test('single-target content and font operations cannot become multi-target edits', () => {
   const items = ['textContent', 'alt', 'aria-label', 'fontFamily'].map((property) => ({

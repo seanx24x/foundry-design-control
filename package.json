@@ -1,7 +1,7 @@
 {
   "name": "foundry-design-control",
   "private": true,
-  "version": "0.2.0-beta.23",
+  "version": "0.2.0-beta.24",
   "description": "Local-first visual design control plane for coding agents",
   "packageManager": "pnpm@10.30.3",
   "engines": {
@@ -40,6 +40,7 @@
     "test:e2e": "pnpm build && node scripts/test-workspace-playwright.mjs",
     "test:next": "pnpm build && node scripts/test-next-workspace.mjs",
     "test:next:apply": "pnpm build && node scripts/test-recording-rehearsal.mjs --heading --report artifacts/next-apply/report.json",
+    "test:studio:icons": "node apps/inspector/test/foundry-pilot-icons.browser.mjs",
     "test:compatibility": "pnpm build && node scripts/test-framework-compatibility.mjs --mode workspace",
     "test:compatibility:packed": "node scripts/test-framework-compatibility.mjs --mode packed",
     "test:compatibility:registry": "node scripts/test-framework-compatibility.mjs --mode registry",
@@ -51,7 +52,7 @@
     "@types/node": "^24.0.0",
     "esbuild": "^0.25.0",
     "prettier": "^3.6.0",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   }

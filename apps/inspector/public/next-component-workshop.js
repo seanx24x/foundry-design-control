@@ -1,4 +1,5 @@
 // Next-only presentation. Commands remain owned by the acknowledged workspace bridge.
+import { foundryFoundationsEnabled } from './foundry-foundations.js';
 const escape = (value) =>
   String(value ?? '').replace(
     /[&<>"']/g,
@@ -61,6 +62,7 @@ export function nextWorkshopPresentation({
   breakpoints,
   connected,
 }) {
+  const pilot = foundryFoundationsEnabled();
   const capability = workshopCapabilities(component, connected);
   const liveDisabled = capability.live ? '' : 'disabled';
   const selectedInstance = component.elements.find((element) => element.selected);
@@ -82,11 +84,12 @@ export function nextWorkshopPresentation({
     ${
       axes.length
         ? `<div class="workshop-authoring-form">
-      <label>Variant property<select data-workshop-axis>${axes.map((axis) => `<option value="${escape(axis.id)}" ${axis.canCreate ? '' : 'disabled'}>${escape(axis.label)}${axis.canCreate ? '' : ' (read-only)'}</option>`).join('')}</select></label>
-      <label>Start from<select data-workshop-base><option value="">Current preview</option>${variants.map((variant) => `<option value="${escape(variant.id)}">${escape(variant.name)}</option>`).join('')}</select></label>
-      <label>Variant name<input data-workshop-variant-label placeholder="e.g. Danger" autocomplete="off" /></label>
-      <label>Source value<input data-workshop-variant-value placeholder="e.g. danger" autocomplete="off" /></label>
-      <p class="workshop-help">Creates a reviewed source change. Nothing is written until Apply.</p>
+      <label><span>Variant property</span><select data-workshop-axis>${axes.map((axis) => `<option value="${escape(axis.id)}" ${axis.canCreate ? '' : 'disabled'}>${escape(axis.label)}${axis.canCreate ? '' : ' (read-only)'}</option>`).join('')}</select></label>
+      <label><span>${pilot ? 'Base reference' : 'Start from'}</span><select data-workshop-base><option value="">${pilot ? 'Current live instance' : 'Current preview'}</option>${variants.map((variant) => `<option value="${escape(variant.id)}">${escape(variant.name)}</option>`).join('')}</select></label>
+      <label><span>Variant name</span><input data-workshop-variant-label placeholder="e.g. Emphasis" autocomplete="off" /></label>
+      <label><span>Source value</span><input data-workshop-variant-value placeholder="e.g. emphasis" autocomplete="off" /></label>
+      ${pilot ? '<div class="workshop-axis-summary"><span data-workshop-axis-source></span><p data-workshop-axis-values></p><p class="workshop-help">Base reference records the agent’s starting point. It does not copy gallery styling into the live instance.</p></div>' : ''}
+      <p class="workshop-help" data-workshop-authoring-status role="status">Creates a reviewed source change. Nothing is written until Apply.</p>
       <button class="primary-button" data-workshop-create-variant ${capability.canCreate ? '' : 'disabled'}>Add variant to Review</button>
     </div>`
         : `<p class="workshop-help">No writable Storybook, CVA or TypeScript variant property was discovered. Existing instances can still be inspected on Canvas.</p>`
@@ -112,13 +115,13 @@ export function nextWorkshopPresentation({
     <div class="next-workshop-properties">
       ${
         selectedVariant
-          ? `<section class="next-workshop-section">${header('Selected variant', selectedVariant.name)}<dl class="next-workshop-facts">${Object.entries(
+          ? `<section class="next-workshop-section workshop-variant-properties">${header(pilot ? 'Variant properties' : 'Selected variant', selectedVariant.name)}<dl class="next-workshop-facts">${Object.entries(
               selectedVariant.props,
             )
               .map(([key, value]) => `<div><dt>${escape(key)}</dt><dd>${escape(value)}</dd></div>`)
               .join(
                 '',
-              )}</dl><p class="workshop-help">Gallery preview only. No changes added to Review.</p></section>`
+              )}</dl><p class="workshop-help">${pilot ? 'Read-only authored properties. Selecting a gallery preview does not add a Review change.' : 'Gallery preview only. No changes added to Review.'}</p></section>`
           : ''
       }
       ${!connected ? '<p class="next-workshop-offline" role="status">Preview offline. Your inputs are kept. Reconnect before previewing or staging a change.</p>' : ''}

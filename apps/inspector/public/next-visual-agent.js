@@ -1,4 +1,6 @@
+import { foundryFoundationsEnabled } from './foundry-foundations.js';
 import { visualAgentResponsePresentation } from './workflow.js';
+import { mountPilotVisualAgent, refinePilotVisualAgent } from './foundry-pilot-agent.js';
 
 export function agentConnectionTitle(connected, listener) {
   if (!connected) return 'Live preview disconnected';
@@ -22,6 +24,20 @@ export function agentRequestLabel(request) {
 export function agentCanSend({ connected, contextCount, prompt, busy }) {
   return Boolean(connected && contextCount && prompt.trim() && !busy);
 }
+// Attachment identity only, not a claim that measurements or source are unchanged.
+export function agentAttachmentKey(context = {}) {
+  return JSON.stringify([
+    (context.targets ?? []).map((target) => target.selector ?? target.id).sort(),
+    context.region
+      ? [context.region.x, context.region.y, context.region.width, context.region.height]
+      : null,
+    context.viewport?.width,
+    context.viewport?.height,
+    context.breakpoint ?? 'current',
+    context.theme ?? 'current',
+    context.state ?? 'current',
+  ]);
+}
 export function agentSourceLabel(source) {
   if (typeof source === 'string') return source;
   return source?.file
@@ -36,6 +52,7 @@ const node = (tag, className = '', text) => {
 };
 
 export function createNextVisualAgent(root) {
+  const pilot = foundryFoundationsEnabled();
   root.classList.add('next-visual-agent');
   root.dataset.nextIconScope = '';
   root.querySelector('.mode-head h1').textContent = 'Visual agent';
@@ -93,11 +110,16 @@ export function createNextVisualAgent(root) {
   sendRow.append(hint, ask);
   const error = node('p', 'next-agent-error');
   error.setAttribute('role', 'alert');
+  const attachmentNotice = node('p', 'next-agent-attachment-change');
+  attachmentNotice.setAttribute('role', 'status');
+  const actionStatus = node('p', 'next-agent-action-status');
+  actionStatus.setAttribute('role', 'status');
   form.prepend(connectionNotice, composerHead);
   form.append(error, sendRow);
   prompt.rows = 3;
   prompt.placeholder = 'What would you like to improve in the attached selection?';
   main.append(mainHeader, conversation, form);
+  form.append(attachmentNotice, actionStatus);
   const right = root.querySelector('.visual-agent-compose');
   right.querySelector('header').replaceChildren(node('h2', '', 'Visual context'));
   const scroll = node('div', 'next-agent-context-scroll');
@@ -128,6 +150,7 @@ export function createNextVisualAgent(root) {
     ),
   );
   root.append(footer);
+  if (pilot) mountPilotVisualAgent(root);
   let model,
     savedScroll,
     proposalDetails = new Set();
@@ -150,6 +173,7 @@ export function createNextVisualAgent(root) {
     connectionNotice.dataset.state = !connected ? 'offline' : listener ? 'connected' : 'waiting';
     connectionHelp.hidden = !connected || listener;
     live.textContent = copy;
+    if (pilot) refinePilotVisualAgent(root, model);
     hint.textContent = !connected
       ? 'Preview offline. Reconnect to send.'
       : !model.contextCount
@@ -158,6 +182,20 @@ export function createNextVisualAgent(root) {
     sendState();
   }
   prompt.addEventListener('input', sendState);
+  prompt.setAttribute('aria-keyshortcuts', 'Meta+Enter Control+Enter');
+  prompt.addEventListener('keydown', (event) => {
+    if (
+      event.isComposing ||
+      event.key !== 'Enter' ||
+      !(event.metaKey || event.ctrlKey) ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return;
+    event.preventDefault();
+    sendState();
+    if (!ask.disabled) ask.click();
+  });
   function capture() {
     savedScroll = {
       requestId: model?.request?.id,
@@ -179,8 +217,24 @@ export function createNextVisualAgent(root) {
     status.textContent = String(requests.length);
     updateConnection({ connected, listener });
     composeLabel.textContent = request ? 'Ask another question' : 'New question';
-    error.textContent = failure || '';
-    error.hidden = !failure;
+    error.textContent = failure || next.actionError || '';
+    error.hidden = !error.textContent;
+    attachmentNotice.hidden =
+      !request || agentAttachmentKey(request.context) === agentAttachmentKey(next.liveContext);
+    attachmentNotice.textContent = attachmentNotice.hidden
+      ? ''
+      : 'Current attachments or viewport differ from this question. Sending uses the current attachments; captured context above stays unchanged.';
+    actionStatus.textContent = next.proposalBusy
+      ? 'Updating request or direction… Wait for acknowledgement before trying again.'
+      : '';
+    actionStatus.hidden = !next.proposalBusy;
+    conversation.setAttribute('aria-busy', String(Boolean(next.proposalBusy)));
+    for (const button of root.querySelectorAll(
+      '[data-agent-proposal-action], [data-agent-retry]',
+    )) {
+      button.disabled ||= Boolean(next.proposalBusy);
+      if (next.proposalBusy) button.setAttribute('aria-busy', 'true');
+    }
     root.querySelector('#visual-agent-region').disabled = !connected || busy;
     root.querySelector('#visual-agent-clear-region').disabled ||= !connected || busy;
     for (const button of root.querySelectorAll('[data-visual-agent-thread]')) {
@@ -237,6 +291,7 @@ export function createNextVisualAgent(root) {
       details.append(node('summary', '', 'Reasoning, values and verification'), grid);
       proposal.querySelector('footer').before(details);
     }
+    if (pilot) refinePilotVisualAgent(root, model);
     sendState();
     if (savedScroll) {
       conversation.scrollTop = savedScroll.requestId === request?.id ? savedScroll.conversation : 0;

@@ -144,6 +144,7 @@
 }
 [data-next] .next-delivery .delivery-stage {
   padding: 24px;
+  container: delivery-record / inline-size;
 }
 [data-next] .next-delivery :is(.delivery-record-detail, .delivery-document) {
   max-width: none;
@@ -176,6 +177,7 @@
 }
 [data-next] .next-delivery .next-delivery-label {
   display: block;
+  margin: 0;
   font: 600 12px/20px var(--sans);
   text-transform: none;
   letter-spacing: 0;
@@ -185,8 +187,14 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 24px;
   padding: 24px 0;
+  align-items: start;
 }
-[data-next] .next-delivery .delivery-detail-grid > section {
+[data-next] .next-delivery .delivery-detail-grid > section,
+[data-next]
+  .next-delivery
+  .delivery-record-detail[data-readonly='true']
+  .delivery-detail-grid
+  > section {
   min-height: 0;
   padding: 0;
   border: 0;
@@ -206,6 +214,11 @@
 }
 [data-next] .next-delivery .delivery-narrative-value {
   margin: 0;
+  max-width: 80ch;
+}
+[data-next] .next-delivery .next-delivery-intent,
+[data-next] .next-delivery .next-delivery-note-actions {
+  grid-column: 1 / -1;
 }
 [data-next] .next-delivery .next-delivery-context {
   overflow: auto;
@@ -285,6 +298,11 @@
 [data-next] .next-delivery .delivery-criteria > header {
   flex-wrap: wrap;
   gap: 8px;
+  margin-bottom: 12px;
+}
+[data-next] .next-delivery .delivery-criteria > header strong {
+  color: var(--muted);
+  font: 400 12px/20px var(--sans);
 }
 [data-next] .next-delivery .delivery-criteria > div {
   grid-template-columns: minmax(0, 1fr);
@@ -296,6 +314,9 @@
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
+}
+[data-next] .next-delivery .delivery-criteria article svg {
+  margin-top: 2px;
 }
 [data-next] .next-delivery .delivery-criteria article:last-child {
   border-bottom: 0;
@@ -343,6 +364,12 @@
   line-height: 20px;
   overflow-wrap: anywhere;
 }
+[data-next] .next-delivery .delivery-validation p svg {
+  margin-top: 2px;
+}
+[data-next] .next-delivery .delivery-validation :is(p span, p small) {
+  min-width: 0;
+}
 [data-next] .next-delivery .engineering-evidence,
 [data-next] .next-delivery .delivery-capture-evidence {
   margin: 0;
@@ -351,9 +378,11 @@
 }
 [data-next] .next-delivery :is(.engineering-evidence, .delivery-capture-evidence) h3 {
   font: 600 13px/20px var(--sans);
-  margin: 4px 0 8px;
+  margin: 0;
 }
-[data-next] .next-delivery .engineering-evidence > header {
+[data-next] .next-delivery :is(.engineering-evidence, .delivery-capture-evidence) > header {
+  display: grid;
+  gap: 8px;
   padding: 0 0 16px;
 }
 [data-next] .next-delivery .delivery-capture-image {
@@ -372,6 +401,42 @@
   font: 400 12px/20px var(--sans);
   color: var(--muted);
 }
+[data-next] .next-delivery :is(.engineering-evidence, .delivery-capture-evidence) > header p {
+  margin: 0;
+  max-width: 80ch;
+}
+[data-next] .next-delivery .delivery-capture-group {
+  margin: 0;
+}
+[data-next] .next-delivery .delivery-capture-group + .delivery-capture-group {
+  margin-top: 24px;
+}
+[data-next] .next-delivery .delivery-capture-group > p {
+  margin: 0 0 12px;
+}
+[data-next] .next-delivery .delivery-capture-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin: 0;
+}
+[data-next] .next-delivery .delivery-capture-grid figure {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+[data-next] .next-delivery .delivery-capture-grid figcaption {
+  display: grid;
+  gap: 4px;
+}
+[data-next] .next-delivery .delivery-capture-grid figcaption strong {
+  font: 600 12px/20px var(--sans);
+}
+[data-next] .next-delivery .delivery-capture-grid :is(small, .delivery-capture-image) {
+  margin: 0;
+}
+[data-next] .next-delivery .delivery-capture-unavailable {
+  margin: 0;
+}
 [data-next] .next-delivery .engineering-evidence-grid {
   overflow: auto;
 }
@@ -383,14 +448,54 @@
 }
 [data-next] .next-delivery .engineering-evidence :is(th, td) {
   padding: 12px 8px;
+  border-top: 0;
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
   font: 400 12px/20px var(--sans);
   overflow-wrap: anywhere;
 }
+[data-next] .next-delivery .engineering-evidence :is(th, td):first-child {
+  padding-left: 0;
+}
+[data-next] .next-delivery .engineering-evidence :is(th, td):last-child {
+  padding-right: 0;
+}
+[data-next] .next-delivery .engineering-evidence tbody tr:last-child td {
+  border-bottom: 0;
+}
 [data-next] .next-delivery .engineering-evidence td :is(code, small, strong) {
   display: block;
+}
+/* One owner for each section boundary. The table never adds a second rule
+   immediately before the screenshot section. Keep legacy/other views scoped out. */
+[data-next] .next-delivery .delivery-record-detail > header {
+  border-bottom: 0;
+}
+[data-next]
+  .next-delivery
+  .delivery-record-detail
+  > :is(
+    .delivery-detail-grid,
+    .delivery-criteria,
+    .delivery-validation,
+    .engineering-evidence,
+    .delivery-capture-evidence
+  ) {
+  margin: 0;
+  padding: 24px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+[data-next] .next-delivery .delivery-record-detail > :last-child {
+  padding-bottom: 0;
+}
+@container delivery-record (min-width: 600px) {
+  [data-next]
+    .next-delivery
+    :is(.delivery-detail-grid, .delivery-validation, .delivery-capture-grid) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 [data-next] .next-delivery .delivery-document pre {
   min-height: 0;

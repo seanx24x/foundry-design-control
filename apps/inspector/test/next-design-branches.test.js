@@ -6,10 +6,16 @@ import {
   branchPreviewKey,
   branchPreviewScale,
   branchReviewableChanges,
+  branchNoteLabel,
 } from '../public/next-design-branches.js';
 const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
 const helper = readFileSync(new URL('../public/next-design-branches.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/next-design-branches.css', import.meta.url), 'utf8');
+test('direction notes distinguish unsaved text without claiming source changes', () => {
+  assert.equal(branchNoteLabel('', undefined), '0 / 280 · Saved note');
+  assert.equal(branchNoteLabel('Why', ''), '3 / 280 · Unsaved note');
+  assert.equal(branchNoteLabel('Why', 'Why'), '3 / 280 · Saved note');
+});
 test('empty and terminal-only directions cannot enter Review', () => {
   assert.equal(branchReviewableChanges(null).length, 0);
   assert.equal(branchReviewableChanges({ changes: [] }).length, 0);

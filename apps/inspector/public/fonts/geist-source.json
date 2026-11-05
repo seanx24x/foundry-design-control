@@ -1,0 +1,132 @@
+{
+  "family": "Geist Sans",
+  "repo": "vercel/geist-font",
+  "commit": "2e554ff2ea3979b63afe770af6424eb8b9490a74",
+  "sourcePath": "fonts/Geist/webfonts/Geist[wght].woff2",
+  "source": "https://raw.githubusercontent.com/vercel/geist-font/2e554ff2ea3979b63afe770af6424eb8b9490a74/fonts/Geist/webfonts/Geist%5Bwght%5D.woff2",
+  "file": "assets/geist-sans.woff2",
+  "bytes": 69760,
+  "sha256": "2ffebe993e969069a9789d15164b7715d42491b5835516c5e3b935d5f81b05f1",
+  "modification": "None. Original official WOFF2 bytes preserved.",
+  "license": {
+    "name": "SIL Open Font License 1.1",
+    "file": "assets/geist-OFL.txt",
+    "sha256": "1db24a9b918a54c701b784548877b3d5ba9c13400b328e5e585bf633acd761da",
+    "note": "Both complete official notices are retained because their copyright headers differ. No Reserved Font Names are explicitly named in either notice header; the standard OFL reserved-name clauses remain intact.",
+    "notices": [
+      {
+        "path": "OFL.txt",
+        "source": "https://raw.githubusercontent.com/vercel/geist-font/2e554ff2ea3979b63afe770af6424eb8b9490a74/OFL.txt",
+        "sha256": "c683bfbcc7e087f5d37a54ef628f10387c451a83ddc459b151403a164ac46c90",
+        "reservedFontNamesInHeader": []
+      },
+      {
+        "path": "LICENSE.txt",
+        "source": "https://raw.githubusercontent.com/vercel/geist-font/2e554ff2ea3979b63afe770af6424eb8b9490a74/LICENSE.txt",
+        "sha256": "930853ee1daa68554d9e35c8a9175affb74f699fad9a5da6ee5ebe76379d9137",
+        "reservedFontNamesInHeader": []
+      }
+    ]
+  },
+  "metadata": {
+    "inspector": "fontTools 4.60.2",
+    "family": "Geist",
+    "legacyFamily": "Geist",
+    "style": "Regular",
+    "fullName": "Geist Regular",
+    "postscriptName": "Geist-Regular",
+    "version": "Version 1.800",
+    "copyright": "Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font)",
+    "licenseDescription": "This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://openfontlicense.org",
+    "licenseUrl": "https://openfontlicense.org",
+    "isFixedPitch": false,
+    "italicAngle": 0,
+    "italicSelectionBit": false,
+    "axes": [
+      {
+        "tag": "wght",
+        "min": 100,
+        "default": 400,
+        "max": 900
+      }
+    ],
+    "unitsPerEm": 1000,
+    "glyphCount": 975,
+    "encodedCodepointCount": 728,
+    "coverage": {
+      "basicLatinPrintableMissing": [],
+      "latin1SupplementMissing": ["U+00AD"],
+      "latinExtendedAMissing": [
+        "U+0114",
+        "U+0115",
+        "U+012C",
+        "U+012D",
+        "U+0138",
+        "U+013F",
+        "U+0140",
+        "U+0149",
+        "U+014E",
+        "U+014F",
+        "U+017F"
+      ]
+    },
+    "openTypeFeatures": {
+      "GSUB": [
+        "aalt",
+        "case",
+        "ccmp",
+        "dlig",
+        "dnom",
+        "frac",
+        "liga",
+        "locl",
+        "numr",
+        "ordn",
+        "pnum",
+        "sinf",
+        "ss01",
+        "ss02",
+        "ss03",
+        "ss04",
+        "ss05",
+        "ss06",
+        "ss07",
+        "ss08",
+        "ss09",
+        "ss10",
+        "ss11",
+        "subs",
+        "sups",
+        "tnum"
+      ],
+      "GPOS": ["kern", "mark", "mkmk"]
+    },
+    "tabularNumerals": {
+      "featurePresent": true,
+      "digitGlyphsAfterTnum": [
+        "zero.tf",
+        "one.tf",
+        "two.tf",
+        "three.tf",
+        "four.tf",
+        "five.tf",
+        "six.tf",
+        "seven.tf",
+        "eight.tf",
+        "nine.tf"
+      ],
+      "advancesAtDefaultWeight": [600, 600, 600, 600, 600, 600, 600, 600, 600, 600],
+      "equalAdvanceAtDefaultWeight": true
+    }
+  },
+  "cssRecommendation": {
+    "family": "Foundry Geist",
+    "style": "normal",
+    "weight": "100 900",
+    "display": "swap",
+    "source": "./assets/geist-sans.woff2",
+    "format": "woff2",
+    "numericFeature": "tabular-nums"
+  },
+  "scope": "Isolated contained-workspace font comparison. Google Sans files and application source remain unchanged."
+}

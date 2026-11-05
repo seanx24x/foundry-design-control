@@ -1,0 +1,511 @@
+/* Recipes body only. Shared sidebar owns the workspace and responsive rail grid. */
+:root[data-foundry-pilot='recipes'] [data-next] .foundry-recipe-interior {
+  --mono: var(--fd-font-code);
+  --amber: var(--fd-color-warning);
+}
+:root[data-foundry-pilot='recipes'] [data-next] .foundry-recipe-interior .mode-head p {
+  display: none;
+}
+:root[data-foundry-pilot='recipes'] [data-next] .foundry-recipe-interior .mode-actions button {
+  height: 28px;
+  min-height: 28px;
+  padding-inline: 10px;
+  border-radius: var(--fd-radius-control);
+}
+:root[data-foundry-pilot='recipes'] [data-next] .foundry-recipe-interior .visual-recipe-row {
+  height: auto;
+  min-height: 52px;
+  padding-block: 6px;
+  gap: 8px;
+}
+:root[data-foundry-pilot='recipes'] [data-next] .foundry-recipe-interior .visual-recipe-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  :is(.foundry-recipe-library-icon, .foundry-recipe-target-icon, .foundry-recipe-chevron) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  flex: none;
+}
+:root[data-foundry-pilot='recipes'] [data-next] .foundry-recipe-interior .next-recipe-scroll {
+  container-name: recipe-detail;
+}
+:root[data-foundry-pilot='recipes'] [data-next] .foundry-recipe-interior .next-recipe-content {
+  gap: 0;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .next-recipe-content
+  > section
+  + section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .foundry-recipe-section-title {
+  margin: 0 0 8px;
+  font: 600 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='recipes'] [data-next] .foundry-recipe-interior .visual-recipe-overview p {
+  font: 400 12px/20px var(--sans);
+  max-width: 68ch;
+}
+:root[data-foundry-pilot='recipes'] [data-next] .foundry-recipe-interior .visual-recipe-pills {
+  gap: 6px;
+}
+:root[data-foundry-pilot='recipes'] [data-next] .foundry-recipe-interior .visual-recipe-pills span {
+  border: 1px solid var(--line);
+  border-radius: var(--fd-radius-compact);
+  padding: 1px 7px;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  :is(.visual-recipe-mapping, .visual-recipe-targets)
+  > header {
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  gap: 8px 16px;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  :is(.visual-recipe-mapping, .visual-recipe-targets)
+  > header
+  strong {
+  font: 600 12px/20px var(--sans);
+  overflow-wrap: anywhere;
+}
+:root[data-foundry-pilot='recipes'] [data-next] .foundry-recipe-interior .recipe-compatibility {
+  color: var(--muted);
+  padding: 2px 8px;
+  background: var(--surface-2) !important;
+  border-radius: var(--fd-radius-compact);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  [data-mapping-state='attention']
+  .recipe-compatibility {
+  color: var(--fd-color-warning);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  :is(.visual-recipe-map-columns, .visual-recipe-map-list article) {
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 1fr) 16px minmax(0, 1.25fr);
+  gap: 16px;
+  padding: 16px 12px;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-map-columns {
+  padding-block: 8px;
+  background: var(--surface-2);
+  border-radius: var(--fd-radius-control);
+  border: 0;
+  font-weight: 400;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-map-list
+  article {
+  align-items: start;
+  min-height: 72px;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-map-list
+  article:last-child {
+  border-bottom: 0;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  :is(.foundry-recipe-current, .foundry-recipe-proposed, .foundry-recipe-property) {
+  display: grid;
+  gap: 4px;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-map-list
+  article
+  code {
+  font: 400 12px/20px var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  :is(.foundry-recipe-property small, .foundry-recipe-value-label) {
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .foundry-recipe-value-label {
+  display: none;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  [data-excluded='true']
+  .foundry-recipe-proposed
+  > .foundry-recipe-value-label {
+  display: block;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  [data-excluded='true']
+  .foundry-recipe-proposed
+  code {
+  color: var(--muted);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-mapping
+  > footer {
+  border-top: 1px solid var(--line);
+  padding: 16px 0 0;
+  min-height: 48px;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  :is(
+    .visual-recipe-mapping > footer button,
+    .visual-recipe-capture-form > button,
+    .next-recipe-actions button,
+    .visual-recipe-empty button
+  ) {
+  min-height: 32px;
+  height: auto;
+  border-radius: var(--fd-radius-control);
+  flex: none;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-targets
+  button {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  text-align: left;
+  min-height: 84px;
+  padding: 12px;
+  gap: 2px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--fd-radius-control);
+  background: transparent;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-targets
+  button:nth-child(odd) {
+  border-right: 1px solid var(--line);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-targets
+  button
+  > code {
+  grid-column: 2;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-targets
+  button:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .next-recipe-property-scroll {
+  padding-top: 0;
+  gap: 0;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .next-recipe-property-scroll
+  > * {
+  margin: 0;
+  padding: 20px 0;
+  border: 0;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .next-recipe-property-scroll
+  > *
+  + * {
+  border-top: 1px solid var(--line);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .foundry-recipe-capture-context {
+  display: grid;
+  gap: 12px;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .foundry-recipe-capture-context
+  h3 {
+  margin: 0;
+  font: 600 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .foundry-recipe-capture-context
+  > p {
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-capture-form {
+  gap: 12px;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-capture-form
+  > label:has(input) {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: var(--fd-control-height);
+  padding: 0 10px;
+  border-radius: var(--fd-radius-control);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-capture-form
+  > label
+  input {
+  height: var(--fd-control-height);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-capture-form
+  textarea {
+  min-height: 80px;
+  padding: 8px 10px;
+  resize: vertical;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-capture-form
+  > label:has(input:focus-visible) {
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-capture-form
+  input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  :is(.recipe-saved-value, .recipe-mapping-detail) {
+  display: block;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+  overflow-wrap: anywhere;
+}
+:root[data-foundry-pilot='recipes'] [data-next] .foundry-recipe-interior .recipe-action-attention {
+  color: var(--fd-color-warning);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  :is(.visual-recipe-create input, .visual-recipe-create textarea) {
+  border: 1px solid transparent;
+  border-bottom-color: var(--line-strong);
+  background: var(--surface-2);
+  border-radius: var(--fd-radius-control);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  :is(.visual-recipe-create input, .visual-recipe-create textarea):hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .next-recipe-details
+  > summary::after {
+  display: none;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .next-recipe-details[open]
+  .foundry-recipe-chevron {
+  transform: rotate(180deg);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-empty.is-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+  min-height: 0;
+  padding: 16px 0;
+  gap: 12px;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-empty.is-stage
+  > strong {
+  color: var(--ink);
+  font: 550 18px/26px var(--sans);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .visual-recipe-empty.is-stage
+  > p {
+  max-width: 60ch;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .foundry-recipe-empty-path {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  width: 100%;
+  margin: 16px 0 0;
+  padding: 24px 0 0;
+  border-top: 1px solid var(--line);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .foundry-recipe-empty-path
+  dt {
+  font: 600 12px/20px var(--sans);
+  margin-bottom: 4px;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .foundry-recipe-empty-path
+  dd {
+  margin: 0;
+  color: var(--muted);
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  :is(button, input, textarea, summary):focus-visible {
+  outline: var(--fd-focus-width) solid var(--selection);
+  outline-offset: var(--fd-focus-offset);
+  box-shadow: none;
+}
+:root[data-foundry-pilot='recipes']
+  [data-next]
+  .foundry-recipe-interior
+  .search-field
+  input:focus-visible {
+  outline: none;
+}
+@container recipe-detail (max-width: 600px) {
+  :root[data-foundry-pilot='recipes']
+    [data-next]
+    .foundry-recipe-interior
+    .visual-recipe-map-columns {
+    display: none;
+  }
+  :root[data-foundry-pilot='recipes']
+    [data-next]
+    .foundry-recipe-interior
+    .visual-recipe-map-list
+    article {
+    grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr);
+    gap: 8px 12px;
+    padding-inline: 0;
+  }
+  :root[data-foundry-pilot='recipes']
+    [data-next]
+    .foundry-recipe-interior
+    .foundry-recipe-property {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+  }
+  :root[data-foundry-pilot='recipes']
+    [data-next]
+    .foundry-recipe-interior
+    .foundry-recipe-value-label {
+    display: block;
+  }
+  :root[data-foundry-pilot='recipes']
+    [data-next]
+    .foundry-recipe-interior
+    .foundry-recipe-empty-path {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}

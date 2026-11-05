@@ -1,15 +1,60 @@
 import activityIcon from '@iconify-icons/keyline-icons/activity';
 import { resolveWorkspaceUI } from './workspace-ui.js';
-import { recoverablePreviewChanges, previewRecoveryBlocked } from './preview-recovery.js';
+import {
+  recoverablePreviewChanges,
+  previewRecoveryBlocked,
+  previewReconnectBlocked,
+} from './preview-recovery.js';
 import { createNextWorkspace } from './next-workspace.js';
+import { mountFoundryPilot, refinePilotIcons, foundryPilotActive } from './foundry-pilot.js';
+import { pilotConnectionHeadline, refinePilotPreviewFallback } from './foundry-pilot-readiness.js';
+import {
+  refinePilotCommandPalette,
+  restorePilotDialogFocus,
+  showPilotFeedback,
+} from './foundry-pilot-overlays.js';
+import {
+  refinePilotReview,
+  capturePilotApplyState,
+  refinePilotApply,
+} from './foundry-pilot-review.js';
 import { createNextLayerTree } from './next-layer-tree.js';
+import { captureReviewEditState, restoreReviewEditState } from './review-edit-state.js';
 let nextLayerTree = null;
 import { createWorkshopGallery } from './next-workshop-gallery.js';
 import { createNextDesignSystem } from './next-design-system.js';
+import {
+  workshopCreateKey,
+  workshopCreatedChange,
+  workshopAuthoringModel,
+} from './workshop-controls.js';
+import { systemPromotionState } from './design-system-controls.js';
 import { createNextMotionStudio } from './next-motion-studio.js';
+import {
+  MOTION_CURVE_PRESETS,
+  matchingMotionPreset,
+  motionPresetPath,
+  motionPresetParameters,
+  motionTimingValue,
+  motionNumericValid,
+  bindMotionCurveHandle,
+} from './motion-studio-controls.js';
 import { createNextTypographyStudio } from './next-typography-studio.js';
+import {
+  typographyScaleDraft,
+  typographyControlError,
+  typographyControlUnit,
+} from './typography-studio-controls.js';
 import { createNextRecipes } from './next-recipes.js';
-import { createNextStateWorkbench } from './next-state-workbench.js';
+import {
+  recipeTargetKey,
+  recipeCaptureModel,
+  recipeApplyModel,
+  recipeOutcomeMessage,
+  recipeNewCapture,
+} from './recipe-controls.js';
+import { createNextStateWorkbench, stateConditionKey } from './next-state-workbench.js';
+import { responsiveCaptureReady, responsiveComparisonMatches } from './responsive-controls.js';
 import { createNextResponsiveLab } from './next-responsive-lab.js';
 import { createNextStressLab } from './next-stress-lab.js';
 import { createNextVisualAgent } from './next-visual-agent.js';
@@ -21,6 +66,8 @@ let deliveryActionError = '';
 let nextDesignMemory = null;
 let memoryCaptureBusy = false;
 let memoryCaptureError = '';
+let memoryActionBusy = false;
+let memoryActionError = '';
 import {
   createNextDesignBranches,
   branchComparisonDirections,
@@ -35,6 +82,7 @@ let visualAgentNewQuestion = false;
 let visualAgentSubmitting = false;
 let visualAgentSubmitError = '';
 let visualAgentProposalBusy = false;
+let visualAgentActionError = '';
 let nextStressLab = null;
 let stressActionBusy = '';
 let stressActionError = '';
@@ -169,6 +217,7 @@ let bridgeBranchSynced = false;
 let bridgeBranchSyncing = false;
 let previewRecoveryGeneration = 0;
 let previewRecoveryFailed = false;
+let previewHeartbeatLost = false;
 let previewConnectionTimer;
 let bridgeInterfaceThemeSynced = false;
 let bridgeInterfaceThemeSyncing = false;
@@ -212,6 +261,9 @@ let stateWorkbenchSnapshot = null;
 let stateWorkbenchLastResult = null;
 let stateWorkbenchRequestRevision = 0;
 let stateWorkbenchApplying = false;
+let stateWorkbenchGeneration = 0;
+let stateWorkbenchReloading = false;
+let stateWorkbenchResizeObserver = null;
 let stateWorkbenchRequestedContext = null;
 let stateWorkbenchContext = {
   viewport: 'current',
@@ -225,18 +277,27 @@ let cancelConfirmationUntil = 0;
 let workshopComponentId = '';
 let workshopRenderDeferred = false;
 let workshopVariantId = '';
+const workshopAuthoringPending = new Set();
+const workshopAuthoringErrors = new Map();
+const workshopAuthoringReceipts = new Map();
 let workshopStateId = 'current';
 let responsiveCustomWidth = 1280;
 let responsiveContainerWidth = 480;
 let responsiveScrubTarget = 'viewport';
 let responsiveStressMode = 'none';
 let responsiveEditScope = 'breakpoint';
+let responsiveScopePending = false;
+let responsiveScopeError = '';
 let responsiveActiveViewport = 'current';
 let designSystemTokenId = '';
 let designSystemCategory = 'all';
 let designSystemView = 'tokens';
 let designSystemPromotionId = '';
+const designSystemPendingPromotions = new Set();
+const designSystemPromotionErrors = new Map();
+const designSystemPromotionReceipts = new Map();
 let motionStudioId = '';
+let motionStudioSelectionId = '';
 let motionStudioInteracting = false;
 let motionStudioResetPropertiesScroll = false;
 let motionComparisonFrame = 0;
@@ -263,7 +324,13 @@ let stressSeverity = 'all';
 let stressGroupBy = 'severity';
 let stressSelectionInitialized = false;
 let visualRecipeId = '';
+let recipeCapturePendingSelectionId = '';
 let visualRecipeSearch = '';
+let recipeOperationPending = null;
+let recipeCaptureNeedsRecheck = false;
+let recipeCaptureFeedback = '';
+const recipeMappingRechecks = new Set();
+const recipeMappingFeedback = new Map();
 let decisionMemoryId = '';
 let decisionMemorySearch = '';
 let decisionMemoryFilter = 'all';
@@ -328,6 +395,7 @@ function renderIcons(root = document) {
     if (icon) node.outerHTML = iconSvg(icon);
   });
   if (params.get('ui') === 'next') refineNextIcons(root);
+  refinePilotIcons(root);
 }
 
 function closeCustomSelect({ restoreFocus = true } = {}) {
@@ -514,6 +582,8 @@ function escapeAttribute(value) {
 
 function toast(message) {
   const element = $('#toast');
+  clearTimeout(toastTimer);
+  if (showPilotFeedback(message, element)) return;
   element.textContent = message;
   element.classList.add('is-visible');
   clearTimeout(toastTimer);
@@ -521,11 +591,12 @@ function toast(message) {
 }
 
 function renderConnectionStatus() {
+  syncPilotHeartbeatRecovery();
   nextWorkspace?.connectionChanged();
   const status = $('#live-status');
   if (!status) return;
   const label = $('span', status);
-  const next = bridgeConnected
+  let next = bridgeConnected
     ? {
         state: 'live',
         label: 'Live',
@@ -552,6 +623,7 @@ function renderConnectionStatus() {
             label: 'Connecting',
             title: 'Connecting to the local Foundry runtime',
           };
+  next = pilotConnectionHeadline(next, { connected: bridgeConnected, runtimeConnected });
   const connectionChanged = status.dataset.status !== next.state;
   status.dataset.status = next.state;
   status.title = next.title;
@@ -561,7 +633,12 @@ function renderConnectionStatus() {
     renderComponentWorkshop();
   }
   if (connectionChanged && nextDesignMemory && activeMode === 'memory') renderMemory();
-  if (nextDelivery && activeMode === 'delivery') renderDelivery();
+  if (
+    nextDelivery &&
+    activeMode === 'delivery' &&
+    (!foundryPilotActive() || nextDelivery.needsConnectionRender(runtimeConnected))
+  )
+    renderDelivery();
 }
 
 async function api(path, options = {}) {
@@ -759,6 +836,7 @@ function markFrameSeen(source) {
   }
   const stateFrame = $('#state-live-preview');
   if (source === stateFrame?.contentWindow) {
+    if (stateWorkbenchReloading) return;
     stateWorkbenchConnected = true;
     updateStateWorkbenchPresentation();
     return;
@@ -788,6 +866,7 @@ function markFrameOffline(source, reason = 'The preview stopped responding.') {
   }
   if (source === preview.contentWindow) {
     bridgeConnected = false;
+    if (foundryPilotActive() && bridgeState) previewHeartbeatLost = true;
     renderConnectionStatus();
     return;
   }
@@ -964,7 +1043,7 @@ function setDockVisibility(name, visible) {
   });
   const layersVisible = !$('#layers-dock').hidden;
   const inspectorVisible = !$('#inspector-dock').hidden;
-  const columns = `minmax(var(--studio-nav-width, 48px), max-content) ${layersVisible ? 'var(--dock)' : '0px'} minmax(0,1fr) ${inspectorVisible ? 'var(--dock)' : '0px'}`;
+  const columns = `minmax(var(--studio-nav-width, 48px), max-content) ${layersVisible ? 'var(--layers-dock-width, var(--dock))' : '0px'} minmax(0,1fr) ${inspectorVisible ? 'var(--dock)' : '0px'}`;
   $('.workspace').style.gridTemplateColumns = columns;
 }
 
@@ -1333,6 +1412,75 @@ function renderComponentWorkshop() {
   }
   upgradeSelects(detail);
   restoreWorkshopDraft(workshop, component.key, syncCustomSelect);
+  let authoringControls;
+  if (isNext && foundryPilotActive()) {
+    const form = $('.workshop-authoring-form', detail);
+    if (form) {
+      const fields = {
+        axisId: $('[data-workshop-axis]', form),
+        baseVariantId: $('[data-workshop-base]', form),
+        label: $('[data-workshop-variant-label]', form),
+        value: $('[data-workshop-variant-value]', form),
+      };
+      const read = () =>
+        Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.value]));
+      const branchId = activeSession?.activeDesignBranchId ?? 'main';
+      const pendingKey = JSON.stringify([branchId, component.key]);
+      const sync = () => {
+        const draft = read(),
+          changes = activeDesignDirection()?.changes ?? [];
+        for (const [key, receipt] of workshopAuthoringReceipts)
+          if (
+            receipt.branchId === branchId &&
+            receipt.componentKey === component.key &&
+            workshopCreatedChange(component, receipt.draft, changes, true)
+          )
+            workshopAuthoringReceipts.delete(key);
+        const model = workshopAuthoringModel(component, draft, changes, {
+          connected: bridgeConnected,
+          pending: workshopAuthoringPending.has(pendingKey),
+          acknowledged: workshopAuthoringReceipts.has(
+            workshopCreateKey(component, draft, branchId),
+          ),
+        });
+        const button = $('[data-workshop-create-variant]', form);
+        button.disabled = model.disabled;
+        button.textContent = model.label;
+        button.setAttribute('aria-busy', String(workshopAuthoringPending.has(pendingKey)));
+        const status = $('[data-workshop-authoring-status]', form);
+        status.textContent = model.staged
+          ? model.message
+          : workshopAuthoringErrors.get(pendingKey) || model.message;
+        status.classList.toggle(
+          'workshop-authoring-error',
+          Boolean(workshopAuthoringErrors.get(pendingKey)) && !model.staged,
+        );
+        for (const [key, field] of Object.entries(fields)) {
+          field.disabled = workshopAuthoringPending.has(pendingKey);
+          field.setAttribute(
+            'aria-invalid',
+            String(Boolean(model.errors[key]) && Boolean(field.value.trim())),
+          );
+          if (field.tagName === 'SELECT') syncCustomSelect(field);
+        }
+        const axis = model.axis;
+        $('[data-workshop-axis-source]', form).textContent = axis
+          ? `${axis.adapter} · ${axis.sourceProperty ?? axis.property} · ${sourceText(axis.source)}`
+          : 'No writable property selected.';
+        $('[data-workshop-axis-values]', form).textContent = axis?.values?.length
+          ? `Known values: ${axis.values.join(', ')}`
+          : 'No indexed values for this property.';
+        return { draft, model, pendingKey, branchId };
+      };
+      for (const field of Object.values(fields))
+        field.addEventListener(field.tagName === 'SELECT' ? 'change' : 'input', () => {
+          workshopAuthoringErrors.delete(pendingKey);
+          sync();
+        });
+      authoringControls = { sync };
+      sync();
+    }
+  }
   $$('[data-workshop-scope]', workshop).forEach((button) =>
     button.addEventListener('click', async () => {
       const nextScope = button.dataset.workshopScope;
@@ -1399,6 +1547,35 @@ function renderComponentWorkshop() {
     }),
   );
   $('[data-workshop-create-variant]', detail)?.addEventListener('click', async () => {
+    if (authoringControls) {
+      const { draft, model, pendingKey, branchId } = authoringControls.sync();
+      if (model.disabled) return;
+      workshopAuthoringPending.add(pendingKey);
+      workshopAuthoringErrors.delete(pendingKey);
+      authoringControls.sync();
+      const result = await runDurableAction('stage-component-variant', {
+        componentId: component.key,
+        ...draft,
+      });
+      workshopAuthoringPending.delete(pendingKey);
+      if (result?.recorded) {
+        workshopAuthoringReceipts.set(workshopCreateKey(component, draft, branchId), {
+          branchId,
+          componentKey: component.key,
+          draft,
+        });
+        // Read the acknowledged ledger now instead of leaving the form and
+        // persistent Review count disagreeing until the next background poll.
+        await loadSession({ deferRender: true });
+        toast('Source variant added to Review');
+      } else
+        workshopAuthoringErrors.set(
+          pendingKey,
+          'Not acknowledged. Your draft is preserved; check Review before retrying.',
+        );
+      if (activeMode === 'components') renderComponentWorkshop();
+      return;
+    }
     await runDurableAction(
       'stage-component-variant',
       {
@@ -2395,7 +2572,127 @@ function renderContext() {
   syncCustomSelect($('[data-context="scope"]'));
 }
 
+let reviewStatusPending = null;
+let reviewStatusError = null;
+
+function reviewContextKey(session = activeSession) {
+  return JSON.stringify([
+    sessionId,
+    session?.changeSet?.id ?? '',
+    session?.changeSet?.context?.projectRoot ?? '',
+    session?.changeSet?.context?.revision ?? '',
+    session?.activeDesignBranchId ?? 'main',
+  ]);
+}
+
+function reviewStatusBlocked() {
+  return (
+    foundryPilotActive() &&
+    Boolean(
+      reviewStatusPending ||
+      (reviewStatusError?.context === reviewContextKey() && reviewStatusError.needsRefresh),
+    )
+  );
+}
+
+function renderReviewStatus() {
+  if (!foundryPilotActive()) return;
+  const blocked = reviewStatusBlocked();
+  const pending = reviewStatusPending?.context === reviewContextKey() ? reviewStatusPending : null;
+  for (const input of $$('[data-change-id]')) {
+    // Keep the last confirmed value, not the native optimistic checkbox toggle.
+    const change = activeSession?.changeSet?.changes.find(
+      (item) => item.id === input.dataset.changeId,
+    );
+    input.checked = Boolean(change && validChange(change));
+    input.removeAttribute('data-foundry-dirty');
+    input.setAttribute('aria-disabled', String(Boolean(input.disabled || blocked)));
+    if (pending) input.setAttribute('aria-busy', 'true');
+  }
+  if (blocked) {
+    for (const button of $$('[data-delete-change]')) button.disabled = true;
+  }
+  const status =
+    pending ?? (reviewStatusError?.context === reviewContextKey() ? reviewStatusError : null);
+  if (!status) return;
+  const row = $(`[data-change-id="${CSS.escape(status.changeId)}"]`)?.closest('.change-row');
+  if (!row) return;
+  const message = document.createElement('p');
+  message.className = 'change-source';
+  message.dataset.reviewStatus = pending ? 'pending' : 'error';
+  message.setAttribute('role', pending ? 'status' : 'alert');
+  message.textContent = pending ? 'Saving inclusion…' : status.message;
+  row.append(message);
+}
+
 async function setStatus(changeId, status) {
+  if (foundryPilotActive()) {
+    if (reviewStatusBlocked()) {
+      renderReview();
+      return;
+    }
+    const baseline = activeSession;
+    const change = baseline?.changeSet?.changes.find((item) => item.id === changeId);
+    if (
+      !change ||
+      change.status === 'applied' ||
+      reviewMappingIssue(change, baseline.changeSet.operations)
+    ) {
+      renderReview();
+      return;
+    }
+    const transaction = { context: reviewContextKey(), changeId, status };
+    reviewStatusPending = transaction;
+    reviewStatusError = null;
+    // A pre-PATCH poll or deferred focusout render must not undo its acknowledgement.
+    latestSessionRequest += 1;
+    pendingSessionRender = null;
+    renderReview();
+    try {
+      const updated = await api(
+        `/v1/sessions/${sessionId}/changes/${encodeURIComponent(changeId)}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ status }),
+        },
+      );
+      if (transaction.context !== reviewContextKey()) return;
+      const acknowledged = updated?.changeSet?.changes?.find((item) => item.id === changeId);
+      if (reviewContextKey(updated) !== transaction.context || acknowledged?.status !== status) {
+        throw new Error('The response did not confirm the requested selection.');
+      }
+      latestSessionRequest += 1;
+      pendingSessionRender = null;
+      if (activeSession === baseline) {
+        // The PATCH already returns the authoritative session. No redundant GET
+        // or speculative local mutation is needed to acknowledge this selection.
+        renderSession(updated);
+      } else {
+        // Another real operation changed the session during the wait. Do not
+        // overwrite it with an older complete PATCH snapshot.
+        const refreshed = await loadSession({ expectedReviewContext: transaction.context });
+        if (!refreshed?.ok && transaction.context === reviewContextKey()) {
+          reviewStatusError = {
+            ...transaction,
+            needsRefresh: true,
+            message:
+              'Selection acknowledged, but Review could not refresh. Applying is paused until the session can be read again. Your requested-value drafts are retained.',
+          };
+        }
+      }
+    } catch (error) {
+      if (transaction.context === reviewContextKey()) {
+        reviewStatusError = {
+          ...transaction,
+          message: `Inclusion change was not acknowledged. Showing the last confirmed selection. ${error instanceof Error ? error.message : 'Try again when the connection is available.'}`,
+        };
+      }
+    } finally {
+      if (reviewStatusPending === transaction) reviewStatusPending = null;
+      if (activeMode === 'review') renderReview();
+    }
+    return;
+  }
   await api(`/v1/sessions/${sessionId}/changes/${encodeURIComponent(changeId)}`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
@@ -2434,7 +2731,44 @@ function changeContextSummary(change) {
   return `${contexts.breakpoints.join(', ')} · ${contexts.themes.join(', ')} · ${contexts.states.join(', ')} · ${combinations} ${combinations === 1 ? 'context' : 'contexts'}`;
 }
 
+// Connection chrome must not wait for the full draft-preserving session render.
+// A focused checkbox or text field can legitimately keep that render deferred.
+function syncReviewAgentPresence(included) {
+  const button = $('#apply-agent');
+  if (!button) return;
+  const changes = (activeSession?.changeSet?.changes ?? []).filter(
+    (change) => change.status !== 'applied',
+  );
+  included ??= reviewBatchSummary(changes, activeSession?.changeSet?.operations).included;
+  const listenerConnected = Boolean(activeAgentPresence.connected);
+  const submitting = button.dataset.submitting === 'true';
+  if (!submitting) {
+    const label = included
+      ? listenerConnected
+        ? `Apply ${included} with agent`
+        : `Queue ${included} for agent`
+      : 'Review changes first';
+    if (button.textContent !== label) button.textContent = label;
+  }
+  button.disabled = included === 0 || submitting || reviewStatusBlocked();
+  const state = $('.review-agent-state');
+  if (!state) return;
+  state.dataset.connected = String(listenerConnected);
+  const title = state.querySelector('strong');
+  const detail = state.querySelector('span');
+  const titleText = listenerConnected ? 'Agent listener connected' : 'Agent offline';
+  const detailText = listenerConnected
+    ? 'The listener can claim this batch after you choose Apply. Source edits begin only after that handoff.'
+    : 'Queue this batch to save it for a listener. Queuing does not begin source work.';
+  if (title && title.textContent !== titleText) title.textContent = titleText;
+  if (detail && detail.textContent !== detailText) detail.textContent = detailText;
+}
+
 function renderReview() {
+  const reviewContext = reviewContextKey();
+  const reviewEdit = foundryPilotActive()
+    ? captureReviewEditState($('#changes'), reviewContext)
+    : null;
   const expandedSources = new Set(
     $$('.change-source-details[open]').map((details) => details.dataset.changeSource),
   );
@@ -2489,12 +2823,7 @@ function renderReview() {
     : 'No source changes have been requested.';
   $('#review-count').textContent = `${included} included`;
   $('#review-compare').disabled = changes.length === 0 || !bridgeConnected;
-  $('#apply-agent').textContent = included
-    ? listenerConnected
-      ? `Apply ${included} with agent`
-      : `Queue ${included} for agent`
-    : 'Review changes first';
-  $('#apply-agent').disabled = included === 0 || $('#apply-agent').dataset.submitting === 'true';
+  syncReviewAgentPresence(included);
   $('#changes').innerHTML = groups.size
     ? [...groups.values()]
         .map(
@@ -2522,6 +2851,20 @@ function renderReview() {
   $('#review-summary-content').innerHTML =
     `<div class="review-summary-metrics"><div><span>Included</span><strong>${included} of ${changes.length}</strong></div><div><span>Source mapping</span><strong>${escapeText(batch.mappingLabel)}</strong></div><div><span>Source files in review</span><strong>${escapeText(batch.filesLabel)}</strong></div><div><span>Change scope</span><strong>${escapeText(batch.riskLabel)}</strong></div></div><div class="review-agent-state" data-connected="${listenerConnected}"><strong>${listenerConnected ? 'Agent listener connected' : 'Agent offline'}</strong><span>${listenerConnected ? 'The listener can claim this batch after you choose Apply. Source edits begin only after that handoff.' : 'Queue this batch to save it for a listener. Queuing does not begin source work.'}</span></div>`;
   renderIcons($('#changes'));
+  if (foundryPilotActive()) {
+    for (const change of changes) {
+      const field = $(`[data-after-id="${CSS.escape(change.id)}"]`);
+      if (field)
+        field.dataset.reviewIdentity = JSON.stringify([
+          change.target,
+          change.property,
+          change.operationId,
+          change.scope,
+          change.context,
+          change.contextSet,
+        ]);
+    }
+  }
   for (const change of changes) {
     const issue = reviewMappingIssue(change, activeSession?.changeSet?.operations);
     if (!issue) continue;
@@ -2540,6 +2883,7 @@ function renderReview() {
   );
   $$('[data-delete-change]').forEach((button) =>
     button.addEventListener('click', async () => {
+      if (reviewStatusBlocked()) return;
       button.disabled = true;
       try {
         const payload = await requestCommand('delete-change', {
@@ -2582,6 +2926,9 @@ function renderReview() {
       }
     });
   });
+  refinePilotReview(undefined, { changes });
+  renderReviewStatus();
+  if (foundryPilotActive()) restoreReviewEditState($('#changes'), reviewEdit, reviewContext);
 }
 
 const RUN_ORDER = ['queued', 'claimed', 'applying', 'rebuilding', 'verifying', 'passed'];
@@ -2627,8 +2974,353 @@ function runStageIndex(run) {
   return Math.max(0, RUN_ORDER.indexOf(previousState));
 }
 
+let applyRunActionPending = null;
+let applyRunResumeReview = null;
+
+function applyRunContextKey(session = activeSession) {
+  return JSON.stringify([
+    sessionId,
+    session?.changeSet?.sessionId ?? null,
+    session?.changeSet?.id ?? null,
+    session?.changeSet?.context?.projectRoot ?? null,
+  ]);
+}
+
+function applyRunActionBlocked() {
+  const context = applyRunContextKey();
+  return Boolean(
+    applyRunActionPending?.context === context ||
+    (applyRunActionError?.context === context && applyRunActionError.needsRefresh),
+  );
+}
+
+function applyRunErrorFor(run) {
+  return applyRunActionError?.runId === run.id &&
+    (applyRunActionError.context == null
+      ? !foundryPilotActive()
+      : applyRunActionError.context === applyRunContextKey())
+    ? applyRunActionError.message
+    : '';
+}
+
+function applyRunActionEligible(run, action) {
+  if (action === 'cancel')
+    return ['queued', 'claimed', 'applying', 'rebuilding', 'verifying'].includes(run?.state);
+  if (action === 'resume' || action === 'confirm-resume')
+    return run?.state === 'needs_attention' && Boolean(run.interruptedState);
+  return (
+    action === 'retry' &&
+    ['failed', 'needs_attention'].includes(run?.state) &&
+    !run.interruptedState
+  );
+}
+
+function sameApplyRunActionTarget(rendered, current) {
+  return (
+    Boolean(current) &&
+    ['id', 'state', 'attempts', 'interruptedState', 'claimAttemptId'].every(
+      (key) => rendered[key] === current[key],
+    )
+  );
+}
+
+function applyRunResumeKey(run) {
+  return JSON.stringify([
+    applyRunContextKey(),
+    run?.id,
+    run?.state,
+    run?.attempts,
+    run?.interruptedState,
+    run?.claimAttemptId,
+    run?.updatedAt,
+    run?.requeueCount,
+    run?.resumedAt,
+    activeSession?.changeSet?.designGraphRevision ?? null,
+  ]);
+}
+
+function applyRunResumeReviewFor(run) {
+  return applyRunActionEligible(run, 'resume') &&
+    applyRunResumeReview?.key === applyRunResumeKey(run)
+    ? applyRunResumeReview
+    : null;
+}
+
+async function submitPilotApplyRunAction(run, action, renderedReview = null) {
+  const current = activeSession?.applyRuns?.at(-1);
+  if (
+    applyRunActionBlocked() ||
+    (['resume', 'confirm-resume'].includes(action) &&
+      (activeMode !== 'review' || dismissedApplyRunId === run.id)) ||
+    !sameApplyRunActionTarget(run, current) ||
+    !applyRunActionEligible(current, action)
+  )
+    return;
+  const resumeReview = applyRunResumeReviewFor(current);
+  if (action === 'confirm-resume' && (!resumeReview || renderedReview !== resumeReview)) return;
+  const baseline = activeSession;
+  const transaction = {
+    context: applyRunContextKey(),
+    runId: run.id,
+    action,
+    phase: action === 'resume' ? 'preparing' : 'request',
+  };
+  const body =
+    action === 'confirm-resume'
+      ? {
+          expectedRevision: resumeReview.expectedRevision,
+          expectedDesignGraphRevision: resumeReview.expectedDesignGraphRevision,
+        }
+      : {};
+  const resumeKey = applyRunResumeKey(current);
+  if (action === 'resume') applyRunResumeReview = null;
+  applyRunActionPending = transaction;
+  applyRunActionError = null;
+  // Older GETs and deferred renders must not undo a subsequently acknowledged action.
+  latestSessionRequest += 1;
+  pendingSessionRender = null;
+  renderApplyRun(activeSession?.applyRuns ?? []);
+  let acknowledged = false;
+  let acknowledgementRunId = run.id;
+  const stillRelevant = () =>
+    transaction.context === applyRunContextKey() &&
+    [run.id, acknowledgementRunId].includes(activeSession?.applyRuns?.at(-1)?.id);
+  try {
+    if (action === 'resume') {
+      const review = await api(`/v1/sessions/${sessionId}/apply-runs/${run.id}/resume-context`);
+      if (
+        !stillRelevant() ||
+        activeMode !== 'review' ||
+        dismissedApplyRunId === run.id ||
+        resumeKey !== applyRunResumeKey(activeSession?.applyRuns?.at(-1))
+      )
+        return;
+      if (
+        review?.runId !== run.id ||
+        typeof review.expectedRevision !== 'string' ||
+        !review.expectedRevision ||
+        typeof review.reviewedRevision !== 'string' ||
+        !review.reviewedRevision ||
+        !Object.hasOwn(review, 'expectedDesignGraphRevision') ||
+        (review.expectedDesignGraphRevision !== null &&
+          !['number', 'string'].includes(typeof review.expectedDesignGraphRevision)) ||
+        !Array.isArray(review.changedFiles) ||
+        !review.changedFiles.every((path) => typeof path === 'string' && path.length > 0)
+      )
+        throw new Error('The runtime did not return a complete source review for this run.');
+      applyRunResumeReview = {
+        key: resumeKey,
+        reviewedRevision: review.reviewedRevision,
+        expectedRevision: review.expectedRevision,
+        expectedDesignGraphRevision: review.expectedDesignGraphRevision,
+        changedFiles: [...review.changedFiles],
+      };
+      // Preparing a review never authorizes source work. A separate user click is required.
+      return;
+    }
+    const endpoint = action === 'confirm-resume' ? 'resume' : action;
+    const updated = await api(`/v1/sessions/${sessionId}/apply-runs/${run.id}/${endpoint}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    if (!stillRelevant()) return;
+    const result =
+      action === 'retry'
+        ? updated?.applyRuns?.find(
+            (item) =>
+              item.retryOf === run.id && !baseline.applyRuns.some((old) => old.id === item.id),
+          )
+        : updated?.applyRuns?.find((item) => item.id === run.id);
+    if (
+      applyRunContextKey(updated) !== transaction.context ||
+      !result ||
+      (action === 'cancel'
+        ? result.state !== 'cancelled'
+        : !['queued', 'claimed', 'applying', 'rebuilding', 'verifying', 'passed'].includes(
+            result.state,
+          ))
+    ) {
+      throw new Error('The runtime did not return a matching run acknowledgement.');
+    }
+    acknowledged = true;
+    if (action === 'confirm-resume') applyRunResumeReview = null;
+    acknowledgementRunId = result.id;
+    transaction.phase = 'reconciling';
+    latestSessionRequest += 1;
+    pendingSessionRender = null;
+    // A poll or other operation may already hold newer progress than this POST snapshot.
+    if (activeSession === baseline) renderSession(updated);
+    else {
+      const refreshed = await loadSession({
+        expectedApplyContext: transaction.context,
+      });
+      if (!stillRelevant()) return;
+      if (!refreshed?.ok)
+        throw new Error(refreshed?.error ?? 'The current run could not be refreshed.');
+    }
+    if (
+      stillRelevant() &&
+      action !== 'cancel' &&
+      activeMode === 'review' &&
+      dismissedApplyRunId !== run.id &&
+      !activeAgentPresence.connected &&
+      activeSession?.applyRuns?.at(-1)?.state === 'queued'
+    ) {
+      toast('Apply request queued. A Foundry agent will resume it after reconnecting.');
+    }
+  } catch (error) {
+    if (!stillRelevant()) return;
+    if (action === 'resume' || action === 'confirm-resume') applyRunResumeReview = null;
+    const reason =
+      error instanceof Error ? error.message : 'The local runtime could not be reached.';
+    applyRunActionError = {
+      context: transaction.context,
+      runId: activeSession?.applyRuns?.at(-1)?.id ?? run.id,
+      needsRefresh: acknowledged,
+      message: acknowledged
+        ? `Action acknowledged, but current progress could not be refreshed. Recovery actions are paused until the next successful refresh. ${reason}`
+        : action === 'resume'
+          ? `Resume is paused. The current source could not be reviewed. ${reason}`
+          : `Action was not acknowledged. Review the current run before trying again. ${reason}`,
+    };
+  } finally {
+    if (applyRunActionPending === transaction) applyRunActionPending = null;
+    if (transaction.context === applyRunContextKey()) {
+      renderApplyRun(activeSession?.applyRuns ?? []);
+      if (
+        action === 'resume' &&
+        activeMode === 'review' &&
+        applyRunResumeReviewFor(activeSession?.applyRuns?.at(-1))
+      )
+        $('[data-resume-review-heading]', $('#apply-run'))?.focus();
+    }
+  }
+}
+
+let verifiedDeliverySelection = null;
+
+function resolveVerifiedDelivery(runId, recordId = null, session = activeSession) {
+  const unavailable = (error) => ({ record: null, error });
+  const runs = (session?.applyRuns ?? []).filter((run) => run.id === runId);
+  if (!runId || runs.length !== 1 || runs[0].state !== 'passed') {
+    return unavailable(
+      'This run is no longer available as a passed run. Review its current progress before opening a handoff.',
+    );
+  }
+  const records = session?.deliveryRecords ?? [];
+  const expectedSessionId = session?.changeSet?.sessionId ?? sessionId;
+  const candidates = records.filter(
+    (record) =>
+      record.applyRunId === runId &&
+      record.sessionId === expectedSessionId &&
+      record.status === 'verified',
+  );
+  if (recordId) {
+    const exact = records.filter((record) => record.id === recordId);
+    if (exact.length !== 1)
+      return unavailable(
+        'The requested handoff record is no longer available. No other record has been selected.',
+      );
+    if (exact[0].applyRunId !== runId || exact[0].sessionId !== expectedSessionId) {
+      return unavailable(
+        'This handoff no longer matches the requested run and session. No other record has been selected.',
+      );
+    }
+    if (exact[0].status !== 'verified') {
+      return unavailable(
+        `This handoff is now ${String(exact[0].status ?? 'unverified').replaceAll('_', ' ')}. It cannot be opened as a verified handoff.`,
+      );
+    }
+  }
+  if (
+    candidates.length !== 1 ||
+    !candidates[0]?.id ||
+    records.filter((record) => record.id === candidates[0].id).length !== 1
+  ) {
+    return unavailable(
+      candidates.length > 1
+        ? 'More than one verified handoff matches this run. Choose a record explicitly in Delivery.'
+        : 'A verified handoff for this run is not available. No other record has been selected.',
+    );
+  }
+  if (recordId && candidates[0].id !== recordId) {
+    return unavailable(
+      'The requested handoff has changed. Reopen the current run to review its handoff.',
+    );
+  }
+  return { record: candidates[0], error: '' };
+}
+
+function deliveryHandoffSelection() {
+  const records = activeSession?.deliveryRecords ?? [];
+  if (!foundryPilotActive() || !verifiedDeliverySelection) {
+    return {
+      recordId: records.some((record) => record.id === deliveryRecordId)
+        ? deliveryRecordId
+        : (records[0]?.id ?? ''),
+      error: '',
+    };
+  }
+  if (verifiedDeliverySelection.context !== applyRunContextKey()) {
+    return {
+      recordId: '',
+      error:
+        'This handoff belongs to another session or project. Choose a record from the current Delivery list.',
+    };
+  }
+  const result = resolveVerifiedDelivery(
+    verifiedDeliverySelection.runId,
+    verifiedDeliverySelection.recordId,
+  );
+  return { recordId: result.record?.id ?? '', error: result.error };
+}
+
+function openVerifiedDeliveryHandoff(runId, recordId, context) {
+  if (context !== applyRunContextKey() || activeMode !== 'review') return false;
+  if (activeSession?.applyRuns?.at(-1)?.id !== runId) {
+    toast('The displayed run has changed. Open the current run to inspect its handoff.');
+    return false;
+  }
+  const result = resolveVerifiedDelivery(runId, recordId);
+  if (!recordId || !result.record) {
+    applyRunActionError = {
+      context,
+      runId,
+      kind: 'handoff',
+      message: result.error || 'The requested handoff is unavailable.',
+    };
+    renderApplyRun(activeSession?.applyRuns ?? []);
+    return false;
+  }
+  if (
+    applyRunActionError?.kind === 'handoff' &&
+    applyRunActionError.context === context &&
+    applyRunActionError.runId === runId
+  )
+    applyRunActionError = null;
+  verifiedDeliverySelection = { context, runId, recordId };
+  deliveryTab = 'handoff';
+  deliveryRecordId = recordId;
+  $$('[data-delivery-tab]').forEach((button) => {
+    const selected = button.dataset.deliveryTab === 'handoff';
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-selected', String(selected));
+  });
+  setMode('delivery', false);
+  // This is an explicit navigation focus transfer, never a polling side effect.
+  const heading = $('#delivery-content .delivery-record-detail h2');
+  if (heading) {
+    $('.delivery-mode').scrollTop = 0;
+    $('#delivery-content .delivery-stage').scrollTop = 0;
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+  }
+  return true;
+}
+
 function renderApplyRun(runs = []) {
   const root = $('#apply-run');
+  const pilotWasVisible = !root.hidden;
   const run = runs.at(-1);
   if (
     !shouldDisplayApplyRun(run, {
@@ -2647,31 +3339,62 @@ function renderApplyRun(runs = []) {
   const queued = run.state === 'queued';
   const listenerConnected = Boolean(activeAgentPresence.connected);
   const active = ['queued', 'claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state);
+  const handoff = foundryPilotActive() ? resolveVerifiedDelivery(run.id) : null;
+  const handoffContext = foundryPilotActive() ? applyRunContextKey() : null;
+  if (
+    handoff?.record &&
+    applyRunActionError?.kind === 'handoff' &&
+    applyRunActionError.context === handoffContext &&
+    applyRunActionError.runId === run.id
+  )
+    applyRunActionError = null;
   const lifecycle = applyLifecyclePresentation(run, {
     previewConnected: bridgeConnected,
     listenerConnected,
-    deliveryRecords: activeSession?.deliveryRecords ?? [],
+    deliveryRecords: handoff
+      ? handoff.record
+        ? [handoff.record]
+        : []
+      : (activeSession?.deliveryRecords ?? []),
   });
-  const verifiedDelivery = lifecycle?.phase === 'Verified';
+  if (passed && handoff?.error) {
+    lifecycle.phase = 'Checks passed';
+    lifecycle.detail = `Run checks passed. ${handoff.error}`;
+  }
+  const verifiedDelivery =
+    lifecycle?.phase === 'Verified' && (!foundryPilotActive() || Boolean(handoff.record));
   const stageIndex = runStageIndex(run);
   const latestMessage = lifecycle?.detail ?? run.error ?? 'The reviewed batch is ready.';
+  const resumeReview = applyRunResumeReviewFor(run);
   const signature = JSON.stringify([
     run.id,
     run.state,
     run.attempts,
     latestMessage,
+    run.error,
+    run.interruptedState,
     run.messages,
     run.changedFiles,
     run.validationResults,
     run.verificationResults,
     listenerConnected,
     lifecycle?.phase,
+    handoff?.record?.id,
+    handoff?.error,
+    handoffContext,
     bridgeConnected,
-    applyRunActionError?.runId === run.id ? applyRunActionError.message : '',
+    applyRunErrorFor(run),
+    resumeReview,
+    applyRunActionBlocked(),
+    applyRunActionPending?.context === applyRunContextKey()
+      ? [applyRunActionPending.action, applyRunActionPending.phase]
+      : null,
     cancelConfirmationRunId === run.id && Date.now() < cancelConfirmationUntil,
   ]);
   if (root.dataset.signature === signature) return;
   root.dataset.signature = signature;
+  const pilotApplyState =
+    pilotWasVisible && root.dataset.foundryRunId === run.id ? capturePilotApplyState(root) : null;
   const stageRows = RUN_ORDER.map((state, index) => {
     const complete = passed || index < stageIndex;
     const current = !passed && index === stageIndex;
@@ -2687,6 +3410,9 @@ function renderApplyRun(runs = []) {
   const changedFiles = run.changedFiles?.length
     ? `<section class="apply-result-group"><header class="change-group-head"><strong>Changed files</strong><span>${run.changedFiles.length}</span></header>${run.changedFiles.map((file) => `<div class="apply-result-row"><code>${escapeText(file)}</code><span>Edited</span></div>`).join('')}</section>`
     : '';
+  const resumeSourceReview = resumeReview
+    ? `<section class="apply-result-group" aria-label="Review interrupted source"><header class="change-group-head"><strong role="heading" aria-level="3" tabindex="-1" data-resume-review-heading>Review interrupted source</strong><span>Not resumed</span></header><p>The original reviewed baseline is preserved. Confirm this current source to let the agent reinspect it, rebuild, and run fresh checks. No files will be reverted.</p><div class="apply-result-row"><div><strong>Original reviewed revision</strong><code>${escapeText(resumeReview.reviewedRevision)}</code></div></div><div class="apply-result-row"><div><strong>Current source revision</strong><code>${escapeText(resumeReview.expectedRevision)}</code></div></div><div class="apply-result-row"><div><strong>Changed since the original baseline</strong>${resumeReview.changedFiles.length ? resumeReview.changedFiles.map((file) => `<code>${escapeText(file)}</code>`).join('') : '<span>No source changes detected.</span>'}</div></div></section>`
+    : '';
   const validationResults = run.validationResults?.length
     ? `<section class="apply-result-group"><header class="change-group-head"><strong>Validation</strong><span>${run.validationResults.filter((result) => result.passed).length} of ${run.validationResults.length} passed</span></header>${run.validationResults.map((result) => `<div class="apply-result-row ${result.passed ? 'is-passed' : 'is-failed'}"><div><strong>${escapeText(result.name)}</strong>${result.summary ? `<span>${escapeText(result.summary)}</span>` : ''}</div><span>${result.passed ? 'Passed' : 'Failed'}</span></div>`).join('')}</section>`
     : '';
@@ -2700,23 +3426,57 @@ function renderApplyRun(runs = []) {
     ? `<button class="secondary-button" data-run-action="cancel" data-run-id="${run.id}">${confirmingCancel ? 'Confirm stop' : 'Stop apply'}</button>`
     : `<button class="secondary-button" data-run-navigation="back">Back to workspace</button>`;
   const primaryAction = attention
-    ? `<button class="primary-button" data-run-action="${run.interruptedState ? 'resume' : 'retry'}" data-run-id="${run.id}">${listenerConnected ? (run.interruptedState ? 'Resume with agent' : 'Retry with agent') : run.interruptedState ? 'Queue resume for agent' : 'Queue retry for agent'}</button>`
+    ? `<button class="primary-button" data-run-action="${resumeReview ? 'confirm-resume' : run.interruptedState ? 'resume' : 'retry'}" data-run-id="${run.id}">${resumeReview ? 'Confirm resume' : listenerConnected ? (run.interruptedState ? 'Resume with agent' : 'Retry with agent') : run.interruptedState ? 'Queue resume for agent' : 'Queue retry for agent'}</button>`
     : passed
       ? verifiedDelivery
         ? `<button class="primary-button" data-run-navigation="delivery">Open verified handoff</button>`
         : `<button class="primary-button" data-run-navigation="back">Back to workspace</button>`
       : `<button class="primary-button" disabled>${escapeText(RUN_LABELS[run.state] ?? run.state)}</button>`;
-  root.innerHTML = `<div class="apply-surface"><header class="mode-head apply-head"><div><h1>Apply and verify</h1><p>Follow the approved source changes through rebuild and rendered verification.</p></div><div class="mode-actions"><span class="mode-count">Attempt ${run.attempts}</span></div></header><div class="apply-workspace"><section class="apply-result-group apply-status-group"><header class="change-group-head"><strong>Apply and verify</strong><span>${completedStages} of ${RUN_ORDER.length} complete</span></header><div class="apply-status-row"><i class="${passed ? 'is-passed' : attention ? 'needs-attention' : 'is-active'}"></i><div><strong>${escapeText(lifecycle?.phase ?? RUN_LABELS[run.state] ?? run.state)}</strong><span>${escapeText(latestMessage)}</span></div></div><div class="run-steps">${stageRows}</div></section><aside class="apply-evidence"><header><div><strong>${queued ? 'Agent handoff' : 'Live source activity'}</strong><span>${queued ? (listenerConnected ? 'A connected listener can claim this queued batch.' : 'This batch will remain queued until a Foundry listener reconnects.') : 'Files, checks, and rendered evidence update as the agent works.'}</span></div><span class="status-chip ${attention ? 'unresolved' : ''}">${passed ? (verifiedDelivery ? 'Verified' : 'Checks passed') : attention ? 'Needs attention' : queued ? 'Queued' : 'Running'}</span></header><div class="apply-progress-list">${changedFiles || '<section class="apply-result-group"><header class="change-group-head"><strong>Changed files</strong><span>Waiting</span></header><div class="apply-result-row"><div><strong>Source edits</strong><span>Files appear here when the agent begins writing.</span></div><span>Pending</span></div></section>'}${validationResults}${verificationResults}</div><footer class="review-footer apply-footer">${applyRunActionError?.runId === run.id ? `<p class="apply-action-error" role="alert">${escapeText(applyRunActionError.message)}</p>` : ''}${secondaryAction}${primaryAction}</footer></aside></div></div>`;
-  $('[data-run-navigation="delivery"]', root)?.addEventListener('click', () => setMode('delivery'));
+  root.innerHTML = `<div class="apply-surface"><header class="mode-head apply-head"><div><h1>Apply and verify</h1><p>Follow the approved source changes through rebuild and rendered verification.</p></div><div class="mode-actions"><span class="mode-count">Attempt ${run.attempts}</span></div></header><div class="apply-workspace"><section class="apply-result-group apply-status-group"><header class="change-group-head"><strong>Apply and verify</strong><span>${completedStages} of ${RUN_ORDER.length} complete</span></header><div class="apply-status-row"><i class="${passed ? 'is-passed' : attention ? 'needs-attention' : 'is-active'}"></i><div><strong>${escapeText(lifecycle?.phase ?? RUN_LABELS[run.state] ?? run.state)}</strong><span>${escapeText(latestMessage)}</span></div></div><div class="run-steps">${stageRows}</div></section><aside class="apply-evidence"><header><div><strong>${queued ? 'Agent handoff' : 'Live source activity'}</strong><span>${queued ? (listenerConnected ? 'A connected listener can claim this queued batch.' : 'This batch will remain queued until a Foundry listener reconnects.') : 'Files, checks, and rendered evidence update as the agent works.'}</span></div><span class="status-chip ${attention ? 'unresolved' : ''}">${passed ? (verifiedDelivery ? 'Verified' : 'Checks passed') : attention ? 'Needs attention' : queued ? 'Queued' : 'Running'}</span></header><div class="apply-progress-list">${resumeSourceReview}${changedFiles || '<section class="apply-result-group"><header class="change-group-head"><strong>Changed files</strong><span>Waiting</span></header><div class="apply-result-row"><div><strong>Source edits</strong><span>Files appear here when the agent begins writing.</span></div><span>Pending</span></div></section>'}${validationResults}${verificationResults}</div><footer class="review-footer apply-footer">${applyRunErrorFor(run) || (handoff && lifecycle?.phase === 'Verified' && handoff.error) ? `<p class="apply-action-error" role="alert">${escapeText(applyRunErrorFor(run) || handoff.error)}</p>` : ''}${secondaryAction}${primaryAction}</footer></aside></div></div>`;
+  refinePilotApply(root, {
+    run,
+    lifecycle,
+    verifiedDelivery,
+    stages: RUN_ORDER,
+    previousState: pilotApplyState,
+  });
+  if (applyRunActionBlocked()) {
+    $$('[data-run-action]', root).forEach((button) => {
+      button.disabled = true;
+      const pending = applyRunActionPending?.context === applyRunContextKey();
+      button.setAttribute('aria-busy', String(pending));
+      if (pending && button.dataset.runAction === applyRunActionPending.action) {
+        button.textContent = {
+          retry: 'Requesting retry…',
+          resume: 'Reading current source…',
+          'confirm-resume': 'Authorizing resume…',
+          cancel: 'Stopping run…',
+        }[applyRunActionPending.action];
+      }
+    });
+  }
+  $('[data-run-navigation="delivery"]', root)?.addEventListener('click', () => {
+    if (foundryPilotActive())
+      openVerifiedDeliveryHandoff(run.id, handoff?.record?.id, handoffContext);
+    else setMode('delivery');
+  });
   $$('[data-run-navigation="back"]', root).forEach((button) =>
     button.addEventListener('click', () => {
       dismissedApplyRunId = run.id;
+      applyRunResumeReview = null;
       root.hidden = true;
       setMode(reviewOriginMode === 'review' ? 'canvas' : reviewOriginMode);
     }),
   );
   $$('[data-run-action]', root).forEach((button) =>
     button.addEventListener('click', async () => {
+      if (
+        (foundryPilotActive() || ['resume', 'confirm-resume'].includes(button.dataset.runAction)) &&
+        (applyRunActionBlocked() ||
+          !sameApplyRunActionTarget(run, activeSession?.applyRuns?.at(-1)) ||
+          !applyRunActionEligible(activeSession?.applyRuns?.at(-1), button.dataset.runAction))
+      )
+        return;
       if (button.dataset.runAction === 'cancel') {
         const now = Date.now();
         if (cancelConfirmationRunId !== run.id || now >= cancelConfirmationUntil) {
@@ -2736,6 +3496,10 @@ function renderApplyRun(runs = []) {
         }
         cancelConfirmationRunId = null;
         cancelConfirmationUntil = 0;
+      }
+      if (foundryPilotActive() || ['resume', 'confirm-resume'].includes(button.dataset.runAction)) {
+        await submitPilotApplyRunAction(run, button.dataset.runAction, resumeReview);
+        return;
       }
       button.disabled = true;
       applyRunActionError = null;
@@ -2815,6 +3579,9 @@ function renderChangeSummary() {
 }
 
 function renderStates() {
+  stateWorkbenchResizeObserver?.disconnect();
+  stateWorkbenchGeneration++;
+  stateWorkbenchReloading = false;
   const project = projectDesign();
   const sessionViewport = activeSession?.changeSet?.context?.viewport ?? {
     width: 1440,
@@ -2875,6 +3642,7 @@ function renderStates() {
   const statePreview = $('#state-live-preview');
   if (statePreview && previewUrl) {
     statePreview.addEventListener('load', () => {
+      stateWorkbenchReloading = false;
       invalidateFrameTransport(
         statePreview,
         'State Workbench reloaded before the preview operation completed.',
@@ -2922,6 +3690,8 @@ function renderStates() {
     nextStateWorkbench.mount();
     renderIcons(root);
   }
+  stateWorkbenchResizeObserver = new ResizeObserver(updateStateWorkbenchPresentation);
+  stateWorkbenchResizeObserver.observe($('.state-preview-stage'));
   updateStateWorkbenchPresentation();
 }
 
@@ -2977,13 +3747,7 @@ function stateWorkbenchPreviewContext({ advanceRevision = true } = {}) {
 }
 
 function stateWorkbenchResultKey(context) {
-  return [
-    context.viewport.id,
-    context.theme,
-    context.state,
-    context.motionPreference,
-    context.selectedTarget?.id ?? 'canvas',
-  ].join(':');
+  return stateConditionKey(context);
 }
 
 function previewContextsMatch(actual, expected) {
@@ -3111,11 +3875,21 @@ function updateStateWorkbenchPresentation() {
 
 async function applyStateWorkbenchContext() {
   const frame = $('#state-live-preview');
-  if (!frame?.contentWindow || !stateWorkbenchConnected || stateWorkbenchApplying) {
+  if (
+    !frame?.contentWindow ||
+    !stateWorkbenchConnected ||
+    stateWorkbenchApplying ||
+    stateWorkbenchReloading
+  ) {
     updateStateWorkbenchPresentation();
     return null;
   }
   const context = stateWorkbenchRequestedContext ?? stateWorkbenchPreviewContext();
+  const generation = stateWorkbenchGeneration;
+  const current = () =>
+    generation === stateWorkbenchGeneration &&
+    frame === $('#state-live-preview') &&
+    activeMode === 'states';
   stateWorkbenchRequestedContext ??= context;
   stateWorkbenchApplying = true;
   updateStateWorkbenchPresentation();
@@ -3126,7 +3900,9 @@ async function applyStateWorkbenchContext() {
       { context },
       'Reconnect the State Workbench preview to inspect this condition.',
     );
+    if (!current()) return null;
     if (result.reloadQuery) {
+      stateWorkbenchReloading = true;
       stateWorkbenchConnected = false;
       stateWorkbenchSnapshot = null;
       invalidateFrameTransport(
@@ -3136,15 +3912,28 @@ async function applyStateWorkbenchContext() {
       frame.src = stateWorkbenchPreviewUrl(result.reloadQuery);
       return result;
     }
-    if (!result.applied || !previewContextsMatch(result.context, context)) {
+    if (!previewContextsMatch(result.context, context)) {
       throw new Error(
         result.failureReason ??
           'The preview did not resolve the requested State Workbench context.',
       );
     }
+    if (!result.applied) {
+      stateWorkbenchLastResult = result;
+      stateWorkbenchResults.set(stateWorkbenchResultKey(result.context), {
+        context: result.context,
+        result,
+        measuredAt: null,
+        measurement: null,
+      });
+      if (stateWorkbenchRequestedContext?.requestRevision === context.requestRevision)
+        stateWorkbenchRequestedContext = null;
+      return result;
+    }
     const measurement = await requestFrameCommand(frame, 'request-state', {
       requestRevision: result.context.requestRevision,
     });
+    if (!current()) return null;
     if (!previewContextsMatch(measurement?.currentPreviewContext, result.context)) {
       throw new Error('State Workbench returned a stale measurement for a different context.');
     }
@@ -3161,6 +3950,7 @@ async function applyStateWorkbenchContext() {
     }
     return result;
   } catch (error) {
+    if (!current()) return null;
     stateWorkbenchLastResult = {
       applied: false,
       context,
@@ -3173,14 +3963,16 @@ async function applyStateWorkbenchContext() {
     }
     return null;
   } finally {
-    stateWorkbenchApplying = false;
-    updateStateWorkbenchPresentation();
-    if (
-      stateWorkbenchRequestedContext &&
-      stateWorkbenchRequestedContext.requestRevision !== context.requestRevision &&
-      stateWorkbenchConnected
-    ) {
-      void applyStateWorkbenchContext();
+    if (current()) {
+      stateWorkbenchApplying = false;
+      updateStateWorkbenchPresentation();
+      if (
+        stateWorkbenchRequestedContext &&
+        stateWorkbenchRequestedContext.requestRevision !== context.requestRevision &&
+        stateWorkbenchConnected
+      ) {
+        void applyStateWorkbenchContext();
+      }
     }
   }
 }
@@ -3195,6 +3987,10 @@ function syncStateWorkbenchConnection() {
 }
 
 function destroyStateWorkbenchPreview() {
+  stateWorkbenchResizeObserver?.disconnect();
+  stateWorkbenchResizeObserver = null;
+  stateWorkbenchGeneration++;
+  stateWorkbenchReloading = false;
   const frame = $('#state-live-preview');
   rejectPendingFrameCommands(
     frame?.contentWindow,
@@ -3206,6 +4002,7 @@ function destroyStateWorkbenchPreview() {
   stateWorkbenchApplying = false;
   stateWorkbenchRequestedContext = null;
   stateWorkbenchLastResult = null;
+  stateWorkbenchResults.clear();
   const root = $('#state-grid');
   if (root) root.innerHTML = '';
 }
@@ -3777,6 +4574,8 @@ function responsiveComparisonSnapshot(snapshot) {
   const selection = snapshot.selection ?? {};
   return {
     target: responsiveScrubTarget,
+    selector: snapshot.targetSelector ?? null,
+    containerSelector: snapshot.container?.selector ?? null,
     viewportWidth: Number(snapshot.viewportWidth ?? 0),
     containerWidth: Number(snapshot.container?.width ?? 0),
     containerName: snapshot.container?.name ?? 'Anonymous container',
@@ -3789,6 +4588,7 @@ function responsiveComparisonSnapshot(snapshot) {
 
 function responsiveDelta(before, after) {
   if (!before || !after) return null;
+  if (foundryPilotActive() && !responsiveComparisonMatches(before, after)) return null;
   return {
     viewport: after.viewportWidth - before.viewportWidth,
     container: after.containerWidth - before.containerWidth,
@@ -3817,13 +4617,28 @@ function renderResponsiveComparison() {
   root.innerHTML = `${card('BEFORE', responsiveComparisonBefore)}${card('AFTER', responsiveComparisonAfter)}<article class="responsive-comparison-card responsive-comparison-delta ${delta ? 'is-captured' : ''}"><span>CHANGE</span>${
     delta
       ? `<strong>${signedResponsiveValue(responsiveComparisonBefore.target === 'container' ? delta.container : delta.viewport)} ${responsiveComparisonBefore.target}</strong><code>Element ${signedResponsiveValue(delta.width)} wide · ${signedResponsiveValue(delta.height)} high · ${signedResponsiveValue(delta.lines, ' lines')} · ${signedResponsiveValue(delta.overflow)} overflow</code>`
-      : '<strong>Waiting for both states</strong><code>Comparison remains presentation-only.</code>'
+      : responsiveComparisonBefore && responsiveComparisonAfter
+        ? '<strong>Different contexts</strong><code>Capture the same Custom target and resize mode to compare.</code>'
+        : '<strong>Waiting for both states</strong><code>Comparison remains presentation-only.</code>'
   }</article>`;
 }
 
 function captureResponsiveComparison(position) {
-  const snapshot =
-    responsiveSnapshots.get('custom') ?? responsiveSnapshots.get(responsiveActiveViewport);
+  const snapshot = responsiveSnapshots.get('custom');
+  if (
+    foundryPilotActive() &&
+    (responsiveFrameStates.get('custom')?.connection !== 'live' ||
+      !responsiveCaptureReady(snapshot, {
+        selector: bridgeState?.selection?.selector,
+        target: responsiveScrubTarget,
+        width: responsiveCustomWidth,
+        containerWidth: responsiveContainerWidth,
+        stress: responsiveStressMode,
+      }))
+  ) {
+    toast('Wait for matching Custom-frame geometry before capturing.');
+    return;
+  }
   const captured = responsiveComparisonSnapshot(snapshot);
   if (!captured) {
     toast('Wait for the live responsive preview before capturing.');
@@ -3920,6 +4735,9 @@ function refreshNextResponsiveLab() {
     summary: responsiveAuditSummary,
     stress: responsiveStressMode,
     scope: responsiveEditScope,
+    scopePending: responsiveScopePending,
+    scopeError: responsiveScopeError,
+    customWidth: responsiveCustomWidth,
     target: responsiveScrubTarget,
     containerWidth: responsiveContainerWidth,
     connected: bridgeConnected,
@@ -3949,6 +4767,8 @@ function scrubResponsiveCustomFrame() {
     const dimensions = $('header span', card);
     if (dimensions) dimensions.textContent = `${responsiveCustomWidth} × ${height}`;
   }
+  responsiveSnapshots.delete('custom');
+  refreshNextResponsiveLab();
   window.clearTimeout(scrubResponsiveCustomFrame.timer);
   const navigationRevision = workspaceNavigationRevision;
   scrubResponsiveCustomFrame.timer = window.setTimeout(() => {
@@ -3959,7 +4779,6 @@ function scrubResponsiveCustomFrame() {
     sendResponsiveTransientCommand(frame, 'preview-responsive-container', {
       width: responsiveScrubTarget === 'container' ? responsiveContainerWidth : null,
     });
-    responsiveSnapshots.delete('custom');
     refreshNextResponsiveLab();
   }, 120);
 }
@@ -4128,7 +4947,14 @@ function renderResponsiveLab() {
 }
 
 function renderHealth() {
-  if (params.get('ui') === 'next') nextStressLab ??= createNextStressLab($('.stress-lab-mode'));
+  if (params.get('ui') === 'next')
+    nextStressLab ??= createNextStressLab($('.stress-lab-mode'), {
+      resetChoices: () => {
+        if (stressActionBusy) return;
+        selectedStressConditions.clear();
+        renderHealth();
+      },
+    });
   nextStressLab?.capture();
   const issues = bridgeState?.health ?? [];
   const stress = bridgeState?.stressTesting ?? {};
@@ -4166,17 +4992,20 @@ function renderHealth() {
     ['state', 'Product states'],
     ['accessibility', 'Accessibility'],
   ];
-  $('#stress-profile-list').innerHTML = categories
-    .map(([category, label]) => {
-      const categoryProfiles = profiles.filter((profile) => profile.category === category);
-      return `<section class="stress-profile-group"><header><strong>${label}</strong><span>${categoryProfiles.length}</span></header>${categoryProfiles
-        .map(
-          (profile) =>
-            `<button class="stress-profile ${selectedStressConditions.has(profile.id) ? 'is-active' : ''}" data-stress-condition="${escapeAttribute(profile.id)}" aria-pressed="${String(selectedStressConditions.has(profile.id))}"><span><strong>${escapeText(profile.label)}</strong><small>${escapeText(profile.description)}</small></span><i data-icon="check"></i></button>`,
-        )
-        .join('')}</section>`;
-    })
-    .join('');
+  $('#stress-profile-list').innerHTML =
+    categories
+      .filter(([category]) => profiles.some((profile) => profile.category === category))
+      .map(([category, label]) => {
+        const categoryProfiles = profiles.filter((profile) => profile.category === category);
+        return `<section class="stress-profile-group"><header><strong>${label}</strong><span>${categoryProfiles.length}</span></header>${categoryProfiles
+          .map(
+            (profile) =>
+              `<button class="stress-profile ${selectedStressConditions.has(profile.id) ? 'is-active' : ''}" data-stress-condition="${escapeAttribute(profile.id)}" aria-pressed="${String(selectedStressConditions.has(profile.id))}"><span><strong>${escapeText(profile.label)}</strong><small>${escapeText(profile.description)}</small></span><i data-icon="check"></i></button>`,
+          )
+          .join('')}</section>`;
+      })
+      .join('') ||
+    '<p class="next-stress-help">No temporary conditions were reported by this preview. You can still scan the current layout.</p>';
 
   $$('[data-stress-scope]').forEach((button) => {
     const selected = button.dataset.stressScope === stressScope;
@@ -4283,10 +5112,18 @@ function renderHealth() {
     }),
   );
   $$('[data-stress-fix]').forEach((button) =>
-    button.addEventListener(
-      'click',
-      () => void runDurableAction('preview-health-fix', { issueId: button.dataset.stressFix }),
-    ),
+    button.addEventListener('click', () => {
+      if (button.disabled) return;
+      void runStressAction('Adding correction…', async () => {
+        const result = await runDurableAction('preview-health-fix', {
+          issueId: button.dataset.stressFix,
+        });
+        if (!result)
+          throw new Error(
+            'Correction was not acknowledged. Inspect Review and scan again before retrying.',
+          );
+      });
+    }),
   );
   nextStressLab?.update({
     issues,
@@ -4409,14 +5246,14 @@ function renderMemory() {
     const current = decisions.find(
       (item) => item.id === event.currentTarget.dataset.toggleDecision,
     );
-    await runDurableAction(
+    await runMemoryMutation(
       'update-design-decision',
       { decisionId: current?.id, enabled: !current?.enabled },
       { successMessage: current?.enabled ? 'Guidance disabled' : 'Guidance enabled' },
     );
   });
   $('[data-remove-decision]')?.addEventListener('click', async (event) => {
-    await runDurableAction(
+    await runMemoryMutation(
       'remove-design-decision',
       { decisionId: event.currentTarget.dataset.removeDecision },
       {
@@ -4428,7 +5265,7 @@ function renderMemory() {
     );
   });
   $('[data-save-decision-correction]')?.addEventListener('click', async (event) => {
-    await runDurableAction(
+    await runMemoryMutation(
       'update-design-decision',
       {
         decisionId: event.currentTarget.dataset.saveDecisionCorrection,
@@ -4449,8 +5286,28 @@ function renderMemory() {
     canCapture: Boolean(memory.canCapture),
     busy: memoryCaptureBusy,
     error: memoryCaptureError,
+    actionBusy: memoryActionBusy,
+    actionError: memoryActionError,
   });
   renderIcons($('[data-mode-surface="memory"]'));
+}
+
+async function runMemoryMutation(command, payload, options) {
+  if (memoryActionBusy || memoryCaptureBusy) return null;
+  memoryActionBusy = true;
+  memoryActionError = '';
+  renderMemory();
+  let result;
+  try {
+    result = await runDurableAction(command, payload, options);
+    return result;
+  } finally {
+    memoryActionBusy = false;
+    memoryActionError = result
+      ? ''
+      : 'The last guidance update was not acknowledged. Your draft is preserved; check the current library before retrying.';
+    renderMemory();
+  }
 }
 
 function visualAgentRequests() {
@@ -4608,8 +5465,12 @@ function renderVisualAgent() {
     button.addEventListener('click', () => void handleVisualAgentProposal(button)),
   );
   $('[data-agent-retry]', root)?.addEventListener('click', async (event) => {
+    if (visualAgentProposalBusy) return;
+    const requestId = event.currentTarget.dataset.agentRetry;
+    visualAgentProposalBusy = true;
+    visualAgentActionError = '';
+    renderVisualAgent();
     try {
-      const requestId = event.currentTarget.dataset.agentRetry;
       const updated = await api(
         `/v1/sessions/${sessionId}/visual-agent-requests/${requestId}/retry`,
         { method: 'POST', body: '{}' },
@@ -4624,7 +5485,11 @@ function renderVisualAgent() {
           : `Visual request is ${retried?.status?.replace('_', ' ') ?? 'saved'}.`,
       );
     } catch (error) {
+      visualAgentActionError = error.message;
       toast(error.message);
+    } finally {
+      visualAgentProposalBusy = false;
+      renderVisualAgent();
     }
   });
   nextVisualAgent?.update({
@@ -4635,6 +5500,9 @@ function renderVisualAgent() {
     contextCount,
     busy: visualAgentSubmitting,
     error: visualAgentSubmitError,
+    proposalBusy: visualAgentProposalBusy,
+    actionError: visualAgentActionError,
+    liveContext: visualAgentContextSnapshot(''),
   });
   renderIcons(root);
 }
@@ -4705,11 +5573,13 @@ $('#visual-preview-back').addEventListener('click', returnToVisualAgentConversat
 $('#visual-preview-cancel').addEventListener('click', () => void cancelVisualAgentPreview());
 
 async function handleVisualAgentProposal(button) {
-  if (visualAgentProposalBusy) return;
+  if (visualAgentProposalBusy || button.disabled) return;
   visualAgentProposalBusy = true;
+  visualAgentActionError = '';
   const action = button.dataset.agentProposalAction;
   const current = activeDesignDirection();
   const proposalEndpoint = `/v1/sessions/${sessionId}/visual-agent-requests/${button.dataset.agentRequest}/proposals/${button.dataset.agentProposal}`;
+  renderVisualAgent();
   try {
     const updated = await api(proposalEndpoint, {
       method: 'POST',
@@ -4753,6 +5623,7 @@ async function handleVisualAgentProposal(button) {
         await viewSelectionOnCanvas(selector);
         toast(`${proposal?.name ?? 'Direction'} is live on the canvas`);
       } catch (error) {
+        visualAgentActionError = `${proposal?.name ?? 'Direction'} was saved, but previewing could not finish. Inspect the current direction, then reconnect or choose Preview again.`;
         toast(
           `${proposal?.name ?? 'Direction'} was saved, but previewing failed. Choose Preview again after reconnecting.`,
         );
@@ -4800,9 +5671,11 @@ async function handleVisualAgentProposal(button) {
       return;
     }
   } catch (error) {
+    visualAgentActionError = error.message;
     toast(error.message);
   } finally {
     visualAgentProposalBusy = false;
+    renderVisualAgent();
     renderChangeSummary();
   }
 }
@@ -4889,8 +5762,8 @@ function renderDelivery() {
   const docs = activeSession?.documentationPages ?? [];
   const history = activeSession?.designHistory ?? [];
   const milestones = activeSession?.deliveryMilestones ?? [];
-  if (!records.some((record) => record.id === deliveryRecordId))
-    deliveryRecordId = records[0]?.id ?? '';
+  const handoffSelection = deliveryHandoffSelection();
+  deliveryRecordId = handoffSelection.recordId;
   if (!docs.some((page) => page.id === deliveryDocumentId)) deliveryDocumentId = docs[0]?.id ?? '';
   if (deliveryTab === 'handoff') {
     const record = records.find((candidate) => candidate.id === deliveryRecordId);
@@ -4904,7 +5777,9 @@ function renderDelivery() {
       : '<div class="delivery-empty foundry-empty-state is-compact"><i data-icon="file"></i><strong>No delivery records yet</strong><p>Approve a resolved batch in Review to create one.</p></div>';
     const detail = record
       ? `<article class="delivery-record-detail"><header><div><span class="delivery-status" data-status="${escapeAttribute(record.status)}">${escapeText(deliveryStatusLabel(record.status))}</span><h2>${escapeText(record.title)}</h2><p>${escapeText(record.summary || 'Add a concise engineering summary.')}</p></div><code>${escapeText(record.id)}</code></header><div class="delivery-detail-grid"><section><span class="eyebrow">Intent</span><textarea data-delivery-field="intent" rows="4">${escapeText(record.intent)}</textarea><small>${record.narrativeSource === 'agent' ? 'Agent-generated narrative' : record.narrativeSource === 'authored' ? 'Authored narrative' : 'Deterministic from reviewed changes'}</small></section><section><span class="eyebrow">Affected source</span><div class="delivery-chip-list">${(record.affectedFiles.length ? record.affectedFiles : ['No mapped files']).map((item) => `<code>${escapeText(item)}</code>`).join('')}</div><span class="eyebrow section-label">Components and tokens</span><div class="delivery-chip-list">${[...record.affectedComponents, ...record.affectedTokens].map((item) => `<span>${escapeText(item)}</span>`).join('') || '<span>None recorded</span>'}</div></section><section><span class="eyebrow">Risks and questions</span><textarea data-delivery-field="risks" rows="4" placeholder="One item per line">${escapeText(record.risks.join('\n'))}</textarea><textarea data-delivery-field="questions" rows="3" placeholder="Open questions, one per line">${escapeText(record.questions.join('\n'))}</textarea></section><section><span class="eyebrow">Contexts</span><div class="delivery-contexts">${record.contexts.map((item) => `<span><strong>${escapeText(item.breakpoint)}</strong><small>${escapeText(item.theme)} · ${escapeText(item.state)}</small></span>`).join('')}</div></section></div><section class="delivery-criteria"><header><div><span class="eyebrow">Acceptance criteria</span><strong>${record.acceptanceCriteria.filter((item) => item.status === 'passed').length} of ${record.acceptanceCriteria.length} passed</strong></div>${record.blockers.length ? `<span class="delivery-blocker"><i data-icon="activity"></i>${record.blockers.length} blocked</span>` : '<span class="delivery-ready"><i data-icon="check"></i>Ready</span>'}</header><div>${record.acceptanceCriteria.map((item) => `<article data-status="${escapeAttribute(item.status)}"><i data-icon="${item.status === 'passed' ? 'check' : item.status === 'failed' ? 'close' : 'activity'}"></i><span><strong>${escapeText(item.label)}</strong><small>${escapeText(deliveryStatusLabel(item.status))}</small></span></article>`).join('')}</div></section><section class="delivery-validation"><div><span class="eyebrow">Source validation</span>${record.validationResults.map((item) => `<p data-passed="${item.passed}"><i data-icon="${item.passed ? 'check' : 'close'}"></i><span>${escapeText(item.name)}${item.summary ? `<small>${escapeText(item.summary)}</small>` : ''}</span></p>`).join('') || '<p class="delivery-muted">Validation has not run yet.</p>'}</div><div><span class="eyebrow">Rendered evidence</span>${record.verificationResults.map(deliveryVerificationMarkup).join('') || '<p class="delivery-muted">Rendered verification has not completed.</p>'}</div></section></article>`
-      : '<div class="delivery-empty foundry-empty-state is-stage"><i data-icon="file"></i><strong>Review creates the contract</strong><p>Resolved changes become a versioned handoff with exact values, source relationships, acceptance criteria, and rendered evidence.</p></div>';
+      : handoffSelection.error
+        ? `<div class="delivery-empty foundry-empty-state" data-delivery-handoff-unavailable role="alert"><i data-icon="file"></i><h2>Requested handoff unavailable</h2><p>${escapeText(handoffSelection.error)}</p><p>Choose a record from the list to inspect it, or return to Review. Opening this view does not change source.</p></div>`
+        : '<div class="delivery-empty foundry-empty-state is-stage"><i data-icon="file"></i><strong>Review creates the contract</strong><p>Resolved changes become a versioned handoff with exact values, source relationships, acceptance criteria, and rendered evidence.</p></div>';
     root.innerHTML = `<div class="delivery-layout"><aside class="delivery-sidebar"><header><span class="eyebrow">Delivery records</span><strong>${records.length} total</strong></header><div>${recordList}</div></aside><section class="delivery-stage">${detail}</section></div>`;
     if (record)
       $('.delivery-record-detail', root)?.insertAdjacentHTML(
@@ -4966,6 +5841,7 @@ function renderDelivery() {
   renderIcons(nextDelivery ? $('.delivery-mode') : root);
   $$('[data-delivery-record]', root).forEach((button) =>
     button.addEventListener('click', () => {
+      verifiedDeliverySelection = null;
       deliveryRecordId = button.dataset.deliveryRecord;
       renderDelivery();
     }),
@@ -5042,6 +5918,16 @@ function renderVisualRecipes() {
       .toLowerCase()
       .includes(visualRecipeSearch.toLowerCase()),
   );
+  // The command snapshot can arrive before the published library state. Keep
+  // the confirmed new ID until that entry is available instead of falling back
+  // permanently to the previous recipe during this interval.
+  if (
+    recipeCapturePendingSelectionId &&
+    filtered.some((recipe) => recipe.id === recipeCapturePendingSelectionId)
+  ) {
+    visualRecipeId = recipeCapturePendingSelectionId;
+    recipeCapturePendingSelectionId = '';
+  }
   if (!filtered.some((recipe) => recipe.id === visualRecipeId))
     visualRecipeId = filtered[0]?.id ?? '';
   const recipe = filtered.find((candidate) => candidate.id === visualRecipeId);
@@ -5085,6 +5971,7 @@ function renderVisualRecipes() {
   }
   $$('[data-visual-recipe]').forEach((button) =>
     button.addEventListener('click', () => {
+      recipeCapturePendingSelectionId = '';
       visualRecipeId = button.dataset.visualRecipe;
       renderVisualRecipes();
     }),
@@ -5097,6 +5984,65 @@ function renderVisualRecipes() {
   );
   $$('[data-apply-visual-recipe]').forEach((button) =>
     button.addEventListener('click', async () => {
+      if (foundryPilotActive()) {
+        const recipeId = button.dataset.applyVisualRecipe;
+        const current = bridgeState?.selection;
+        const key = recipeTargetKey(recipeId, current?.id);
+        const model = recipeApplyModel({
+          recipe,
+          selection: current,
+          assessment,
+          connected: bridgeConnected,
+          pending: recipeOperationPending,
+          needsRecheck: recipeMappingRechecks.has(key),
+        });
+        if (model.disabled) return;
+        const recheck = recipeMappingRechecks.has(key);
+        recipeOperationPending = recheck ? 'mapping' : 'apply';
+        renderVisualRecipes();
+        try {
+          if (recheck) {
+            const snapshot = await requestCommand('request-state');
+            if (
+              snapshot.selection?.id !== current.id ||
+              !snapshot.visualRecipes?.assessment?.[recipeId]
+            )
+              throw new Error('Choose the original target and recheck its mapping.');
+            recipeMappingRechecks.delete(key);
+            recipeMappingFeedback.set(
+              key,
+              'Mapping refreshed. Inspect the current values before adding remaining changes.',
+            );
+          } else {
+            const result = await requestCommand('apply-visual-recipe', { recipeId });
+            const message = recipeOutcomeMessage(result);
+            if (!message)
+              throw new Error(
+                'The recipe result was not acknowledged. Inspect Review before retrying.',
+              );
+            recipeMappingFeedback.set(key, message);
+            await loadSession({ deferRender: true });
+            toast(message);
+          }
+        } catch (error) {
+          recipeMappingRechecks.add(key);
+          recipeMappingFeedback.set(
+            key,
+            `${error instanceof Error ? error.message : 'The recipe action stopped.'} Earlier changes may remain; inspect Review before retrying.`,
+          );
+          // Refresh evidence only. The user must explicitly recheck before any
+          // further authoring; already recorded values are not rolled back here.
+          try {
+            await requestCommand('request-state');
+            await loadSession({ deferRender: true });
+          } catch {}
+          toast(recipeMappingFeedback.get(key));
+        } finally {
+          recipeOperationPending = null;
+          if (activeMode === 'recipes') renderVisualRecipes();
+        }
+        return;
+      }
       try {
         await requestCommand('apply-visual-recipe', {
           recipeId: button.dataset.applyVisualRecipe,
@@ -5127,7 +6073,62 @@ function renderVisualRecipes() {
     canSave: visual.canSave,
     count: recipes.length,
   });
+  if (foundryPilotActive())
+    syncRecipeControls({ recipe, assessment, selection, canSave: visual.canSave });
   renderIcons($('[data-mode-surface="recipes"]'));
+}
+
+function syncRecipeControls({ recipe, assessment, selection, canSave }) {
+  const root = $('.visual-recipes-mode');
+  const capture = recipeCaptureModel({
+    selection,
+    canSave,
+    connected: bridgeConnected,
+    pending: recipeOperationPending,
+    needsRecheck: recipeCaptureNeedsRecheck,
+  });
+  const save = $('#visual-recipe-save');
+  save.disabled = capture.disabled;
+  save.textContent = capture.label;
+  save.setAttribute('aria-busy', String(Boolean(recipeOperationPending)));
+  $('#visual-recipe-name').placeholder = capture.fallbackName;
+  for (const id of ['visual-recipe-name', 'visual-recipe-intent'])
+    $(`#${id}`).disabled = Boolean(recipeOperationPending);
+  const form = $('.visual-recipe-capture-form', root);
+  let status = $('[data-recipe-capture-status]', form);
+  if (!status) {
+    status = document.createElement('p');
+    status.className = 'next-recipe-help';
+    status.dataset.recipeCaptureStatus = '';
+    status.setAttribute('role', 'status');
+    form.append(status);
+  }
+  status.textContent = recipeCaptureFeedback || capture.message;
+  const key = recipeTargetKey(recipe?.id, selection?.id);
+  const action = $('[data-apply-visual-recipe]', root);
+  if (action) {
+    const model = recipeApplyModel({
+      recipe,
+      selection,
+      assessment,
+      connected: bridgeConnected,
+      pending: recipeOperationPending,
+      needsRecheck: recipeMappingRechecks.has(key),
+      scope: bridgeState?.context?.scope ?? 'instance',
+    });
+    action.disabled = model.disabled;
+    action.textContent = model.label;
+    action.setAttribute('aria-busy', String(Boolean(recipeOperationPending)));
+    const message = action.closest('footer').querySelector('span');
+    message.textContent = recipeMappingFeedback.get(key) || model.message;
+    message.setAttribute('role', 'status');
+    message.dataset.recipeApplyStatus = '';
+    message.classList.toggle('recipe-action-attention', recipeMappingRechecks.has(key));
+  }
+  for (const button of root.querySelectorAll(
+    '[data-visual-recipe-target], [data-remove-visual-recipe], [data-studio-action="recipe-duplicate"], #visual-recipe-import, [data-next-recipe-canvas]',
+  ))
+    if (recipeOperationPending) button.disabled = true;
 }
 
 const DESIGN_SYSTEM_CATEGORY_LABELS = {
@@ -5167,6 +6168,14 @@ function compareDesignSystemItems(left, right) {
 }
 
 function renderDesignSystem() {
+  const promotionChanges = activeDesignDirection()?.changes ?? [];
+  const promotionBranch = activeSession?.activeDesignBranchId ?? 'main';
+  for (const [key, ids] of designSystemPromotionReceipts)
+    if (
+      key.startsWith(`${promotionBranch}:`) &&
+      ids.every((id) => promotionChanges.some((change) => change.id === id))
+    )
+      designSystemPromotionReceipts.delete(key);
   if (params.get('ui') === 'next') {
     nextDesignSystem ??= createNextDesignSystem($('.design-system-mode'));
     nextDesignSystem.capture();
@@ -5371,6 +6380,15 @@ function renderDesignSystem() {
       renderedValue: token ? renderedTokens[token.id] : undefined,
       connected: bridgeConnected,
       usages: token ? usages.filter((usage) => usage.tokenId === token.id) : [],
+      items: collection,
+      renderedValues: renderedTokens,
+      changes: activeDesignDirection()?.changes ?? [],
+      promotionPending: designSystemPendingPromotions.has(candidate?.id),
+      promotionError: designSystemPromotionErrors.get(candidate?.id),
+      promotionAcknowledged: designSystemPromotionReceipts.has(
+        `${promotionBranch}:${candidate?.id}`,
+      ),
+      tokens,
     });
   }
   renderIcons($('[data-mode-surface="system"]'));
@@ -5413,11 +6431,37 @@ function renderDesignSystem() {
     }),
   );
   $('[data-stage-token-promotion]')?.addEventListener('click', async (event) => {
-    await runDurableAction(
-      'stage-token-promotion',
-      { candidateId: event.currentTarget.dataset.stageTokenPromotion },
-      { successMessage: 'Token plan added to Review' },
-    );
+    const candidateId = event.currentTarget.dataset.stageTokenPromotion;
+    const receiptKey = `${activeSession?.activeDesignBranchId ?? 'main'}:${candidateId}`;
+    if (!foundryPilotActive()) {
+      await runDurableAction(
+        'stage-token-promotion',
+        { candidateId },
+        { successMessage: 'Token plan added to Review' },
+      );
+      return;
+    }
+    const candidate = projectDesign().tokenPromotions?.find((item) => item.id === candidateId);
+    const state = systemPromotionState(candidate, activeDesignDirection()?.changes ?? [], {
+      connected: bridgeConnected,
+      pending: designSystemPendingPromotions.has(candidateId),
+      acknowledged: designSystemPromotionReceipts.has(receiptKey),
+    });
+    if (state.disabled) return;
+    designSystemPendingPromotions.add(candidateId);
+    designSystemPromotionErrors.delete(candidateId);
+    renderDesignSystem();
+    const result = await runDurableAction('stage-token-promotion', { candidateId });
+    designSystemPendingPromotions.delete(candidateId);
+    if (result?.recorded) {
+      if (result.changeIds?.length) designSystemPromotionReceipts.set(receiptKey, result.changeIds);
+      toast('Token plan added to Review');
+    } else
+      designSystemPromotionErrors.set(
+        candidateId,
+        'The plan was not acknowledged. Review current changes before retrying.',
+      );
+    if (activeMode === 'system') renderDesignSystem();
   });
   $$('[data-system-component]').forEach((button) =>
     button.addEventListener('click', () => {
@@ -5846,7 +6890,7 @@ function renderTypographyStudio() {
   const comparisonMarkup = typographyCandidate
     ? `<section class="typography-comparison"><header><div><span class="eyebrow">Font comparison</span><strong>Current and Candidate</strong></div><span>${typographyComparisonPending ? 'Measuring…' : typographyCandidateStaged() ? 'Font change staged in Review' : 'Comparison only · 0 changes'}</span></header><div>${typographyComparisonCard('Current', specimen, typographyComparison?.current ?? typography.metrics, typography.selection.primaryFamily)}${typographyComparisonCard('Candidate', specimen, typographyComparison?.candidate, typographyCandidate.family, true)}</div></section>`
     : `<section class="typography-comparison is-empty"><header><div><span class="eyebrow">Font comparison</span><strong>Current and Candidate</strong></div><span>Temporary preview</span></header><div>${typographyComparisonCard('Current', specimen, typography.metrics, typography.selection.primaryFamily)}<article class="typography-comparison-placeholder foundry-empty-state"><i data-icon="typography"></i><strong>Choose a candidate</strong><p>Select a project, Google, or local font to compare it with identical copy and geometry.</p></article></div></section>`;
-  stage.innerHTML = `${comparisonMarkup}<section class="typography-treatment-panel"><header><div><span class="eyebrow">Rhythm</span><strong>Type treatments</strong></div><button class="secondary-button compact" data-typography-action="reset-preview">Reset preview</button></header><div class="typography-treatment-grid">${treatments.map((treatment) => `<button data-treatment-id="${escapeAttribute(treatment.id)}" aria-pressed="${String(typography.preview?.treatmentId === treatment.id)}"><strong>${escapeText(treatment.label)}</strong><span>${escapeText(treatment.detail)}</span></button>`).join('')}</div><div class="typography-scale-panel"><label><span>Base size</span><input id="typography-scale-base" type="range" min="8" max="128" step="4" value="${Number(typographyScale.base)}"><output>${Number(typographyScale.base)}px</output></label><div class="typography-scale-options"><span>Ratio</span>${[1.125, 1.2, 1.25, 1.333].map((ratio) => `<button data-scale-ratio="${ratio}" aria-pressed="${String(Number(typographyScale.ratio) === ratio)}">${ratio}</button>`).join('')}</div><div class="typography-scale-options"><span>Step</span>${[-1, 0, 1, 2, 3].map((step) => `<button data-scale-step="${step}" aria-pressed="${String(Number(typographyScale.step) === step)}">${step > 0 ? '+' : ''}${step}</button>`).join('')}</div><div class="typography-scale-result"><code>${escapeText(typography.scale?.value ?? typography.selection.size)}</code><button data-scale-fluid aria-pressed="${String(Boolean(typographyScale.fluid))}">${typographyScale.fluid ? 'Fluid' : 'Fixed'}</button><button class="primary-button compact" data-preview-scale>Preview scale</button></div></div></section><section class="typography-usage-panel"><header><strong>Project usage</strong><span>${usages.reduce((total, usage) => total + usage.count, 0)} text nodes</span></header><div>${usages
+  stage.innerHTML = `${comparisonMarkup}<section class="typography-treatment-panel"><header><div><span class="eyebrow">Rhythm</span><strong>Type treatments</strong></div><button class="secondary-button compact" data-typography-action="reset-preview">Reset preview</button></header><div class="typography-treatment-grid">${treatments.map((treatment) => `<button data-treatment-id="${escapeAttribute(treatment.id)}" aria-pressed="${String(typography.preview?.treatmentId === treatment.id)}"><strong>${escapeText(treatment.label)}</strong><span>${escapeText(treatment.detail)}</span></button>`).join('')}</div><div class="typography-scale-panel"><label><span>Base size</span><input id="typography-scale-base" aria-label="Base type size slider" type="range" min="8" max="128" step="${foundryPilotActive() ? 'any' : '4'}" value="${Number(typographyScale.base)}">${foundryPilotActive() ? `<span class="typography-scale-entry"><input data-scale-base-entry type="number" min="8" max="128" step="any" aria-label="Base type size" value="${Number(typographyScale.base)}"><i>px</i></span>` : `<output>${Number(typographyScale.base)}px</output>`}</label><div class="typography-scale-options"><span>Ratio</span>${[1.125, 1.2, 1.25, 1.333].map((ratio) => `<button data-scale-ratio="${ratio}" aria-pressed="${String(Number(typographyScale.ratio) === ratio)}">${ratio}</button>`).join('')}</div><div class="typography-scale-options"><span>Step</span>${[-1, 0, 1, 2, 3].map((step) => `<button data-scale-step="${step}" aria-pressed="${String(Number(typographyScale.step) === step)}">${step > 0 ? '+' : ''}${step}</button>`).join('')}</div><div class="typography-scale-result">${foundryPilotActive() ? '<span class="typography-scale-draft-label">Draft scale</span>' : ''}<code data-type-scale-draft>${escapeText(foundryPilotActive() ? (typographyScaleDraft(typographyScale) ?? '—') : (typography.scale?.value ?? typography.selection.size))}</code><button data-scale-fluid aria-pressed="${String(Boolean(typographyScale.fluid))}">${typographyScale.fluid ? 'Fluid' : 'Fixed'}</button><button class="primary-button compact" data-preview-scale>Preview scale</button></div></div></section><section class="typography-usage-panel"><header><strong>Project usage</strong><span>${usages.reduce((total, usage) => total + usage.count, 0)} text nodes</span></header><div>${usages
     .slice(0, 6)
     .map(
       (usage) =>
@@ -5865,7 +6909,7 @@ function renderTypographyStudio() {
   const controlField = (property, label) => {
     const control = typographyControl(property);
     return control
-      ? `<label class="${typographyChanged(property)}"><span>${label}</span><input data-typography-control="${property}" value="${escapeAttribute(control.value)}"></label>`
+      ? `<label class="${typographyChanged(property)}"><span>${label}</span><span class="typography-control-value"><input data-typography-control="${property}" ${foundryPilotActive() && control.kind === 'number' ? 'inputmode="decimal"' : ''} value="${escapeAttribute(control.value)}">${foundryPilotActive() && typographyControlUnit(control) ? `<i>${escapeText(typographyControlUnit(control))}</i>` : ''}</span></label>`
       : '';
   };
   const strategies = typography.strategies ?? [];
@@ -5948,7 +6992,47 @@ function renderTypographyStudio() {
       .closest('label')
       ?.querySelector('output')
       ?.replaceChildren(`${typographyScale.base}px`);
+    if (foundryPilotActive()) {
+      const entry = $('[data-scale-base-entry]');
+      if (entry) entry.value = String(typographyScale.base);
+      syncScaleDraft();
+    }
   });
+  const scalePanel = $('.typography-scale-panel', stage);
+  function syncScaleDraft() {
+    if (!scalePanel || !foundryPilotActive()) return;
+    const draft = typographyScaleDraft(typographyScale);
+    $('[data-type-scale-draft]', scalePanel).textContent =
+      draft ?? 'Enter a base size from 8 to 128px';
+    $('[data-preview-scale]', scalePanel).disabled = !draft || !bridgeConnected;
+    $('[data-scale-base-entry]', scalePanel)?.setAttribute('aria-invalid', String(!draft));
+  }
+  const scaleEntry = $('[data-scale-base-entry]', stage);
+  if (scaleEntry) {
+    let start = scaleEntry.value;
+    scaleEntry.addEventListener('focus', () => {
+      start = scaleEntry.value;
+    });
+    const update = () => {
+      typographyScale.base = scaleEntry.value.trim() ? Number(scaleEntry.value) : NaN;
+      if (typographyScaleDraft(typographyScale))
+        $('#typography-scale-base').value = String(typographyScale.base);
+      syncScaleDraft();
+    };
+    scaleEntry.addEventListener('input', update);
+    scaleEntry.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        scaleEntry.value = start;
+        update();
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        scaleEntry.blur();
+      }
+    });
+    syncScaleDraft();
+  }
   $('[data-preview-scale]', stage)?.addEventListener(
     'click',
     () =>
@@ -5963,17 +7047,79 @@ function renderTypographyStudio() {
     const commit = async () => {
       const next = field.value;
       if (next === previous || pending) return;
-      pending = true;
       const property = field.dataset.typographyControl;
-      const result = await runDurableAction('set-control', { property, value: next });
+      if (foundryPilotActive()) {
+        if (bridgeState?.selection?.id !== selection.id) {
+          toast('The selection changed. Choose the text layer again before editing.');
+          return;
+        }
+        if (selection.count > 1) {
+          toast('Choose one text layer to edit Typography properties.');
+          return;
+        }
+        if (!validate()) return;
+      }
+      pending = true;
+      let result;
+      if (foundryPilotActive()) {
+        const control = typographyControl(property);
+        const draft = {
+          targetId: selection.id,
+          targetIds: [selection.id],
+          property,
+          value: control.kind === 'number' ? Number(next) : next,
+        };
+        if (!(await runDurableAction('inspector-draft', { ...draft, action: 'preview' }))) {
+          pending = false;
+          return;
+        }
+        result = await runDurableAction('inspector-draft', { ...draft, action: 'commit' });
+      } else result = await runDurableAction('set-control', { property, value: next });
       pending = false;
       if (!result) return;
       previous = next;
-      changedControls.add(`${selection.id}:${property}`);
-      field.closest('label')?.classList.add('is-changed');
+      if (result.recorded) {
+        changedControls.add(`${selection.id}:${property}`);
+        field.closest('label')?.classList.add('is-changed');
+      }
+    };
+    const validate = () => {
+      const control = typographyControl(field.dataset.typographyControl);
+      const message = control
+        ? typographyControlError(control, field.value, (property, value) =>
+            CSS.supports(property, value),
+          )
+        : 'This control is no longer available.';
+      field.setAttribute('aria-invalid', String(Boolean(message)));
+      let error = field.closest('label').querySelector('.typography-input-error');
+      if (message && !error) {
+        error = document.createElement('span');
+        error.className = 'typography-input-error';
+        error.setAttribute('role', 'status');
+        field.closest('label').append(error);
+      }
+      if (error) {
+        error.hidden = !message;
+        error.textContent = message;
+      }
+      return !message;
     };
     field.addEventListener('change', () => void commit());
     field.addEventListener('blur', () => void commit());
+    if (foundryPilotActive()) {
+      field.addEventListener('input', validate);
+      field.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          field.value = previous;
+          validate();
+        } else if (event.key === 'Enter') {
+          event.preventDefault();
+          void commit();
+        }
+      });
+    }
   });
   $('#typography-google-strategy')?.addEventListener('change', (event) => {
     typographyGoogleStrategy = event.target.value;
@@ -6085,7 +7231,7 @@ function motionCurvePayload(editor) {
   const values = Object.fromEntries(
     $$('[data-curve-field]', editor).map((field) => [
       field.dataset.curveField,
-      Number(field.value),
+      field.value.trim() ? Number(field.value) : NaN,
     ]),
   );
   return {
@@ -6094,7 +7240,34 @@ function motionCurvePayload(editor) {
   };
 }
 
+function validateMotionInputs(root, selector) {
+  let valid = true;
+  $$(selector, root).forEach((field) => {
+    if (field.type !== 'number') return;
+    const ok = motionNumericValid(
+      field.value,
+      field.min === '' ? -Infinity : Number(field.min),
+      field.max === '' ? Infinity : Number(field.max),
+    );
+    field.setAttribute('aria-invalid', String(!ok));
+    let message = field.closest('label')?.querySelector('.motion-input-error');
+    if (!ok && !message) {
+      message = document.createElement('span');
+      message.className = 'motion-input-error';
+      message.setAttribute('role', 'status');
+      field.closest('label')?.append(message);
+    }
+    if (message) {
+      message.hidden = ok;
+      message.textContent = ok ? '' : 'Enter a number within the shown limits.';
+    }
+    valid &&= ok;
+  });
+  return valid;
+}
+
 async function commitMotionCurve(editor) {
+  if (foundryPilotActive() && !validateMotionInputs(editor, '[data-curve-field]')) return null;
   const payload = motionCurvePayload(editor);
   return commitMotionAuthoring(
     {
@@ -6110,6 +7283,7 @@ async function commitMotionCurve(editor) {
 function updateBezierEditorPreview(editor) {
   const curve = motionCurvePayload(editor);
   if (curve.kind !== 'cubic-bezier') return;
+  if (foundryPilotActive() && !motionPresetParameters(curve.kind, curve)) return;
   const path = $('.motion-curve-line', editor);
   if (path) path.setAttribute('d', motionCurvePath(motionBezierPoints(curve)));
   [1, 2].forEach((index) => {
@@ -6222,6 +7396,7 @@ function renderMotionComparison(motion) {
 }
 
 function renderMotionCurveEditor(selection, motion, disabled) {
+  const studio = foundryPilotActive();
   const curve = motion.curve ?? {
     kind: 'custom',
     sourceValue: motion.timing?.easing ?? 'linear',
@@ -6249,38 +7424,33 @@ function renderMotionCurveEditor(selection, motion, disabled) {
             `<label><span>${label}</span><input data-curve-field="${property}" type="number" min="${min}" max="${max}" step="${step}" value="${value}" ${disabled}></label>`,
         )
         .join('')
-    : [
-        ['x1', 'X1', cubic.x1, 0, 1],
-        ['y1', 'Y1', cubic.y1, -2, 3],
-        ['x2', 'X2', cubic.x2, 0, 1],
-        ['y2', 'Y2', cubic.y2, -2, 3],
-      ]
-        .map(
-          ([property, label, value, min, max]) =>
-            `<label><span>${label}</span><input data-curve-field="${property}" type="number" min="${min}" max="${max}" step="0.01" value="${value}" ${disabled}></label>`,
-        )
-        .join('');
-  const presets = isSpring
-    ? [
-        ['gentle', 'Gentle', 1, 120, 20, 0],
-        ['responsive', 'Responsive', 1, 210, 24, 0],
-        ['expressive', 'Expressive', 0.8, 260, 18, 0],
-      ]
-        .map(
-          ([id, label, mass, stiffness, damping, velocity]) =>
-            `<button type="button" class="motion-curve-preset" data-curve-preset="${id}" data-mass="${mass}" data-stiffness="${stiffness}" data-damping="${damping}" data-velocity="${velocity}" ${disabled}>${label}</button>`,
-        )
-        .join('')
-    : [
-        ['linear', 'Linear', 0, 0, 1, 1],
-        ['ease-out', 'Ease out', 0.16, 1, 0.3, 1],
-        ['ease-in-out', 'Ease in out', 0.65, 0, 0.35, 1],
-      ]
-        .map(
-          ([id, label, x1, y1, x2, y2]) =>
-            `<button type="button" class="motion-curve-preset" data-curve-preset="${id}" data-x1="${x1}" data-y1="${y1}" data-x2="${x2}" data-y2="${y2}" ${disabled}>${label}</button>`,
-        )
-        .join('');
+    : studio && !isBezier
+      ? ''
+      : [
+          ['x1', 'X1', cubic.x1, 0, 1],
+          ['y1', 'Y1', cubic.y1, -2, 3],
+          ['x2', 'X2', cubic.x2, 0, 1],
+          ['y2', 'Y2', cubic.y2, -2, 3],
+        ]
+          .map(
+            ([property, label, value, min, max]) =>
+              `<label><span>${label}</span><input data-curve-field="${property}" type="number" min="${min}" max="${max}" step="0.01" value="${value}" ${disabled}></label>`,
+          )
+          .join('');
+  const presetKind = isSpring ? 'spring' : 'cubic-bezier';
+  const selectedPreset = matchingMotionPreset(curve);
+  const presets = MOTION_CURVE_PRESETS[presetKind]
+    .map((preset) => {
+      const attributes = Object.entries(preset)
+        .filter(([name]) => !['id', 'label'].includes(name))
+        .map(([name, value]) => `data-${name}="${value}"`)
+        .join(' ');
+      const diagram = studio
+        ? `<svg viewBox="0 0 36 26" aria-hidden="true" focusable="false"><path d="${motionPresetPath(presetKind, preset)}"/></svg>`
+        : '';
+      return `<button type="button" class="motion-curve-preset" data-curve-preset="${preset.id}" data-preset-kind="${presetKind}" ${attributes} ${studio ? `aria-pressed="${selectedPreset === preset.id}" title="${preset.label}: replaces easing and adds the change to Review"` : ''} ${disabled}>${diagram}<span>${preset.label}</span></button>`;
+    })
+    .join('');
   const handles = isBezier
     ? `<line class="motion-curve-handle-line" x1="16" y1="${motionCurvePoint(0, 'y')}" x2="${motionCurvePoint(cubic.x1, 'x')}" y2="${motionCurvePoint(cubic.y1, 'y')}"></line><line class="motion-curve-handle-line" x1="224" y1="${motionCurvePoint(1, 'y')}" x2="${motionCurvePoint(cubic.x2, 'x')}" y2="${motionCurvePoint(cubic.y2, 'y')}"></line><circle class="motion-curve-handle" data-curve-handle="1" tabindex="0" role="slider" aria-label="First cubic Bezier handle" aria-valuemin="0" aria-valuemax="1" aria-valuenow="${cubic.x1}" aria-valuetext="${cubic.x1}, ${cubic.y1}" cx="${motionCurvePoint(cubic.x1, 'x')}" cy="${motionCurvePoint(cubic.y1, 'y')}" r="7"></circle><circle class="motion-curve-handle" data-curve-handle="2" tabindex="0" role="slider" aria-label="Second cubic Bezier handle" aria-valuemin="0" aria-valuemax="1" aria-valuenow="${cubic.x2}" aria-valuetext="${cubic.x2}, ${cubic.y2}" cx="${motionCurvePoint(cubic.x2, 'x')}" cy="${motionCurvePoint(cubic.y2, 'y')}" r="7"></circle>`
     : '';
@@ -6293,7 +7463,7 @@ function renderMotionCurveEditor(selection, motion, disabled) {
     : isBezier
       ? 'CSS cubic-bezier()'
       : 'Authored easing';
-  return `<section class="motion-curve-editor${motionStudioChanged(selection, motion, 'easing')}" data-curve-kind="${escapeAttribute(curve.kind)}" data-motion-id="${escapeAttribute(motion.id)}"><header><span><strong>Timing curve</strong><code>${sourceLabel}</code></span><div class="motion-curve-tabs" role="tablist" aria-label="Timing curve type"><button type="button" role="tab" aria-selected="${!isSpring}" class="${!isSpring ? 'is-active' : ''}" data-curve-kind-select="cubic-bezier" ${disabled}>Bézier</button><button type="button" role="tab" aria-selected="${isSpring}" class="${isSpring ? 'is-active' : ''}" data-curve-kind-select="spring" ${disabled}>Spring</button></div></header><div class="motion-curve-graph"><svg viewBox="0 0 240 156" role="${isBezier ? 'group' : 'img'}" aria-label="${isSpring ? 'Spring response curve' : 'Cubic Bezier timing curve'}"><path class="motion-curve-grid" d="M16 16V140M68 16V140M120 16V140M172 16V140M224 16V140M16 37H224M16 78H224M16 119H224M16 140H224"></path><path class="motion-curve-line" d="${motionCurvePath(curve.points)}"></path>${handles}</svg><div class="motion-curve-preview"><span class="motion-curve-preview-dot" style="--curve-duration:${duration}ms;--curve-easing:${escapeAttribute(curve.previewValue ?? curve.sourceValue)}"></span></div></div><div class="motion-curve-presets" aria-label="Curve presets">${presets}</div><div class="motion-curve-fields">${fields}</div><div class="motion-curve-diagnostics"><span><small>${isSpring ? 'Settle' : 'Duration'}</small><strong>${isSpring ? `${Math.round(duration)} ms` : `${Math.round(Number(motion.timing?.duration) || 0)} ms`}</strong></span><span><small>Overshoot</small><strong>${Number(curve.diagnostics?.overshoot ?? 0).toFixed(1)}%</strong></span><button type="button" class="chip-button" data-curve-preview ${disabled}>Preview curve</button></div><div class="motion-curve-source"><span>Source value</span><code title="${escapeAttribute(curve.sourceValue)}">${escapeText(curve.sourceValue)}</code></div></section>`;
+  return `<section class="motion-curve-editor${motionStudioChanged(selection, motion, 'easing')}" data-curve-kind="${escapeAttribute(curve.kind)}" data-motion-id="${escapeAttribute(motion.id)}"><header><span><strong>Timing curve</strong><code>${sourceLabel}</code></span><div class="motion-curve-tabs" role="tablist" aria-label="Timing curve type"><button type="button" role="tab" aria-selected="${studio ? isBezier : !isSpring}" class="${(studio ? isBezier : !isSpring) ? 'is-active' : ''}" data-curve-kind-select="cubic-bezier" ${disabled}>Bézier</button><button type="button" role="tab" aria-selected="${isSpring}" class="${isSpring ? 'is-active' : ''}" data-curve-kind-select="spring" ${disabled}>Spring</button></div></header><div class="motion-curve-graph"><svg viewBox="0 0 240 156" role="${isBezier ? 'group' : 'img'}" aria-label="${isSpring ? 'Spring response curve' : 'Cubic Bezier timing curve'}"><path class="motion-curve-grid" d="M16 16V140M68 16V140M120 16V140M172 16V140M224 16V140M16 37H224M16 78H224M16 119H224M16 140H224"></path><path class="motion-curve-line" d="${motionCurvePath(curve.points)}"></path>${handles}</svg><div class="motion-curve-preview"><span class="motion-curve-preview-dot" style="--curve-duration:${duration}ms;--curve-easing:${escapeAttribute(curve.previewValue ?? curve.sourceValue)}"></span></div></div><div class="motion-curve-presets" aria-label="Curve presets">${presets}</div><div class="motion-curve-fields">${fields}</div>${studio ? `<p class="motion-controls-note">${isBezier ? 'Drag handles; release saves to Review. Escape cancels the drag.' : isSpring ? 'Parameter and preset changes go to Review.' : 'Captured easing is retained. Choose a type or preset to replace it.'}</p>` : ''}<div class="motion-curve-diagnostics"><span><small>${isSpring ? 'Settle' : 'Duration'}</small><strong>${isSpring ? `${Math.round(duration)} ms` : `${Math.round(Number(motion.timing?.duration) || 0)} ms`}</strong></span><span><small>Overshoot</small><strong>${Number(curve.diagnostics?.overshoot ?? 0).toFixed(1)}%</strong></span><button type="button" class="chip-button" data-curve-preview ${disabled}>Preview curve</button></div><div class="motion-curve-source"><span>Source value</span><code title="${escapeAttribute(curve.sourceValue)}">${escapeText(curve.sourceValue)}</code></div></section>`;
 }
 
 function renderMotionStudio() {
@@ -6314,6 +7484,10 @@ function renderMotionStudio() {
   }
   const selection = bridgeState?.selection;
   const motions = bridgeState?.motions ?? [];
+  if (foundryPilotActive() && motionStudioSelectionId !== selection?.id) {
+    motionStudioId = '';
+    motionStudioSelectionId = selection?.id ?? '';
+  }
   const summary = $('#motion-selection-summary');
   const list = $('#motion-studio-list');
   const stage = $('#motion-studio-stage');
@@ -6348,7 +7522,10 @@ function renderMotionStudio() {
 
   summary.innerHTML = `<span class="eyebrow">Selection</span><strong>${escapeText(selection.label)}</strong><code>${escapeText(sourceText(selection.source))}</code>`;
   if (!motions.some((motion) => motion.id === motionStudioId))
-    motionStudioId = motions[0]?.id ?? '';
+    motionStudioId =
+      (foundryPilotActive() ? motions.find((motion) => motion.active)?.id : null) ??
+      motions[0]?.id ??
+      '';
   list.innerHTML = motions.length
     ? motions
         .map(
@@ -6427,7 +7604,7 @@ function renderMotionStudio() {
   const keyframePath = selectedFrame ? `keyframe.${selectedFrame.index}` : '';
   const directionOptions = ['normal', 'reverse', 'alternate', 'alternate-reverse'];
   const fillOptions = ['none', 'forwards', 'backwards', 'both', 'auto'];
-  properties.innerHTML = `<div class="motion-properties-head"><span class="eyebrow">Motion</span><strong>Animation properties</strong><code>${escapeText(motion.performance?.detail ?? 'Performance not classified')}</code></div>${renderNativeMotionSource(motion)}<section class="motion-timing-section"><header><strong>Playback timing</strong><code>Authored values</code></header><div class="motion-studio-fields" data-motion-id="${escapeAttribute(motion.id)}"><label class="${motionStudioChanged(selection, motion, 'duration')}"><span>Duration</span><span class="motion-field-with-unit"><input data-studio-property="duration" type="number" min="0" step="10" value="${Math.round(Number(timing.duration) || 0)}" ${disabled}><i>ms</i></span></label><label class="${motionStudioChanged(selection, motion, 'delay')}"><span>Delay</span><span class="motion-field-with-unit"><input data-studio-property="delay" type="number" step="10" value="${Math.round(Number(timing.delay) || 0)}" ${disabled}><i>ms</i></span></label><label class="is-wide${motionStudioChanged(selection, motion, 'easing')}"><span>Easing</span><input data-studio-property="easing" type="text" value="${escapeAttribute(timing.easing ?? 'linear')}" ${disabled}></label><label class="${motionStudioChanged(selection, motion, 'iterations')}"><span>Iterations</span><input data-studio-property="iterations" type="number" min="0" step="1" value="${Number.isFinite(Number(timing.iterations)) ? Number(timing.iterations) : 1}" ${disabled}></label><label class="${motionStudioChanged(selection, motion, 'direction')}"><span>Direction</span><select data-studio-property="direction" ${disabled}>${directionOptions.map((value) => `<option value="${value}" ${timing.direction === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label class="is-wide${motionStudioChanged(selection, motion, 'fill')}"><span>Fill</span><select data-studio-property="fill" ${disabled}>${fillOptions.map((value) => `<option value="${value}" ${timing.fill === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></div></section><section class="motion-studio-audit"><header><strong>Motion health</strong><span class="motion-cost" data-tier="${escapeAttribute(motion.performance?.tier ?? 'unknown')}">${escapeText(motion.performance?.label ?? 'Unresolved')}</span></header><div><i class="motion-audit-dot ${motion.reducedMotionProtected ? 'is-clear' : 'has-warning'}"></i><span><strong>${motion.reducedMotionProtected ? 'Reduced motion covered' : 'Reduced motion needs review'}</strong><p>${motion.reducedMotionProtected ? 'A matching preference rule or short duration protects this motion.' : 'No matching reduced-motion rule was found for this element.'}</p></span></div></section>${selectedFrame && selectedProperty ? `<section class="motion-studio-keyframe" data-motion-id="${escapeAttribute(motion.id)}"><header><strong>Keyframe ${selectedFrame.index + 1}</strong><code>${escapeText(selectedProperty)}</code></header><div class="motion-studio-fields"><label class="${motionStudioChanged(selection, motion, `${keyframePath}.offset`)}"><span>Position</span><span class="motion-field-with-unit"><input data-studio-keyframe-property="offset" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="number" min="0" max="100" step="1" value="${Math.round(Number(selectedFrame.offset) * 100)}"><i>%</i></span></label><label class="is-wide${motionStudioChanged(selection, motion, `${keyframePath}.${selectedProperty}`)}"><span>Value</span><input data-studio-keyframe-property="value" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="text" value="${escapeAttribute(selectedValue)}"></label><label class="is-wide${motionStudioChanged(selection, motion, `${keyframePath}.easing`)}"><span>Segment easing</span><input data-studio-keyframe-property="easing" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="text" value="${escapeAttribute(selectedFrame.easing ?? 'linear')}"></label></div></section>` : ''}`;
+  properties.innerHTML = `<div class="motion-properties-head"><span class="eyebrow">Motion</span><strong>Animation properties</strong><code>${escapeText(motion.performance?.detail ?? 'Performance not classified')}</code></div>${renderNativeMotionSource(motion)}<section class="motion-timing-section"><header><strong>Playback timing</strong><code>Authored values</code></header><div class="motion-studio-fields" data-motion-id="${escapeAttribute(motion.id)}"><label class="${motionStudioChanged(selection, motion, 'duration')}"><span>Duration</span><span class="motion-field-with-unit"><input data-studio-property="duration" type="number" min="0" step="${foundryPilotActive() ? 'any' : '10'}" value="${foundryPilotActive() ? motionTimingValue(timing.duration) : Math.round(Number(timing.duration) || 0)}" ${disabled}><i>ms</i></span></label><label class="${motionStudioChanged(selection, motion, 'delay')}"><span>Delay</span><span class="motion-field-with-unit"><input data-studio-property="delay" type="number" step="${foundryPilotActive() ? 'any' : '10'}" value="${foundryPilotActive() ? motionTimingValue(timing.delay) : Math.round(Number(timing.delay) || 0)}" ${disabled}><i>ms</i></span></label><label class="is-wide${motionStudioChanged(selection, motion, 'easing')}"><span>Easing</span><input data-studio-property="easing" type="text" value="${escapeAttribute(timing.easing ?? 'linear')}" ${disabled}></label><label class="${motionStudioChanged(selection, motion, 'iterations')}"><span>Iterations</span><input data-studio-property="iterations" type="number" min="0" step="1" value="${Number.isFinite(Number(timing.iterations)) ? Number(timing.iterations) : 1}" ${disabled}></label><label class="${motionStudioChanged(selection, motion, 'direction')}"><span>Direction</span><select data-studio-property="direction" ${disabled}>${directionOptions.map((value) => `<option value="${value}" ${timing.direction === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label class="is-wide${motionStudioChanged(selection, motion, 'fill')}"><span>Fill</span><select data-studio-property="fill" ${disabled}>${fillOptions.map((value) => `<option value="${value}" ${timing.fill === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></div></section><section class="motion-studio-audit"><header><strong>Motion health</strong><span class="motion-cost" data-tier="${escapeAttribute(motion.performance?.tier ?? 'unknown')}">${escapeText(motion.performance?.label ?? 'Unresolved')}</span></header><div><i class="motion-audit-dot ${motion.reducedMotionProtected ? 'is-clear' : 'has-warning'}"></i><span><strong>${motion.reducedMotionProtected ? 'Reduced motion covered' : 'Reduced motion needs review'}</strong><p>${motion.reducedMotionProtected ? 'A matching preference rule or short duration protects this motion.' : 'No matching reduced-motion rule was found for this element.'}</p></span></div></section>${selectedFrame && selectedProperty ? `<section class="motion-studio-keyframe" data-motion-id="${escapeAttribute(motion.id)}"><header><strong>Keyframe ${selectedFrame.index + 1}</strong><code>${escapeText(selectedProperty)}</code></header><div class="motion-studio-fields"><label class="${motionStudioChanged(selection, motion, `${keyframePath}.offset`)}"><span>Position</span><span class="motion-field-with-unit"><input data-studio-keyframe-property="offset" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="number" min="0" max="100" step="1" value="${Math.round(Number(selectedFrame.offset) * 100)}"><i>%</i></span></label><label class="is-wide${motionStudioChanged(selection, motion, `${keyframePath}.${selectedProperty}`)}"><span>Value</span><input data-studio-keyframe-property="value" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="text" value="${escapeAttribute(selectedValue)}"></label><label class="is-wide${motionStudioChanged(selection, motion, `${keyframePath}.easing`)}"><span>Segment easing</span><input data-studio-keyframe-property="easing" data-studio-keyframe-index="${selectedFrame.index}" data-studio-track-property="${escapeAttribute(selectedProperty)}" type="text" value="${escapeAttribute(selectedFrame.easing ?? 'linear')}"></label></div></section>` : ''}`;
   $('.motion-studio-audit', properties)?.insertAdjacentHTML(
     'beforebegin',
     renderMotionCurveEditor(selection, motion, disabled),
@@ -6556,6 +7733,7 @@ function renderMotionStudio() {
     let previous = String(field.value);
     const commit = async () => {
       if (String(field.value) === previous) return;
+      if (foundryPilotActive() && !validateMotionInputs(field.closest('label'), 'input')) return;
       const priorValue = previous;
       const nextValue = String(field.value);
       previous = nextValue;
@@ -6575,11 +7753,30 @@ function renderMotionStudio() {
     };
     field.addEventListener('change', commit);
     field.addEventListener('blur', commit);
+    if (foundryPilotActive()) {
+      field.addEventListener('input', () => validateMotionInputs(field.closest('label'), 'input'));
+      field.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          field.value = previous;
+          validateMotionInputs(field.closest('label'), 'input');
+        } else if (event.key === 'Enter') {
+          event.preventDefault();
+          void commit();
+        }
+      });
+    }
   });
   const curveEditor = $('.motion-curve-editor', properties);
   if (curveEditor) {
     $$('[data-curve-kind-select]', curveEditor).forEach((button) =>
       button.addEventListener('click', async () => {
+        if (
+          foundryPilotActive() &&
+          button.dataset.curveKindSelect === curveEditor.dataset.curveKind
+        )
+          return;
         await commitMotionAuthoring(
           {
             id: motion.id,
@@ -6601,6 +7798,16 @@ function renderMotionStudio() {
     );
     $$('[data-curve-preset]', curveEditor).forEach((button) =>
       button.addEventListener('click', () => {
+        if (foundryPilotActive()) {
+          const parameters = motionPresetParameters(button.dataset.presetKind, button.dataset);
+          if (!parameters) return;
+          void commitMotionAuthoring(
+            { id: motion.id, action: 'curve', ...parameters },
+            `${selection.id}:motion.${motion.id}.easing`,
+            curveEditor,
+          );
+          return;
+        }
         $$('[data-curve-field]', curveEditor).forEach((field) => {
           const value = button.dataset[field.dataset.curveField];
           if (value != null) field.value = value;
@@ -6622,6 +7829,23 @@ function renderMotionStudio() {
       field.addEventListener('input', () => updateBezierEditorPreview(curveEditor));
       field.addEventListener('change', commit);
       field.addEventListener('blur', commit);
+      if (foundryPilotActive()) {
+        field.addEventListener('input', () =>
+          validateMotionInputs(curveEditor, '[data-curve-field]'),
+        );
+        field.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            field.value = previous;
+            validateMotionInputs(curveEditor, '[data-curve-field]');
+            updateBezierEditorPreview(curveEditor);
+          } else if (event.key === 'Enter') {
+            event.preventDefault();
+            void commit();
+          }
+        });
+      }
     });
     $('[data-curve-preview]', curveEditor)?.addEventListener('click', () => {
       const dot = $('.motion-curve-preview-dot', curveEditor);
@@ -6647,16 +7871,40 @@ function renderMotionStudio() {
         if (yField) yField.value = y.toFixed(2);
         updateBezierEditorPreview(curveEditor);
       };
-      handle.addEventListener('pointerdown', (event) => {
-        motionStudioInteracting = true;
-        handle.setPointerCapture(event.pointerId);
-        setFromPoint(event.clientX, event.clientY);
-      });
+      if (foundryPilotActive())
+        bindMotionCurveHandle(handle, {
+          read: () => ({
+            x: motionNumericValid($(`[data-curve-field="x${index}"]`, curveEditor).value)
+              ? Number($(`[data-curve-field="x${index}"]`, curveEditor).value)
+              : NaN,
+            y: motionNumericValid($(`[data-curve-field="y${index}"]`, curveEditor).value)
+              ? Number($(`[data-curve-field="y${index}"]`, curveEditor).value)
+              : NaN,
+          }),
+          write: ({ x, y }) => {
+            $(`[data-curve-field="x${index}"]`, curveEditor).value = String(x);
+            $(`[data-curve-field="y${index}"]`, curveEditor).value = String(y);
+            updateBezierEditorPreview(curveEditor);
+          },
+          geometry: () => handle.ownerSVGElement.getBoundingClientRect(),
+          commit: () => commitMotionCurve(curveEditor),
+          interacting: (value) => {
+            motionStudioInteracting = value;
+          },
+        });
+      else
+        handle.addEventListener('pointerdown', (event) => {
+          motionStudioInteracting = true;
+          handle.setPointerCapture(event.pointerId);
+          setFromPoint(event.clientX, event.clientY);
+        });
       handle.addEventListener('pointermove', (event) => {
+        if (foundryPilotActive()) return;
         if (!handle.hasPointerCapture(event.pointerId)) return;
         setFromPoint(event.clientX, event.clientY);
       });
       handle.addEventListener('pointerup', (event) => {
+        if (foundryPilotActive()) return;
         if (handle.hasPointerCapture(event.pointerId))
           handle.releasePointerCapture(event.pointerId);
         void commitMotionCurve(curveEditor);
@@ -7653,7 +8901,11 @@ function captureDirtyDrafts() {
     'input, select, textarea, [contenteditable]:not([contenteditable="false"]), [role="textbox"]',
   )
     .map((element) => ({ element, key: editableStateKey(element, occurrences) }))
-    .filter(({ element }) => element.dataset.foundryDirty === 'true')
+    .filter(
+      ({ element }) =>
+        element.dataset.foundryDirty === 'true' &&
+        (!foundryPilotActive() || !element.matches('[data-change-id], [data-after-id]')),
+    )
     .map(({ element, key }) => ({
       key,
       value:
@@ -7733,12 +8985,25 @@ function restoreWorkspaceScroll(scroll) {
 }
 
 function commitLoadedSession(payload, presence, { deferRender = false } = {}) {
+  const applyRefreshRecovered =
+    applyRunActionError?.needsRefresh &&
+    applyRunActionError.context === applyRunContextKey(payload);
+  if (applyRefreshRecovered) applyRunActionError = null;
+  const reviewRefreshRecovered =
+    foundryPilotActive() &&
+    reviewStatusError?.needsRefresh &&
+    reviewStatusError.context === reviewContextKey(payload);
+  if (reviewRefreshRecovered) {
+    reviewStatusError = null;
+  }
   activeSession = payload;
   activeAgentPresence = presence?.connected ? presence : { connected: false, presence: null };
   // Presence must stay current while typing even when the full session render is deferred.
   nextVisualAgent?.updateConnection({ listener: activeAgentPresence.connected });
+  syncReviewAgentPresence();
   const snapshot = sessionRenderSnapshot(payload, activeAgentPresence);
-  if (snapshot === lastRenderedSessionSnapshot) return;
+  if (snapshot === lastRenderedSessionSnapshot && !reviewRefreshRecovered && !applyRefreshRecovered)
+    return;
   if (deferRender && sessionRenderBlocked()) {
     pendingSessionRender = { payload, presence: activeAgentPresence, snapshot };
     return;
@@ -7763,8 +9028,21 @@ function flushPendingSessionRender() {
   restoreWorkspaceScroll(scroll);
 }
 
-async function loadSession({ deferRender = false, isPoll = false } = {}) {
-  if (!sessionId || !token || (isPoll && sessionPollInFlight)) return;
+async function loadSession({
+  deferRender = false,
+  isPoll = false,
+  expectedReviewContext,
+  expectedApplyContext,
+} = {}) {
+  if (
+    !sessionId ||
+    !token ||
+    (isPoll &&
+      (sessionPollInFlight ||
+        applyRunActionPending?.phase === 'reconciling' ||
+        (foundryPilotActive() && reviewStatusPending)))
+  )
+    return { ok: false };
   const requestId = ++latestSessionRequest;
   if (isPoll) sessionPollInFlight = true;
   try {
@@ -7775,20 +9053,61 @@ async function loadSession({ deferRender = false, isPoll = false } = {}) {
         presence: null,
       })),
     ]);
-    if (requestId !== latestSessionRequest) return;
+    if (
+      requestId !== latestSessionRequest ||
+      (expectedReviewContext && expectedReviewContext !== reviewContextKey()) ||
+      (expectedApplyContext && expectedApplyContext !== applyRunContextKey())
+    )
+      return { ok: false };
     runtimeConnected = true;
     lastSessionLoadError = '';
     commitLoadedSession(payload, presence, { deferRender });
     renderConnectionStatus();
+    return { ok: true };
   } catch (error) {
+    if (
+      foundryPilotActive() &&
+      (requestId !== latestSessionRequest ||
+        (expectedReviewContext && expectedReviewContext !== reviewContextKey()) ||
+        (expectedApplyContext && expectedApplyContext !== applyRunContextKey()))
+    )
+      return { ok: false };
     const message = error instanceof Error ? error.message : 'The local session could not be read.';
     if (message !== lastSessionLoadError) toast(message);
     runtimeConnected = false;
     lastSessionLoadError = message;
     renderConnectionStatus();
+    return { ok: false, error: message };
   } finally {
     if (isPoll) sessionPollInFlight = false;
   }
+}
+
+// A heartbeat failure is not an iframe reload or a failed source Apply. Keep the
+// saved context intact and reveal recovery chrome until this same frame responds.
+function syncPilotHeartbeatRecovery() {
+  if (!foundryPilotActive() || !previewHeartbeatLost) return;
+  if (bridgeConnected) {
+    previewHeartbeatLost = false;
+    // A transport acknowledgement does not prove saved edits were restored.
+    if (!previewRecoveryFailed) {
+      $('#preview-fallback').hidden = true;
+      $('#preview-loading').hidden = true;
+    }
+    return;
+  }
+  if (previewRecoveryFailed) return;
+  const blocked = previewReconnectBlocked(activeSession?.applyRuns);
+  const verifying = activeSession?.applyRuns?.some((run) => run.state === 'verifying');
+  showPreviewRecoveryFallback(
+    'Live preview disconnected',
+    blocked
+      ? 'The preview stopped responding while Apply is queued or changing source. Wait until the rebuild completes, or cancel the run, before reconnecting. Your reviewed changes remain saved.'
+      : verifying
+        ? 'The preview stopped responding during rendered verification. Reconnect the preview to continue verification. Your reviewed changes remain saved; verification is not complete.'
+        : 'The preview stopped responding. Your saved edits are safe in Review. Reconnect the preview to continue inspecting, or open the overlay preview in a separate tab.',
+  );
+  $('#reconnect-preview').disabled = !previewUrl || blocked;
 }
 
 async function restoreSavedCanvasPreview() {
@@ -7842,6 +9161,7 @@ function showPreviewRecoveryFallback(
 
 function resetPreviewRecovery() {
   previewRecoveryGeneration += 1;
+  previewHeartbeatLost = false;
   bridgeConnected = false;
   bridgeState = null;
   bridgeBranchSynced = false;
@@ -7858,6 +9178,11 @@ function resetPreviewRecovery() {
 }
 
 function reconnectCanvasPreview() {
+  if (foundryPilotActive() && previewReconnectBlocked(activeSession?.applyRuns)) {
+    throw new Error(
+      'The preview cannot reconnect while Apply is queued or changing source. Wait until the rebuild completes, or cancel the run, before reconnecting.',
+    );
+  }
   if (!previewUrl) throw new Error('Configure a preview URL in your project before reconnecting.');
   rejectPendingFrameCommands(
     preview.contentWindow,
@@ -7869,7 +9194,19 @@ function reconnectCanvasPreview() {
   renderConnectionStatus();
 }
 
-$('#reconnect-preview').addEventListener('click', reconnectCanvasPreview);
+function handleCanvasPreviewReconnect() {
+  if (!foundryPilotActive()) {
+    reconnectCanvasPreview();
+    return;
+  }
+  try {
+    reconnectCanvasPreview();
+  } catch (error) {
+    toast(error instanceof Error ? error.message : 'The preview could not be reconnected.');
+  }
+}
+
+$('#reconnect-preview').addEventListener('click', handleCanvasPreviewReconnect);
 
 function setupPreview() {
   if (!previewUrl) {
@@ -7878,6 +9215,7 @@ function setupPreview() {
       'Configure a project preview URL to connect. Your saved edits remain in Review.',
     );
     $('#direct-preview').hidden = true;
+    refinePilotPreviewFallback();
     renderConnectionStatus();
     return;
   }
@@ -7898,6 +9236,7 @@ function setupPreview() {
   preview.src = embedded.href;
   $('#direct-preview').href = previewUrl;
   $('#direct-preview-menu').href = previewUrl;
+  refinePilotPreviewFallback();
 }
 
 window.addEventListener('message', (event) => {
@@ -7947,7 +9286,10 @@ window.addEventListener('message', (event) => {
   const responsiveViewportId = responsiveFrames.get(event.source);
   if (responsiveViewportId && event.data?.type === 'foundry:workspace-state') {
     markFrameSeen(event.source);
-    responsiveSnapshots.set(responsiveViewportId, event.data.payload?.responsive ?? {});
+    responsiveSnapshots.set(responsiveViewportId, {
+      ...event.data.payload?.responsive,
+      targetSelector: event.data.payload?.selection?.selector ?? null,
+    });
     const frame = $$('[data-responsive-frame]').find((item) => item.contentWindow === event.source);
     if (frame) {
       frame.dataset.responsiveReady = 'true';
@@ -8329,6 +9671,7 @@ $$('[data-responsive-stress]').forEach((button) =>
 $$('[data-responsive-scope]').forEach((button) =>
   button.addEventListener('click', async () => {
     const wantsAll = button.dataset.responsiveScope === 'all';
+    if (responsiveScopePending) return;
     const hasSource = Boolean(bridgeState?.selection?.source);
     if (wantsAll && !hasSource) {
       toast('Source mapping is required to promote a change across breakpoints.');
@@ -8336,6 +9679,9 @@ $$('[data-responsive-scope]').forEach((button) =>
     }
     const previousScope = responsiveEditScope;
     const nextScope = wantsAll ? 'all' : 'breakpoint';
+    responsiveScopePending = true;
+    responsiveScopeError = '';
+    refreshNextResponsiveLab();
     try {
       await applyResponsiveScopeTransaction({
         nextScope,
@@ -8346,7 +9692,10 @@ $$('[data-responsive-scope]').forEach((button) =>
       responsiveEditScope = nextScope;
     } catch (error) {
       responsiveEditScope = previousScope;
-      toast(error instanceof Error ? error.message : 'The edit scope could not be changed.');
+      responsiveScopeError = `Scope not confirmed. ${error instanceof Error ? error.message : 'The edit scope could not be changed.'} Inspect the current scope before editing, or retry explicitly.`;
+      toast(responsiveScopeError);
+    } finally {
+      responsiveScopePending = false;
     }
     $$('[data-responsive-scope]').forEach((candidate) => {
       const active = candidate.dataset.responsiveScope === responsiveEditScope;
@@ -8408,7 +9757,7 @@ $('#canvas-theme').addEventListener('change', requestCanvasPreviewContext);
 $('#canvas-state').addEventListener('change', requestCanvasPreviewContext);
 $('#apply-agent').addEventListener('click', async () => {
   const applyButton = $('#apply-agent');
-  if (applyButton.dataset.submitting === 'true') return;
+  if (applyButton.dataset.submitting === 'true' || reviewStatusBlocked()) return;
   const errorMessage = $('#review-apply-error');
   errorMessage.hidden = true;
   errorMessage.textContent = '';
@@ -8528,12 +9877,67 @@ $('#clear-stress').addEventListener('click', () =>
 );
 $('#stress-review').addEventListener('click', () => setMode('review'));
 $('#visual-recipe-search').addEventListener('input', (event) => {
+  recipeCapturePendingSelectionId = '';
   visualRecipeSearch = event.target.value;
   renderVisualRecipes();
 });
 $('#visual-recipe-save').addEventListener('click', async () => {
   const name = $('#visual-recipe-name').value.trim();
   const intent = $('#visual-recipe-intent').value.trim();
+  if (foundryPilotActive()) {
+    const state = recipeCaptureModel({
+      selection: bridgeState?.selection,
+      canSave: bridgeState?.visualRecipes?.canSave,
+      connected: bridgeConnected,
+      pending: recipeOperationPending,
+      needsRecheck: recipeCaptureNeedsRecheck,
+    });
+    if (state.disabled) return;
+    const recheck = recipeCaptureNeedsRecheck;
+    const query = visualRecipeSearch;
+    const previousIds = (bridgeState?.visualRecipes?.recipes ?? []).map((recipe) => recipe.id);
+    recipeOperationPending = recheck ? 'library' : 'capture';
+    recipeCaptureFeedback = '';
+    renderVisualRecipes();
+    try {
+      if (recheck) {
+        await requestCommand('request-state');
+        recipeCaptureNeedsRecheck = false;
+        recipeCaptureFeedback =
+          'Library refreshed. An unacknowledged recipe may still be in memory; inspect the library before saving again.';
+      } else {
+        const result = await requestCommand('save-visual-recipe', { name, intent });
+        if (!result?.saved) throw new Error('The recipe save was not acknowledged.');
+        const snapshot = await requestCommand('request-state');
+        const saved = recipeNewCapture(previousIds, snapshot.visualRecipes?.recipes);
+        if (!saved)
+          throw new Error(
+            'Save acknowledged, but the new library entry could not be identified. Recheck the library before saving again.',
+          );
+        $('#visual-recipe-name').value = '';
+        $('#visual-recipe-intent').value = '';
+        visualRecipeId = saved.id;
+        if (visualRecipeSearch === query) {
+          visualRecipeSearch = '';
+          $('#visual-recipe-search').value = '';
+          recipeCapturePendingSelectionId = saved.id;
+        }
+        recipeCaptureFeedback = `Saved “${saved.name}” to this browser’s project library. Capturing did not add Review changes or edit source.`;
+        toast('Treatment saved to this browser');
+      }
+    } catch (error) {
+      recipeCaptureNeedsRecheck = true;
+      recipeCaptureFeedback =
+        error instanceof Error
+          ? error.message
+          : 'Save was not acknowledged. Your draft is preserved.';
+      toast(recipeCaptureFeedback);
+    } finally {
+      recipeOperationPending = null;
+      if (activeMode === 'recipes') renderVisualRecipes();
+    }
+    return;
+  }
   try {
     await requestCommand('save-visual-recipe', { name, intent });
     $('#visual-recipe-name').value = '';
@@ -8597,7 +10001,10 @@ $$('[data-decision-outcome]').forEach((button) =>
 $('#decision-memory-save').addEventListener('click', async () => {
   if (
     nextDesignMemory &&
-    (memoryCaptureBusy || !bridgeConnected || !bridgeState?.decisionMemory?.canCapture)
+    (memoryCaptureBusy ||
+      memoryActionBusy ||
+      !bridgeConnected ||
+      !bridgeState?.decisionMemory?.canCapture)
   )
     return;
   const title = $('#decision-memory-title').value.trim();
@@ -8650,7 +10057,7 @@ $('#decision-memory-import').addEventListener('click', () => $('#decision-memory
 $('#decision-memory-file').addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
-  const result = await runDurableAction(
+  const result = await runMemoryMutation(
     'import-design-decisions',
     { json: await file.text() },
     { successMessage: 'Design decisions imported' },
@@ -8903,6 +10310,8 @@ function renderCommands(query = '') {
       $('#command-dialog').close();
     }),
   );
+  refinePilotCommandPalette();
+  refinePilotIcons($('#command-dialog'));
 }
 function openCommands() {
   if ($('#command-dialog').open) return;
@@ -8919,6 +10328,7 @@ function openCommands() {
 }
 $('#command-trigger').addEventListener('click', openCommands);
 $('#command-dialog').addEventListener('close', () => {
+  if (restorePilotDialogFocus(commandFocusReturn)) return;
   if (
     params.get('ui') === 'next' &&
     commandFocusReturn instanceof HTMLElement &&
@@ -9250,6 +10660,7 @@ if (params.get('ui') === 'next') {
     rerender: () => renderInspector(),
   });
 }
+mountFoundryPilot();
 $('#canvas-action-dismiss').addEventListener('click', () => {
   $('#canvas-action-error').hidden = true;
 });

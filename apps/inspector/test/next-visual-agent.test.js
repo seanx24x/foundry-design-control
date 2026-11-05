@@ -8,10 +8,48 @@ import {
   agentRequestLabel,
   agentCanSend,
   agentSourceLabel,
+  agentAttachmentKey,
 } from '../public/next-visual-agent.js';
 const helper = readFileSync(new URL('../public/next-visual-agent.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/next-visual-agent.css', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+test('attachment comparisons identify targets and context without treating changing measurements as identity', () => {
+  const context = {
+    targets: [{ selector: '#a' }, { selector: '#b' }],
+    viewport: { width: 1440, height: 900 },
+    theme: 'light',
+  };
+  assert.equal(
+    agentAttachmentKey(context),
+    agentAttachmentKey({
+      ...context,
+      targets: [{ selector: '#b', width: 99 }, { selector: '#a' }],
+    }),
+  );
+  for (const patch of [
+    { targets: [{ selector: '#other' }] },
+    { viewport: { width: 390, height: 844 } },
+    { theme: 'dark' },
+    { region: { x: 0, y: 0, width: 50, height: 50 } },
+  ])
+    assert.notEqual(agentAttachmentKey(context), agentAttachmentKey({ ...context, ...patch }));
+});
+test('proposal and retry busy states are visible and preserve native action eligibility', () => {
+  assert.match(helper, /button.disabled \|\|= Boolean\(next.proposalBusy\)/);
+  assert.match(helper, /conversation.setAttribute\('aria-busy'/);
+  const retry = app.slice(
+    app.indexOf("$('[data-agent-retry]', root)"),
+    app.indexOf('nextVisualAgent?.update({'),
+  );
+  assert.match(retry, /if \(visualAgentProposalBusy\) return/);
+  assert.match(retry, /finally \{\s*visualAgentProposalBusy = false;\s*renderVisualAgent\(\)/);
+});
+test('keyboard send reuses the original send button and ignores IME or modified newlines', () => {
+  assert.match(helper, /event.isComposing/);
+  assert.match(helper, /event.shiftKey \|\|\s*event.altKey/);
+  assert.match(helper, /if \(!ask.disabled\) ask.click\(\)/);
+  assert.match(helper, /Meta\+Enter Control\+Enter/);
+});
 function previewHarness({ offline = false, switchFails = false, saveFails = false } = {}) {
   const events = [];
   const proposal = { id: 'p', branchId: 'branch', status: 'previewing' };

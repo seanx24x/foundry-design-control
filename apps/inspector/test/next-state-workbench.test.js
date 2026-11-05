@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { sameStateCondition, stateEvidenceModel } from '../public/next-state-workbench.js';
+import { stateMeasurementDimensions } from '../public/foundry-pilot-state.js';
+import {
+  sameStateCondition,
+  stateEvidenceModel,
+  stateConditionKey,
+} from '../public/next-state-workbench.js';
 
 const context = {
   viewport: { id: 'desktop', width: 1440, height: 900 },
@@ -12,6 +17,94 @@ const context = {
 };
 const record = { context, result: { applied: true, axes: {} } };
 const model = (extra = {}) => stateEvidenceModel({ connected: true, context, record, ...extra });
+
+test('measurement receipts read actual adapter dimensions without inventing missing or invalid bounds', () => {
+  assert.deepEqual(stateMeasurementDimensions({ width: 581.13, height: 148.94 }), {
+    width: 581.13,
+    height: 148.94,
+  });
+  assert.deepEqual(stateMeasurementDimensions({ bounds: { width: 360, height: 228 } }), {
+    width: 360,
+    height: 228,
+  });
+  for (const input of [
+    null,
+    {},
+    { width: 0, height: NaN },
+    { width: -1, height: 12 },
+    { width: '581', height: 149 },
+  ])
+    assert.equal(stateMeasurementDimensions(input), null);
+});
+
+test('condition keys include measured dimensions and target selector rather than collapsing matching IDs', () => {
+  assert.equal(stateConditionKey(context), stateConditionKey({ ...context, requestRevision: 999 }));
+  for (const change of [
+    { viewport: { ...context.viewport, width: 1280 } },
+    { viewport: { ...context.viewport, height: 800 } },
+    { selectedTarget: { ...context.selectedTarget, selector: '.different' } },
+    { theme: 'dark' },
+    { motionPreference: 'reduce' },
+    { state: 'current' },
+  ])
+    assert.notEqual(stateConditionKey(context), stateConditionKey({ ...context, ...change }));
+});
+test('condition keys cannot collide when IDs contain delimiters', () => {
+  assert.notEqual(
+    stateConditionKey({ ...context, theme: 'light:loading', state: 'current' }),
+    stateConditionKey({ ...context, theme: 'light', state: 'loading:current' }),
+  );
+});
+test('failed evidence retains real per-axis diagnostics without a successful measurement receipt', () => {
+  const failure = {
+    context,
+    applied: false,
+    axes: {
+      motion: {
+        status: 'unsupported',
+        method: 'system-media-query',
+        failureReason: 'Cannot override system reduced motion',
+      },
+    },
+  };
+  const value = model({ lastResult: failure });
+  assert.equal(value.status, 'failed');
+  assert.equal(value.result, failure);
+  assert.equal(value.record, undefined);
+  const source = readFileSync(
+    new URL('../public/next-state-workbench.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /model.status === 'failed' \? 'Context diagnostics' : 'Applied context'/);
+  assert.match(source, /model.status === 'failed' \? 'Supported' : 'Applied'/);
+});
+test('replaced state preview generations cannot publish a late receipt or release the new operation', () => {
+  const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const operation = source.slice(
+    source.indexOf('async function applyStateWorkbenchContext()'),
+    source.indexOf('function requestStateWorkbenchPreviewContext()'),
+  );
+  assert.match(operation, /generation === stateWorkbenchGeneration/);
+  assert.match(operation, /frame === \$\('#state-live-preview'\)/);
+  assert.equal((operation.match(/if \(!current\(\)\) return null/g) || []).length, 3);
+  assert.match(operation, /finally \{\s*if \(current\(\)\)/);
+  const destroy = source.slice(
+    source.indexOf('function destroyStateWorkbenchPreview()'),
+    source.indexOf('function canvasPreviewContext()'),
+  );
+  assert.match(destroy, /stateWorkbenchGeneration\+\+/);
+  assert.match(destroy, /stateWorkbenchResults.clear\(\)/);
+  assert.match(operation, /stateWorkbenchReloading = true/);
+  assert.match(source, /if \(stateWorkbenchReloading\) return/);
+});
+test('state controls preserve native inputs and visibly separate inspection from Review', () => {
+  const source = readFileSync(new URL('../public/foundry-pilot-state.js', import.meta.url), 'utf8');
+  assert.match(source, /Inspection only\. No Review changes/);
+  assert.match(source, /model.status === 'inspected'/);
+  assert.match(source, /model.record\?\.measuredAt/);
+  const css = readFileSync(new URL('../public/foundry-pilot-state.css', import.meta.url), 'utf8');
+  assert.match(css, /grid-template-columns: 64px minmax\(0, 1fr\)/);
+});
 
 test('state evidence requires exact viewport, theme, state, motion and target', () => {
   assert.equal(
@@ -32,7 +125,7 @@ test('state evidence requires exact viewport, theme, state, motion and target', 
 test('connected is not equivalent to inspected', () => {
   assert.equal(model({ record: null }).status, 'untested');
   assert.equal(model().status, 'inspected');
-  assert.equal(model({ record: { context, result: { applied: false } } }).status, 'untested');
+  assert.equal(model({ record: { context, result: { applied: false } } }).status, 'failed');
 });
 test('pending and offline cannot present earlier measurements as current success', () => {
   assert.equal(model({ pending: true }).status, 'pending');

@@ -6,11 +6,73 @@ import {
   stressDraftMatches,
   stressCorrectionLabel,
   stressPreviewTransform,
+  stressCorrectionReady,
+  stressConditionStatus,
 } from '../public/next-stress-lab.js';
 
 const helper = readFileSync(new URL('../public/next-stress-lab.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/next-stress-lab.css', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+
+test('condition status separates draft choices from actual and previously applied values', () => {
+  assert.equal(stressConditionStatus('a', ['a'], []), 'Draft');
+  assert.equal(stressConditionStatus('a', ['a'], ['a']), 'Applied');
+  assert.equal(stressConditionStatus('a', [], ['a']), 'Applied · not chosen');
+  assert.equal(stressConditionStatus('a', ['a'], ['a'], false), 'Previously applied');
+  assert.equal(stressConditionStatus('a', [], []), '');
+});
+test('corrections require connected current measured evidence rather than just a finding object', () => {
+  const evidence = { connected: true, scannedAt: '2026-11-03T12:00:00Z' };
+  assert.equal(stressCorrectionReady(evidence), true);
+  for (const extra of [
+    { connected: false },
+    { scannedAt: null },
+    { busy: 'Scanning…' },
+    { stale: true },
+    { error: 'Scan failed' },
+  ])
+    assert.equal(stressCorrectionReady({ ...evidence, ...extra }), false);
+});
+test('Reset choices is a separate callback with explicit applied-condition preservation', () => {
+  assert.match(helper, /resetChoices\?\.\(\)/);
+  assert.match(helper, /Applied conditions remain until Restore original/);
+  assert.match(helper, /resetDraft.disabled = Boolean\(busy\) \|\| !selected.length/);
+});
+test('correction controls share the acknowledged busy gate and fail without inventing a receipt', () => {
+  const start = app.indexOf("$$('[data-stress-fix]').forEach");
+  const fix = app.slice(start, app.indexOf('nextStressLab?.update', start));
+  assert.match(fix, /runStressAction\('Adding correction…'/);
+  assert.match(fix, /if \(!result\)/);
+  assert.match(fix, /Correction was not acknowledged/);
+  assert.doesNotMatch(fix, /\.previewed\s*=/);
+});
+test('scan timestamp uses actual measured time and labels non-current evidence', () => {
+  assert.match(helper, /new Date\(stress.scannedAt/);
+  assert.match(helper, /Number.isFinite\(scannedDate.getTime\(\)\)/);
+  assert.match(helper, /previous evidence/);
+});
+test('missing condition profiles remain unavailable rather than creating dummy controls', () => {
+  assert.match(app, /No temporary conditions were reported by this preview/);
+  assert.match(app, /profiles.some\(\(profile\) => profile.category === category\)/);
+});
+test('acknowledged health evidence publishes without depending on a visible animation frame', () => {
+  const adapter = readFileSync(
+    new URL('../../../packages/web-adapter/src/index.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    adapter,
+    /if \(verificationChild \|\| immediate\) \{\s*cancelAnimationFrame\(workspacePublishFrame\);\s*publish\(\)/,
+  );
+  assert.match(
+    adapter,
+    /function scanDesignHealthOrThrow\(\): number \{\s*scanDesignHealth\(\);\s*publishWorkspaceState\(true\)/,
+  );
+  assert.match(
+    adapter,
+    /else if \(!issue.previewed\) await previewHealthFix\(issue\);\s*publishWorkspaceState\(true\)/,
+  );
+});
 
 test('preview fits the real viewport without changing its dimensions', () => {
   const viewport = { width: 1440, height: 900 };

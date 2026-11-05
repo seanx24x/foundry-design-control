@@ -1,8 +1,43 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 
 const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+test('partial guidance corrections omit absent fields rather than erasing existing identity and eligibility', () => {
+  const update = source.slice(
+    source.indexOf("if (command === 'update-design-decision')"),
+    source.indexOf("if (command === 'remove-design-decision')"),
+  );
+  for (const payload of [
+    { decisionId: 'x', summary: ' New guidance ' },
+    { decisionId: 'x', enabled: false },
+  ]) {
+    let patch: Record<string, unknown> = {},
+      immediate = false;
+    const context = {
+      designMemory: { decisions: [{ id: 'x' }] },
+      updateDesignDecision: (memory: unknown, id: string, value: Record<string, unknown>) => {
+        patch = value;
+        return memory;
+      },
+      persistDesignMemory: () => {},
+      renderDesignMemory: () => {},
+      publishWorkspaceState: (value: boolean) => {
+        immediate = value;
+      },
+    };
+    const run = runInNewContext(`(function(command,payload){${update}})`, context);
+    run('update-design-decision', payload);
+    assert.deepEqual(
+      Object.keys(patch),
+      Object.keys(payload).filter((key) => key !== 'decisionId'),
+    );
+    assert.equal(immediate, true);
+    if ('summary' in payload) assert.equal(patch.summary, 'New guidance');
+    else assert.equal(patch.enabled, false);
+  }
+});
 
 test('embedded selection keeps cycling without covering the product with a selection toast', () => {
   const start = source.indexOf('function handlePointer(event: MouseEvent)');
@@ -40,8 +75,14 @@ test('publishes verification-frame readiness without an animation-frame dependen
   const publishEnd = source.indexOf('function publishCanvasInput', publishStart);
   const publish = source.slice(publishStart, publishEnd);
   assert.ok(publishStart > 0);
-  assert.ok(publish.indexOf('if (verificationChild)') < publish.indexOf('requestAnimationFrame'));
-  assert.match(publish, /if \(verificationChild\) \{\s*publish\(\);\s*return;/);
+  assert.ok(
+    publish.indexOf('if (verificationChild || immediate)') <
+      publish.indexOf('requestAnimationFrame'),
+  );
+  assert.match(
+    publish,
+    /if \(verificationChild \|\| immediate\) \{\s*cancelAnimationFrame\(workspacePublishFrame\);\s*publish\(\);\s*return;/,
+  );
   assert.match(publish, /workspacePublishFrame = requestAnimationFrame\(publish\)/);
 });
 
@@ -231,7 +272,7 @@ test('keeps selection stress findings on the captured target subtree', () => {
   assert.match(source, /findings: scanDesignHealthOrThrow\(\)/);
   assert.match(
     source,
-    /scanDesignHealth\(\);\s*publishWorkspaceState\(\);\s*if \(healthScanError\) throw new Error\(healthScanError\)/,
+    /scanDesignHealth\(\);\s*publishWorkspaceState\(true\);\s*if \(healthScanError\) throw new Error\(healthScanError\)/,
   );
   assert.match(
     scan,

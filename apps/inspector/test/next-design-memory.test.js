@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import {
   memoryCaptureAvailability,
   memoryScopeRows,
@@ -65,6 +66,38 @@ test('correction identity respects whitespace and optional rationale', () => {
 const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
 const helper = readFileSync(new URL('../public/next-design-memory.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/next-design-memory.css', import.meta.url), 'utf8');
+test('saved-guidance mutation waits for acknowledgement and suppresses conflicting repeats', async () => {
+  let release,
+    calls = 0;
+  const context = {
+    memoryActionBusy: false,
+    memoryCaptureBusy: false,
+    memoryActionError: '',
+    renderMemory: () => {},
+    runDurableAction: async () => {
+      calls++;
+      return await new Promise((resolve) => {
+        release = resolve;
+      });
+    },
+  };
+  const start = app.indexOf('async function runMemoryMutation('),
+    end = app.indexOf('function visualAgentRequests()', start);
+  const run = runInNewContext(app.slice(start, end) + ';runMemoryMutation', context);
+  const pending = run('update', {}, {});
+  assert.equal(context.memoryActionBusy, true);
+  assert.equal(await run('remove', {}, {}), null);
+  assert.equal(calls, 1);
+  release(null);
+  await pending;
+  assert.equal(context.memoryActionBusy, false);
+  assert.match(context.memoryActionError, /not acknowledged/);
+});
+test('saved-guidance controls expose pending and failure state without clearing correction drafts', () => {
+  assert.match(helper, /state.busy \|\| state.actionBusy/);
+  assert.match(helper, /stage.setAttribute\('aria-busy'/);
+  assert.match(helper, /state.actionError \? 'alert' : 'status'/);
+});
 test('studio integration remains opt-in and uses acknowledged persistence', () => {
   assert.match(app, /params.get\('ui'\) === 'next'\)\s+nextDesignMemory/);
   assert.match(app, /const result = await runDurableAction\(\s+'save-design-decision'/);

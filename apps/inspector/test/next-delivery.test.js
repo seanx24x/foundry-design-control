@@ -82,3 +82,23 @@ test('layout uses shared rails with local evidence-table scrolling', () => {
   assert.match(css, /\.engineering-evidence-grid \{\s+overflow: auto/);
   assert.match(css, /overflow-wrap: anywhere/);
 });
+test('record sections have one separator owner and override read-only legacy insets', () => {
+  assert.match(css, /\.delivery-record-detail > header \{\s+border-bottom: 0/);
+  assert.match(css, /\.engineering-evidence tbody tr:last-child td \{\s+border-bottom: 0/);
+  assert.match(
+    css,
+    /\.delivery-record-detail\[data-readonly='true'\]\s+\.delivery-detail-grid\s+> section \{\s+min-height: 0;\s+padding: 0;/,
+  );
+  assert.match(css, /container: delivery-record \/ inline-size/);
+  assert.match(css, /@container delivery-record \(min-width: 600px\)/);
+});
+test('narrative and evidence hierarchy uses clear headings without dropping record content', () => {
+  assert.match(
+    helper,
+    /questions\.append\(node\('h3', 'next-delivery-label', 'Open questions'\), question\)/,
+  );
+  assert.match(helper, /\['\.engineering-evidence', 'Engineering evidence'\]/);
+  assert.match(helper, /\['\.delivery-capture-evidence', 'Recorded screenshots'\]/);
+  assert.match(helper, /header\?\.querySelector\('\.eyebrow'\)\?\.remove\(\)/);
+  assert.match(helper, /body\.append\(source, contexts\)/);
+});

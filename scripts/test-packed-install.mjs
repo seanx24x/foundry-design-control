@@ -111,6 +111,13 @@ try {
     const isolatedEnvironment = { HOME: isolatedHome };
     run(fixture, 'npm', ['install', '--ignore-scripts', ...tarballs], isolatedEnvironment);
     const fontDirectory = join(fixture, 'node_modules/foundry-design-inspector/dist/fonts');
+    const keylineNotice = readFileSync(join(fontDirectory, '../KEYLINE-LICENSE.txt'), 'utf8');
+    if (
+      !keylineNotice.includes('Permission is hereby granted') ||
+      !keylineNotice.includes('Keyline')
+    ) {
+      throw new Error('Packed inspector is missing the Keyline redistribution notice.');
+    }
     for (const font of inspectorFontAssets) {
       const bytes = readFileSync(join(fontDirectory, `${font.package}.woff2`));
       if (bytes.subarray(0, 4).toString() !== 'wOF2') {

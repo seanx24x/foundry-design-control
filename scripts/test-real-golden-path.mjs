@@ -1396,9 +1396,23 @@ async function assertPositiveResult(prepared, session, browserState, applyResult
   assert.ok(rebuiltBox.width > 0 && rebuiltBox.height > 0);
   await openWorkspaceMode(browserState.page, 'delivery');
   await browserState.page.getByText('1 total', { exact: true }).waitFor({ timeout: 10_000 });
-  await browserState.page.getByText('style.css', { exact: true }).first().waitFor();
+  const sourceContext = browserState.page.locator('#delivery-content .foundry-delivery-context');
+  if (await sourceContext.count()) {
+    // The redesigned read-only handoff intentionally starts with source detail
+    // collapsed. Follow the real disclosure rather than a hidden duplicate in
+    // another workspace or the recorded notes.
+    if (!(await sourceContext.evaluate((element) => element.open)))
+      await sourceContext.locator(':scope > summary').click();
+    await sourceContext.getByText('style.css', { exact: true }).first().waitFor();
+  } else {
+    await browserState.page
+      .locator('#delivery-content')
+      .getByText('style.css', { exact: true })
+      .first()
+      .waitFor();
+  }
   await browserState.page.locator('[data-delivery-tab="history"]').click();
-  await browserState.page.getByText(run.id, { exact: true }).waitFor();
+  await browserState.page.locator('#delivery-content').getByText(run.id, { exact: true }).waitFor();
 }
 
 async function assertVerificationMismatch(prepared, stored, browserState, applyResult) {

@@ -1,0 +1,9 @@
+/* Exact approved local Geist bytes; SIL OFL notices and provenance in fonts/. */
+/* Registration only: the pilot integration owns where this family is applied. */
+@font-face {
+  font-family: 'Foundry Geist';
+  src: url('./fonts/geist-sans.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}

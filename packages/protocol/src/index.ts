@@ -725,6 +725,8 @@ export const applyRunSchema = z
     /** Enables only the pre-1.3 acknowledgement shape for a run migrated from that protocol. */
     legacyApplyCompatibility: z.boolean().optional(),
     revision: z.string().optional(),
+    /** Current source explicitly approved for reclaim; revision remains the original baseline. */
+    resumeRevision: z.string().min(1).optional(),
     designGraphRevision: z.string().optional(),
     state: applyRunStateSchema,
     agent: z

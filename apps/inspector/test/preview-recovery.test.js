@@ -164,7 +164,7 @@ test('offline guidance does not infer framing policy and exposes a shared retry 
   assert.match(app, /Your saved edits are safe in Review/);
   assert.match(
     app,
-    /\$\('#reconnect-preview'\).addEventListener\('click', reconnectCanvasPreview\)/,
+    /\$\('#reconnect-preview'\).addEventListener\('click', handleCanvasPreviewReconnect\)/,
   );
   assert.match(app, /action === 'reconnect-preview'\) \{\s+reconnectCanvasPreview\(\)/);
 });

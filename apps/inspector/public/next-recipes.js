@@ -1,3 +1,6 @@
+import { foundryFoundationsEnabled } from './foundry-foundations.js';
+import { refinePilotRecipes } from './foundry-pilot-recipes.js';
+
 // Presentation only: preserve existing recipe, capture and acknowledged command handlers.
 export function recipeMappingSummary(assessment, selected, connected) {
   if (!selected) return 'Choose a target';
@@ -28,10 +31,16 @@ const node = (tag, className, text) => {
 };
 
 export function createNextRecipes(root) {
+  const pilot = foundryFoundationsEnabled();
   const stage = root.querySelector('#visual-recipe-stage');
   const rail = root.querySelector('.visual-recipe-create');
   const selectionPanel = root.querySelector('#visual-recipe-selection');
   const form = root.querySelector('.visual-recipe-capture-form');
+  if (pilot) {
+    form.querySelector('label:has(input) > span').textContent = 'Name (optional)';
+    form.querySelector('label:has(textarea) > span').textContent = 'Intent (optional)';
+    form.querySelector('textarea').rows = 3;
+  }
   const duplicate = root.querySelector('[data-studio-action="recipe-duplicate"]');
   const oldGate = root.querySelector('.visual-recipe-review-gate');
   duplicate.remove();
@@ -150,6 +159,16 @@ export function createNextRecipes(root) {
           row
             .querySelector(':scope > span:last-child')
             ?.append(node('small', 'next-recipe-map-status', recipeMappingLabel(item)));
+          if (pilot) {
+            const destination = row.querySelector(':scope > span:last-child');
+            if (
+              item.resolvedValue != null &&
+              String(item.sourceValue) !== String(item.resolvedValue)
+            )
+              destination.append(node('small', 'recipe-saved-value', `Saved: ${item.sourceValue}`));
+            if (['unsupported', 'ambiguous'].includes(item.status))
+              destination.append(node('small', 'recipe-mapping-detail', item.detail));
+          }
         });
         if (selection && !assessment?.mappings?.length) {
           mapping
@@ -245,6 +264,8 @@ export function createNextRecipes(root) {
         icon.dataset.icon = 'copy';
         row.prepend(icon);
       }
+      if (pilot)
+        refinePilotRecipes(root, { recipe, assessment, selection, connected, canSave, count });
       scroll.style.setProperty(
         '--recipe-scrollbar-width',
         `${scroll.offsetWidth - scroll.clientWidth}px`,

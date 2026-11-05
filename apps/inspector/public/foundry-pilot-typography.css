@@ -1,0 +1,758 @@
+/* Typography interior only. Never override the product specimen's font,
+   geometry, copy or transform. The shared sidebar owns the workspace grid. */
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior {
+  --mono: var(--fd-font-code);
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .mode-head p {
+  display: none;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  :is(.mode-actions, .typography-studio-footer)
+  button {
+  height: 28px;
+  min-height: 28px;
+  padding-inline: 10px;
+  border-radius: var(--fd-radius-control);
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .typography-font-row {
+  height: auto;
+  min-height: 52px;
+  padding-block: 6px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-font-row
+  code {
+  display: block;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .typography-source-tabs {
+  margin: 0 12px;
+  padding: 3px;
+  height: 32px;
+  min-height: 32px;
+  border-radius: var(--fd-radius-control);
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-source-tabs
+  button {
+  min-height: 26px;
+  height: 26px;
+  font-weight: 400;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-source-tabs
+  button.is-active {
+  color: var(--ink);
+  background: var(--surface-3);
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior [data-type-status] {
+  padding: 1px 7px;
+  border-radius: var(--fd-radius-compact);
+  background: var(--surface-2);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .next-type-scroll {
+  container-name: type-detail;
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .next-type-content {
+  gap: 20px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  :is(section > header strong, .typography-comparison-card > header strong) {
+  font: var(--fd-type-section-weight) var(--fd-type-section-size)/var(--fd-type-section-line)
+    var(--sans);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  :is(.typography-comparison-card, .typography-comparison-placeholder) {
+  border-radius: var(--fd-radius-control);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-comparison-card {
+  grid-template-rows: 64px 260px auto minmax(56px, auto);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-comparison-card
+  > header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 64px;
+  padding: 12px 16px;
+  gap: 12px;
+  margin: 0;
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .foundry-type-card-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .foundry-type-card-title
+  .eyebrow {
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-comparison-card
+  .foundry-type-face {
+  display: block;
+  padding: 0;
+  border: 0;
+  flex: none;
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .foundry-type-face dt {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .foundry-type-face dd {
+  padding: 2px 6px;
+  border-radius: var(--fd-radius-compact);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+  text-transform: capitalize;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .foundry-type-face
+  dd[data-status='loaded'] {
+  color: var(--fd-color-success);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-comparison-specimen-stage {
+  height: 260px;
+  min-height: 260px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-comparison-card
+  .foundry-type-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 16px;
+  gap: 12px;
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .foundry-type-metrics dd {
+  color: var(--ink);
+  font: 500 12px/20px var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .foundry-type-metrics
+  dd[data-status='failed'] {
+  color: var(--fd-color-error);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-comparison-card
+  > footer
+  button {
+  height: 32px;
+  min-height: 32px;
+  padding-inline: 10px;
+  border-radius: var(--fd-radius-control);
+  flex: none;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-comparison-card
+  > footer {
+  padding: 12px 16px;
+  gap: 8px 12px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  [data-type-ready='false']
+  .typography-comparison-card {
+  grid-template-rows: 64px minmax(160px, auto) auto;
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .next-type-unmeasured {
+  height: auto;
+  min-height: 160px;
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .next-type-unmeasured p {
+  max-width: 32ch;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior[data-type-phase='empty']
+  .typography-comparison {
+  border: 1px solid var(--line);
+  border-radius: var(--fd-radius-control);
+  overflow: hidden;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior[data-type-phase='empty']
+  .typography-comparison
+  > div {
+  align-items: stretch;
+  gap: 0;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior[data-type-phase='empty']
+  .typography-comparison-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 16px 8px;
+  border: 0;
+  border-radius: 0;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior[data-type-phase='empty']
+  .typography-comparison-placeholder {
+  min-height: 200px;
+  align-items: flex-start;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-comparison-card
+  .foundry-type-current-settings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 12px 16px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .foundry-type-current-settings
+  dd {
+  font: 500 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  :is(.foundry-type-face, .foundry-type-metrics)[hidden] {
+  display: none;
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .typography-usage-panel {
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-usage-panel
+  > header {
+  margin-bottom: 8px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-usage-panel
+  article {
+  grid-template-columns: 16px minmax(0, 1fr) max-content;
+  min-height: 56px;
+  gap: 12px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-usage-panel
+  article.is-last {
+  border-bottom: 0;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-usage-panel
+  article
+  > span:not(.foundry-type-usage-count) {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .foundry-type-usage-count {
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .next-type-property-scroll {
+  gap: 0;
+  padding: 0 16px 16px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .next-type-property-scroll
+  > * {
+  margin: 0;
+  padding: 20px 0;
+  border: 0;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .next-type-property-scroll
+  > *
+  + * {
+  border-top: 1px solid var(--line);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-rendered-section
+  > .next-type-help {
+  margin-top: 12px;
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  :is(
+    .typography-property-fields input,
+    .typography-saved-styles input,
+    .typography-google-review .foundry-select-trigger
+  ) {
+  border: 1px solid transparent;
+  border-bottom-color: var(--line-strong);
+  border-radius: var(--fd-radius-control);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  :is(
+    .typography-property-fields input,
+    .typography-saved-styles input,
+    .typography-google-review .foundry-select-trigger
+  ):hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .is-changed input {
+  border-bottom-color: var(--selection);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .next-type-disclosure
+  > summary::after {
+  display: none;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .next-type-disclosure[open]
+  > summary
+  svg {
+  transform: rotate(180deg);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  :is(
+    .typography-treatment-grid button,
+    .typography-saved-styles > button,
+    .typography-google-review > button
+  ) {
+  min-height: 32px;
+  border-radius: var(--fd-radius-control);
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-treatment-grid
+  button {
+  align-items: start;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-treatment-grid
+  button
+  strong {
+  font: 500 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  :is(.typography-scale-options button, .typography-scale-result button) {
+  min-width: 32px;
+  height: 28px;
+  border-radius: var(--fd-radius-compact);
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .typography-scale-panel {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-scale-panel
+  label {
+  grid-template-columns: 56px minmax(0, 1fr) 44px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-scale-panel
+  input {
+  accent-color: var(--fd-color-accent);
+  min-width: 0;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  :is(button, input, summary):focus-visible {
+  outline: var(--fd-focus-width) solid var(--selection);
+  outline-offset: var(--fd-focus-offset);
+  box-shadow: none;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .search-field
+  input:focus-visible {
+  outline: none;
+}
+/* Native controls retain their values and handlers; specimens are untouched. */
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-property-fields {
+  grid-template-columns: minmax(0, 1fr);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-property-fields
+  > label {
+  display: grid;
+  grid-template-columns: minmax(64px, 0.7fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--fd-radius-control);
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-property-fields
+  > label
+  > span:first-child {
+  color: var(--muted);
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-control-value {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-property-fields
+  label
+  .typography-control-value
+  input {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: right;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-control-value
+  i {
+  color: var(--muted);
+  font: 400 11px/20px var(--sans);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-property-fields
+  > :is([data-type-property='fontFamily'], [data-type-property='fontVariationSettings']) {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding-block: 4px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-property-fields
+  :is([data-type-property='fontFamily'], [data-type-property='fontVariationSettings'])
+  .typography-control-value
+  input {
+  text-align: left;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-property-fields
+  > label:has(:focus-visible) {
+  outline: var(--fd-focus-width) solid var(--selection);
+  outline-offset: var(--fd-focus-offset);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-property-fields
+  input:focus-visible {
+  outline: none;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-property-fields
+  > label:has([aria-invalid='true']) {
+  border-color: var(--fd-color-error);
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .typography-input-error {
+  grid-column: 1/-1;
+  color: var(--fd-color-error);
+  font: 400 11px/18px var(--sans);
+  padding-bottom: 6px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-rendered-section
+  > .next-type-disclosure {
+  margin-top: 12px;
+  padding-top: 8px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-font-settings
+  .next-type-help {
+  margin-top: 8px;
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-scale-panel
+  > label {
+  grid-template-columns: minmax(0, 1fr) 80px;
+  gap: 4px 8px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-scale-panel
+  > label
+  > span:first-child {
+  grid-row: 1;
+  grid-column: 1;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-scale-panel
+  > label
+  > input[type='range'] {
+  grid-column: 1/-1;
+  grid-row: 2;
+  width: 100%;
+  height: 24px;
+  margin: 0;
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .typography-scale-entry {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding-right: 8px;
+  border-radius: var(--fd-radius-control);
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-scale-entry
+  input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 0 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: right;
+  font: 400 12px/20px var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-scale-entry
+  i {
+  color: var(--muted);
+  font: 400 11px/20px var(--sans);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-scale-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-scale-options
+  > span {
+  width: 40px;
+  flex: none;
+  color: var(--muted);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-scale-options
+  > button {
+  min-height: 32px;
+  height: 32px;
+  flex: 1;
+  min-width: 28px;
+  border: 1px solid transparent;
+  background: var(--surface-2);
+  color: var(--muted);
+  border-radius: var(--fd-radius-control);
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-scale-options
+  > button[aria-pressed='true'] {
+  color: var(--ink);
+  background: var(--fd-color-selected);
+  border-color: var(--line-strong);
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .typography-scale-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+:root[data-foundry-pilot='typography']
+  [data-next]
+  .foundry-type-interior
+  .typography-scale-draft-label {
+  color: var(--muted);
+  font: 400 11px/20px var(--sans);
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior [data-type-scale-draft] {
+  grid-column: 1/-1;
+  grid-row: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font: 400 12px/20px var(--mono);
+}
+:root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior [data-preview-scale] {
+  grid-column: 1/-1;
+  min-height: 32px;
+  height: 32px;
+}
+@media (pointer: coarse) {
+  :root[data-foundry-pilot='typography']
+    [data-next]
+    .foundry-type-interior
+    :is([data-typography-control], [data-scale-base-entry]):focus {
+    font-size: 16px;
+  }
+}
+@container type-detail (max-width: 640px) {
+  :root[data-foundry-pilot='typography']
+    [data-next]
+    .foundry-type-interior
+    .typography-comparison
+    > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  :root[data-foundry-pilot='typography']
+    [data-next]
+    .foundry-type-interior[data-type-phase='empty']
+    .typography-comparison-placeholder {
+    min-height: 160px;
+  }
+}
+@container type-detail (max-width: 390px) {
+  :root[data-foundry-pilot='typography'] [data-next] .foundry-type-interior .next-type-content {
+    padding-inline: 16px;
+  }
+  :root[data-foundry-pilot='typography']
+    [data-next]
+    .foundry-type-interior
+    .typography-comparison-card
+    .foundry-type-metrics {
+    gap: 8px;
+    padding-inline: 12px;
+  }
+  :root[data-foundry-pilot='typography']
+    [data-next]
+    .foundry-type-interior
+    .typography-comparison-card
+    > header {
+    padding-inline: 12px;
+    gap: 8px;
+  }
+}

@@ -1,0 +1,652 @@
+/* Directions are local alternatives. Give their comparison the working surface. */
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .next-branch-note-status {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior:not([hidden]) {
+  grid-template: 44px minmax(0, 1fr) 36px / var(--layers-dock-width) minmax(0, 1fr);
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior > .mode-head {
+  justify-content: initial;
+  gap: 16px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .mode-head
+  > div:first-child {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  min-width: 0;
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .mode-actions {
+  margin-left: auto;
+  flex: none;
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-editing {
+  min-width: 0;
+  max-width: 48ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  :is(.mode-actions button, .next-branch-refresh) {
+  min-height: 28px;
+  height: 28px;
+  border-radius: 6px;
+  padding: 0 10px;
+  font: 500 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .next-branch-refresh:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .design-branch-create {
+  padding: 16px;
+  border: 0;
+  gap: 8px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-create
+  > div {
+  grid-template-columns: minmax(0, 1fr) 32px;
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior #design-branch-create {
+  min-width: 32px;
+  width: 32px;
+  height: 32px;
+  padding: 8px;
+  border-radius: 6px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  :is(input[type='text'], textarea) {
+  border-radius: 6px;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-create
+  > p {
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .design-branch-list {
+  padding: 8px 12px 20px;
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .design-branch-row {
+  min-height: 56px;
+  padding: 8px;
+  border-radius: 6px;
+  gap: 10px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-row::before {
+  content: none;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-row
+  small {
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .next-branch-records {
+  border-top: 1px solid var(--fd-sidebar-divider);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .next-branch-records
+  > summary {
+  padding: 14px 16px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-records
+  > header {
+  padding: 4px 16px 12px;
+  border: 0;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-record-list {
+  padding: 0 12px 12px;
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .design-branch-record {
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 0;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-record
+  :is(small, .branch-record-evidence, .branch-record-warning) {
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-record
+  > footer
+  button {
+  min-height: 28px;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: 500 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .design-branch-stage {
+  display: block;
+  padding: 24px 32px 32px;
+  overflow: auto;
+  border: 0;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-compare-head {
+  padding: 0;
+  min-height: 32px;
+  border: 0;
+  gap: 12px 24px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-compare-head
+  > div:first-child
+  > strong {
+  font: 550 18px/26px var(--sans);
+  letter-spacing: -0.02em;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-compare-selects {
+  flex-basis: auto;
+  order: initial;
+  max-width: 540px;
+  gap: 12px;
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .next-branch-select {
+  gap: 8px;
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-compare-selects
+  .foundry-select-trigger,
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .next-branch-select
+  > select {
+  min-height: 32px;
+  height: 32px;
+  border-radius: 6px;
+  padding-inline: 10px;
+  background: var(--surface-2);
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .next-branch-comparison-help {
+  padding: 12px 0 0;
+  max-width: 85ch;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-previews {
+  padding: 20px 0 0;
+  gap: 20px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-preview-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-preview-card
+  > header {
+  min-height: 60px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-preview-card
+  > header
+  > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-preview-card
+  > header
+  div
+  span {
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .branch-status {
+  border-radius: 4px;
+  padding: 2px 6px;
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-decisions {
+  margin: 28px 0 0;
+  border: 0;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-decisions
+  > header {
+  padding: 0;
+  min-height: 32px;
+  border: 0;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-decisions
+  > header
+  > div:first-child
+  > strong {
+  font-weight: 550;
+  font-size: 14px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-decisions
+  > .next-branch-help {
+  max-width: 86ch;
+  padding: 8px 0 16px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-decision-row {
+  padding: 14px 0;
+  gap: 16px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .branch-decision-source {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .branch-decision-property {
+  display: grid;
+  gap: 4px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .branch-decisions-empty {
+  display: grid;
+  justify-items: start;
+  place-content: initial;
+  text-align: left;
+  min-height: 0;
+  padding: 16px;
+  gap: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .branch-decisions-empty
+  > svg {
+  display: none;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .branch-decisions-empty
+  p {
+  margin: 0;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-management {
+  margin-top: 28px;
+  border-top: 1px solid var(--line);
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-management-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+  cursor: pointer;
+  list-style: none;
+  font: 500 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-management-summary::-webkit-details-marker {
+  display: none;
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-management-summary::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+  margin-right: 4px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-management[open]
+  > summary::before {
+  transform: rotate(45deg);
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-management-name {
+  margin-left: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .design-branch-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px 32px;
+  padding: 8px 0 0;
+  border: 0;
+  max-height: none;
+  overflow: visible;
+  background: transparent;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .next-branch-detail-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .next-branch-promote-help {
+  grid-column: 1 / -1;
+  margin: 0;
+  border-radius: 6px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .next-branch-promote-help:not([hidden]) {
+  margin-bottom: 20px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-detail-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 16px;
+  padding: 0;
+  border: 0;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-detail-head
+  > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  max-width: 76ch;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-detail-head
+  > .branch-status {
+  margin: 0;
+  align-self: start;
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .design-branch-metrics {
+  display: flex;
+  align-items: start;
+  gap: 32px;
+  padding: 0;
+  border: 0;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-metrics
+  > div {
+  display: grid;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-metrics
+  strong {
+  font: 550 16px/24px var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .design-branch-metrics
+  span {
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  :is(.branch-detail-note, .branch-rejection-field, .branch-detail-actions) {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  .branch-rejection-field
+  textarea {
+  min-height: 80px;
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .branch-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+:root[data-foundry-pilot='branches']
+  [data-next]
+  .foundry-branches-interior
+  :is(.branch-detail-actions button, .design-branch-compose) {
+  min-height: 32px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+}
+:root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior > .next-branch-footer {
+  grid-row: 3;
+  min-height: 36px;
+  height: 36px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  font: 400 11px/18px var(--sans);
+}
+@media (max-width: 1300px) {
+  :root[data-foundry-pilot='branches']
+    [data-next]
+    .foundry-branches-interior
+    .design-branch-compare-selects {
+    order: 3;
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+@media (max-width: 1100px) {
+  :root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior:not([hidden]) {
+    grid-template-rows: 44px minmax(0, 1fr) 36px;
+    overflow: hidden;
+  }
+  :root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .design-branch-stage {
+    padding: 20px 24px 24px;
+    min-height: 0;
+    overflow: auto;
+  }
+  :root[data-foundry-pilot='branches'] [data-next] .foundry-branches-editing {
+    max-width: 28ch;
+  }
+}
+@media (max-width: 800px) {
+  :root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+  }
+  :root[data-foundry-pilot='branches'] [data-next] .foundry-branches-interior .design-branch-stage {
+    flex: none;
+    overflow: visible;
+    padding: 20px;
+  }
+  :root[data-foundry-pilot='branches'] [data-next] .foundry-branches-editing {
+    display: none;
+  }
+  :root[data-foundry-pilot='branches']
+    [data-next]
+    .foundry-branches-interior
+    .design-branch-previews {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  :root[data-foundry-pilot='branches']
+    [data-next]
+    .foundry-branches-interior
+    .design-branch-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  :root[data-foundry-pilot='branches']
+    [data-next]
+    .foundry-branches-interior
+    .design-branch-decision-row {
+    grid-template-columns: 16px minmax(0, 1fr);
+    gap: 8px 12px;
+  }
+  :root[data-foundry-pilot='branches']
+    [data-next]
+    .foundry-branches-interior
+    .branch-decision-property,
+  :root[data-foundry-pilot='branches']
+    [data-next]
+    .foundry-branches-interior
+    .design-branch-decision-row
+    > .status-chip {
+    grid-column: 2;
+    justify-self: start;
+  }
+  :root[data-foundry-pilot='branches']
+    [data-next]
+    .foundry-branches-interior
+    > .next-branch-footer {
+    height: auto;
+    min-height: 36px;
+  }
+}
+@media (max-width: 480px) {
+  :root[data-foundry-pilot='branches']
+    [data-next]
+    .foundry-branches-interior
+    .design-branch-compare-selects {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  :root[data-foundry-pilot='branches']
+    [data-next]
+    .foundry-branches-interior
+    .design-branch-compare-selects
+    > svg {
+    display: none;
+  }
+  :root[data-foundry-pilot='branches']
+    [data-next]
+    .foundry-branches-interior
+    .next-branch-select
+    > span:first-child {
+    width: 32px;
+    flex: none;
+  }
+}
+@media (pointer: coarse) {
+  :root[data-foundry-pilot='branches']
+    [data-next]
+    .foundry-branches-interior
+    :is(input[type='text'], textarea):focus {
+    font-size: 16px;
+  }
+}

@@ -1,4 +1,17 @@
+import { foundryFoundationsEnabled } from './foundry-foundations.js';
+import {
+  systemValueRows,
+  systemScopeRows,
+  systemPromotionState,
+  systemPromotionWarning,
+  systemPromotionValueRows,
+} from './design-system-controls.js';
 // Next-only presentation. Source actions remain on the existing acknowledged paths.
+import {
+  refinePilotSystem,
+  systemSampleCanRender,
+  promotionImpactText,
+} from './foundry-pilot-system.js';
 export function tokenPreviewModel(token, renderedValue, connected) {
   const live = Boolean(connected && renderedValue);
   return {
@@ -36,6 +49,7 @@ const node = (tag, className, text) => {
 };
 
 export function createNextDesignSystem(root) {
+  const pilot = foundryFoundationsEnabled();
   const detail = root.querySelector('#design-system-detail');
   const rail = node('aside', 'next-system-properties');
   rail.setAttribute('aria-label', 'Token properties');
@@ -73,7 +87,20 @@ export function createNextDesignSystem(root) {
         open: [...rail.querySelectorAll('details[open]')].map((item) => item.dataset.section),
       });
     },
-    render({ token, candidate, renderedValue, connected, usages = [] }) {
+    render({
+      token,
+      candidate,
+      renderedValue,
+      connected,
+      usages = [],
+      items = [],
+      renderedValues = {},
+      changes = [],
+      promotionPending = false,
+      promotionError,
+      promotionAcknowledged = false,
+      tokens = [],
+    }) {
       observer.disconnect();
       currentKey = token ? `token:${token.id}` : candidate ? `promotion:${candidate.id}` : '';
       const saved = views.get(currentKey);
@@ -108,7 +135,12 @@ export function createNextDesignSystem(root) {
         const property = { color: 'color', radius: 'border-radius', shadow: 'box-shadow' }[
           model.category
         ];
-        if (property && !/var\(|url\(/i.test(model.value) && CSS.supports(property, model.value)) {
+        if (
+          property &&
+          (!pilot || systemSampleCanRender(model.category, model.value)) &&
+          !/var\(|url\(/i.test(model.value) &&
+          CSS.supports(property, model.value)
+        ) {
           sample.dataset.kind = model.category;
           sample.style.setProperty(
             model.category === 'color' ? 'background-color' : property,
@@ -158,8 +190,9 @@ export function createNextDesignSystem(root) {
           }
           if (title === 'Source impact') {
             const files = new Set(candidate.sources.map((source) => source.file)).size;
-            card.querySelector('p').textContent =
-              `${candidate.occurrenceCount} authored locations across ${files} ${files === 1 ? 'file' : 'files'}. The plan preserves the current rendered value.`;
+            card.querySelector('p').textContent = pilot
+              ? promotionImpactText(candidate)
+              : `${candidate.occurrenceCount} authored locations across ${files} ${files === 1 ? 'file' : 'files'}. The plan preserves the current rendered value.`;
           }
           if (title === 'Usage trace')
             card
@@ -194,6 +227,12 @@ export function createNextDesignSystem(root) {
                 title === 'Source of truth' ? 'Source declarations' : title,
               );
               const confidence = card.querySelector('header > span')?.textContent;
+              if (pilot) {
+                const label = node('span', 'foundry-system-disclosure-label', summary.textContent);
+                summary.replaceChildren(label);
+                const status = card.querySelector('.alias-health');
+                if (status) summary.append(status);
+              }
               if (title === 'Source of truth' && confidence)
                 card.append(node('p', 'next-system-help', `Index confidence: ${confidence}.`));
               const arrow = node('i', '');
@@ -228,6 +267,84 @@ export function createNextDesignSystem(root) {
       });
       for (const article of root.querySelectorAll('.design-system-summary article'))
         article.title = article.querySelector('small')?.textContent ?? '';
+      if (pilot)
+        refinePilotSystem(root, {
+          token,
+          candidate,
+          model: tokenPreviewModel(token ?? candidate, renderedValue, connected),
+          items,
+          renderedValues,
+          connected,
+        });
+      if (pilot && (token || candidate)) {
+        // The reviewed action belongs beside the recommendation, not after an
+        // arbitrarily long list of authored occurrences. Preserve its native node.
+        if (candidate) {
+          const plan = root.querySelector('.foundry-system-plan');
+          const actionCard = root.querySelector('.design-system-card.is-action');
+          if (plan && actionCard) plan.after(actionCard);
+        }
+        const valueSection = rail.querySelector('.next-system-value-section');
+        valueSection.querySelector('h3').textContent = candidate ? 'Plan values' : 'Values';
+        const readouts = node('dl', 'system-value-rows');
+        for (const row of systemValueRows(
+          token ?? candidate,
+          renderedValue,
+          !candidate && connected,
+        )) {
+          const wrapper = node('div', 'system-value-row');
+          wrapper.dataset.systemValue = row.id;
+          wrapper.append(node('dt', '', row.label), node('dd', '', row.value));
+          readouts.append(wrapper);
+        }
+        if (candidate) {
+          for (const { label, value } of systemPromotionValueRows(candidate, tokens)) {
+            const row = node('div', 'system-value-row');
+            row.append(node('dt', '', label), node('dd', '', value));
+            readouts.append(row);
+          }
+        }
+        valueSection.querySelector('code').replaceWith(readouts);
+        valueSection.querySelector('p').textContent =
+          'Read-only evidence. Authored, indexed and Canvas values are kept separate.';
+        const scope = node('section', 'system-scope');
+        scope.append(node('h3', '', 'Indexed scope'));
+        const list = node('dl', 'system-scope-rows');
+        for (const row of systemScopeRows(token, candidate, usages)) {
+          const wrapper = node('div', '');
+          wrapper.append(node('dt', '', row.label), node('dd', '', row.value));
+          list.append(wrapper);
+        }
+        scope.append(
+          list,
+          node(
+            'p',
+            'next-system-help',
+            'Source-index coverage, not a count of verified live consumers.',
+          ),
+        );
+        valueSection.after(scope);
+        const action = root.querySelector('[data-stage-token-promotion]');
+        if (action) {
+          const state = systemPromotionState(candidate, changes, {
+            connected,
+            pending: promotionPending,
+            acknowledged: promotionAcknowledged,
+          });
+          action.disabled = state.disabled;
+          action.textContent = state.label;
+          action.setAttribute('aria-busy', String(promotionPending));
+          const message = action.closest('footer').querySelector('p');
+          message.textContent = state.staged ? state.message : promotionError || state.message;
+          message.setAttribute('role', 'status');
+          message.classList.toggle('system-action-error', Boolean(promotionError) && !state.staged);
+          const warning = systemPromotionWarning(candidate);
+          if (warning) {
+            const note = node('p', 'system-near-warning', warning);
+            root.querySelector('.foundry-system-plan')?.append(note);
+          }
+        }
+      }
       if (focused?.section && focused.key === currentKey)
         rail
           .querySelector(`[data-section="${CSS.escape(focused.section)}"] > summary`)

@@ -1331,6 +1331,17 @@ export class FoundryRuntime {
             return;
           }
           const runId = parts[4];
+          if (
+            runId &&
+            request.method === 'GET' &&
+            parts[5] === 'resume-context' &&
+            parts.length === 6
+          ) {
+            const sourceProof = await this.sourceProofForRun(stored, runId);
+            const context = await this.store.getApplyRunResumeContext(id, runId, sourceProof);
+            sendJson(response, 200, context);
+            return;
+          }
           if (runId && request.method === 'GET' && parts.length === 5) {
             const run = stored.applyRuns.find((candidate) => candidate.id === runId);
             if (!run) throw new Error(`Unknown apply run: ${runId}`);
@@ -1506,6 +1517,7 @@ export class FoundryRuntime {
               ...input,
               currentRevision: currentRevision.revision,
               currentDesignGraphRevision: stored.changeSet.designGraphRevision ?? null,
+              sourceProof: currentRevision,
             });
             sendJson(response, 200, publicSession(updated));
             return;

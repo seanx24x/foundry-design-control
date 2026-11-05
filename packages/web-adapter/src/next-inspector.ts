@@ -40,6 +40,7 @@ export const inspectorStyleProperties = new Set([
   'fontVariationSettings',
   'color',
   'backgroundColor',
+  'backgroundImage',
   'opacity',
   'borderRadius',
   'borderTopLeftRadius',
@@ -81,6 +82,7 @@ export function sharedInspectorControls<
     unit?: string;
     value: string | number;
     options?: string[];
+    authoredValue?: string;
   },
 >(groups: T[][]): Array<T & { mixed: boolean }> {
   if (!groups.length) return [];
@@ -101,6 +103,15 @@ export function sharedInspectorControls<
     const options = control.options?.filter((option) =>
       peers.every((peer) => peer!.options?.includes(option)),
     );
-    return [{ ...control, ...(options ? { options } : {}), mixed }];
+    return [
+      {
+        ...control,
+        ...(options ? { options } : {}),
+        mixed,
+        authoredValue: peers.every((peer) => peer!.authoredValue === control.authoredValue)
+          ? control.authoredValue
+          : undefined,
+      },
+    ];
   });
 }
