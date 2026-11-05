@@ -1,12 +1,18 @@
 import { build } from 'esbuild';
-import { cp, mkdir, rm } from 'node:fs/promises';
+import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { inspectorFontAssets } from './font-assets.mjs';
+import { makeUIThemeCSS } from './ui-system.mjs';
 
 await rm(new URL('./dist/', import.meta.url), { recursive: true, force: true });
 await mkdir(new URL('./dist/', import.meta.url), { recursive: true });
 await cp(new URL('./public/', import.meta.url), new URL('./dist/', import.meta.url), {
   recursive: true,
 });
+await cp(
+  new URL('./KEYLINE-LICENSE.txt', import.meta.url),
+  new URL('./dist/KEYLINE-LICENSE.txt', import.meta.url),
+);
+await writeFile(new URL('./dist/foundry-pilot-tokens.css', import.meta.url), makeUIThemeCSS());
 await mkdir(new URL('./dist/fonts/', import.meta.url), { recursive: true });
 for (const font of inspectorFontAssets) {
   const packageRoot = new URL(

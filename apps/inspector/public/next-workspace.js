@@ -1,4 +1,19 @@
 // Foundry Next first slice. All durable actions use the existing acknowledged bridge.
+import { inspectorUIControl, inspectorInputValue } from './inspector-inputs.js';
+import {
+  bindInspectorScrub,
+  inspectorBoundedFill,
+  nudgeInspectorValue,
+} from './inspector-numeric.js';
+import { inspectorAxisControl, inspectorBorderVisibility } from './inspector-layout.js';
+import { inspectorSectionRestorePlan } from './inspector-restores.js';
+import { openInspectorColorPicker } from './inspector-color-picker.js';
+import { openInspectorGradientEditor } from './inspector-gradient-editor.js';
+import { readInspectorGradient } from './inspector-gradients.js';
+import { inspectorPropertyIcon } from './next-icons.js';
+import { foundryPilotRequested } from './foundry-pilot.js';
+import { syncFoundrySidebars } from './foundry-pilot-sidebar.js';
+import { refinePilotConnection } from './foundry-pilot-readiness.js';
 export const NEXT_TEXT_PROPERTIES = new Set([
   'fontFamily',
   'fontSize',
@@ -78,8 +93,17 @@ export function linkedInspectorControls(controls) {
     return [
       {
         ...first,
+        authoredValue: peers.every((peer) => peer.authoredValue === first.authoredValue)
+          ? first.authoredValue
+          : undefined,
         property,
         label: labels[property],
+        accessibleLabel:
+          property === 'radiusLinked'
+            ? 'All corner radii'
+            : property === 'paddingLinked'
+              ? 'Padding all sides'
+              : `Padding ${labels[property].toLowerCase()}`,
         mixed: peers.some((peer) => peer.mixed || String(peer.value) !== String(first.value)),
         min: Math.max(...peers.map((peer) => peer.min ?? -Infinity)),
         max: Math.min(...peers.map((peer) => peer.max ?? Infinity)),
@@ -144,7 +168,9 @@ export function inspectorSections(controls, category) {
     ),
     section(
       'Appearance',
-      category === 'text' ? ['color', 'opacity'] : ['backgroundColor', 'color', 'opacity'],
+      category === 'text'
+        ? ['color', 'opacity', 'backgroundImage']
+        : ['backgroundColor', 'color', 'opacity', 'backgroundImage'],
       ['borderWidth', 'borderColor', 'boxShadow'],
     ),
     section('Content', ['textContent']),
@@ -306,6 +332,7 @@ export function createNextWorkspace({
           : 'Not connected';
       if (node.textContent !== label) node.textContent = label;
     }
+    refinePilotConnection(connection, model);
   };
   connection.addEventListener('toggle', () => {
     const open = connection.matches(':popover-open');
@@ -413,7 +440,9 @@ export function createNextWorkspace({
   focusButton.setAttribute('aria-label', 'Focus selected text');
   focusButton.innerHTML = icon('external');
   $('#inspector-dock .dock-head').replaceChildren(
-    Object.assign(document.createElement('strong'), { textContent: 'Inspector' }),
+    Object.assign(document.createElement('strong'), {
+      textContent: 'Inspector',
+    }),
     focusButton,
   );
   const toolsButton = document.createElement('button');
@@ -440,6 +469,15 @@ export function createNextWorkspace({
   let current = null;
   let lastSnapshot = null;
   let activeEdit = null;
+  let restoringEntryFocus = false;
+  const focusEntry = (input) => {
+    restoringEntryFocus = true;
+    try {
+      input?.focus({ preventScroll: true });
+    } finally {
+      restoringEntryFocus = false;
+    }
+  };
   let focused = false;
   let queue = Promise.resolve();
   let sourceOpen = false;
@@ -447,9 +485,14 @@ export function createNextWorkspace({
   let selectionKey = '';
   const disclosureKey = (name) => `${category}:${name}`;
   const accepted = new Map();
+  let renderedControls = [];
+  let restoreDialog = null;
   const expanded = new Map();
   const more = new Set();
   const linkedModes = new Map();
+  const revealedBorders = new Set();
+  const axisDetails = new Map();
+  let alignmentBusy = false;
   let pendingLink = null;
   let variantEdit = null;
   const acceptedVariants = new Map();
@@ -465,10 +508,21 @@ export function createNextWorkspace({
     return result;
   };
   const tabTools = tabs.querySelector('[data-next-tools]');
+  if (foundryPilotRequested()) syncFoundrySidebars(document);
+  const sidebarTriggers = () => [...shell.querySelectorAll('.foundry-workspace-switcher')];
   let toolsTrigger = null;
   const positionTools = () => {
     const flyoutWidth = $('#studio-navigation').getBoundingClientRect().width;
     const centerInset = flyoutWidth / 2 + 16;
+    if (sidebarTriggers().includes(toolsTrigger)) {
+      const rect = toolsTrigger.getBoundingClientRect();
+      shell.style.setProperty('--next-tools-top', `${rect.bottom + 8}px`);
+      shell.style.setProperty(
+        '--next-tools-left',
+        `${Math.max(8, Math.min(rect.left, innerWidth - flyoutWidth - 8))}px`,
+      );
+      return;
+    }
     if (toolsTrigger === toolsButton) {
       const rect = toolbar.getBoundingClientRect();
       shell.style.setProperty('--next-tools-bottom', `${innerHeight - rect.top + 8}px`);
@@ -487,10 +541,19 @@ export function createNextWorkspace({
     );
   };
   const closeTools = (restoreFocus = false) => {
-    shell.classList.remove('next-tools-open', 'next-tools-from-tabs');
+    shell.classList.remove('next-tools-open', 'next-tools-from-tabs', 'next-tools-from-sidebar');
     toolsButton.setAttribute('aria-expanded', 'false');
     tabTools.setAttribute('aria-expanded', 'false');
-    if (restoreFocus) toolsTrigger?.focus();
+    sidebarTriggers().forEach((button) => button.setAttribute('aria-expanded', 'false'));
+    if (restoreFocus) {
+      const triggerVisible =
+        toolsTrigger?.getClientRects().length &&
+        !(
+          sidebarTriggers().includes(toolsTrigger) &&
+          shell.dataset.mode !== toolsTrigger.dataset.foundryWorkspace
+        );
+      (triggerVisible ? toolsTrigger : tabTools).focus({ preventScroll: true });
+    }
   };
   const tools = (event) => {
     if (shell.classList.contains('next-tools-open') && toolsTrigger === event.currentTarget) {
@@ -500,8 +563,10 @@ export function createNextWorkspace({
     toolsTrigger = event.currentTarget;
     shell.classList.add('next-tools-open');
     shell.classList.toggle('next-tools-from-tabs', toolsTrigger === tabTools);
+    shell.classList.toggle('next-tools-from-sidebar', sidebarTriggers().includes(toolsTrigger));
     toolsButton.setAttribute('aria-expanded', 'true');
     tabTools.setAttribute('aria-expanded', 'true');
+    sidebarTriggers().forEach((button) => button.setAttribute('aria-expanded', 'true'));
     positionTools();
     $('#studio-navigation .rail-button[aria-current="page"]')?.focus();
     if (!$('#studio-navigation').contains(document.activeElement))
@@ -509,9 +574,19 @@ export function createNextWorkspace({
   };
   toolsButton.addEventListener('click', tools);
   tabTools.addEventListener('click', tools);
+  // Dynamic libraries (States and Delivery) are recreated by their existing renderers.
+  shell.addEventListener('click', (event) => {
+    const button = event.target.closest('.foundry-workspace-switcher');
+    if (button) tools({ currentTarget: button });
+  });
   window.addEventListener('resize', positionTools);
   document.addEventListener('pointerdown', (event) => {
-    if (!event.target.closest('#studio-navigation, [data-next-tools], .next-tools')) closeTools();
+    if (
+      !event.target.closest(
+        '#studio-navigation, [data-next-tools], .next-tools, .foundry-workspace-switcher',
+      )
+    )
+      closeTools();
   });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && shell.classList.contains('next-tools-open')) {
@@ -582,7 +657,10 @@ export function createNextWorkspace({
       else button.removeAttribute('aria-current');
       if (selected) {
         workspacePanel.setAttribute('aria-labelledby', button.id);
-        button.parentElement.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        button.parentElement.scrollIntoView({
+          block: 'nearest',
+          inline: 'nearest',
+        });
       }
     }
   };
@@ -658,7 +736,7 @@ export function createNextWorkspace({
       targetIds: current?.targets?.map((target) => target.id) ?? [targetId],
       property: control.property,
       action,
-      value: control.kind === 'number' ? Number(value) : value,
+      value: control.kind === 'number' ? Number(value) / (control.sourceScale ?? 1) : value,
     };
   }
   async function preview(control, value, field, targetId = current.id) {
@@ -717,7 +795,13 @@ export function createNextWorkspace({
           mixed: control.mixed,
         };
         if (String(entry.before) === String(value)) accepted.delete(key);
-        else accepted.set(key, { ...entry, after: result.value, revision: result.revision });
+        else
+          accepted.set(key, {
+            ...entry,
+            inputValue: String(value),
+            after: control.sourceScale ? Number(result.value) * control.sourceScale : result.value,
+            revision: result.revision,
+          });
       }
       if (activeEdit === edit) {
         activeEdit = null;
@@ -733,9 +817,121 @@ export function createNextWorkspace({
       return false;
     }
   }
+  function restorePlan(name) {
+    const prefix = `${selectionKey}:`;
+    const entries = [...accepted]
+      .filter(([key]) => key.startsWith(prefix))
+      .map(([key, entry]) => ({ ...entry, property: key.slice(prefix.length) }));
+    return inspectorSectionRestorePlan(name, renderedControls, entries, current?.count ?? 1);
+  }
+  const restoreContext = () =>
+    JSON.stringify([
+      selectionKey,
+      state().direction?.id ?? 'main',
+      lastSnapshot?.context?.scope,
+      lastSnapshot?.context?.breakpoint,
+      lastSnapshot?.context?.theme,
+      lastSnapshot?.context?.state,
+    ]);
+  async function openSectionRestore(name) {
+    if (restoreDialog || variantEdit) return;
+    if (activeEdit && !(await cancel(activeEdit.control, activeEdit.targetId))) return;
+    const plan = restorePlan(name);
+    if (!plan.items.length) return;
+    if (plan.reason) {
+      showError(plan.reason);
+      return;
+    }
+    const context = restoreContext(),
+      targetId = current.id;
+    const dialog = document.createElement('dialog');
+    restoreDialog = dialog;
+    dialog.className = 'next-section-restore-dialog';
+    dialog.setAttribute('aria-label', `Restore ${name.toLowerCase()} captured values`);
+    dialog.innerHTML = `<header><strong>Restore ${escape(name.toLowerCase())} values</strong></header><p>Restore only these captured measurements, not project defaults. Each field restore is separately undoable. Source stays unchanged.</p><ul>${plan.items.map((item) => `<li><span>${escape(item.control.label)}</span><code>${escape(item.after)}${escape(item.control.unit ?? '')} → ${escape(item.before)}${escape(item.control.unit ?? '')}</code></li>`).join('')}</ul><p role="status">${plan.items.length} captured ${plan.items.length === 1 ? 'field' : 'fields'}. Other sections are unaffected.</p><footer><button type="button" data-close-restore>Cancel</button><button type="button" data-confirm-restore>Restore ${plan.items.length} ${plan.items.length === 1 ? 'field' : 'fields'}</button></footer>`;
+    let busy = false,
+      departed = false,
+      finished = false;
+    const status = dialog.querySelector('[role=status]'),
+      confirm = dialog.querySelector('[data-confirm-restore]'),
+      close = dialog.querySelector('[data-close-restore]');
+    const dispose = (focus = true) => {
+      dialog.close();
+      dialog.remove();
+      if (restoreDialog === dialog) restoreDialog = null;
+      if (focus && restoreContext() === context)
+        (
+          document.querySelector(`[data-section-restore="${name}"]`) ??
+          document.querySelector(`[data-section="${name}"]`)
+        )?.focus({ preventScroll: true });
+    };
+    close.addEventListener('click', () => {
+      if (!busy) dispose();
+    });
+    dialog.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      if (!busy) dispose();
+    });
+    dialog.addEventListener('foundry-selection-change', () => {
+      departed = true;
+      if (!busy) dispose(false);
+    });
+    confirm.addEventListener('click', async () => {
+      if (busy || finished) return;
+      if (restoreContext() !== context || restorePlan(name).signature !== plan.signature) {
+        status.textContent =
+          'The selection or captured changes changed. Close and review the section again.';
+        confirm.disabled = true;
+        return;
+      }
+      busy = true;
+      confirm.disabled = true;
+      close.disabled = true;
+      dialog.setAttribute('aria-busy', 'true');
+      let restored = 0;
+      try {
+        for (const item of plan.items) {
+          if (departed || restoreContext() !== context)
+            throw Error('The editing context changed. Remaining fields were not restored.');
+          const latest = restorePlan(name).items.find((entry) => entry.property === item.property);
+          if (
+            !latest ||
+            JSON.stringify([latest.before, latest.after, latest.revision]) !==
+              JSON.stringify([item.before, item.after, item.revision])
+          )
+            throw Error('A captured value changed. Remaining fields were not restored.');
+          activeEdit = { control: item.control, targetId };
+          if (!(await commit(item.control, item.before, null, targetId)))
+            throw Error(
+              document.querySelector('.next-edit-error')?.textContent ||
+                'The field could not be restored.',
+            );
+          restored++;
+          status.textContent = `Restored ${restored} of ${plan.items.length} fields.`;
+        }
+        status.textContent = `Restored ${restored} captured ${restored === 1 ? 'field' : 'fields'}. Each restore can be undone separately.`;
+        finished = true;
+      } catch (error) {
+        status.textContent = `Restored ${restored} of ${plan.items.length} fields. ${error.message} Nothing retries automatically.`;
+        finished = true;
+      } finally {
+        busy = false;
+        close.disabled = false;
+        close.textContent = 'Done';
+        confirm.hidden = true;
+        dialog.removeAttribute('aria-busy');
+        if (departed) dispose(false);
+      }
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+    close.focus();
+  }
   function field(control) {
     const key = `${selectionKey}:${control.property}`;
     const change = accepted.get(key);
+    const accessibleLabel = control.accessibleLabel ?? control.label;
+    const propertyIcon = inspectorPropertyIcon(control.property);
     const full =
       control.full ||
       [
@@ -750,15 +946,30 @@ export function createNextWorkspace({
         'aria-label',
         'gridTemplateColumns',
         'gridTemplateRows',
+        'backgroundImage',
       ].includes(control.property);
+    const studioField = foundryPilotRequested();
+    const studioLabel = studioField
+      ? `<span class="next-studio-label">${escape({ fontWeight: 'Weight', letterSpacing: 'Tracking', fontStyle: 'Style', textTransform: 'Case', borderWidth: 'Width', borderColor: 'Color' }[control.property] ?? control.label)}</span>`
+      : '';
     let input;
     if (control.property === 'fontFamily')
-      input = `<button type="button" class="next-font-trigger" data-font-picker title="${escape(control.value)}">${icon('typography')}<span>${escape(control.value)}</span>${icon('chevronDown')}</button>`;
-    else if (control.kind === 'select')
-      input = `<select data-next-field="${escape(control.property)}" aria-label="${escape(control.label)}">${control.mixed ? '<option value="" selected disabled>Mixed</option>' : !(control.options ?? []).includes(String(control.value)) ? `<option selected>${escape(control.value)}</option>` : ''}${(control.options ?? []).map((option) => `<option ${!control.mixed && String(option) === String(control.value) ? 'selected' : ''}>${escape(option)}</option>`).join('')}</select>`;
+      input = `<button type="button" class="next-font-trigger" data-font-picker aria-label="Choose font family" title="Choose font family: ${escape(control.value)}">${inspectorPropertyIcon('fontFamily')}<span>${escape(control.value)}</span>${icon('chevronDown')}</button>`;
+    else if (control.property === 'backgroundImage' && studioField) {
+      const gradient = !control.mixed && readInspectorGradient(control.value);
+      const label = control.mixed
+        ? 'Mixed fills'
+        : gradient
+          ? `Linear · ${gradient.stops.length} stops`
+          : control.value === 'none'
+            ? 'No gradient'
+            : 'Native fill';
+      input = `<button type="button" class="next-gradient-trigger" data-gradient-picker aria-label="Edit background gradient" aria-haspopup="dialog"><span>Gradient</span><span>${escape(label)}</span>${icon('chevronDown')}</button>`;
+    } else if (control.kind === 'select')
+      input = `${studioLabel}<select data-next-field="${escape(control.property)}" aria-label="${escape(control.label)}">${control.mixed ? '<option value="" selected disabled>Mixed</option>' : !(control.options ?? []).includes(String(control.value)) ? `<option selected>${escape(control.value)}</option>` : ''}${(control.options ?? []).map((option) => `<option ${!control.mixed && String(option) === String(control.value) ? 'selected' : ''}>${escape(option)}</option>`).join('')}</select>`;
     else
-      input = `${control.kind === 'number' && !control.mixed ? `<button type="button" class="next-scrub" aria-label="Scrub ${escape(control.label)}" title="Drag to adjust ${escape(control.label)}; Shift for coarse, Alt for fine">${icon(control.category === 'typography' ? 'typography' : 'layout')}</button>` : ''}<input data-next-field="${escape(control.property)}" aria-label="${escape(control.label)}" aria-describedby="next-edit-error" type="text" ${control.kind === 'number' ? 'inputmode="decimal"' : ''} ${control.mixed ? 'placeholder="Mixed"' : ''} value="${control.mixed ? '' : escape(control.value)}">${control.unit ? `<span class="next-unit">${escape(control.unit)}</span>` : ''}`;
-    return `<div class="next-property${full ? ' next-full' : ''}${change ? ' is-changed' : ''}" data-property="${escape(control.property)}"><span class="next-property-label">${escape(control.label)}</span><div class="next-field">${input}</div><p class="next-field-status" role="status" hidden></p>${change ? `<div class="next-change"><span>${escape(change.before)} → ${escape(change.after)}</span>${change.mixed || current.count > 1 ? '<span>Undo to restore each original</span>' : `<button type="button" data-reset="${escape(control.property)}" title="Reset ${escape(control.label)}" aria-label="Reset ${escape(control.label)}">${icon('undo')}</button>`}</div><p class="next-field-status">${escape(inspectorEditHint(state().direction, 'saved'))}</p>` : ''}</div>`;
+      input = `${control.kind === 'color' ? `${studioLabel}<button type="button" class="next-color-trigger${control.mixed ? ' is-mixed' : ''}" data-color-picker="${escape(control.property)}" aria-label="Choose ${escape(control.label.toLowerCase())}" aria-haspopup="dialog" title="Choose ${escape(control.label.toLowerCase())}"><span style="${!control.mixed && CSS.supports('color', control.value) ? `background-color:${escape(control.value)}` : ''}"></span></button>` : ''}${control.kind === 'number' && !control.mixed && propertyIcon ? `<button type="button" class="next-scrub" aria-label="Scrub ${escape(accessibleLabel)}" title="${escape(accessibleLabel)}: drag to preview; release to ${state().direction?.id && state().direction.id !== 'main' ? 'save to this direction' : 'add to Review'}. Escape cancels. Shift for faster, Alt for slower.">${propertyIcon}${studioLabel}</button>` : control.kind !== 'color' ? studioLabel : ''}<input data-next-field="${escape(control.property)}" aria-label="${escape(accessibleLabel)}" aria-describedby="next-edit-error" type="text" ${control.kind === 'number' ? 'inputmode="decimal"' : ''} ${control.mixed ? 'placeholder="Mixed"' : ''} value="${escape(inspectorInputValue(control))}">${control.unit ? `<span class="next-unit">${escape(control.unit)}</span>` : ''}`;
+    return `<div class="next-property${studioField && control.property !== 'fontFamily' ? ' next-studio-property' : ''}${full ? ' next-full' : ''}${change ? ' is-changed' : ''}" data-property="${escape(control.property)}"><span class="next-property-label">${escape(control.label)}</span><div class="next-field">${input}</div><p class="next-field-status" role="status" hidden></p>${change ? `<div class="next-change"><span>${escape(change.before)} → ${escape(change.after)}</span>${change.mixed || current.count > 1 ? '<span>Undo to restore each original</span>' : `<button type="button" data-reset="${escape(control.property)}" title="Reset ${escape(control.label)}" aria-label="Reset ${escape(control.label)}">${icon('undo')}</button>`}</div><p class="next-field-status">${escape(inspectorEditHint(state().direction, 'saved'))}</p>` : ''}</div>`;
   }
   function linkedGroup(property, controls) {
     const names = LINKED_INSPECTOR_GROUPS[property];
@@ -787,11 +998,34 @@ export function createNextWorkspace({
             )
           : peers.map((control, index) => ({
               ...control,
+              accessibleLabel: control.label,
               label: (isPadding
                 ? ['Top', 'Right', 'Bottom', 'Left']
                 : ['Top left', 'Top right', 'Bottom right', 'Bottom left'])[index],
             }));
     return `<div class="next-linked-group" data-linked-group="${property}"><div class="next-linked-head"><span>${label}</span>${combined && !confirming ? `<button type="button" data-link="${property}" aria-pressed="${mode === 'linked'}" title="${mode === 'linked' ? 'Edit values independently' : 'Link all values after choosing a replacement if they differ'}">${mode === 'linked' ? 'Unlink' : 'Link all'}</button>` : ''}</div>${confirming ? `<p class="next-link-help">These values differ. Enter a replacement for every ${isPadding ? 'side' : 'corner'}${current.count > 1 ? ` on all ${current.count} selected layers` : ''}. Nothing is accepted until you confirm.</p>` : ''}<div class="next-fields">${fields.filter(Boolean).map(field).join('')}</div>${confirming ? `<div class="next-link-actions"><button type="button" data-cancel-link="${property}">Cancel</button><button type="button" data-confirm-link="${property}">Use value</button></div>` : isPadding && mode !== 'linked' && combined && controls.some((control) => control.property === 'paddingHorizontal') && controls.some((control) => control.property === 'paddingVertical') ? `<button type="button" class="next-more" data-independent="${property}" aria-expanded="${mode === 'independent'}">Independent padding${icon('chevronDown')}</button>` : ''}</div>`;
+  }
+  function axisField(control, allControls) {
+    const model = foundryPilotRequested() && inspectorAxisControl(control, allControls);
+    if (!model) return field(control);
+    const key = `${selectionKey}:${control.property}`;
+    const open = axisDetails.get(key) ?? model.expanded;
+    return `<div class="next-axis-control next-full" role="group" aria-label="${model.axis}"><div class="next-axis-row"><span>${model.axis}</span><div class="segmented next-axis-presets" role="group" aria-label="${model.axis} presets">${model.presets.map((item) => `<button type="button" data-align-preset="${control.property}:${item.value}" aria-pressed="${item.selected}" aria-label="${model.axis}: ${item.label.toLowerCase()}" title="${item.label}: follows the selected layout's direction">${item.label}</button>`).join('')}</div></div><details class="next-axis-more" data-axis-more="${control.property}" ${open ? 'open' : ''}><summary>More ${model.axis.toLowerCase()} options${control.mixed ? ' · Mixed' : model.expanded ? ` · ${escape(control.value)}` : ''}</summary>${field({ ...control, full: true })}</details></div>`;
+  }
+  function borderFields(advanced) {
+    const width = advanced.find((control) => control.property === 'borderWidth');
+    const color = advanced.find((control) => control.property === 'borderColor');
+    if (!foundryPilotRequested() || !width || !color) return advanced.map(field).join('');
+    const visibility = inspectorBorderVisibility(
+      advanced,
+      inspectorInputValue(width),
+      revealedBorders.has(selectionKey),
+    );
+    const other = advanced
+      .filter((control) => !['borderWidth', 'borderColor'].includes(control.property))
+      .map(field)
+      .join('');
+    return `<div class="next-border-controls next-full"><div class="next-linked-head"><span>Border</span><button type="button" data-reveal-border aria-controls="next-border-color-fields" aria-expanded="${visibility.colorVisible}" ${visibility.canCollapse ? '' : 'hidden'}>${visibility.colorVisible ? 'Hide inactive color' : 'Show color'}</button></div><div class="next-fields">${field(width)}</div><p class="next-border-hint" ${visibility.canCollapse ? '' : 'hidden'}>Color is inactive at zero width.</p><div class="next-fields" id="next-border-color-fields" ${visibility.colorVisible ? '' : 'hidden'}>${field(color)}</div></div>${other}`;
   }
   function variantFields(snapshot) {
     const variants = snapshot.nextVariants?.variants ?? [];
@@ -812,7 +1046,13 @@ export function createNextWorkspace({
     if (activeEdit && !(await cancel(activeEdit.control, activeEdit.targetId))) return;
     const targetId = current?.id;
     if (!targetId) return;
-    const edit = (variantEdit = { targetId, variantId, busy: true, ready: false, error: '' });
+    const edit = (variantEdit = {
+      targetId,
+      variantId,
+      busy: true,
+      ready: false,
+      error: '',
+    });
     redrawVariant();
     try {
       const result = await enqueue(() =>
@@ -820,7 +1060,10 @@ export function createNextWorkspace({
       );
       if (variantEdit !== edit || current?.id !== targetId) return;
       if (action === 'commit' && result.recorded)
-        acceptedVariants.set(selectionKey, { id: variantId, revision: result.revision });
+        acceptedVariants.set(selectionKey, {
+          id: variantId,
+          revision: result.revision,
+        });
       if (action === 'preview') {
         edit.ready = true;
         edit.busy = false;
@@ -855,7 +1098,12 @@ export function createNextWorkspace({
         : name === 'Appearance' && category !== 'text'
           ? linkedGroup('radiusLinked', allControls)
           : '';
-    return `<section class="next-section"><button type="button" class="next-section-head" data-section="${name}" aria-expanded="${open}"><strong>${name}</strong>${icon('chevronDown')}</button><div class="next-section-body" ${open ? '' : 'hidden'}><div class="next-fields">${controls.map(field).join('')}</div>${extra}${linked}${advanced.length ? `<button type="button" class="next-more" data-more="${name}" aria-expanded="${showMore}">${showMore ? 'Less' : 'More'} ${name.toLowerCase()}${icon('chevronDown')}</button><div class="next-fields" ${showMore ? '' : 'hidden'}>${advanced.map(field).join('')}</div>` : ''}</div></section>`;
+    const plan = foundryPilotRequested() ? restorePlan(name) : { items: [] };
+    const head = `<button type="button" class="next-section-head" data-section="${name}" aria-expanded="${open}"><strong>${name}</strong>${icon('chevronDown')}</button>`;
+    const heading = foundryPilotRequested()
+      ? `<div class="next-section-heading">${head}${plan.items.length ? `<button type="button" class="next-section-restore" data-section-restore="${name}" aria-label="Restore ${name.toLowerCase()} captured values" aria-disabled="${Boolean(plan.reason)}" title="${escape(plan.reason || 'Restore captured values in this section')}">Restore</button>` : ''}</div>`
+      : head;
+    return `<section class="next-section">${heading}<div class="next-section-body" ${open ? '' : 'hidden'}><div class="next-fields">${controls.map((control) => (name === 'Layout' ? axisField(control, allControls) : field(control))).join('')}</div>${extra}${linked}${advanced.length ? `<button type="button" class="next-more" data-more="${name}" aria-expanded="${showMore}">${showMore ? 'Less' : 'More'} ${name.toLowerCase()}${icon('chevronDown')}</button><div class="next-fields" ${showMore ? '' : 'hidden'}>${name === 'Appearance' ? borderFields(advanced) : advanced.map(field).join('')}</div>` : ''}${plan.reason ? `<p class="next-edit-help">${escape(plan.reason)}</p>` : ''}</div></section>`;
   }
   async function fontPicker(control, snapshot) {
     if (activeEdit && !(await cancel(activeEdit.control, activeEdit.targetId))) return;
@@ -935,6 +1183,98 @@ export function createNextWorkspace({
     dialog.showModal();
   }
   function bind(root, snapshot, controls) {
+    const boundSelection = selectionKey;
+    root
+      .querySelectorAll('[data-section-restore]')
+      .forEach((button) =>
+        button.addEventListener(
+          'click',
+          () => void openSectionRestore(button.dataset.sectionRestore),
+        ),
+      );
+    root
+      .querySelectorAll('[data-axis-more]')
+      .forEach((details) =>
+        details.addEventListener(
+          'toggle',
+          () =>
+            details.isConnected &&
+            selectionKey === boundSelection &&
+            axisDetails.set(`${boundSelection}:${details.dataset.axisMore}`, details.open),
+        ),
+      );
+    root.querySelectorAll('[data-align-preset]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        if (alignmentBusy || variantEdit || selectionKey !== boundSelection) return;
+        const [property, value] = button.dataset.alignPreset.split(':');
+        const control = controls.find((item) => item.property === property);
+        if (
+          !control ||
+          !inspectorAxisControl(control, controls)?.presets.some((item) => item.value === value)
+        )
+          return;
+        alignmentBusy = true;
+        const targetId = current.id;
+        const restoreFocus = document.activeElement === button;
+        try {
+          if (activeEdit && !(await cancel(activeEdit.control, activeEdit.targetId))) return;
+          if (selectionKey !== boundSelection || current?.id !== targetId) return;
+          activeEdit = { control, targetId };
+          root.querySelectorAll('[data-align-preset]').forEach((item) => {
+            item.disabled = true;
+            item.setAttribute('aria-busy', 'true');
+          });
+          await commit(control, value, null, targetId);
+        } finally {
+          alignmentBusy = false;
+          if (selectionKey === boundSelection) {
+            root.querySelectorAll('[data-align-preset]').forEach((item) => {
+              item.disabled = Boolean(variantEdit);
+              item.removeAttribute('aria-busy');
+            });
+            if (restoreFocus && document.activeElement === document.body)
+              root
+                .querySelector(`[data-align-preset="${button.dataset.alignPreset}"]`)
+                ?.focus({ preventScroll: true });
+          }
+        }
+      });
+      button.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const peers = [...button.parentElement.querySelectorAll('button:not(:disabled)')];
+        const index = peers.indexOf(button);
+        const next =
+          event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? peers.length - 1
+              : (index + (event.key === 'ArrowRight' ? 1 : -1) + peers.length) % peers.length;
+        peers[next]?.focus();
+      });
+    });
+    const syncBorder = () => {
+      const group = root.querySelector('.next-border-controls');
+      if (!group) return;
+      const width = group.querySelector('[data-next-field="borderWidth"]');
+      const visibility = inspectorBorderVisibility(
+        controls,
+        width?.value,
+        revealedBorders.has(boundSelection),
+      );
+      group.querySelector('#next-border-color-fields').hidden = !visibility.colorVisible;
+      group.querySelector('.next-border-hint').hidden = !visibility.canCollapse;
+      const toggle = group.querySelector('[data-reveal-border]');
+      toggle.hidden = !visibility.canCollapse;
+      toggle.setAttribute('aria-expanded', String(visibility.colorVisible));
+      toggle.textContent = visibility.colorVisible ? 'Hide inactive color' : 'Show color';
+    };
+    root.querySelector('[data-reveal-border]')?.addEventListener('click', () => {
+      if (revealedBorders.has(boundSelection)) revealedBorders.delete(boundSelection);
+      else revealedBorders.add(boundSelection);
+      syncBorder();
+    });
+    syncBorder();
     if (!variantEdit && acceptedVariants.has(selectionKey)) {
       const accepted = acceptedVariants.get(selectionKey);
       const variant = snapshot.nextVariants?.variants.find((variant) => variant.id === accepted.id);
@@ -968,7 +1308,7 @@ export function createNextWorkspace({
     if (variantEdit)
       root
         .querySelectorAll(
-          '[data-next-field], .next-scrub, [data-reset], [data-link], [data-independent], [data-font-picker]',
+          '[data-next-field], .next-scrub, [data-reset], [data-link], [data-independent], [data-font-picker], [data-color-picker], [data-gradient-picker], [data-align-preset], [data-reveal-border], [data-section-restore]',
         )
         .forEach((control) => {
           control.disabled = true;
@@ -985,7 +1325,11 @@ export function createNextWorkspace({
           );
         else if (button.getAttribute('aria-pressed') === 'true')
           linkedModes.set(key, 'independent');
-        else if (controls.find((control) => control.property === property)?.mixed)
+        // Individual accepted values can be newer than the snapshot from which
+        // the combined field was derived. Recheck peers at the action boundary.
+        else if (
+          linkedInspectorControls(controls).find((control) => control.property === property)?.mixed
+        )
           pendingLink = property;
         else linkedModes.set(key, 'linked');
         rerender();
@@ -1016,7 +1360,7 @@ export function createNextWorkspace({
         const open = button.getAttribute('aria-expanded') !== 'true';
         expanded.set(disclosureKey(button.dataset.section), open);
         button.setAttribute('aria-expanded', String(open));
-        button.nextElementSibling.hidden = !open;
+        button.closest('.next-section').querySelector('.next-section-body').hidden = !open;
       }),
     );
     root.querySelectorAll('[data-more]').forEach((button) =>
@@ -1037,16 +1381,85 @@ export function createNextWorkspace({
           snapshot,
         ),
     );
+    root.querySelector('[data-gradient-picker]')?.addEventListener('click', async () => {
+      if (activeEdit && !(await cancel(activeEdit.control, activeEdit.targetId))) return;
+      const control = controls.find((item) => item.property === 'backgroundImage');
+      const targetId = current.id;
+      activeEdit = { control, targetId };
+      openInspectorGradientEditor({
+        control,
+        renderIcons,
+        anchor: root.querySelector('[data-gradient-picker]'),
+        acceptHint: inspectorEditHint(state().direction)
+          .replace('Enter ', 'Use gradient ')
+          .replace('Escape or leaving the field cancels', 'Cancel or Escape restores the original'),
+        preview: (value) => preview(control, value, null, targetId),
+        commit: (value) => commit(control, value, null, targetId),
+        cancel: () => cancel(control, targetId),
+        error: () =>
+          $('.next-edit-error')?.textContent || 'Preview unavailable. Your fill is retained.',
+        restoreFocus: () => root.querySelector('[data-gradient-picker]')?.focus(),
+      });
+    });
+    root.querySelectorAll('[data-color-picker]').forEach((button) =>
+      button.addEventListener('click', async () => {
+        const property = button.dataset.colorPicker;
+        if (activeEdit && !(await cancel(activeEdit.control, activeEdit.targetId))) return;
+        const control = controls.find((item) => item.property === property);
+        const targetId = current.id;
+        activeEdit = { control, targetId };
+        openInspectorColorPicker({
+          control,
+          renderIcons,
+          acceptHint: inspectorEditHint(state().direction)
+            .replace('Enter ', 'Use color ')
+            .replace(
+              'Escape or leaving the field cancels',
+              'Cancel or Escape restores the original',
+            ),
+          anchor: root.querySelector(`[data-color-picker="${property}"]`),
+          preview: (value) => preview(control, value, null, targetId),
+          commit: (value) => commit(control, value, null, targetId),
+          cancel: () => cancel(control, targetId),
+          error: () =>
+            $('.next-edit-error')?.textContent || 'Preview unavailable. Your color is retained.',
+          restoreFocus: () => root.querySelector(`[data-color-picker="${property}"]`)?.focus(),
+        });
+      }),
+    );
     root.querySelectorAll('[data-next-field]').forEach((input) => {
       const control = controls.find((item) => item.property === input.dataset.nextField);
       const targetId = current.id;
-      let start = String(control.value);
+      let start = inspectorInputValue(control);
+      let dirty = false;
       let timer;
       const begin = () => {
         activeEdit = { control, targetId };
+        return activeEdit;
       };
-      input.addEventListener('focus', begin);
+      const updateFill = () => {
+        syncBorder();
+        const ratio = inspectorBoundedFill(control, input.value),
+          field = input.closest('.next-field');
+        if (!foundryPilotRequested() || ratio == null) {
+          delete field.dataset.bounded;
+          return;
+        }
+        field.dataset.bounded = '';
+        field.style.setProperty('--fd-control-fill', `${ratio * 100}%`);
+      };
+      updateFill();
+      input.addEventListener('foundry-numeric-preview', updateFill);
+      // Do not replace text during focus: browser select-all and cursor placement
+      // must use the same string the user saw before entering the field.
+      if (control.kind === 'number')
+        input.title = `Measured: ${control.value}${control.unit ?? ''}`;
+      input.addEventListener('focus', () => {
+        if (!restoringEntryFocus) begin();
+      });
       input.addEventListener('input', () => {
+        updateFill();
+        dirty = true;
         begin();
         clearTimeout(timer);
         // Native selects emit input before change. Their acknowledged acceptance
@@ -1055,13 +1468,48 @@ export function createNextWorkspace({
         timer = setTimeout(() => void preview(control, input.value, input, targetId), 160);
       });
       input.addEventListener('keydown', async (event) => {
+        if (
+          control.kind === 'number' &&
+          ['ArrowUp', 'ArrowDown'].includes(event.key) &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.isComposing
+        ) {
+          const value = nudgeInspectorValue(
+            control,
+            input.value,
+            event.key === 'ArrowUp' ? 1 : -1,
+            event,
+          );
+          if (value == null) return;
+          event.preventDefault();
+          clearTimeout(timer);
+          begin();
+          dirty = true;
+          input.value = String(value);
+          updateFill();
+          void preview(control, input.value, input, targetId);
+          return;
+        }
         if (!['Enter', 'Escape'].includes(event.key)) return;
         event.preventDefault();
         clearTimeout(timer);
+        const restoreEntry = document.activeElement === input;
         if (event.key === 'Escape') {
           input.value = start;
           await cancel(control, targetId);
+        } else if (!dirty && !validateNextValue(control, input.value)) {
+          await cancel(control, targetId);
         } else if (await commit(control, input.value, input, targetId)) start = input.value;
+        // Restore focus, not an edit lock: canonical snapshots and Undo must
+        // still update this idle field. Never steal focus from a newer action.
+        if (
+          restoreEntry &&
+          !input.isConnected &&
+          current?.id === targetId &&
+          document.activeElement === document.body
+        )
+          focusEntry(root.querySelector(`[data-next-field="${control.property}"]`));
       });
       input.addEventListener('blur', () => {
         clearTimeout(timer);
@@ -1070,46 +1518,34 @@ export function createNextWorkspace({
         if (input.getAttribute('aria-invalid') === 'true') return;
         if (pendingLink === control.property) return;
         if (activeEdit?.control === control && input.tagName !== 'SELECT') {
-          if (input.value === start) activeEdit = null;
-          else void cancel(control, targetId);
+          if (!dirty) {
+            activeEdit = null;
+            input.value = inspectorInputValue(control);
+          } else void cancel(control, targetId);
         }
       });
       if (input.tagName === 'SELECT')
         input.addEventListener('change', () => void commit(control, input.value, input, targetId));
       const scrub = input.parentElement.querySelector('.next-scrub');
-      scrub?.addEventListener('pointerdown', (event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        begin();
-        const x = event.clientX,
-          before = Number(input.value);
-        let moved = false;
-        scrub.setPointerCapture(event.pointerId);
-        const move = (event) => {
-          const delta = event.clientX - x;
-          if (!moved && Math.abs(delta) < 4) return;
-          moved = true;
-          const step = event.shiftKey ? 10 : event.altKey ? 0.1 : 1;
-          const value = Math.min(
-            control.max ?? Infinity,
-            Math.max(control.min ?? -Infinity, before + delta * step),
-          );
-          input.value = String(Math.round(value * 1000) / 1000);
-          clearTimeout(timer);
-          timer = setTimeout(() => void preview(control, input.value, input, targetId), 32);
-        };
-        const end = async (event) => {
-          clearTimeout(timer);
-          scrub.removeEventListener('pointermove', move);
-          scrub.removeEventListener('pointerup', end);
-          scrub.removeEventListener('pointercancel', end);
-          if (event.type === 'pointercancel' || !moved) await cancel(control, targetId);
-          else await commit(control, input.value, input, targetId);
-        };
-        scrub.addEventListener('pointermove', move);
-        scrub.addEventListener('pointerup', end);
-        scrub.addEventListener('pointercancel', end);
-      });
+      if (scrub)
+        bindInspectorScrub({
+          handle: scrub,
+          input,
+          control,
+          begin: () => {
+            clearTimeout(timer);
+            return begin();
+          },
+          preview: (value) => preview(control, value, input, targetId),
+          commit: (value) => commit(control, value, input, targetId),
+          cancel: () => cancel(control, targetId),
+          isCurrent: (edit) => activeEdit === edit,
+          editText: () => {
+            const next = root.querySelector(`[data-next-field="${control.property}"]`);
+            next?.focus();
+            next?.select();
+          },
+        });
     });
     root.querySelectorAll('[data-reset]').forEach((button) =>
       button.addEventListener('click', () => {
@@ -1134,6 +1570,10 @@ export function createNextWorkspace({
       .join('|');
     const sameSelection = selectionKey === nextKey;
     if (selectionKey !== nextKey) {
+      restoreDialog?.dispatchEvent(new Event('foundry-selection-change'));
+      document
+        .querySelector('.next-color-picker')
+        ?.dispatchEvent(new Event('foundry-selection-change'));
       activeEdit = null;
       variantEdit = null;
       pendingLink = null;
@@ -1178,17 +1618,19 @@ export function createNextWorkspace({
     if (activeEdit) return true;
     if (variantEdit && !drawingVariant) {
       // Keep the chooser/actions stable while refreshing the read-only measurements.
-      const measurements = snapshot.nextControls ?? [];
+      const measurements = (snapshot.nextControls ?? []).map(inspectorUIControl);
       for (const control of [...measurements, ...linkedInspectorControls(measurements)]) {
         const input = $(`[data-next-field="${control.property}"]`);
         if (!input) continue;
-        input.value = control.mixed ? '' : String(control.value);
+        input.value = inspectorInputValue(control);
         const unit = input.parentElement.querySelector('.next-unit');
         if (unit) unit.textContent = control.unit ?? '';
       }
       return true;
     }
-    const controls = (snapshot.nextControls ?? []).map((control) => ({ ...control }));
+    const controls = (snapshot.nextControls ?? []).map((control) =>
+      inspectorUIControl({ ...control }),
+    );
     controls.push(...linkedInspectorControls(controls));
     for (const control of controls) {
       const key = `${selectionKey}:${control.property}`;
@@ -1196,6 +1638,7 @@ export function createNextWorkspace({
       if (!entry) continue;
       if ((snapshot.nextInspectorRevision ?? 0) < entry.revision) {
         control.value = entry.after;
+        control.authoredValue = entry.inputValue;
         control.mixed = false;
         continue;
       }
@@ -1203,14 +1646,23 @@ export function createNextWorkspace({
       else entry.after = control.value;
     }
     const root = $('#inspector-sections');
+    renderedControls = controls;
+    const focusedField =
+      sameSelection && root.contains(document.activeElement)
+        ? document.activeElement.dataset.nextField
+        : null;
     // Snapshot updates must not throw keyboard users back to the document body.
     const focusedButton =
       sameSelection && root.contains(document.activeElement)
         ? [
             'data-link',
+            'data-align-preset',
+            'data-reveal-border',
+            'data-section-restore',
             'data-independent',
             'data-section',
             'data-more',
+            'data-color-picker',
             'data-next-variant',
             'data-variant-cancel',
             'data-variant-use',
@@ -1267,6 +1719,7 @@ export function createNextWorkspace({
       root
         .querySelector(`[${focusedButton[0]}="${focusedButton[1]}"]`)
         ?.focus({ preventScroll: true });
+    else if (focusedField) focusEntry(root.querySelector(`[data-next-field="${focusedField}"]`));
     root
       .querySelector('[data-next-workshop]')
       ?.addEventListener('click', () => navigate('components'));

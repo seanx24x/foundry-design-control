@@ -780,10 +780,7 @@ test('durable preview actions cannot bypass acknowledgement', async () => {
     'stage-component-variant',
     'stage-token-promotion',
     'import-visual-recipes',
-    'import-design-decisions',
     'duplicate-visual-recipe',
-    'update-design-decision',
-    'remove-design-decision',
     'undo',
     'redo',
   ]) {
@@ -794,6 +791,18 @@ test('durable preview actions cannot bypass acknowledgement', async () => {
     );
   }
   assert.match(source, /setInterval\(pingPreviewFrames, 2000\)/);
+  for (const command of [
+    'import-design-decisions',
+    'update-design-decision',
+    'remove-design-decision',
+  ])
+    assert.match(source, new RegExp(`await runMemoryMutation\\([\\s\\S]{0,80}?['\"]${command}`));
+  const memoryGate = source.slice(
+    source.indexOf('async function runMemoryMutation('),
+    source.indexOf('function visualAgentRequests()'),
+  );
+  assert.match(memoryGate, /await runDurableAction\(command, payload, options\)/);
+  assert.match(memoryGate, /if \(memoryActionBusy \|\| memoryCaptureBusy\) return null/);
   assert.match(source, /Date\.now\(\) - lastSeen >= 5000/);
 });
 

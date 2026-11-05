@@ -1,0 +1,309 @@
+/* Connection guidance uses the workspace system, not product-preview scaling. */
+:root[data-foundry-pilot] #readiness-dialog {
+  width: min(700px, calc(100vw - 32px));
+  max-height: min(850px, calc(100dvh - 48px));
+}
+:root[data-foundry-pilot] #readiness-dialog > header {
+  padding: 20px;
+}
+:root[data-foundry-pilot] #readiness-dialog .readiness-body {
+  min-height: 0;
+  padding: 20px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-gutter: auto;
+}
+:root[data-foundry-pilot] #readiness-summary {
+  margin: 0 0 20px;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] #readiness-dialog .workflow-journey {
+  margin: 0;
+  padding: 0 0 24px;
+  border: 0;
+}
+:root[data-foundry-pilot] #readiness-dialog .workflow-journey ol {
+  gap: 8px;
+  margin: 0 0 20px;
+}
+:root[data-foundry-pilot] #readiness-dialog .workflow-journey li {
+  min-width: 0;
+  padding: 8px 0 0;
+  border-top: 2px solid var(--line);
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot] #readiness-dialog .workflow-journey li[aria-current='step'] {
+  border-color: var(--selection);
+  color: var(--ink);
+  font-weight: 550;
+}
+:root[data-foundry-pilot] #workflow-phase {
+  display: block;
+  font: 550 18px/26px var(--sans);
+}
+:root[data-foundry-pilot] #workflow-detail {
+  max-width: 68ch;
+  margin-top: 6px;
+  font: 400 13px/22px var(--sans);
+}
+:root[data-foundry-pilot] #readiness-dialog .workflow-journey .primary-button {
+  margin-top: 16px;
+}
+:root[data-foundry-pilot] .foundry-readiness-capabilities {
+  padding: 20px 0;
+  border-block: 1px solid var(--line);
+}
+:root[data-foundry-pilot] #readiness-dialog h3 {
+  margin: 0;
+  font: 550 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] .foundry-readiness-capabilities dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0 8px;
+}
+:root[data-foundry-pilot] .foundry-readiness-capabilities dl > div {
+  display: grid;
+  gap: 4px;
+}
+:root[data-foundry-pilot] .foundry-readiness-capabilities dt {
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot] .foundry-readiness-capabilities dd {
+  margin: 0;
+  color: var(--ink);
+  font: 500 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] .foundry-readiness-capabilities [data-state='unavailable'] dd {
+  color: var(--fd-color-warning);
+}
+:root[data-foundry-pilot] .foundry-readiness-capabilities [data-state='unknown'] dd {
+  color: var(--muted);
+}
+:root[data-foundry-pilot] .foundry-readiness-capabilities > p {
+  margin: 0;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot] .foundry-readiness-checks-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 0 4px;
+}
+:root[data-foundry-pilot] #foundry-checks-count {
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot] #readiness-checks .readiness-check {
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 14px 0;
+  border-color: var(--line);
+}
+:root[data-foundry-pilot] #readiness-checks .readiness-check:last-child {
+  border: 0;
+  padding-bottom: 0;
+}
+:root[data-foundry-pilot] #readiness-checks .readiness-mark {
+  width: 16px;
+  height: 20px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+:root[data-foundry-pilot] #readiness-checks [data-status='passed'] .readiness-mark {
+  color: var(--fd-color-success);
+}
+:root[data-foundry-pilot] #readiness-checks [data-status='failed'] .readiness-mark {
+  color: var(--fd-color-error);
+}
+:root[data-foundry-pilot] #readiness-checks [data-status='warning'] .readiness-mark {
+  color: var(--fd-color-warning);
+}
+:root[data-foundry-pilot] #readiness-checks .readiness-check strong {
+  font: 500 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] #readiness-checks .readiness-check p {
+  margin: 4px 0 0;
+  max-width: 65ch;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] #readiness-checks .readiness-result {
+  padding: 0;
+  font: 400 11px/20px var(--sans);
+  text-transform: none;
+}
+:root[data-foundry-pilot] #readiness-checks .readiness-recovery {
+  min-height: 28px;
+  width: fit-content;
+  margin: 8px 0 0;
+  padding: 3px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--fd-radius-control);
+  background: transparent;
+  color: var(--ink);
+}
+:root[data-foundry-pilot] #readiness-command {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--fd-radius-control);
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot] #readiness-command strong {
+  font: 500 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] #readiness-command code {
+  padding: 8px 0;
+  font: 400 12px/20px var(--fd-font-code);
+}
+:root[data-foundry-pilot] #readiness-command code:focus-visible {
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+}
+:root[data-foundry-pilot] #readiness-dialog .readiness-error {
+  margin: 8px 0 0;
+  padding: 12px;
+  background: var(--surface-2);
+  color: var(--fd-color-error);
+  border: 1px solid var(--line);
+  border-radius: var(--fd-radius-control);
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] #readiness-updated {
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot] #next-connection {
+  width: 320px;
+  padding: 16px;
+}
+:root[data-foundry-pilot] #next-connection dl {
+  gap: 0;
+  margin: 12px 0;
+}
+:root[data-foundry-pilot] #next-connection dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+:root[data-foundry-pilot] #next-connection dl > div:last-child {
+  border: 0;
+}
+:root[data-foundry-pilot] #next-connection dt {
+  color: var(--ink);
+  font-weight: 500;
+}
+:root[data-foundry-pilot] #next-connection dd {
+  white-space: nowrap;
+  color: var(--muted);
+  font: 400 11px/20px var(--sans);
+}
+:root[data-foundry-pilot] #next-connection [data-connected='true'] dd {
+  color: var(--fd-color-success);
+}
+:root[data-foundry-pilot] #next-connection .foundry-connection-detail {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot] #next-connection .foundry-connection-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot] #next-connection > button {
+  height: 32px;
+  border-radius: var(--fd-radius-control);
+}
+:root[data-foundry-pilot] #next-connection > button:focus-visible {
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+:root[data-foundry-pilot] .foundry-preview-status {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: var(--surface);
+  overflow: auto;
+}
+:root[data-foundry-pilot] .foundry-preview-status:not(:has(> :not([hidden]))) {
+  display: none;
+}
+:root[data-foundry-pilot] .foundry-preview-status :is(.preview-loading, .preview-fallback) {
+  position: static;
+  min-height: 100%;
+  padding: 32px;
+  gap: 12px;
+  align-content: center;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] .foundry-preview-status strong {
+  max-width: 360px;
+  font: 550 18px/26px var(--sans);
+}
+:root[data-foundry-pilot] .foundry-preview-status p {
+  max-width: 360px;
+  font: 400 13px/22px var(--sans);
+}
+:root[data-foundry-pilot] .foundry-preview-status .foundry-pilot-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+:root[data-foundry-pilot] .foundry-preview-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+:root[data-foundry-pilot] .foundry-preview-recovery-actions :is(button, a) {
+  min-height: 32px;
+  height: auto;
+  padding: 5px 12px;
+  border-radius: var(--fd-radius-control);
+  font: 500 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] .foundry-overlay-explanation {
+  max-width: 360px;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot]
+  .preview-fallback:has(#direct-preview[hidden])
+  .foundry-overlay-explanation {
+  display: none;
+}
+@media (max-width: 520px) {
+  :root[data-foundry-pilot] #readiness-dialog {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+  :root[data-foundry-pilot] #readiness-dialog > header,
+  :root[data-foundry-pilot] #readiness-dialog .readiness-body {
+    padding: 16px;
+  }
+  :root[data-foundry-pilot] .foundry-readiness-capabilities dl {
+    gap: 8px;
+  }
+  :root[data-foundry-pilot] .foundry-readiness-capabilities dd {
+    font-size: 11px;
+  }
+  :root[data-foundry-pilot] #readiness-checks .readiness-check {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+  :root[data-foundry-pilot] #readiness-checks .readiness-result {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  :root[data-foundry-pilot] .foundry-preview-status :is(.preview-loading, .preview-fallback) {
+    padding: 24px 16px;
+  }
+}

@@ -1,0 +1,924 @@
+{
+  "source": {
+    "repo": "lucide-icons/lucide",
+    "commit": "a630cec77eac6568b989e87e4947a8bfe45caacd",
+    "license": "ISC with retained Feather MIT notice",
+    "licenseFile": "assets/icon-system/lucide/LICENSE",
+    "checksumFile": "assets/icon-system/lucide/source-checksums.json",
+    "grid": 24,
+    "strokeWidth": 2,
+    "geometry": "Official source unchanged; currentColor retained",
+    "scope": "Isolated contained-workspace integration only; no application renderer migration",
+    "brand": "Held separately; no logo redesign approved",
+    "propertySymbols": "Custom Foundry property diagrams excluded",
+    "inspectedFiles": [
+      {
+        "path": "apps/inspector/public/next-icons.js",
+        "sha256": "db77326a4b2d4fd3507a7c55a55a70f3b3fbc466e0a3195bfff15712c3ba2830"
+      },
+      {
+        "path": "apps/inspector/public/next-workspace.js",
+        "sha256": "a69faef735c21ba4a61c6430675a546f5b9d6a016a1193cc9dc4bba9438e07cf"
+      },
+      {
+        "path": "apps/inspector/public/next-layer-tree.js",
+        "sha256": "c84249db39d5eed72f80c51fa421f0882d41e1a59157e4fa35b5c25923db862a"
+      },
+      {
+        "path": "apps/inspector/public/next-component-workshop.js",
+        "sha256": "820588d52d8e1e0b5af26498925ca5e033472ff46ae6771ec857eea95fa24235"
+      },
+      {
+        "path": "apps/inspector/public/index.html",
+        "sha256": "922a16b5ace926b1a6d975c4d3981014d6f8e00bb9a5567d6ef458bddc4227f1"
+      },
+      {
+        "path": "apps/inspector/public/app.js",
+        "sha256": "3d5a8f4e390f583443cff6f314c5553e9ed1e0105711556493728afd56db6f9b"
+      }
+    ]
+  },
+  "general": {
+    "activity": {
+      "name": "activity",
+      "label": "Activity",
+      "svg": "assets/icon-system/lucide/activity.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/activity.svg",
+      "note": "Only for an actual activity signal. Never replace the held Foundry brand, waiting, or warning contexts globally."
+    },
+    "bookmark": {
+      "name": "bookmark",
+      "label": "Bookmark",
+      "svg": "assets/icon-system/lucide/bookmark.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/bookmark.svg"
+    },
+    "bin": {
+      "name": "trash",
+      "label": "Delete",
+      "svg": "assets/icon-system/lucide/trash.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M10 11v6\" />\n  <path d=\"M14 11v6\" />\n  <path d=\"M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6\" />\n  <path d=\"M3 6h18\" />\n  <path d=\"M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/trash.svg",
+      "note": "Removal only. Archive direction uses the separate archive role."
+    },
+    "box": {
+      "name": "app-window",
+      "label": "Window",
+      "svg": "assets/icon-system/lucide/app-window.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\" />\n  <path d=\"M10 4v4\" />\n  <path d=\"M2 8h20\" />\n  <path d=\"M6 4v4\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/app-window.svg",
+      "note": "Legacy overloaded key. Resolve Canvas, viewport, layer, instance, and shadow contexts before this generic window fallback."
+    },
+    "blur": {
+      "name": null,
+      "label": "Blur",
+      "svg": null,
+      "svgMarkup": null,
+      "source": null,
+      "note": "Intentional label-only mapping: no honest dedicated Lucide blur-property glyph at this pinned commit. Do not substitute a swatch, blend, or unrelated effect icon."
+    },
+    "chevronDown": {
+      "name": "chevron-down",
+      "label": "Expand",
+      "svg": "assets/icon-system/lucide/chevron-down.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"m6 9 6 6 6-6\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/chevron-down.svg"
+    },
+    "chevronRight": {
+      "name": "chevron-right",
+      "label": "Expand section",
+      "svg": "assets/icon-system/lucide/chevron-right.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"m9 18 6-6-6-6\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/chevron-right.svg"
+    },
+    "check": {
+      "name": "check",
+      "label": "Selected or complete",
+      "svg": "assets/icon-system/lucide/check.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M20 6 9 17l-5-5\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/check.svg",
+      "note": "The calling context supplies the actual state; the glyph alone is not verification evidence."
+    },
+    "close": {
+      "name": "x",
+      "label": "Close",
+      "svg": "assets/icon-system/lucide/x.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M18 6 6 18\" />\n  <path d=\"m6 6 12 12\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/x.svg"
+    },
+    "command": {
+      "name": "command",
+      "label": "Commands",
+      "svg": "assets/icon-system/lucide/command.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/command.svg",
+      "note": "Command-key/palette concept. Connection details must use connection, not a terminal/command symbol."
+    },
+    "pan": {
+      "name": "hand",
+      "label": "Pan",
+      "svg": "assets/icon-system/lucide/hand.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2\" />\n  <path d=\"M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2\" />\n  <path d=\"M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8\" />\n  <path d=\"M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/hand.svg"
+    },
+    "component": {
+      "name": "component",
+      "label": "Component",
+      "svg": "assets/icon-system/lucide/component.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M15.536 11.293a1 1 0 0 0 0 1.414l2.376 2.377a1 1 0 0 0 1.414 0l2.377-2.377a1 1 0 0 0 0-1.414l-2.377-2.377a1 1 0 0 0-1.414 0z\" />\n  <path d=\"M2.297 11.293a1 1 0 0 0 0 1.414l2.377 2.377a1 1 0 0 0 1.414 0l2.377-2.377a1 1 0 0 0 0-1.414L6.088 8.916a1 1 0 0 0-1.414 0z\" />\n  <path d=\"M8.916 17.912a1 1 0 0 0 0 1.415l2.377 2.376a1 1 0 0 0 1.414 0l2.377-2.376a1 1 0 0 0 0-1.415l-2.377-2.376a1 1 0 0 0-1.414 0z\" />\n  <path d=\"M8.916 4.674a1 1 0 0 0 0 1.414l2.377 2.376a1 1 0 0 0 1.414 0l2.377-2.376a1 1 0 0 0 0-1.414l-2.377-2.377a1 1 0 0 0-1.414 0z\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/component.svg"
+    },
+    "contrast": {
+      "name": "sun-moon",
+      "label": "Theme",
+      "svg": "assets/icon-system/lucide/sun-moon.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M12 2v2\" />\n  <path d=\"M14.837 16.385a6 6 0 1 1-7.223-7.222c.624-.147.97.66.715 1.248a4 4 0 0 0 5.26 5.259c.589-.255 1.396.09 1.248.715\" />\n  <path d=\"M16 12a4 4 0 0 0-4-4\" />\n  <path d=\"m19 5-1.256 1.256\" />\n  <path d=\"M20 12h2\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/sun-moon.svg",
+      "note": "Legacy theme role, not numeric contrast and never Compare. Compare is explicitly routed to columns-2."
+    },
+    "copy": {
+      "name": "copy",
+      "label": "Copy",
+      "svg": "assets/icon-system/lucide/copy.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\" />\n  <path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/copy.svg",
+      "note": "Actual duplication/copy action. The Recipes destination uses book-open instead."
+    },
+    "cursor": {
+      "name": "mouse-pointer-2",
+      "label": "Select",
+      "svg": "assets/icon-system/lucide/mouse-pointer-2.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/mouse-pointer-2.svg"
+    },
+    "typography": {
+      "name": "case-sensitive",
+      "label": "Typography",
+      "svg": "assets/icon-system/lucide/case-sensitive.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16\" />\n  <path d=\"M22 9v7\" />\n  <path d=\"M3.304 13h6.392\" />\n  <circle cx=\"18.5\" cy=\"12.5\" r=\"3.5\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/case-sensitive.svg",
+      "note": "General type/letterform concept. Do not replace the custom font-family or font-size property diagrams with this destination icon."
+    },
+    "external": {
+      "name": "arrow-up-right",
+      "label": "Open external destination",
+      "svg": "assets/icon-system/lucide/arrow-up-right.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M7 7h10v10\" />\n  <path d=\"M7 17 17 7\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/arrow-up-right.svg",
+      "note": "Internal focused views use focus; preserve visible labels explaining navigation."
+    },
+    "fileCheck": {
+      "name": "file-check",
+      "label": "Delivery record",
+      "svg": "assets/icon-system/lucide/file-check.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z\" />\n  <path d=\"M14 2v5a1 1 0 0 0 1 1h5\" />\n  <path d=\"m9 15 2 2 4-4\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/file-check.svg",
+      "note": "A document/checklist concept, not a claim that a build, source change, or rendered result passed. Status requires real evidence and text."
+    },
+    "file": {
+      "name": "file-text",
+      "label": "Document",
+      "svg": "assets/icon-system/lucide/file-text.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z\" />\n  <path d=\"M14 2v5a1 1 0 0 0 1 1h5\" />\n  <path d=\"M10 9H8\" />\n  <path d=\"M16 13H8\" />\n  <path d=\"M16 17H8\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/file-text.svg"
+    },
+    "branch": {
+      "name": "git-branch",
+      "label": "Branch",
+      "svg": "assets/icon-system/lucide/git-branch.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M15 6a9 9 0 0 0-9 9V3\" />\n  <circle cx=\"18\" cy=\"6\" r=\"3\" />\n  <circle cx=\"6\" cy=\"18\" r=\"3\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/git-branch.svg",
+      "note": "Actual branch topology, not a share/network glyph."
+    },
+    "compare": {
+      "name": "columns-2",
+      "label": "Compare",
+      "svg": "assets/icon-system/lucide/columns-2.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />\n  <path d=\"M12 3v18\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/columns-2.svg",
+      "note": "Side-by-side comparison layout; not an Inspector/sidebar visibility control."
+    },
+    "merge": {
+      "name": "git-merge",
+      "label": "Merge directions",
+      "svg": "assets/icon-system/lucide/git-merge.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <circle cx=\"18\" cy=\"18\" r=\"3\" />\n  <circle cx=\"6\" cy=\"6\" r=\"3\" />\n  <path d=\"M6 21V9a9 9 0 0 0 9 9\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/git-merge.svg",
+      "note": "Only where changes or branches actually combine; not a generic inward-arrow decoration."
+    },
+    "interact": {
+      "name": "mouse-pointer-click",
+      "label": "Interact",
+      "svg": "assets/icon-system/lucide/mouse-pointer-click.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M14 4.1 12 6\" />\n  <path d=\"m5.1 8-2.9-.8\" />\n  <path d=\"m6 12-1.9 2\" />\n  <path d=\"M7.2 2.2 8 5.1\" />\n  <path d=\"M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/mouse-pointer-click.svg",
+      "note": "Pointer interaction concept. The canvas live-interaction mode specifically uses play; authored State selection uses stateWorkbench."
+    },
+    "layers": {
+      "name": "layers",
+      "label": "Layers",
+      "svg": "assets/icon-system/lucide/layers.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z\" />\n  <path d=\"M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12\" />\n  <path d=\"M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/layers.svg"
+    },
+    "layout": {
+      "name": "panels-top-left",
+      "label": "Layout",
+      "svg": "assets/icon-system/lucide/panels-top-left.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />\n  <path d=\"M3 9h18\" />\n  <path d=\"M9 21V9\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/panels-top-left.svg",
+      "note": "General composition only. Responsive testing uses monitor-smartphone; Texture remains text-only."
+    },
+    "window": {
+      "name": "app-window",
+      "label": "Preview window",
+      "svg": "assets/icon-system/lucide/app-window.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\" />\n  <path d=\"M10 4v4\" />\n  <path d=\"M2 8h20\" />\n  <path d=\"M6 4v4\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/app-window.svg"
+    },
+    "menu": {
+      "name": "menu",
+      "label": "Menu",
+      "svg": "assets/icon-system/lucide/menu.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M4 5h16\" />\n  <path d=\"M4 12h16\" />\n  <path d=\"M4 19h16\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/menu.svg"
+    },
+    "message": {
+      "name": "message-square",
+      "label": "Conversation",
+      "svg": "assets/icon-system/lucide/message-square.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/message-square.svg"
+    },
+    "minus": {
+      "name": "minus",
+      "label": "Decrease",
+      "svg": "assets/icon-system/lucide/minus.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M5 12h14\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/minus.svg"
+    },
+    "panelLeft": {
+      "name": "panel-left",
+      "label": "Layers panel",
+      "svg": "assets/icon-system/lucide/panel-left.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />\n  <path d=\"M9 3v18\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/panel-left.svg",
+      "note": "Static identity only; open/close actions use the explicit panelLeftOpen/panelLeftClose roles."
+    },
+    "panel": {
+      "name": "panel-right",
+      "label": "Inspector panel",
+      "svg": "assets/icon-system/lucide/panel-right.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />\n  <path d=\"M15 3v18\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/panel-right.svg",
+      "note": "Legacy right-panel identity, not comparison. Use explicit open/close roles for the toggle action."
+    },
+    "play": {
+      "name": "play",
+      "label": "Play",
+      "svg": "assets/icon-system/lucide/play.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/play.svg"
+    },
+    "plus": {
+      "name": "plus",
+      "label": "Add",
+      "svg": "assets/icon-system/lucide/plus.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M5 12h14\" />\n  <path d=\"M12 5v14\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/plus.svg"
+    },
+    "redo": {
+      "name": "redo-2",
+      "label": "Redo",
+      "svg": "assets/icon-system/lucide/redo-2.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"m15 14 5-5-5-5\" />\n  <path d=\"M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/redo-2.svg"
+    },
+    "refresh": {
+      "name": "refresh-cw",
+      "label": "Refresh",
+      "svg": "assets/icon-system/lucide/refresh-cw.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\" />\n  <path d=\"M21 3v5h-5\" />\n  <path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\" />\n  <path d=\"M8 16H3v5\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/refresh-cw.svg"
+    },
+    "search": {
+      "name": "search",
+      "label": "Search",
+      "svg": "assets/icon-system/lucide/search.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"m21 21-4.34-4.34\" />\n  <circle cx=\"11\" cy=\"11\" r=\"8\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/search.svg"
+    },
+    "sparkles": {
+      "name": "sparkles",
+      "label": "AI assistance",
+      "svg": "assets/icon-system/lucide/sparkles.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z\" />\n  <path d=\"M20 2v4\" />\n  <path d=\"M22 4h-4\" />\n  <circle cx=\"4\" cy=\"20\" r=\"2\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/sparkles.svg",
+      "note": "Only where an actual agent/AI capability is identified. Not a default for Design system, generated-empty states, or noise."
+    },
+    "undo": {
+      "name": "undo-2",
+      "label": "Undo",
+      "svg": "assets/icon-system/lucide/undo-2.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M9 14 4 9l5-5\" />\n  <path d=\"M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/undo-2.svg"
+    },
+    "frame": {
+      "name": "frame",
+      "label": "Frame",
+      "svg": "assets/icon-system/lucide/frame.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <line x1=\"22\" x2=\"2\" y1=\"6\" y2=\"6\" />\n  <line x1=\"22\" x2=\"2\" y1=\"18\" y2=\"18\" />\n  <line x1=\"6\" x2=\"6\" y1=\"2\" y2=\"22\" />\n  <line x1=\"18\" x2=\"18\" y1=\"2\" y2=\"22\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/frame.svg"
+    },
+    "text": {
+      "name": "type",
+      "label": "Text layer",
+      "svg": "assets/icon-system/lucide/type.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M12 4v16\" />\n  <path d=\"M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2\" />\n  <path d=\"M9 20h6\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/type.svg"
+    },
+    "image": {
+      "name": "image",
+      "label": "Image layer",
+      "svg": "assets/icon-system/lucide/image.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" ry=\"2\" />\n  <circle cx=\"9\" cy=\"9\" r=\"2\" />\n  <path d=\"m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/image.svg"
+    },
+    "group": {
+      "name": "group",
+      "label": "Group",
+      "svg": "assets/icon-system/lucide/group.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M3 7V5c0-1.1.9-2 2-2h2\" />\n  <path d=\"M17 3h2c1.1 0 2 .9 2 2v2\" />\n  <path d=\"M21 17v2c0 1.1-.9 2-2 2h-2\" />\n  <path d=\"M7 21H5c-1.1 0-2-.9-2-2v-2\" />\n  <rect width=\"7\" height=\"5\" x=\"7\" y=\"7\" rx=\"1\" />\n  <rect width=\"7\" height=\"5\" x=\"10\" y=\"12\" rx=\"1\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/group.svg"
+    },
+    "element": {
+      "name": "square",
+      "label": "Element",
+      "svg": "assets/icon-system/lucide/square.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/square.svg",
+      "note": "Plain HTML element; distinguish from a viewport or app window. Do not imply a component if the source does not identify one."
+    },
+    "viewport": {
+      "name": "monitor",
+      "label": "Desktop viewport",
+      "svg": "assets/icon-system/lucide/monitor.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"20\" height=\"14\" x=\"2\" y=\"3\" rx=\"2\" />\n  <line x1=\"8\" x2=\"16\" y1=\"21\" y2=\"21\" />\n  <line x1=\"12\" x2=\"12\" y1=\"17\" y2=\"21\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/monitor.svg",
+      "note": "Desktop view context, not a generic layer. Responsive destination covers multiple device sizes separately."
+    },
+    "back": {
+      "name": "arrow-left",
+      "label": "Back",
+      "svg": "assets/icon-system/lucide/arrow-left.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"m12 19-7-7 7-7\" />\n  <path d=\"M19 12H5\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/arrow-left.svg"
+    },
+    "clock": {
+      "name": "clock",
+      "label": "Waiting",
+      "svg": "assets/icon-system/lucide/clock.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <circle cx=\"12\" cy=\"12\" r=\"10\" />\n  <path d=\"M12 6v6l4 2\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/clock.svg",
+      "note": "Use for queued/pending states with a visible state label, not a success or failure claim."
+    },
+    "panelLeftOpen": {
+      "name": "panel-left-open",
+      "label": "Show Layers",
+      "svg": "assets/icon-system/lucide/panel-left-open.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />\n  <path d=\"M9 3v18\" />\n  <path d=\"m14 9 3 3-3 3\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/panel-left-open.svg"
+    },
+    "panelLeftClose": {
+      "name": "panel-left-close",
+      "label": "Hide Layers",
+      "svg": "assets/icon-system/lucide/panel-left-close.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />\n  <path d=\"M9 3v18\" />\n  <path d=\"m16 15-3-3 3-3\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/panel-left-close.svg"
+    },
+    "panelRightOpen": {
+      "name": "panel-right-open",
+      "label": "Show Inspector",
+      "svg": "assets/icon-system/lucide/panel-right-open.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />\n  <path d=\"M15 3v18\" />\n  <path d=\"m10 15-3-3 3-3\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/panel-right-open.svg"
+    },
+    "panelRightClose": {
+      "name": "panel-right-close",
+      "label": "Hide Inspector",
+      "svg": "assets/icon-system/lucide/panel-right-close.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />\n  <path d=\"M15 3v18\" />\n  <path d=\"m8 9 3 3-3 3\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/panel-right-close.svg"
+    },
+    "arrowRight": {
+      "name": "arrow-right",
+      "label": "Continue",
+      "svg": "assets/icon-system/lucide/arrow-right.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M5 12h14\" />\n  <path d=\"m12 5 7 7-7 7\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/arrow-right.svg"
+    },
+    "chevronUp": {
+      "name": "chevron-up",
+      "label": "Collapse",
+      "svg": "assets/icon-system/lucide/chevron-up.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"m18 15-6-6-6 6\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/chevron-up.svg"
+    },
+    "canvas": {
+      "name": "mouse-pointer-2",
+      "label": "Canvas",
+      "svg": "assets/icon-system/lucide/mouse-pointer-2.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/mouse-pointer-2.svg",
+      "note": "Workspace destination. Selection tool shares the family glyph but retains its own action label."
+    },
+    "components": {
+      "name": "component",
+      "label": "Component workshop",
+      "svg": "assets/icon-system/lucide/component.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M15.536 11.293a1 1 0 0 0 0 1.414l2.376 2.377a1 1 0 0 0 1.414 0l2.377-2.377a1 1 0 0 0 0-1.414l-2.377-2.377a1 1 0 0 0-1.414 0z\" />\n  <path d=\"M2.297 11.293a1 1 0 0 0 0 1.414l2.377 2.377a1 1 0 0 0 1.414 0l2.377-2.377a1 1 0 0 0 0-1.414L6.088 8.916a1 1 0 0 0-1.414 0z\" />\n  <path d=\"M8.916 17.912a1 1 0 0 0 0 1.415l2.377 2.376a1 1 0 0 0 1.414 0l2.377-2.376a1 1 0 0 0 0-1.415l-2.377-2.376a1 1 0 0 0-1.414 0z\" />\n  <path d=\"M8.916 4.674a1 1 0 0 0 0 1.414l2.377 2.376a1 1 0 0 0 1.414 0l2.377-2.376a1 1 0 0 0 0-1.414l-2.377-2.377a1 1 0 0 0-1.414 0z\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/component.svg"
+    },
+    "designSystem": {
+      "name": "swatch-book",
+      "label": "Design system",
+      "svg": "assets/icon-system/lucide/swatch-book.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M11 17a4 4 0 0 1-8 0V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2Z\" />\n  <path d=\"M16.7 13H19a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7\" />\n  <path d=\"M 7 17h.01\" />\n  <path d=\"m11 8 2.3-2.3a2.4 2.4 0 0 1 3.404.004L18.6 7.6a2.4 2.4 0 0 1 .026 3.434L9.9 19.8\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/swatch-book.svg",
+      "note": "Library/foundations metaphor; label is required because the destination includes more than color."
+    },
+    "motion": {
+      "name": "play",
+      "label": "Motion studio",
+      "svg": "assets/icon-system/lucide/play.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/play.svg"
+    },
+    "recipes": {
+      "name": "book-open",
+      "label": "Recipes",
+      "svg": "assets/icon-system/lucide/book-open.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M12 5v16\" />\n  <path d=\"M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/book-open.svg",
+      "note": "Reusable recipe library rather than Copy."
+    },
+    "stateWorkbench": {
+      "name": "grid-2x2",
+      "label": "State workbench",
+      "svg": "assets/icon-system/lucide/grid-2x2.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M12 3v18\" />\n  <path d=\"M3 12h18\" />\n  <rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/grid-2x2.svg",
+      "note": "Authored state matrix rather than the Layers destination."
+    },
+    "responsive": {
+      "name": "monitor-smartphone",
+      "label": "Responsive design lab",
+      "svg": "assets/icon-system/lucide/monitor-smartphone.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M18 8V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h8\" />\n  <path d=\"M10 19v-3.96 3.15\" />\n  <path d=\"M7 19h5\" />\n  <rect width=\"6\" height=\"10\" x=\"16\" y=\"12\" rx=\"2\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/monitor-smartphone.svg"
+    },
+    "contentStress": {
+      "name": "flask-conical",
+      "label": "Content stress lab",
+      "svg": "assets/icon-system/lucide/flask-conical.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2\" />\n  <path d=\"M6.453 15h11.094\" />\n  <path d=\"M8.5 2h7\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/flask-conical.svg",
+      "note": "Test/lab destination only. This is not a replacement Foundry logo."
+    },
+    "visualAgent": {
+      "name": "message-square",
+      "label": "Visual agent",
+      "svg": "assets/icon-system/lucide/message-square.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/message-square.svg"
+    },
+    "branches": {
+      "name": "git-branch",
+      "label": "Design branches",
+      "svg": "assets/icon-system/lucide/git-branch.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M15 6a9 9 0 0 0-9 9V3\" />\n  <circle cx=\"18\" cy=\"6\" r=\"3\" />\n  <circle cx=\"6\" cy=\"18\" r=\"3\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/git-branch.svg"
+    },
+    "designMemory": {
+      "name": "bookmark",
+      "label": "Design memory",
+      "svg": "assets/icon-system/lucide/bookmark.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/bookmark.svg"
+    },
+    "delivery": {
+      "name": "file-check",
+      "label": "Delivery",
+      "svg": "assets/icon-system/lucide/file-check.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z\" />\n  <path d=\"M14 2v5a1 1 0 0 0 1 1h5\" />\n  <path d=\"m9 15 2 2 4-4\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/file-check.svg",
+      "note": "Destination identity only; no implied verified state."
+    },
+    "theme": {
+      "name": "sun-moon",
+      "label": "Appearance",
+      "svg": "assets/icon-system/lucide/sun-moon.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M12 2v2\" />\n  <path d=\"M14.837 16.385a6 6 0 1 1-7.223-7.222c.624-.147.97.66.715 1.248a4 4 0 0 0 5.26 5.259c.589-.255 1.396.09 1.248.715\" />\n  <path d=\"M16 12a4 4 0 0 0-4-4\" />\n  <path d=\"m19 5-1.256 1.256\" />\n  <path d=\"M20 12h2\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/sun-moon.svg"
+    },
+    "attention": {
+      "name": "circle-alert",
+      "label": "Needs attention",
+      "svg": "assets/icon-system/lucide/circle-alert.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <circle cx=\"12\" cy=\"12\" r=\"10\" />\n  <line x1=\"12\" x2=\"12\" y1=\"8\" y2=\"12\" />\n  <line x1=\"12\" x2=\"12.01\" y1=\"16\" y2=\"16\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/circle-alert.svg",
+      "note": "Blocked, interrupted, or failed-to-complete conditions must keep explicit status text."
+    },
+    "connection": {
+      "name": "plug",
+      "label": "Connection details",
+      "svg": "assets/icon-system/lucide/plug.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <path d=\"M12 22v-5\" />\n  <path d=\"M15 8V2\" />\n  <path d=\"M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z\" />\n  <path d=\"M9 8V2\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/plug.svg",
+      "note": "Connection identity, not evidence that a listener is connected."
+    },
+    "focus": {
+      "name": "focus",
+      "label": "Focus selection",
+      "svg": "assets/icon-system/lucide/focus.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <circle cx=\"12\" cy=\"12\" r=\"3\" />\n  <path d=\"M3 7V5a2 2 0 0 1 2-2h2\" />\n  <path d=\"M17 3h2a2 2 0 0 1 2 2v2\" />\n  <path d=\"M21 17v2a2 2 0 0 1-2 2h-2\" />\n  <path d=\"M7 21H5a2 2 0 0 1-2-2v-2\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/focus.svg",
+      "note": "Internal focused view; not an external link."
+    },
+    "archive": {
+      "name": "archive",
+      "label": "Archive direction",
+      "svg": "assets/icon-system/lucide/archive.svg",
+      "svgMarkup": "<svg\n  xmlns=\"http://www.w3.org/2000/svg\"\n  width=\"24\"\n  height=\"24\"\n  viewBox=\"0 0 24 24\"\n  fill=\"none\"\n  stroke=\"currentColor\"\n  stroke-width=\"2\"\n  stroke-linecap=\"round\"\n  stroke-linejoin=\"round\"\n>\n  <rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\" />\n  <path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\" />\n  <path d=\"M10 12h4\" />\n</svg>\n",
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/a630cec77eac6568b989e87e4947a8bfe45caacd/icons/archive.svg",
+      "note": "Recoverable archive is distinct from deletion."
+    }
+  },
+  "contexts": [
+    {
+      "id": "foundry-brand-held",
+      "legacyRole": "activity",
+      "when": ".visual-agent-message[data-role=\"system\"] .visual-agent-message-icon and any Foundry identity mark",
+      "useRole": null,
+      "held": true,
+      "note": "Preserve the existing brand artwork unchanged. The general activity pulse is not a logo redesign approval.",
+      "evidence": ["apps/inspector/public/app.js:4574"]
+    },
+    {
+      "id": "agent-waiting",
+      "legacyRole": "activity",
+      "when": ".visual-agent-thinking.is-queued",
+      "useRole": "clock",
+      "note": "Waiting for a listener is pending, not activity or success.",
+      "evidence": ["apps/inspector/public/app.js:4596"]
+    },
+    {
+      "id": "agent-interrupted",
+      "legacyRole": "activity",
+      "when": ".visual-agent-recovery",
+      "useRole": "attention",
+      "note": "Interrupted response needs attention; do not animate an activity pulse.",
+      "evidence": ["apps/inspector/public/app.js:4593"]
+    },
+    {
+      "id": "delivery-blocked",
+      "legacyRole": "activity",
+      "when": ".delivery-blocker",
+      "useRole": "attention",
+      "evidence": ["apps/inspector/public/app.js:4906"]
+    },
+    {
+      "id": "delivery-pending",
+      "legacyRole": "activity",
+      "when": ".delivery-criteria article with a pending/not-run status",
+      "useRole": "clock",
+      "note": "Keep the explicit pending label; failure remains failure and passed remains evidence-backed check.",
+      "evidence": ["apps/inspector/public/app.js:4906"]
+    },
+    {
+      "id": "compare-changes",
+      "legacyRole": "contrast",
+      "when": "#compare",
+      "useRole": "compare",
+      "note": "Compare means side-by-side changes, not light/dark or contrast.",
+      "evidence": [
+        "apps/inspector/public/index.html:1272",
+        "apps/inspector/public/next-icons.js:173"
+      ]
+    },
+    {
+      "id": "theme-choice",
+      "legacyRole": "contrast",
+      "when": "[data-theme-choice], #canvas-theme context trigger",
+      "useRole": "theme",
+      "evidence": [
+        "apps/inspector/public/index.html:93",
+        "apps/inspector/public/next-workspace.js:232"
+      ]
+    },
+    {
+      "id": "viewport-context",
+      "legacyRole": "box",
+      "when": "#canvas-viewport .next-context-icon",
+      "useRole": "viewport",
+      "note": "Semantic relation to the viewport select; the actual custom-select trigger is a sibling/wrapper, not necessarily a DOM descendant of the select.",
+      "evidence": [
+        "apps/inspector/public/next-workspace.js:231",
+        "apps/inspector/public/next-icons.js:175"
+      ]
+    },
+    {
+      "id": "plain-layer",
+      "legacyRole": "box",
+      "when": ".layer-row .layer-icon for a plain element",
+      "useRole": "element",
+      "note": "Use component/text/image/group/frame only when source kind actually supports that distinction.",
+      "evidence": [
+        "apps/inspector/public/next-layer-tree.js:98",
+        "apps/inspector/public/next-icons.js:177"
+      ]
+    },
+    {
+      "id": "instance-row",
+      "legacyRole": "box",
+      "when": "Component workshop live-instance row",
+      "useRole": "element",
+      "note": "An instance is not a viewport/window; use component only for a known authored component.",
+      "evidence": ["apps/inspector/public/next-component-workshop.js:74"]
+    },
+    {
+      "id": "canvas-tab",
+      "legacyRole": "box",
+      "when": "#next-tab-canvas",
+      "useRole": "canvas",
+      "evidence": ["apps/inspector/public/next-workspace.js:401"]
+    },
+    {
+      "id": "shadow-effect-held",
+      "legacyRole": "box",
+      "when": ".effect-shadow-fields header and [data-add-effect=\"drop-shadow\"/\"inner-shadow\"]",
+      "useRole": null,
+      "held": true,
+      "note": "Label-only until a coherent effect property diagram is designed; a window is not a shadow.",
+      "evidence": ["apps/inspector/public/app.js:1843", "apps/inspector/public/app.js:1868"]
+    },
+    {
+      "id": "blur-effect-label",
+      "legacyRole": "blur",
+      "when": "Layer blur / Background blur effect controls",
+      "useRole": "blur",
+      "note": "Deliberately null artwork; retain the accurate Blur text.",
+      "evidence": ["apps/inspector/public/app.js:1847", "apps/inspector/public/app.js:1868"]
+    },
+    {
+      "id": "layers-toggle",
+      "legacyRole": "panelLeft",
+      "when": "[data-dock-toggle=\"layers\"]",
+      "useRole": "panelLeftClose",
+      "alternateRole": "panelLeftOpen",
+      "note": "Visible Layers -> Hide/close artwork; hidden Layers -> Show/open artwork. Keep the action label and expanded/pressed state synchronized.",
+      "evidence": ["apps/inspector/public/index.html:228"]
+    },
+    {
+      "id": "inspector-toggle",
+      "legacyRole": "panel",
+      "when": "[data-dock-toggle=\"inspector\"]",
+      "useRole": "panelRightClose",
+      "alternateRole": "panelRightOpen",
+      "note": "Visible Inspector -> Hide/close artwork; hidden Inspector -> Show/open artwork. Never use compare columns for this action.",
+      "evidence": ["apps/inspector/public/index.html:259"]
+    },
+    {
+      "id": "studio-navigation-toggle",
+      "legacyRole": "panelLeft",
+      "when": "#studio-nav-toggle",
+      "useRole": "panelLeftClose",
+      "alternateRole": "panelLeftOpen",
+      "note": "Here labels must say Hide/Show navigation rather than Layers; the geometry may be shared.",
+      "evidence": ["apps/inspector/public/index.html:106"]
+    },
+    {
+      "id": "canvas-select",
+      "legacyRole": "cursor",
+      "when": ".canvas-toolbar [data-canvas-mode=\"select\"]",
+      "useRole": "cursor",
+      "note": "General selection pointer only. This role does not approve edits to custom Inspector property glyphs.",
+      "evidence": ["apps/inspector/public/next-icons.js:157"]
+    },
+    {
+      "id": "canvas-interact",
+      "legacyRole": "interact",
+      "when": ".canvas-toolbar [data-canvas-mode=\"interact\"]",
+      "useRole": "play",
+      "note": "Live interaction mode keeps the approved play metaphor. Generic click pointer is not a blanket substitution.",
+      "evidence": [
+        "apps/inspector/public/next-icons.js:162",
+        "apps/inspector/public/index.html:311"
+      ]
+    },
+    {
+      "id": "authored-state-context",
+      "legacyRole": "interact",
+      "when": "#canvas-state context trigger",
+      "useRole": "stateWorkbench",
+      "note": "Choose an authored state, not trigger a click or start playback.",
+      "evidence": ["apps/inspector/public/next-workspace.js:233"]
+    },
+    {
+      "id": "connection-details",
+      "legacyRole": "command",
+      "when": "[data-next-connection-details] and Connection details menu item",
+      "useRole": "connection",
+      "evidence": [
+        "apps/inspector/public/next-workspace.js:301",
+        "apps/inspector/public/next-workspace.js:364"
+      ]
+    },
+    {
+      "id": "find-command",
+      "legacyRole": "command",
+      "when": "#command-trigger labelled Find a command",
+      "useRole": "search",
+      "note": "Keep the textual platform shortcut separately; do not duplicate the command symbol.",
+      "evidence": ["apps/inspector/public/next-workspace.js:360"]
+    },
+    {
+      "id": "internal-focus",
+      "legacyRole": "external",
+      "when": "[data-next-focus-tab] and Focus selection action",
+      "useRole": "focus",
+      "note": "An internal focused selection is not an external destination.",
+      "evidence": [
+        "apps/inspector/public/next-workspace.js:401",
+        "apps/inspector/public/next-workspace.js:430"
+      ]
+    },
+    {
+      "id": "archive-direction",
+      "legacyRole": "bin",
+      "when": "[data-branch-action=\"archive\"]",
+      "useRole": "archive",
+      "note": "Archive is not the same action as delete/remove.",
+      "evidence": ["apps/inspector/public/app.js:7222"]
+    },
+    {
+      "id": "noise-effect-held",
+      "legacyRole": "sparkles",
+      "when": "[data-add-effect] Noise recipe",
+      "useRole": null,
+      "held": true,
+      "note": "Text-only until a purposeful texture/noise property symbol is approved. Sparkles does not mean noise.",
+      "evidence": ["apps/inspector/public/app.js:1868"]
+    },
+    {
+      "id": "texture-effect-held",
+      "legacyRole": "layout",
+      "when": "Texture effect recipe menu item",
+      "useRole": null,
+      "held": true,
+      "note": "Text-only; a general layout icon is not texture.",
+      "evidence": ["apps/inspector/public/app.js:1868"]
+    },
+    {
+      "id": "property-symbols-held",
+      "legacyRole": null,
+      "when": "[data-icon-family=\"foundry\"] numeric/property symbols",
+      "useRole": null,
+      "held": true,
+      "note": "The custom 16px property diagrams remain separate. Do not convert padding, margin, radius, dimension, opacity, font-family or font-size symbols to generic Lucide assets.",
+      "evidence": ["apps/inspector/public/next-icons.js:116"]
+    },
+    {
+      "id": "destination-canvas",
+      "legacyRole": "cursor",
+      "when": "[data-workspace-mode=\"canvas\"] destination",
+      "useRole": "canvas",
+      "evidence": ["apps/inspector/public/index.html:118-188"]
+    },
+    {
+      "id": "destination-components",
+      "legacyRole": "component",
+      "when": "[data-workspace-mode=\"components\"] destination",
+      "useRole": "components",
+      "evidence": ["apps/inspector/public/index.html:118-188"]
+    },
+    {
+      "id": "destination-designSystem",
+      "legacyRole": "sparkles",
+      "when": "[data-workspace-mode=\"system\"] destination",
+      "useRole": "designSystem",
+      "evidence": ["apps/inspector/public/index.html:118-188"]
+    },
+    {
+      "id": "destination-motion",
+      "legacyRole": "play",
+      "when": "[data-workspace-mode=\"motion\"] destination",
+      "useRole": "motion",
+      "evidence": ["apps/inspector/public/index.html:118-188"]
+    },
+    {
+      "id": "destination-typography",
+      "legacyRole": "typography",
+      "when": "[data-workspace-mode=\"typography\"] destination",
+      "useRole": "typography",
+      "evidence": ["apps/inspector/public/index.html:118-188"]
+    },
+    {
+      "id": "destination-recipes",
+      "legacyRole": "copy",
+      "when": "[data-workspace-mode=\"recipes\"] destination",
+      "useRole": "recipes",
+      "evidence": ["apps/inspector/public/index.html:118-188"]
+    },
+    {
+      "id": "destination-stateWorkbench",
+      "legacyRole": "layers",
+      "when": "[data-workspace-mode=\"states\"] destination",
+      "useRole": "stateWorkbench",
+      "evidence": ["apps/inspector/public/index.html:118-188"]
+    },
+    {
+      "id": "destination-responsive",
+      "legacyRole": "layout",
+      "when": "[data-workspace-mode=\"responsive\"] destination",
+      "useRole": "responsive",
+      "evidence": ["apps/inspector/public/index.html:118-188"]
+    },
+    {
+      "id": "destination-contentStress",
+      "legacyRole": "activity",
+      "when": "[data-workspace-mode=\"health\"] destination",
+      "useRole": "contentStress",
+      "evidence": ["apps/inspector/public/index.html:118-188"]
+    },
+    {
+      "id": "destination-visualAgent",
+      "legacyRole": "message",
+      "when": "[data-workspace-mode=\"agent\"] destination",
+      "useRole": "visualAgent",
+      "evidence": ["apps/inspector/public/index.html:118-188"]
+    },
+    {
+      "id": "destination-branches",
+      "legacyRole": "branch",
+      "when": "[data-workspace-mode=\"branches\"] destination",
+      "useRole": "branches",
+      "evidence": ["apps/inspector/public/index.html:118-188"]
+    },
+    {
+      "id": "destination-designMemory",
+      "legacyRole": "bookmark",
+      "when": "[data-workspace-mode=\"memory\"] destination",
+      "useRole": "designMemory",
+      "evidence": ["apps/inspector/public/index.html:118-188"]
+    },
+    {
+      "id": "destination-delivery",
+      "legacyRole": "fileCheck",
+      "when": "[data-workspace-mode=\"delivery\"] destination",
+      "useRole": "delivery",
+      "evidence": ["apps/inspector/public/index.html:118-188"]
+    }
+  ],
+  "legacyRoles": [
+    "activity",
+    "bookmark",
+    "bin",
+    "box",
+    "blur",
+    "chevronDown",
+    "chevronRight",
+    "check",
+    "close",
+    "command",
+    "pan",
+    "component",
+    "contrast",
+    "copy",
+    "cursor",
+    "typography",
+    "external",
+    "fileCheck",
+    "file",
+    "branch",
+    "compare",
+    "merge",
+    "interact",
+    "layers",
+    "layout",
+    "window",
+    "menu",
+    "message",
+    "minus",
+    "panelLeft",
+    "panel",
+    "play",
+    "plus",
+    "redo",
+    "refresh",
+    "search",
+    "sparkles",
+    "undo"
+  ]
+}

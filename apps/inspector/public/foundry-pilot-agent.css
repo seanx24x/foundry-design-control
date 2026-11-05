@@ -1,0 +1,830 @@
+/* Visual Agent: one reading column, with context attached to the original composer. */
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior:not([hidden]) {
+  grid-template: 44px minmax(0, 1fr) / var(--layers-dock-width, 320px) minmax(0, 1fr);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior > .mode-head {
+  grid-column: 2;
+  grid-row: 1;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior > .next-agent-footer {
+  display: none !important;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .mode-actions button {
+  display: inline-flex;
+  height: 28px;
+  min-height: 28px;
+  border-radius: var(--fd-radius-control);
+  padding-inline: 10px;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-main {
+  grid-template-rows: 48px minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  border-radius: 0 0 12px 12px;
+  overflow: hidden;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-heading {
+  width: 100%;
+  max-width: 824px;
+  min-height: 48px;
+  margin-inline: auto;
+  padding: 0 32px;
+  border: 0;
+  gap: 12px;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-heading h2 {
+  font: 500 11px/18px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-heading > span {
+  margin-left: auto;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-snapshot {
+  position: relative;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .next-agent-snapshot
+  > summary {
+  font: 400 11px/18px var(--sans);
+  cursor: pointer;
+  color: var(--muted);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-snapshot > div {
+  position: absolute;
+  z-index: 5;
+  top: 32px;
+  right: 0;
+  width: min(360px, calc(100vw - 40px));
+  max-height: 300px;
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px #0002;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-thread-list {
+  padding: 8px 12px 20px;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-thread {
+  min-height: 56px;
+  padding: 10px 8px;
+  align-items: start;
+  border-radius: var(--fd-radius-control);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-thread > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-thread small {
+  font: 400 11px/18px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-thread::before {
+  content: none;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-conversation {
+  display: block;
+  border: 0;
+  padding: 20px 32px 32px;
+  scrollbar-gutter: stable both-edges;
+  overscroll-behavior: contain;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-conversation
+  > * {
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-conversation-head {
+  padding-bottom: 0;
+  margin-bottom: 28px;
+  border: 0;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-conversation-head
+  strong {
+  display: block;
+  max-width: 64ch;
+  font: 550 20px/28px var(--sans);
+  letter-spacing: -0.025em;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-conversation-head
+  span {
+  display: none;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-message {
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  padding: 0;
+  border: 0;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-message-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-message p {
+  font: 400 12px/20px var(--sans);
+  max-width: 76ch;
+  margin: 8px 0 0;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-message
+  :is(time, small) {
+  font: 400 11px/18px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .foundry-agent-composer-dock {
+  min-width: 0;
+  padding: 16px 32px 24px;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-compose-form {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  max-width: 760px;
+  max-height: min(60dvh, 560px);
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  overflow: auto;
+  background: transparent;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .foundry-agent-composer-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  border: 1px solid var(--line-strong, var(--line));
+  border-radius: 10px;
+  background: var(--surface);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-composer-box
+  > :is(details, label, .next-agent-error) {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-composer-box
+  > label {
+  display: block;
+  padding: 0;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior #visual-agent-prompt {
+  display: block;
+  width: 100%;
+  height: 96px;
+  min-height: 96px;
+  max-height: 220px;
+  padding: 16px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: 400 12px/20px var(--sans);
+  resize: vertical;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-composer-box
+  > label:focus-within {
+  outline: 2px solid var(--selection);
+  outline-offset: -2px;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-composer-head {
+  align-self: end;
+  min-width: 0;
+  padding: 0 0 12px 16px;
+  border: 0;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .next-agent-composer-head
+  > strong {
+  display: none;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-comment {
+  max-width: 100%;
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .next-agent-comment
+  > summary {
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-send-row {
+  justify-content: flex-end;
+  padding: 0 12px 12px;
+  align-self: end;
+  gap: 8px;
+  margin: 0;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-send-row > p {
+  display: block;
+  max-width: 42ch;
+  margin: 0;
+  font: 400 11px/18px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  :is(.next-agent-attachment-change, .next-agent-action-status) {
+  margin: 0;
+  padding: 0 2px;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-send-row button {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .next-agent-error:not(:empty) {
+  padding: 0 16px 12px;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .foundry-agent-attachments {
+  border-bottom: 1px solid var(--line);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-attachment-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-attachment-summary::-webkit-details-marker {
+  display: none;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-attachment-summary::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  margin-left: 4px;
+  color: var(--muted);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-attachments[open]
+  > summary::after {
+  transform: rotate(225deg);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-attachment-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-attachment-label {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-attachment-label
+  > span {
+  font: 400 11px/18px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-attachment-label
+  > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-attachment-count {
+  margin-left: auto;
+  white-space: nowrap;
+  font: 400 11px/18px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-compose {
+  display: block;
+  position: static;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+  padding: 0 16px 16px;
+  border: 0;
+  overflow: visible;
+  background: transparent;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-compose
+  > header,
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-connection,
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-context-section
+  > h3 {
+  display: none;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-context-scroll {
+  padding: 0;
+  overflow: visible;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-context-section {
+  padding: 0;
+  border: 0;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior #visual-agent-context {
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  #visual-agent-context
+  article {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 0;
+  border: 0;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  #visual-agent-context
+  article
+  > span {
+  min-width: 0;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior #visual-agent-context footer {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  #visual-agent-context
+  article
+  > small {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
+  white-space: nowrap;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  #visual-agent-context
+  footer
+  > span {
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-safety {
+  padding: 0;
+  margin: 0;
+  font: 400 11px/18px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .next-agent-connection-notice {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-connection-summary {
+  cursor: pointer;
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-connection-details[open]
+  > :not(summary) {
+  display: block;
+  margin-top: 8px;
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior[data-agent-conversation='false']
+  .next-agent-main {
+  grid-template-rows: minmax(24px, 1fr) auto auto minmax(48px, 1.7fr);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior[data-agent-conversation='false']
+  .next-agent-heading {
+  display: none;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior[data-agent-conversation='false']
+  .visual-agent-conversation {
+  grid-row: 2;
+  padding-block: 0 28px;
+  overflow: visible;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior[data-agent-conversation='false']
+  .foundry-agent-composer-dock {
+  grid-row: 3;
+  padding-top: 0;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-conversation
+  > .visual-agent-empty {
+  display: grid;
+  min-height: 0;
+  padding: 0;
+  gap: 12px;
+  text-align: left;
+  place-content: initial;
+  justify-items: start;
+  border: 0;
+  background: transparent;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-conversation
+  > .visual-agent-empty
+  > svg {
+  display: none;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-conversation
+  > .visual-agent-empty
+  strong {
+  font: 550 22px/30px var(--sans);
+  letter-spacing: -0.025em;
+  color: var(--ink);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-conversation
+  > .visual-agent-empty
+  p {
+  max-width: 62ch;
+  margin: 0;
+  font: 400 12px/20px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-proposals {
+  display: grid;
+  gap: 16px;
+  padding-top: 8px;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-proposals
+  > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-proposal {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong, var(--line));
+  border-radius: 10px;
+  background: var(--surface);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-proposal[data-status='previewing'] {
+  border-color: var(--selection);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-proposal
+  > header {
+  padding: 16px 16px 0;
+  border: 0;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-proposal
+  > header
+  > div
+  > strong {
+  font: 550 13px/20px var(--sans);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .foundry-agent-values {
+  display: grid;
+  gap: 4px;
+  margin: 16px;
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .foundry-agent-values > span {
+  font: 400 11px/18px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .foundry-agent-values code {
+  font-size: 12px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-proposal-details {
+  margin: 0 16px 16px;
+  padding: 0;
+  border: 0;
+}
+:root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .visual-agent-proposal-grid {
+  grid-template-columns: 1fr 1fr;
+  padding-top: 12px;
+  gap: 16px;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-proposal-grid
+  section {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .foundry-agent-proposal-boundary {
+  padding: 12px 16px 0;
+  margin: 0;
+  border-top: 1px solid var(--line);
+  font: 400 11px/18px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-proposal
+  > footer {
+  padding: 12px 16px 16px;
+  border: 0;
+  gap: 8px;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior
+  .visual-agent-proposal
+  button {
+  min-height: 32px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior[data-agent-conversation='true']
+  .visual-agent-compose-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 16px;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior[data-agent-conversation='true']
+  .foundry-agent-composer-box {
+  grid-column: 1 / -1;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior[data-agent-conversation='true']
+  .foundry-agent-attachment-summary {
+  min-height: 48px;
+  padding-block: 8px;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior[data-agent-conversation='true']
+  .foundry-agent-attachment-label {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior[data-agent-conversation='true']
+  #visual-agent-prompt {
+  height: 64px;
+  min-height: 64px;
+  padding-block: 12px;
+}
+:root[data-foundry-pilot='agent']
+  [data-next]
+  .foundry-agent-interior[data-agent-conversation='true']
+  .visual-agent-safety {
+  text-align: right;
+}
+@media (max-width: 1100px) {
+  :root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior:not([hidden]) {
+    grid-template-rows: 44px minmax(0, 1fr);
+    overflow: hidden;
+  }
+  :root[data-foundry-pilot='agent']
+    [data-next]
+    .foundry-agent-interior
+    :is(.next-agent-heading, .visual-agent-conversation, .foundry-agent-composer-dock) {
+    padding-inline: 24px;
+  }
+}
+@media (max-width: 800px) {
+  :root[data-foundry-pilot='agent']
+    [data-next]
+    .foundry-agent-interior[data-agent-conversation='true']
+    .visual-agent-compose-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  :root[data-foundry-pilot='agent']
+    [data-next]
+    .foundry-agent-interior[data-agent-conversation='true']
+    .foundry-agent-attachment-label {
+    display: grid;
+    gap: 0;
+  }
+  :root[data-foundry-pilot='agent']
+    [data-next]
+    .foundry-agent-interior[data-agent-conversation='true']
+    .visual-agent-safety {
+    text-align: left;
+  }
+  :root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  :root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-main {
+    height: 780px;
+    min-height: 780px;
+    flex: 0 0 auto;
+  }
+  :root[data-foundry-pilot='agent']
+    [data-next]
+    .foundry-agent-interior[data-agent-conversation='false']
+    .next-agent-main {
+    height: auto;
+    min-height: 520px;
+    grid-template-rows: 40px auto auto 32px;
+  }
+  :root[data-foundry-pilot='agent']
+    [data-next]
+    .foundry-agent-interior
+    :is(.next-agent-heading, .visual-agent-conversation, .foundry-agent-composer-dock) {
+    padding-inline: 20px;
+  }
+  :root[data-foundry-pilot='agent']
+    [data-next]
+    .foundry-agent-interior
+    .foundry-agent-attachment-count {
+    display: none;
+  }
+  :root[data-foundry-pilot='agent']
+    [data-next]
+    .foundry-agent-interior
+    .foundry-agent-attachment-summary::after {
+    margin-left: auto;
+  }
+  :root[data-foundry-pilot='agent']
+    [data-next]
+    .foundry-agent-interior
+    :is(.next-agent-composer-head, .next-agent-send-row) {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+  :root[data-foundry-pilot='agent']
+    [data-next]
+    .foundry-agent-interior
+    .visual-agent-proposal-grid {
+    grid-template-columns: 1fr;
+  }
+  :root[data-foundry-pilot='agent']
+    [data-next]
+    .foundry-agent-interior
+    .visual-agent-proposal
+    > footer
+    > span {
+    width: 100%;
+  }
+  :root[data-foundry-pilot='agent']
+    [data-next]
+    .foundry-agent-interior
+    #visual-agent-context
+    article
+    > small {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+@media (max-height: 700px) and (min-width: 801px) {
+  :root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior:not([hidden]) {
+    overflow-y: auto;
+  }
+  :root[data-foundry-pilot='agent'] [data-next] .foundry-agent-interior .next-agent-main {
+    min-height: 540px;
+  }
+}
+@media (pointer: coarse) {
+  :root[data-foundry-pilot='agent']
+    [data-next]
+    .foundry-agent-interior
+    .visual-agent-compose-form
+    :is(input, textarea):focus {
+    font-size: 16px;
+  }
+}

@@ -297,7 +297,10 @@ try {
   await h.enterReview(page);
   await h.waitFor(
     async () =>
-      (await page.locator('#apply-run .apply-status-row strong').textContent()) === 'Verified',
+      await page
+        .locator('#apply-run .apply-status-row')
+        .getByText('Verified', { exact: true })
+        .isVisible(),
     'visible verified result',
   );
   await page.screenshot({ path: join(directory, 'verified.png') });

@@ -559,6 +559,49 @@ function assertAppliedSourceUnchanged(run: ApplyRun, proof: ApplySourceProof): v
   }
 }
 
+/** Recovery may acknowledge retained work, but never replace its original proof baseline. */
+function recoverySourceChanges(run: ApplyRun, proof: ApplySourceProof): string[] {
+  if (
+    !run.reviewedChangeSet ||
+    !run.revision ||
+    !run.sourceProofScope ||
+    !run.baselineSourceFiles.length
+  ) {
+    throw new Error(
+      'The original source baseline is unavailable. Preserve existing edits, cancel this run, and review a new batch.',
+    );
+  }
+  if (!proof.revision || proof.scope !== run.sourceProofScope) {
+    throw new Error('Source proof scope changed after review. Review the batch again.');
+  }
+  if (
+    proof.scope === 'git' &&
+    (!run.sourceHeadRevision || proof.headRevision !== run.sourceHeadRevision)
+  ) {
+    throw new Error('Git HEAD changed after review. Review the batch again before resuming.');
+  }
+  const baseline = new Map(
+    normalizeSourceSnapshots(run.baselineSourceFiles).map((file) => [file.path, file]),
+  );
+  const current = new Map(normalizeSourceSnapshots(proof.files).map((file) => [file.path, file]));
+  const reviewed = new Set(reviewedSourceFiles(run.reviewedChangeSet));
+  for (const path of reviewed) {
+    if (!baseline.has(path) || !current.has(path)) {
+      throw new Error(`Recovery source proof is missing the reviewed path: ${path}`);
+    }
+  }
+  const changedFiles = [...new Set([...baseline.keys(), ...current.keys()])]
+    .filter((path) => sourceSnapshotChanged(baseline.get(path), current.get(path)))
+    .sort();
+  const unexpected = changedFiles.filter((path) => !reviewed.has(path));
+  if (unexpected.length) {
+    throw new Error(
+      `Source changed outside the reviewed files: ${unexpected.join(', ')}. Review the batch again.`,
+    );
+  }
+  return changedFiles;
+}
+
 function mergePromotedLedger(
   stored: StoredSession,
   promotedChanges: DesignChange[],
@@ -718,18 +761,42 @@ export class SessionStore {
     return synced;
   }
 
+  private applyClaimNeedsRecovery(run: ApplyRun, now: Date): boolean {
+    return (
+      ['claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state) &&
+      (!run.claimAttemptId ||
+        !run.claimExpiresAt ||
+        Date.parse(run.claimExpiresAt) <= now.getTime())
+    );
+  }
+
+  private visualClaimNeedsRecovery(request: VisualAgentRequest, now: Date): boolean {
+    return (
+      request.status === 'thinking' &&
+      Boolean(request.claimExpiresAt) &&
+      !(Date.parse(request.claimExpiresAt!) > now.getTime())
+    );
+  }
+
+  private hasRecoverableClaims(stored: StoredSession): boolean {
+    const now = this.now();
+    return (
+      stored.applyRuns.some((run) => this.applyClaimNeedsRecovery(run, now)) ||
+      stored.visualAgentRequests.some((request) => this.visualClaimNeedsRecovery(request, now))
+    );
+  }
+
   private recoverExpiredClaims(stored: StoredSession): boolean {
     const now = this.now();
     const nowIso = now.toISOString();
     let recovered = false;
     for (const run of stored.applyRuns) {
-      if (!['claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state)) continue;
-      const incompleteLegacyClaim = !run.claimAttemptId || !run.claimExpiresAt;
-      const expiredClaim =
-        Boolean(run.claimExpiresAt) && Date.parse(run.claimExpiresAt!) <= now.getTime();
-      if (!incompleteLegacyClaim && !expiredClaim) continue;
+      if (!this.applyClaimNeedsRecovery(run, now)) continue;
       const interruptedState = run.state;
-      run.state = interruptedState === 'claimed' ? 'queued' : 'needs_attention';
+      // A replacement claimant may disconnect before it reports applying, but
+      // source work from the original attempt still requires explicit recovery.
+      const sourceStarted = Boolean(run.interruptedState) || interruptedState !== 'claimed';
+      run.state = sourceStarted ? 'needs_attention' : 'queued';
       if (
         interruptedState === 'applying' ||
         interruptedState === 'rebuilding' ||
@@ -737,6 +804,11 @@ export class SessionStore {
       ) {
         run.interruptedState = interruptedState;
         run.error = `The agent disconnected while ${interruptedState}. Reinspect the current source before resuming this run.`;
+        run.completedAt = nowIso;
+      }
+      if (sourceStarted && interruptedState === 'claimed') {
+        run.error =
+          'The replacement agent disconnected before continuing the interrupted source work. Review before resuming.';
         run.completedAt = nowIso;
       }
       run.agent = undefined;
@@ -750,27 +822,28 @@ export class SessionStore {
       run.verificationResults = [];
       run.applyResultAcknowledgedAt = undefined;
       run.applyResultClaimAttemptId = undefined;
-      run.sourceProofScope = undefined;
-      run.sourceHeadRevision = undefined;
-      run.baselineSourceFiles = [];
+      if (!sourceStarted) {
+        run.sourceProofScope = undefined;
+        run.sourceHeadRevision = undefined;
+        run.baselineSourceFiles = [];
+      }
       run.appliedRevision = undefined;
       run.appliedChangedFiles = [];
       run.appliedSourceFiles = [];
       run.requeueCount += 1;
       run.messages.push({
         state: run.state,
-        message:
-          interruptedState === 'claimed'
-            ? 'The agent did not begin source work. Foundry returned the batch to the queue.'
-            : run.error!,
+        message: !sourceStarted
+          ? 'The agent did not begin source work. Foundry returned the batch to the queue.'
+          : run.error!,
         createdAt: nowIso,
       });
       run.updatedAt = nowIso;
+      this.syncDeliveryForRun(stored, run, nowIso);
       recovered = true;
     }
     for (const request of stored.visualAgentRequests) {
-      if (request.status !== 'thinking' || !request.claimExpiresAt) continue;
-      if (Date.parse(request.claimExpiresAt) > now.getTime()) continue;
+      if (!this.visualClaimNeedsRecovery(request, now)) continue;
       request.status = 'needs_attention';
       request.error =
         'The agent disconnected before returning a visual proposal. Review the context, then retry this request.';
@@ -2116,7 +2189,7 @@ export class SessionStore {
       }
       const now = this.nowIso();
       const contractUnavailable = !run.reviewedChangeSet;
-      const expectedRevision = run.revision ?? null;
+      const expectedRevision = run.resumeRevision ?? run.revision ?? null;
       const expectedDesignGraphRevision = run.designGraphRevision ?? null;
       const sourceChanged = expectedRevision !== input.revision;
       const graphChanged = expectedDesignGraphRevision !== input.designGraphRevision;
@@ -2134,7 +2207,10 @@ export class SessionStore {
         });
         run.completedAt = now;
       } else {
-        const baselineSourceFiles = normalizeSourceSnapshots(input.sourceProof.files);
+        if (run.interruptedState) recoverySourceChanges(run, input.sourceProof);
+        const baselineSourceFiles = normalizeSourceSnapshots(
+          run.interruptedState ? run.baselineSourceFiles : input.sourceProof.files,
+        );
         const unmappedItems = reviewedSourceGroups(run.reviewedChangeSet!).filter(
           (group) => group.locations.length === 0 || group.locations.every((item) => !item.line),
         );
@@ -2186,9 +2262,11 @@ export class SessionStore {
         run.claimExpiresAt = new Date(this.now().getTime() + this.claimLeaseMs).toISOString();
         run.applyResultAcknowledgedAt = undefined;
         run.applyResultClaimAttemptId = undefined;
-        run.sourceProofScope = input.sourceProof.scope;
-        run.sourceHeadRevision = input.sourceProof.headRevision;
-        run.baselineSourceFiles = baselineSourceFiles;
+        if (!run.interruptedState) {
+          run.sourceProofScope = input.sourceProof.scope;
+          run.sourceHeadRevision = input.sourceProof.headRevision;
+          run.baselineSourceFiles = baselineSourceFiles;
+        }
         run.appliedRevision = undefined;
         run.appliedChangedFiles = [];
         run.appliedSourceFiles = [];
@@ -2288,6 +2366,9 @@ export class SessionStore {
           throw new Error(`Invalid apply run transition: ${run.state} -> ${input.state}`);
         }
         run.state = input.state;
+        // Recovery authorization ends when the new claimant starts source work.
+        // A later verification mismatch is a Retry, not another interruption.
+        if (input.state === 'applying') run.interruptedState = undefined;
       }
       if (input.changedFiles) run.changedFiles = [...new Set(input.changedFiles)];
       if (input.validationResults) {
@@ -2390,6 +2471,24 @@ export class SessionStore {
     });
   }
 
+  async getApplyRunResumeContext(id: string, runId: string, sourceProof: ApplySourceProof) {
+    const stored = await this.read(id);
+    const run = stored.applyRuns.find((candidate) => candidate.id === runId);
+    if (!run || run.state !== 'needs_attention' || !run.interruptedState) {
+      throw new Error('Only an interrupted apply run can be resumed');
+    }
+    if ((run.designGraphRevision ?? null) !== (stored.changeSet.designGraphRevision ?? null)) {
+      throw new Error('The design graph changed after review. Review the semantic mappings again.');
+    }
+    return {
+      runId: run.id,
+      reviewedRevision: run.revision,
+      expectedRevision: sourceProof.revision,
+      expectedDesignGraphRevision: stored.changeSet.designGraphRevision ?? null,
+      changedFiles: recoverySourceChanges(run, sourceProof),
+    };
+  }
+
   async authorizeApplyRunResume(
     id: string,
     runId: string,
@@ -2398,6 +2497,7 @@ export class SessionStore {
       expectedDesignGraphRevision: string | null;
       currentRevision: string | null;
       currentDesignGraphRevision: string | null;
+      sourceProof: ApplySourceProof;
     },
   ): Promise<StoredSession> {
     return this.serializeApplyRunMutation(id, async () => {
@@ -2422,6 +2522,18 @@ export class SessionStore {
           `Resume design graph revision conflict: expected ${input.expectedDesignGraphRevision ?? 'unrecorded'}, found ${currentDesignGraphRevision ?? 'unrecorded'}`,
         );
       }
+      if (
+        currentDesignGraphRevision !== (run.designGraphRevision ?? null) ||
+        currentDesignGraphRevision !== (stored.changeSet.designGraphRevision ?? null)
+      ) {
+        throw new Error(
+          'The design graph changed after review. Review the semantic mappings again.',
+        );
+      }
+      if (input.sourceProof.revision !== currentRevision) {
+        throw new Error('Recovery proof does not match the current source revision');
+      }
+      recoverySourceChanges(run, input.sourceProof);
       const now = this.nowIso();
       run.state = 'queued';
       run.agent = undefined;
@@ -2437,14 +2549,10 @@ export class SessionStore {
       run.verificationResults = [];
       run.applyResultAcknowledgedAt = undefined;
       run.applyResultClaimAttemptId = undefined;
-      run.sourceProofScope = undefined;
-      run.sourceHeadRevision = undefined;
-      run.baselineSourceFiles = [];
       run.appliedRevision = undefined;
       run.appliedChangedFiles = [];
       run.appliedSourceFiles = [];
-      run.revision = currentRevision ?? undefined;
-      run.designGraphRevision = currentDesignGraphRevision ?? undefined;
+      run.resumeRevision = currentRevision ?? undefined;
       run.messages.push({
         state: 'queued',
         message: `Resume authorized. Waiting for an agent to reinspect the interrupted ${run.interruptedState} run.`,
@@ -3118,7 +3226,10 @@ export class SessionStore {
   async authenticate(id: string, token: string | undefined): Promise<StoredSession> {
     const stored = await this.read(id);
     if (!token || token !== stored.token) throw new Error('Invalid session token');
-    return stored;
+    // Ordinary polling stays read-only. Authenticate before entering the repair path;
+    // recovery rereads under the session lock so a renewed lease cannot be overwritten
+    // by this possibly stale snapshot, and concurrent polls recover only once.
+    return this.hasRecoverableClaims(stored) ? this.recoverSession(id) : stored;
   }
 
   private async write(stored: StoredSession): Promise<void> {

@@ -2648,6 +2648,10 @@ export function installFoundryInspector(
           nextControlsFor(element).map(({ read, apply, ...control }) => ({
             ...control,
             value: read(),
+            authoredValue:
+              element.style.getPropertyValue(
+                control.property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`),
+              ) || undefined,
           })),
         ),
       ),
@@ -4026,7 +4030,7 @@ export function installFoundryInspector(
     return { staged: true, changes: 1, family, origin, sourcePlan: integration };
   }
 
-  function publishWorkspaceState(): void {
+  function publishWorkspaceState(immediate = false): void {
     if (!embeddedWorkspace) return;
     const publish = (): void => {
       window.parent.postMessage(
@@ -4038,7 +4042,10 @@ export function installFoundryInspector(
         workspaceParentOrigin,
       );
     };
-    if (verificationChild) {
+    // Acknowledged health results must reach the Inspector even when its reused
+    // product iframe is off-screen and animation frames are suspended.
+    if (verificationChild || immediate) {
+      cancelAnimationFrame(workspacePublishFrame);
       publish();
       return;
     }
@@ -4723,7 +4730,7 @@ export function installFoundryInspector(
       if (!issue?.element.isConnected) throw new Error(`Health finding ${issueId} is unavailable`);
       if (command === 'select-health-issue') select(issue.element);
       else if (!issue.previewed) await previewHealthFix(issue);
-      publishWorkspaceState();
+      publishWorkspaceState(true);
       return { completed: true, issueId };
     }
     if (command === 'save-visual-recipe') {
@@ -4798,7 +4805,7 @@ export function installFoundryInspector(
       saveSelectedDesignDecision(payload);
       if (designMemory.decisions.length !== before + 1)
         throw new Error('The design decision was not saved');
-      publishWorkspaceState();
+      publishWorkspaceState(true);
       return { saved: true, decision: designMemory.decisions.at(-1) };
     }
     if (command === 'update-design-decision') {
@@ -4807,14 +4814,14 @@ export function installFoundryInspector(
         throw new Error(`Design decision ${decisionId} was not found`);
       }
       designMemory = updateDesignDecision(designMemory, decisionId, {
-        title: typeof payload.title === 'string' ? payload.title.trim() : undefined,
-        summary: typeof payload.summary === 'string' ? payload.summary.trim() : undefined,
-        rationale: typeof payload.rationale === 'string' ? payload.rationale.trim() : undefined,
-        enabled: typeof payload.enabled === 'boolean' ? payload.enabled : undefined,
+        ...(typeof payload.title === 'string' ? { title: payload.title.trim() } : {}),
+        ...(typeof payload.summary === 'string' ? { summary: payload.summary.trim() } : {}),
+        ...(typeof payload.rationale === 'string' ? { rationale: payload.rationale.trim() } : {}),
+        ...(typeof payload.enabled === 'boolean' ? { enabled: payload.enabled } : {}),
       });
       persistDesignMemory();
       renderDesignMemory();
-      publishWorkspaceState();
+      publishWorkspaceState(true);
       return { updated: true, decisionId };
     }
     if (command === 'remove-design-decision') {
@@ -4825,7 +4832,7 @@ export function installFoundryInspector(
       designMemory = removeDesignDecision(designMemory, decisionId);
       persistDesignMemory();
       renderDesignMemory();
-      publishWorkspaceState();
+      publishWorkspaceState(true);
       return { removed: true, decisionId };
     }
     if (command === 'import-design-decisions') {
@@ -4848,7 +4855,7 @@ export function installFoundryInspector(
       }
       persistDesignMemory();
       renderDesignMemory();
-      publishWorkspaceState();
+      publishWorkspaceState(true);
       return { imported: importedCount };
     }
     if (command === 'set-control') {
@@ -5947,7 +5954,7 @@ export function installFoundryInspector(
         `Apply ${recipe.name}`,
       );
       if (outcome.applied && !outcome.recorded) {
-        control.apply(before);
+        applyInspectorValue(control, before);
         previewHistory.splice(historyLength);
         historyCursor = Math.min(cursorBefore, previewHistory.length);
         updateHistoryActions();
@@ -9598,7 +9605,7 @@ export function installFoundryInspector(
       return { applied: false, recorded: false };
     }
     const before = control.read();
-    control.apply(value);
+    applyInspectorValue(control, value, element);
     const after = control.read();
     if (String(before) === String(after)) return { applied: false, recorded: false };
     pushHistory({
@@ -11575,7 +11582,7 @@ export function installFoundryInspector(
 
   function scanDesignHealthOrThrow(): number {
     scanDesignHealth();
-    publishWorkspaceState();
+    publishWorkspaceState(true);
     if (healthScanError) throw new Error(healthScanError);
     return healthIssues.length;
   }

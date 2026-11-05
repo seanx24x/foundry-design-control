@@ -1,4 +1,9 @@
 import { workflowStep } from './workflow.js';
+import {
+  pilotReadinessActive,
+  refinePilotReadiness,
+  rememberPilotRecovery,
+} from './foundry-pilot-readiness.js';
 
 const escape = (value) =>
   String(value ?? '')
@@ -29,6 +34,9 @@ export function createReadinessUI({
   let refreshPending = false;
   let backgroundLoading = false;
   let lastConnection;
+  // A recovery belongs to this controller, not the button that happened to
+  // start it. Polling can replace every check while the original request waits.
+  let pendingRecovery = null;
 
   // Keep polite live regions quiet when a polling update has no new information.
   function setText(node, value) {
@@ -36,6 +44,7 @@ export function createReadinessUI({
   }
 
   function update() {
+    const recoveryFocusId = document.activeElement?.dataset?.readinessRecovery;
     const model = state();
     const connection = `${Boolean(model.previewConnected)}:${Boolean(model.listenerConnected)}`;
     const connectionChanged = lastConnection !== undefined && connection !== lastConnection;
@@ -105,6 +114,23 @@ export function createReadinessUI({
           ?.focus({ preventScroll: true });
       if (scroller && scrollTop !== undefined) scroller.scrollTop = scrollTop;
     }
+    refinePilotReadiness({
+      model,
+      readiness,
+      loading,
+      failure,
+      backgroundLoading,
+      step,
+      recoveryFocusId,
+    });
+    if (pilotReadinessActive() || pendingRecovery) {
+      for (const button of checks.querySelectorAll('[data-readiness-recovery]')) {
+        button.disabled = Boolean(pendingRecovery);
+        if (pendingRecovery?.checkId === button.dataset.readinessRecovery)
+          button.setAttribute('aria-busy', 'true');
+        else button.removeAttribute('aria-busy');
+      }
+    }
   }
 
   async function load({ background = false } = {}) {
@@ -158,7 +184,7 @@ export function createReadinessUI({
   refresh.addEventListener('click', () => void load());
   checks.addEventListener('click', async (event) => {
     const button = event.target.closest('[data-readiness-recovery]');
-    if (!button) return;
+    if (!button || pendingRecovery) return;
     const recovery = readiness?.checks.find(
       (item) => item.id === button.dataset.readinessRecovery,
     )?.recovery;
@@ -166,6 +192,7 @@ export function createReadinessUI({
     button.disabled = true;
     const command = document.querySelector('#readiness-command');
     if (recovery.command || recovery.requiresAgentRestart) {
+      rememberPilotRecovery(button.dataset.readinessRecovery, recovery);
       command.hidden = false;
       command.querySelector('strong').textContent = recovery.command
         ? 'Next step in your terminal'
@@ -181,14 +208,28 @@ export function createReadinessUI({
       button.disabled = false;
       return;
     }
+    const transaction = pilotReadinessActive()
+      ? { checkId: button.dataset.readinessRecovery, recoveryId: recovery.id }
+      : null;
+    if (transaction) {
+      pendingRecovery = transaction;
+      update();
+    }
     try {
-      await recover(recovery.id);
+      await recover(transaction?.recoveryId ?? recovery.id);
+      if (transaction && pendingRecovery !== transaction) return;
       await load();
     } catch (error) {
+      if (transaction && pendingRecovery !== transaction) return;
       failure = error instanceof Error ? error.message : 'The recovery did not complete.';
       update();
     } finally {
-      if (button.isConnected) button.disabled = false;
+      if (transaction) {
+        if (pendingRecovery === transaction) {
+          pendingRecovery = null;
+          update();
+        }
+      } else if (button.isConnected) button.disabled = false;
     }
   });
   dialog.addEventListener('close', () => {

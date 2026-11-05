@@ -19,25 +19,34 @@ const script = String.raw`
 import { createNextDelivery } from './apps/inspector/public/next-delivery.js';
 import { deliveryNarrativeReadOnly } from './apps/inspector/public/workflow.js';
 import { createDeliveryEvidenceUI } from './apps/inspector/public/delivery-evidence-ui.js';
+import { NEXT_ICONS } from './apps/inspector/public/next-icons.js';
+import { foundryPilotActive } from './apps/inspector/public/foundry-pilot.js';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const escapeText=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 const escapeAttribute=s=>escapeText(s).replaceAll('"','&quot;');
 const sourceText=()=> 'fixture/style.css:24', verificationContextLabel=()=> 'Desktop · light · current';
-const renderIcons=()=>{},toast=()=>{},setMode=()=>{},loadVisualCheckReports=()=>{};
+const renderIcons=(root=document)=>$$('[data-icon]',root).forEach(node=>{const name=node.dataset.icon,icon=NEXT_ICONS[name];if(icon)node.outerHTML='<svg data-foundry-icon="'+name+'" data-icon-family="heroicons" viewBox="0 0 '+(icon.width??24)+' '+(icon.height??24)+'" aria-hidden="true" focusable="false">'+icon.body+'</svg>';});
+const toast=()=>{},setMode=()=>{},loadVisualCheckReports=()=>{};
 const params=new URLSearchParams('ui=next'),sessionId='synthetic';
 let nextDelivery,deliveryTab='handoff',deliveryRecordId='',deliveryDocumentId='',visualCheckReportId='',runtimeConnected=true,deliveryGenerating=false,deliveryActionError='';
+let verifiedDeliverySelection=null;
 let visualChecksStatus='loaded',visualChecksError='',visualCheckReports=[{id:'synthetic-run',createdAt:'2026-09-23T12:00:00Z',exitCode:3,results:[{name:'Signup at desktop',status:'unbaselined',geometryChanges:[],newFindings:[],reason:'No approved baseline exists for this screen.'}]}];
 const record={id:'draft',title:'Improve the primary action without competing with supporting controls',summary:'A reviewed design handoff, still awaiting rebuilt verification.',intent:'Keep the main action clear.',risks:['Long translations must remain readable.'],questions:['Does the label fit at mobile width?'],narrativeSource:'authored',status:'ready',changeIds:['change'],affectedFiles:['fixture/a-deliberately-long-path-to-the-component-styles/action-button.css'],affectedComponents:['Signup/PrimaryAction'],affectedTokens:['--action-background'],contexts:[{breakpoint:'desktop',theme:'light',state:'current'},{breakpoint:'mobile',theme:'dark',state:'focus'}],acceptanceCriteria:[{label:'Rebuilt target meets the requested dimensions',status:'pending'}],blockers:['Rebuilt measurement is not available yet.'],validationResults:[],verificationResults:[],evidence:[],captureIssues:[]};
 record.status='draft';
 let activeSession={deliveryRecords:[record,{...record,id:'verified',title:'Verified touch-target correction',status:'verified',blockers:[],acceptanceCriteria:[{label:'Target height matches 44px',status:'passed'}],validationResults:[{name:'Fixture tests',passed:true,summary:'Passed in the isolated example.'}],verificationResults:[{property:'minHeight',passed:true}]}],documentationPages:[{id:'doc',title:'Primary action component',summary:'Source-derived documentation.',kind:'component',freshness:'stale',body:'# Primary action\n\nSource: fixture/a-long-path-to-current-project-component-styles.css\n\nThis document is stale and needs a refresh.',sourceFiles:['style.css'],deliveryRecordIds:['verified'],updatedAt:'2026-09-23T12:00:00Z'}],designHistory:[{id:'entry',title:'Touch target verified',summary:'Changed minimum height from 40px to 44px.',createdAt:'2026-09-23T12:00:00Z',affectedFiles:['style.css'],changeIds:['change'],applyRunId:'synthetic-apply'}],deliveryMilestones:[{status:'draft',name:'Recording readiness',summary:'A grouping of verified decisions, not a deployment.',entryIds:['entry']}],applyRuns:[]};
-const engineeringEvidence=()=>[];
-const deliveryEvidenceUI=createDeliveryEvidenceUI({readImage:()=>{throw new Error('No image available in this isolated example');}});
+const verified=activeSession.deliveryRecords[1];
+Object.assign(verified,{summary:'Create workspace button minimum height: 40px to 44px. Synthetic example.',risks:[],questions:[],narrativeSource:'deterministic',applyRunId:'synthetic-apply',baselineRevision:'fixture-before',appliedRevision:'fixture-rebuilt',validationResults:[{name:'Fixture build',passed:true,summary:'Synthetic source-validation result.'},{name:'Fixture tests',passed:true,summary:'Synthetic rendered-check result.'},{name:'Whitespace validation',passed:true,summary:'Synthetic diff-check result.'}]});
+const capture={sourceRevision:'fixture-before',targetId:'primary-action',context:{breakpoint:'desktop',theme:'light',state:'current'},viewport:{width:1440,height:900},conditions:{motion:'reduce',browser:'chromium',platform:'darwin',deviceScaleFactor:1}};
+verified.evidence=[{kind:'screenshot',label:'Synthetic before capture',capture:{...capture,phase:'before'}},{kind:'screenshot',label:'Synthetic rebuilt capture',capture:{...capture,phase:'rebuilt',sourceRevision:'fixture-rebuilt',applyRunId:'synthetic-apply'}}];
+const engineeringEvidence=record=>record.id==='verified'?[{change:{target:{id:'primary-action',label:'Create workspace button',source:{}},property:'minHeight',before:40,after:44},context:capture.context,status:'passed',beforeProvenance:'Captured 2026-09-23T12:00:00Z',result:{rendered:'44px',verifiedAt:'2026-09-23T12:02:00Z'}}]:[];
+const deliveryEvidenceUI=createDeliveryEvidenceUI({readImage:async()=>{throw new Error('No image available in this isolated example');}});
 let pendingResolve,pendingReject;const writes=[];
 const api=(path,options)=>{writes.push({path,options});return new Promise((resolve,reject)=>{pendingResolve=()=>{const id=path.split('/').at(-1),payload=JSON.parse(options.body);activeSession={...activeSession,deliveryRecords:activeSession.deliveryRecords.map(r=>r.id===id?{...r,...payload}:r)};resolve(activeSession)};pendingReject=reject;});};
 const renderSession=session=>{activeSession=session;renderDelivery();};
+${part('function deliveryHandoffSelection(', 'function openVerifiedDeliveryHandoff(')}
 ${part('function deliveryStatusLabel(', 'async function loadVisualCheckReports()')}
 ${part('function visualChecksMarkup()', 'function visualRecipeTargetSuggestions(')}
-${part("$$('[data-delivery-tab]').forEach", 'const milestoneDialog =')}
+${part("\n$$('[data-delivery-tab]').forEach", 'const milestoneDialog =')}
 const checks=[];
 const check=(ok,label)=>{if(!ok)throw new Error(label);checks.push(label)};
 const input=(selector,value)=>{const e=$(selector);e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));};
@@ -103,7 +112,7 @@ const bundle = await build({
   format: 'esm',
   write: false,
 });
-const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>Delivery isolated test</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/workflow.css"><link rel="stylesheet" href="/experience.css"><link rel="stylesheet" href="/next-workspace.css"><style>[data-next] .next-delivery:not([hidden]){height:calc(100vh - 32px)}#test-results{height:32px;padding:6px;font:12px/20px sans-serif;background:#fff;color:#111;overflow:auto}</style></head><body><div id="test-results">Running isolated checks</div><div data-next data-mode="delivery">${markup}</div><script type="module" src="/fixture.js"></script></body></html>`;
+const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><title>Delivery isolated test</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/workflow.css"><link rel="stylesheet" href="/experience.css"><link rel="stylesheet" href="/next-workspace.css"><style>[data-next] .next-delivery:not([hidden]){height:calc(100vh - 32px)}#test-results{height:32px;padding:6px;font:12px/20px sans-serif;background:#fff;color:#111;overflow:auto}</style></head><body><div id="test-results">Running isolated checks</div><div data-next data-experience="precision" data-mode="delivery">${markup}</div><script type="module" src="/fixture.js"></script></body></html>`;
 const types = { '.css': 'text/css', '.js': 'text/javascript', '.woff2': 'font/woff2' };
 createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');

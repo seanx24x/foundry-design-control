@@ -1,0 +1,421 @@
+/* Shared workspace shell. Page renderers continue to own their controls/data. */
+:root[data-foundry-pilot] [data-next] .foundry-sidebar {
+  --surface: var(--fd-shell-background);
+  --surface-2: var(--fd-sidebar-field);
+  --surface-3: var(--fd-sidebar-hover);
+  --hover: var(--fd-sidebar-hover);
+  --text: var(--fd-shell-ink);
+  --ink: var(--fd-shell-ink);
+  --muted: var(--fd-shell-muted);
+  --quiet: var(--fd-shell-subtle);
+  --line: var(--fd-sidebar-divider);
+  --line-strong: var(--fd-sidebar-boundary);
+  --selection: var(--fd-shell-focus);
+  --selection-soft: var(--fd-shell-selected);
+  --selection-ink: var(--fd-shell-ink);
+  color-scheme: dark;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--fd-shell-background);
+  color: var(--fd-shell-ink);
+  box-shadow: none;
+  overflow: auto;
+}
+:root[data-foundry-pilot] [data-next] .foundry-sidebar > * {
+  flex-shrink: 0;
+}
+:root[data-foundry-pilot] [data-next] .foundry-sidebar .foundry-workspace-switcher {
+  flex: none;
+  width: calc(100% - 20px);
+}
+:root[data-foundry-pilot]
+  [data-next]
+  .foundry-sidebar
+  > :is(
+    header,
+    .motion-selection-summary,
+    .typography-selection-summary,
+    .workshop-browser-head,
+    .design-branch-list-head
+  ) {
+  border-bottom: 0;
+  background: transparent;
+  padding-inline: 16px;
+}
+:root[data-foundry-pilot] [data-next] .foundry-sidebar :is(.search-field, .next-motion-search) {
+  flex: none;
+  align-self: stretch;
+  width: auto;
+  height: 32px;
+  min-height: 32px;
+  margin: 8px 12px 12px;
+  padding: 0 8px;
+  border: 1px solid var(--fd-sidebar-boundary);
+  border-bottom-color: var(--fd-sidebar-control);
+  border-radius: 6px;
+  background: var(--fd-sidebar-field);
+}
+:root[data-foundry-pilot]
+  [data-next]
+  .foundry-sidebar
+  :is(.search-field, .next-motion-search)
+  input {
+  height: 30px;
+  min-height: 0;
+  padding-block: 0;
+  border: 0;
+  font: 400 12px/20px var(--sans);
+  background: transparent;
+  color: var(--ink);
+  box-shadow: none;
+}
+:root[data-foundry-pilot] [data-next] .foundry-sidebar input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+:root[data-foundry-pilot]
+  [data-next]
+  .foundry-sidebar
+  :is(.search-field, .next-motion-search):focus-within {
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+  border-color: transparent;
+}
+:root[data-foundry-pilot]
+  [data-next]
+  .foundry-sidebar
+  :is(.search-field, .next-motion-search)
+  input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+:root[data-foundry-pilot] [data-next] .foundry-sidebar :is(button, input, summary):focus-visible {
+  outline: 2px solid var(--selection);
+  outline-offset: -2px;
+}
+:root[data-foundry-pilot]
+  [data-next]
+  .foundry-sidebar
+  :is(
+    .design-token-row,
+    .motion-studio-row,
+    .typography-font-row,
+    .visual-recipe-row,
+    .visual-agent-thread,
+    .design-branch-row,
+    .decision-memory-row,
+    .delivery-record-row,
+    .delivery-document-row
+  ) {
+  border-radius: 6px;
+  color: var(--muted);
+}
+:root[data-foundry-pilot]
+  [data-next]
+  .foundry-sidebar
+  :is(button.is-active, button.is-selected, button[aria-pressed='true']) {
+  background: var(--selection-soft);
+  color: var(--selection-ink);
+}
+:root[data-foundry-pilot]
+  [data-next]
+  .foundry-sidebar
+  :is(button.is-active, button.is-selected)
+  :is(strong, svg) {
+  color: inherit;
+}
+:root[data-foundry-pilot]
+  [data-next]
+  .foundry-sidebar
+  :is(.segmented, .typography-source-tabs, .decision-memory-filters) {
+  border: 0;
+}
+:root[data-foundry-pilot]
+  [data-next]
+  .foundry-sidebar
+  :is(
+    .component-workshop-list,
+    .design-system-token-list,
+    .motion-studio-list,
+    .typography-font-list,
+    .visual-recipe-list,
+    .next-state-controls,
+    .next-responsive-controls-scroll,
+    .next-stress-controls,
+    .visual-agent-thread-list,
+    .decision-memory-list
+  ) {
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow: auto;
+}
+
+/* The library spans heading/body/footer, matching Canvas and Workshop seams. */
+:root[data-foundry-pilot]:not([data-foundry-pilot='canvas']):not([data-foundry-pilot='components'])
+  [data-next]
+  .center-workspace {
+  border-radius: 0;
+  background: var(--fd-shell-background);
+  overflow: hidden;
+}
+:root[data-foundry-pilot] [data-next] .foundry-studio-page:not([hidden]) {
+  display: grid;
+  grid-template: 44px minmax(0, 1fr) 44px / var(--layers-dock-width) minmax(0, 1fr) 300px;
+  padding: 0;
+  gap: 0;
+  background: var(--fd-shell-background);
+  overflow: hidden;
+}
+:root[data-foundry-pilot] [data-next] .foundry-studio-shell {
+  display: contents;
+}
+:root[data-foundry-pilot] [data-next] .foundry-studio-page > .mode-head {
+  grid-column: 2 / -1;
+  grid-row: 1;
+  height: 44px;
+  min-height: 44px;
+  min-width: 0;
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+:root[data-foundry-pilot] [data-next] .foundry-studio-page > .mode-head h1 {
+  font: 600 12px/20px var(--sans);
+}
+:root[data-foundry-pilot] [data-next] .foundry-studio-page > .mode-head p {
+  display: none;
+}
+:root[data-foundry-pilot] [data-next] .foundry-studio-shell > :not(.foundry-sidebar) {
+  grid-row: 2;
+  grid-column: 2;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface);
+}
+:root[data-foundry-pilot]
+  [data-next]
+  .foundry-studio-shell
+  > :is(
+    .next-system-properties,
+    .motion-studio-properties,
+    .typography-studio-properties,
+    .visual-recipe-create,
+    .state-verification-panel,
+    .next-responsive-inspector,
+    .next-stress-inspector,
+    .visual-agent-compose,
+    .design-branch-detail,
+    .decision-memory-capture
+  ) {
+  grid-column: 3;
+}
+:root[data-foundry-pilot] [data-next] .foundry-studio-shell > .foundry-sidebar {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  width: var(--layers-dock-width);
+}
+:root[data-foundry-pilot] [data-next] .foundry-studio-page > :is(footer, .design-system-summary) {
+  grid-column: 2 / -1;
+  grid-row: 3;
+  min-width: 0;
+  height: auto;
+  min-height: 44px;
+  background: var(--surface);
+  border-radius: 0 0 12px 12px;
+}
+
+/* Review uses its real summary as the contextual sidebar; Apply is unchanged. */
+:root[data-foundry-pilot='review'] [data-next] .foundry-studio-page:not([hidden]) {
+  grid-template: 44px minmax(0, 1fr) / var(--layers-dock-width) minmax(0, 1fr);
+}
+:root[data-foundry-pilot='review'] [data-next] .review-list {
+  border: 0;
+  border-radius: 0 0 12px 12px;
+}
+:root[data-foundry-pilot='review'] [data-next] .review-summary > header strong {
+  font: 600 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='review'] [data-next] .review-footer {
+  margin-top: auto;
+}
+
+/* Delivery keeps dynamic record lists in #delivery-content. Grid participation
+   joins them to the persistent navigation without moving renderer-owned nodes. */
+:root[data-foundry-pilot='delivery'] [data-next] .foundry-studio-page:not([hidden]) {
+  grid-template: 44px 16px 144px minmax(0, 1fr) 44px / var(--layers-dock-width) minmax(0, 1fr);
+}
+:root[data-foundry-pilot='delivery']
+  [data-next]
+  .foundry-studio-page:has(.has-record, .delivery-history-layout):not([hidden]) {
+  grid-template-columns: var(--layers-dock-width) minmax(0, 1fr) 300px;
+}
+:root[data-foundry-pilot='delivery']
+  [data-next]
+  :is(.delivery-content, .delivery-layout, .delivery-history-layout) {
+  display: contents;
+}
+:root[data-foundry-pilot='delivery'] [data-next] .delivery-shell > .delivery-tabs {
+  grid-column: 1;
+  grid-row: 3;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 0 12px 12px;
+  border: 0;
+  background: var(--fd-shell-background);
+  color: var(--fd-shell-ink);
+}
+:root[data-foundry-pilot='delivery'] [data-next] .delivery-tabs button {
+  flex: none;
+  height: 28px;
+  min-height: 28px;
+  text-align: left;
+  color: var(--fd-shell-muted);
+  background: transparent;
+  border-radius: 6px;
+}
+:root[data-foundry-pilot='delivery'] [data-next] .delivery-tabs button.is-active {
+  background: var(--fd-shell-selected);
+  color: var(--fd-shell-ink);
+}
+:root[data-foundry-pilot='delivery'] [data-next] .delivery-tabs button:focus-visible {
+  outline: 2px solid var(--fd-shell-focus);
+  outline-offset: -2px;
+}
+:root[data-foundry-pilot='delivery'] [data-next] .delivery-sidebar {
+  grid-column: 1;
+  grid-row: 4 / -1;
+  z-index: 1;
+}
+:root[data-foundry-pilot='delivery']
+  [data-next]
+  :is(.delivery-stage, .delivery-timeline, .next-delivery-context, .delivery-milestones) {
+  grid-column: 2;
+  grid-row: 2 / 5;
+  overflow: auto;
+  background: var(--surface);
+}
+:root[data-foundry-pilot='delivery'] [data-next] :is(.next-delivery-context, .delivery-milestones) {
+  grid-column: 3;
+}
+:root[data-foundry-pilot='delivery'] [data-next] .foundry-studio-page > .next-delivery-footer {
+  grid-row: 5;
+}
+
+@media (max-width: 1100px) {
+  :root[data-foundry-pilot] [data-next] .foundry-studio-page:not([hidden]) {
+    grid-template: 44px minmax(360px, 1fr) auto 44px / var(--layers-dock-width) minmax(0, 1fr);
+    overflow-y: auto;
+  }
+  :root[data-foundry-pilot]
+    [data-next]
+    .foundry-studio-shell
+    > :is(
+      .next-system-properties,
+      .motion-studio-properties,
+      .typography-studio-properties,
+      .visual-recipe-create,
+      .state-verification-panel,
+      .next-responsive-inspector,
+      .next-stress-inspector,
+      .visual-agent-compose,
+      .design-branch-detail,
+      .decision-memory-capture
+    ) {
+    grid-column: 2;
+    grid-row: 3;
+    min-height: 320px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  :root[data-foundry-pilot] [data-next] .foundry-studio-page > :is(footer, .design-system-summary) {
+    grid-row: 4;
+  }
+  :root[data-foundry-pilot='review'] [data-next] .foundry-studio-page:not([hidden]) {
+    grid-template-rows: 44px minmax(0, 1fr);
+  }
+  :root[data-foundry-pilot='delivery'] [data-next] .foundry-studio-page:not([hidden]) {
+    grid-template: 44px 16px 144px minmax(360px, 1fr) auto 44px / var(--layers-dock-width) minmax(
+        0,
+        1fr
+      );
+  }
+  :root[data-foundry-pilot='delivery']
+    [data-next]
+    :is(.next-delivery-context, .delivery-milestones) {
+    grid-column: 2;
+    grid-row: 5;
+  }
+  :root[data-foundry-pilot='delivery'] [data-next] .foundry-studio-page > .next-delivery-footer {
+    grid-row: 6;
+  }
+}
+@media (max-width: 800px) {
+  :root[data-foundry-pilot] [data-next] .foundry-studio-page:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    border-radius: 0 0 12px 12px;
+  }
+  :root[data-foundry-pilot] [data-next] .foundry-studio-shell > .foundry-sidebar {
+    order: -1;
+    width: 100%;
+    height: 300px;
+    min-height: 300px;
+    max-height: 300px;
+    flex: none;
+  }
+  :root[data-foundry-pilot] [data-next] .foundry-studio-page > .mode-head {
+    flex: none;
+    height: auto;
+    min-height: 44px;
+    flex-wrap: wrap;
+    padding-block: 8px;
+    border-radius: 12px 12px 0 0;
+  }
+  :root[data-foundry-pilot] [data-next] .foundry-studio-page .mode-actions {
+    flex-wrap: wrap;
+  }
+  :root[data-foundry-pilot] [data-next] .foundry-studio-shell > :not(.foundry-sidebar) {
+    flex: none;
+    min-height: 400px;
+    overflow: visible;
+    width: 100%;
+  }
+  :root[data-foundry-pilot] [data-next] .foundry-studio-page > :is(footer, .design-system-summary) {
+    flex: none;
+    border-radius: 0;
+    padding-block: 8px;
+  }
+  :root[data-foundry-pilot='delivery'] [data-next] .delivery-shell > .foundry-delivery-navigation {
+    height: 60px;
+    min-height: 60px;
+    max-height: 60px;
+  }
+  :root[data-foundry-pilot='delivery'] [data-next] .delivery-shell > .delivery-tabs {
+    order: -1;
+    min-height: 144px;
+  }
+  :root[data-foundry-pilot='delivery'] [data-next] .delivery-sidebar {
+    order: -1;
+    height: 240px;
+    min-height: 240px;
+    max-height: 240px;
+    overflow: auto;
+  }
+  :root[data-foundry-pilot='delivery']
+    [data-next]
+    :is(.delivery-stage, .delivery-timeline, .next-delivery-context, .delivery-milestones) {
+    flex: none;
+    min-height: 320px;
+    overflow: visible;
+  }
+}

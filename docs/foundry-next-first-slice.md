@@ -35,7 +35,10 @@ The approved precision study is the reference, not a new visual direction:
 - Variant selection previews temporarily without a Review record. Switching candidates restores the original attributes first. Cancel/Escape restores absent attributes exactly; Add to Review records actual `variant.*` properties and supports undo/redo. Failed acceptance retains the candidate for explicit retry. A disconnected preview cannot report acceptance.
 - Other property inputs are disabled while a variant preview is pending, with an explanation. Their displayed computed values still update to match the rendered candidate. Selection/workspace changes cancel temporary variants; Focus and Canvas return preserve the same candidate.
 - Temporary acknowledged preview while typing. Enter accepts a valid edit into Review; Escape restores the starting inline style. Blurring a valid unaccepted edit cancels it; failed inputs remain visible.
-- Numeric font-size and opacity scrubbing: 4px threshold, normal/coarse/fine increments, one accepted gesture equals one undoable edit.
+- Numeric scrubbing: 4px threshold, whole-number results. Normal movement is one unit per pointer pixel, Shift is ten, and Alt slows movement to one unit per ten pointer pixels; Alt does not generate fractional results. One accepted gesture equals one undoable edit.
+- Inspector scrubbers use explicit native 16px property symbols inside 24px targets: X/Y position, width/height dimensions, between-item gaps, inner-edge padding, outer-edge margins, highlighted radius corners, border thickness, type size and opacity. No generic category-icon fallback. Side/corner fields keep full property names in accessible labels and drag tooltips even when their visible labels are abbreviated.
+- Computed numeric fields display whole numbers without mutating the measured value. Explicit inline numeric declarations retain their typed decimals; focusing or accepting an untouched field never rounds the product. Numeric field tooltips expose the unrounded measurement. Opacity uses 0–100% in the UI and keeps normalized 0–1 CSS in the existing bridge.
+- Text, background and border colors have a 16px swatch inside a 24px target. The anchored color chooser provides saturation/brightness, hue, alpha, and CSS color text entry. Changes preview locally; Use color accepts through the existing Review/direction path, and Cancel or Escape restores the exact original. Mixed selections require an explicit replacement, and a failed preview retains its candidate without enabling acceptance.
 - Searchable indexed project-font chooser: preview, cancel, use, and reset. Font stacks retain authored fallbacks.
 - Explicit Focus tab, with surrounding product dimming. Canvas returns to the same selected element.
 - Fixed source/status footer and independently scrolling properties.
@@ -57,6 +60,12 @@ This is not the completed redesign or a claim of full Figma parity.
 - Narrow/mobile layouts and the remaining studios need a separate visual pass before making Next the default.
 
 ## Run and verify
+
+### Delivery record refinement: 2026-09-25
+
+The handoff detail uses one separator per section boundary, including between the engineering table and recorded screenshots. Read-only narratives now override the legacy 20px inset and share the main content edge. Intent stays full-width; risks/questions, source/rendered validation and paired screenshots use two columns only when the detail panel has at least 600px of available content width. Narrow panels stack these groups and keep any table overflow local. Repeated eyebrow/title pairs become single semantic headings, with evidence provenance and verification caveats retained.
+
+Build the inspector, start `node scripts/test-next-delivery-fixture.mjs`, then run `node scripts/test-next-delivery-refinement.mjs`. This explicitly synthetic fixture includes the production precision-style attribute, populated engineering evidence and paired capture metadata. Six widths from 390px to 1920px are checked in both themes, alongside the existing 26 interaction assertions. Evidence is written to `artifacts/next-workspace/delivery-refinement/`. No live records, source Apply, exports or release actions are performed.
 
 ### Consolidated chrome and tabs
 

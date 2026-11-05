@@ -16,3 +16,10 @@ export function previewRecoveryBlocked(runs = []) {
     ['queued', 'claimed', 'applying', 'rebuilding', 'verifying'].includes(run.state),
   );
 }
+
+// A deliberate reconnect may restore the measuring surface during verification,
+// but must not reload it while the reviewed source transaction is still pending.
+// Temporary edit replay stays blocked during verification by the separate rule above.
+export function previewReconnectBlocked(runs = []) {
+  return runs.some((run) => ['queued', 'claimed', 'applying', 'rebuilding'].includes(run.state));
+}

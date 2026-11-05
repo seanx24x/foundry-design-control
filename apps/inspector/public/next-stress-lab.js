@@ -1,3 +1,10 @@
+import { foundryFoundationsEnabled } from './foundry-foundations.js';
+import {
+  mountPilotStressLab,
+  refinePilotStressLab,
+  pilotStressPreviewBounds,
+} from './foundry-pilot-stress.js';
+
 // Next presentation only. Retain the existing acknowledged scan and correction actions.
 export function stressEvidenceLabel({ connected, busy, error, scannedAt, stale }) {
   if (!connected) return 'Preview disconnected';
@@ -19,6 +26,20 @@ export function stressDraftMatches(selected, active, scope, appliedScope) {
 export function stressCorrectionLabel(issue) {
   if (issue.previewed) return issue.recordedBranchId ? 'Saved to direction' : 'Added to Review';
   return 'Preview and add to Review';
+}
+
+export function stressCorrectionReady({ connected, busy, error, scannedAt, stale }) {
+  return Boolean(connected && !busy && !error && scannedAt && !stale);
+}
+
+export function stressConditionStatus(id, selected, active, confirmed = true) {
+  if (active.includes(id))
+    return confirmed
+      ? selected.includes(id)
+        ? 'Applied'
+        : 'Applied · not chosen'
+      : 'Previously applied';
+  return selected.includes(id) ? 'Draft' : '';
 }
 
 const node = (tag, className = '', text) => {
@@ -44,7 +65,8 @@ export function stressPreviewTransform(width, height, viewport, geometry) {
   };
 }
 
-export function createNextStressLab(root) {
+export function createNextStressLab(root, { resetChoices } = {}) {
+  const pilot = foundryFoundationsEnabled();
   root.classList.add('next-stress-lab');
   root.dataset.nextIconScope = '';
   root.querySelector('.mode-head h1').textContent = 'Content stress lab';
@@ -56,6 +78,14 @@ export function createNextStressLab(root) {
   root.querySelector('.mode-actions').prepend(scan);
   const left = root.querySelector('.stress-lab-browser');
   left.querySelector('header').replaceChildren(node('h2', '', 'Conditions'));
+  const resetDraft = node('button', 'next-stress-reset-choices', 'Reset choices');
+  resetDraft.type = 'button';
+  resetDraft.dataset.resetStressDraft = '';
+  resetDraft.title = 'Clear choices only. Applied conditions remain until Restore original.';
+  resetDraft.addEventListener('click', () => {
+    if (!resetDraft.disabled) resetChoices?.();
+  });
+  if (pilot) left.querySelector('header').append(resetDraft);
   const profiles = root.querySelector('#stress-profile-list');
   const scope = root.querySelector('.stress-scope');
   const scopeHint = node('p', 'next-stress-help');
@@ -105,7 +135,9 @@ export function createNextStressLab(root) {
     }
     const bounds = previewSlot.getBoundingClientRect();
     if (!bounds.width || !bounds.height) return;
-    const scrollBounds = root.querySelector('.stress-lab-shell').getBoundingClientRect();
+    const scrollBounds = pilot
+      ? pilotStressPreviewBounds(root)
+      : root.querySelector('.stress-lab-shell').getBoundingClientRect();
     workspace.style.setProperty(
       '--stress-preview-clip',
       `inset(${Math.max(0, scrollBounds.top - bounds.top)}px ${Math.max(0, bounds.right - scrollBounds.right)}px ${Math.max(0, bounds.bottom - scrollBounds.bottom)}px ${Math.max(0, scrollBounds.left - bounds.left)}px)`,
@@ -163,8 +195,10 @@ export function createNextStressLab(root) {
     cards = new Map(),
     lastScan,
     scanContext,
-    stale = false;
+    stale = false,
+    correctionReady = false;
   const footer = root.querySelector('#stress-lab-footnote');
+  if (pilot) mountPilotStressLab(root);
   let preserved = null;
   function capture() {
     const focused = root.ownerDocument.activeElement;
@@ -174,6 +208,7 @@ export function createNextStressLab(root) {
       'data-next-stress-finding',
       'data-stress-select',
       'data-stress-fix',
+      'data-reset-stress-draft',
     ].find((name) => focused?.hasAttribute(name));
     preserved = {
       attribute,
@@ -217,7 +252,7 @@ export function createNextStressLab(root) {
     const fix = card.querySelector('[data-stress-fix]');
     if (fix) {
       fix.textContent = stressCorrectionLabel(issue);
-      fix.disabled = !model.connected || Boolean(model.busy) || stale || Boolean(issue.previewed);
+      fix.disabled = !correctionReady || Boolean(issue.previewed);
     }
     detail.append(
       node(
@@ -307,7 +342,32 @@ export function createNextStressLab(root) {
       button.disabled = Boolean(busy);
     for (const button of profiles.querySelectorAll('[data-stress-condition]'))
       button.title = button.querySelector('small')?.textContent ?? '';
-    const evidenceCurrent = Boolean(stress.scannedAt) && connected && !problem && !stale && !busy;
+    resetDraft.disabled = Boolean(busy) || !selected.length;
+    resetDraft.setAttribute('aria-describedby', 'stress-reset-choices-note');
+    draftHint.id = 'stress-reset-choices-note';
+    correctionReady = stressCorrectionReady({
+      connected,
+      busy,
+      error: problem,
+      stale,
+      scannedAt: stress.scannedAt,
+    });
+    const evidenceCurrent = correctionReady;
+    if (pilot)
+      for (const button of profiles.querySelectorAll('[data-stress-condition]')) {
+        const status = node(
+          'small',
+          'next-stress-condition-status',
+          stressConditionStatus(
+            button.dataset.stressCondition,
+            selected,
+            activeConditions,
+            connected && !busy && !problem,
+          ),
+        );
+        status.hidden = !status.textContent;
+        button.querySelector('span').append(status);
+      }
     count.textContent = !stress.scannedAt
       ? 'Not scanned'
       : `${issues.length} ${issues.length === 1 ? 'finding' : 'findings'}${evidenceCurrent ? '' : ' · previous evidence'}`;
@@ -329,6 +389,16 @@ export function createNextStressLab(root) {
           : 'Scan the current layout or run temporary conditions. No result has been measured yet.',
       ),
     );
+    const scannedDate = new Date(stress.scannedAt ?? '');
+    if (pilot && Number.isFinite(scannedDate.getTime())) {
+      const receipt = node(
+        'p',
+        'next-stress-help next-stress-receipt',
+        `Measured ${scannedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}${evidenceCurrent ? '' : ' · previous evidence'}`,
+      );
+      receipt.title = stress.scannedAt;
+      summary.append(receipt);
+    }
     const dl = node('dl');
     for (const [name, value] of [
       ['Findings', issues.length],
@@ -399,6 +469,7 @@ export function createNextStressLab(root) {
           : 'This result only covers the measured scope and supported checks.');
     }
     footer.textContent = `${label} · Temporary conditions do not create Review edits. Corrections do.`;
+    if (pilot) refinePilotStressLab(root, { label });
     if (preserved) {
       if (preserved.attribute)
         root

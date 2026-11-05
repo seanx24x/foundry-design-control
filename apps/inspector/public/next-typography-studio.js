@@ -1,3 +1,6 @@
+import { foundryFoundationsEnabled } from './foundry-foundations.js';
+import { refinePilotTypography } from './foundry-pilot-typography.js';
+
 export function typographyComparisonState({ candidate, comparison, pending, connected }) {
   if (!connected)
     return {
@@ -39,6 +42,7 @@ const node = (tag, className, text) => {
 };
 
 export function createNextTypographyStudio(root, clearComparison) {
+  const pilot = foundryFoundationsEnabled();
   const stage = root.querySelector('#typography-studio-stage');
   const properties = root.querySelector('#typography-studio-properties');
   const summary = root.querySelector('#typography-selection-summary');
@@ -74,7 +78,7 @@ export function createNextTypographyStudio(root, clearComparison) {
       return (
         root.contains(active) &&
         active.matches(
-          '[data-typography-control], #typography-style-name, .foundry-select-trigger[aria-expanded="true"]',
+          '[data-typography-control], #typography-style-name, #typography-scale-base, [data-scale-base-entry], .foundry-select-trigger[aria-expanded="true"]',
         )
       );
     },
@@ -146,6 +150,23 @@ export function createNextTypographyStudio(root, clearComparison) {
       }
       while (properties.firstChild) propertyScroll.append(properties.firstChild);
       if (fields) propertyScroll.prepend(fields);
+      if (pilot && fields) {
+        const advanced = node('div', 'typography-property-fields');
+        for (const property of ['fontStyle', 'fontVariationSettings']) {
+          const field = fields.querySelector(`[data-typography-control="${property}"]`);
+          if (field) advanced.append(field.closest('label'));
+        }
+        if (advanced.children.length) {
+          const note = node(
+            'p',
+            'next-type-help',
+            'Variation settings use exact CSS. Per-axis ranges are not indexed here.',
+          );
+          const group = node('section', 'typography-font-settings');
+          group.append(advanced, note);
+          fields.append(disclosure(group, 'Advanced font settings', 'font-settings'));
+        }
+      }
       if (editNotice) fields.after(editNotice);
       if (styles) {
         styles.querySelector('header')?.remove();
@@ -250,13 +271,17 @@ export function createNextTypographyStudio(root, clearComparison) {
       compare.textContent = candidate ? 'Compare again' : 'Choose a font';
       compare.disabled = !selection || !typography || pending || !connected;
       sourceButton.disabled = !connected;
-      if (!connected) {
+      if (!connected || (pilot && selection?.count > 1)) {
         for (const field of properties.querySelectorAll('input, select, button'))
           field.disabled = true;
+        if (connected && selection?.count > 1 && editNotice)
+          editNotice.textContent =
+            'Select one text layer to edit Typography properties. Mixed values are not replaced here.';
       }
       root.querySelector('#typography-studio-review').textContent = 'Review changes';
       root.querySelector('.typography-studio-footer > span').textContent =
         'Comparisons are temporary. Use this font adds a reviewed change. Local fonts remain preview-only.';
+      if (pilot) refinePilotTypography(root, { selection, typography, candidate, state });
       observer.observe(scroll);
       scroll.style.setProperty(
         '--type-scrollbar-width',

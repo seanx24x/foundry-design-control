@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { chromium, expect } from '@playwright/test';
+import { NEXT_PROPERTY_ICONS } from '../apps/inspector/public/next-icons.js';
 
 // Read-only visual checks plus cancellable local drafts. Never accept or apply edits.
 const { url } = JSON.parse(readFileSync('artifacts/next-workspace/preview.json', 'utf8'));
@@ -70,13 +71,27 @@ try {
           );
         const icons = await panel.locator('svg:visible').evaluateAll((nodes) =>
           nodes.map((n) => ({
+            name: n.dataset.foundryIcon,
             family: n.dataset.iconFamily,
             width: n.getBoundingClientRect().width,
             height: n.getBoundingClientRect().height,
           })),
         );
-        for (const icon of icons)
-          assert.deepEqual(icon, { family: 'heroicons', width: 16, height: 16 });
+        for (const { name, ...icon } of icons)
+          assert.deepEqual(icon, {
+            family: Object.hasOwn(NEXT_PROPERTY_ICONS, name) ? 'foundry' : 'heroicons',
+            width: 16,
+            height: 16,
+          });
+        if (name === 'text') {
+          for (const property of ['fontFamily', 'fontSize', 'opacity']) {
+            const field = panel.locator(`[data-property="${property}"]`);
+            await expect(field.locator(`svg[data-foundry-icon="${property}"]`)).toHaveCount(1);
+            await expect(field.getByRole('button').first()).toHaveAccessibleName(
+              property === 'fontFamily' ? 'Choose font family' : new RegExp(`Scrub`, 'i'),
+            );
+          }
+        }
         assert.equal(
           await panel.locator('.inspector-scroll').evaluate((n) => n.scrollWidth > n.clientWidth),
           false,

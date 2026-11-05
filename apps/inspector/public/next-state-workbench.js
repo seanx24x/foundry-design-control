@@ -1,3 +1,6 @@
+import { foundryFoundationsEnabled } from './foundry-foundations.js';
+import { mountPilotStateWorkbench, refinePilotStateWorkbench } from './foundry-pilot-state.js';
+
 // Presentation only. Context mutations and measurements remain acknowledged by the iframe.
 export function sameStateCondition(a, b) {
   if (!a || !b) return false;
@@ -9,13 +12,28 @@ export function sameStateCondition(a, b) {
   );
 }
 
+export function stateConditionKey(context) {
+  return JSON.stringify([
+    context.viewport?.id,
+    context.viewport?.width,
+    context.viewport?.height,
+    context.theme,
+    context.state,
+    context.motionPreference,
+    context.selectedTarget?.id ?? null,
+    context.selectedTarget?.selector ?? null,
+  ]);
+}
+
 export function stateEvidenceModel({ connected, pending, context, lastResult, record }) {
   const measured =
     record?.result?.applied && sameStateCondition(record.context, context) ? record : null;
   const failed =
     lastResult?.applied === false && sameStateCondition(lastResult.context, context)
       ? lastResult
-      : null;
+      : record?.result?.applied === false && sameStateCondition(record.context, context)
+        ? record.result
+        : null;
   if (!connected)
     return {
       status: 'offline',
@@ -59,6 +77,7 @@ const node = (tag, className, text) => {
 };
 
 export function createNextStateWorkbench(root, { selectState, syncControls }) {
+  const pilot = foundryFoundationsEnabled();
   root.classList.add('next-state-workbench');
   root.dataset.nextIconScope = '';
   root.querySelector('.mode-head h1').textContent = 'State workbench';
@@ -124,6 +143,7 @@ export function createNextStateWorkbench(root, { selectState, syncControls }) {
       root.querySelector('#state-preview-status').setAttribute('role', 'status');
       signature = '';
       choicesSignature = '';
+      if (pilot) mountPilotStateWorkbench(root);
     },
     update({
       context,
@@ -242,7 +262,9 @@ export function createNextStateWorkbench(root, { selectState, syncControls }) {
         const axes = Object.entries(model.result?.axes ?? {});
         axisList.replaceChildren();
         if (axes.length) {
-          axisList.append(node('h2', '', 'Applied context'));
+          axisList.append(
+            node('h2', '', model.status === 'failed' ? 'Context diagnostics' : 'Applied context'),
+          );
           for (const [key, axis] of axes) {
             const detail = node('details', 'next-state-axis');
             const summary = node('summary', '');
@@ -262,9 +284,11 @@ export function createNextStateWorkbench(root, { selectState, syncControls }) {
               node(
                 'span',
                 '',
-                { applied: 'Applied', current: 'Already current', unsupported: 'Unsupported' }[
-                  axis.status
-                ] ?? axis.status,
+                {
+                  applied: model.status === 'failed' ? 'Supported' : 'Applied',
+                  current: 'Already current',
+                  unsupported: 'Unsupported',
+                }[axis.status] ?? axis.status,
               ),
             );
             detail.append(summary, node('p', 'next-state-help', `Method: ${axis.method}`));
@@ -285,6 +309,7 @@ export function createNextStateWorkbench(root, { selectState, syncControls }) {
           }
         }
       }
+      if (pilot) refinePilotStateWorkbench(root, { model, context, states });
     },
   };
 }

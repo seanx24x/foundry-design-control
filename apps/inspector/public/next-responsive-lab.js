@@ -1,3 +1,7 @@
+import { foundryFoundationsEnabled } from './foundry-foundations.js';
+import { mountPilotResponsiveLab, refinePilotResponsiveLab } from './foundry-pilot-responsive.js';
+import { mountResponsiveWidthEntry, responsiveCaptureReady } from './responsive-controls.js';
+
 // Next-only layout and evidence presentation. Original iframe/action nodes are retained.
 export function responsiveFrameLabel(state = {}, snapshot, stale = false) {
   if (state.connection === 'offline') return 'Preview disconnected';
@@ -34,6 +38,7 @@ const node = (tag, className, text) => {
 };
 
 export function createNextResponsiveLab(root, { selectFrame }) {
+  const pilot = foundryFoundationsEnabled();
   root.classList.add('next-responsive-lab');
   root.dataset.nextIconScope = '';
   root.querySelector('.mode-head h1').textContent = 'Responsive design lab';
@@ -109,6 +114,8 @@ export function createNextResponsiveLab(root, { selectFrame }) {
   const footer = root.querySelector('.responsive-lab-footer');
   root.insertBefore(shell, footer);
   footer.querySelector('button').textContent = 'Review changes';
+  if (pilot) mountPilotResponsiveLab(root);
+  const widthEntry = pilot ? mountResponsiveWidthEntry(root) : null;
   let listSignature = '',
     activeSignature = '',
     auditSignature = '',
@@ -131,7 +138,9 @@ export function createNextResponsiveLab(root, { selectFrame }) {
         Math.max(40, card.clientWidth - 32) / Number(frame.width),
         heightLimit / Number(frame.height),
       );
-      viewport.style.setProperty('--next-responsive-preview-height', `${heightLimit + 32}px`);
+      const previewHeight =
+        renderingView === 'selected' ? Number(frame.height) * scale : heightLimit;
+      viewport.style.setProperty('--next-responsive-preview-height', `${previewHeight + 32}px`);
       viewport.style.setProperty('--preview-scale', String(scale));
     }
   }
@@ -218,13 +227,24 @@ export function createNextResponsiveLab(root, { selectFrame }) {
     }
     targetName.textContent =
       selection?.label ?? 'Choose a layer on Canvas to compare its geometry.';
-    scopeNote.textContent = !selection?.source
-      ? 'All breakpoints requires a source-mapped layer.'
-      : scope === 'all'
-        ? 'Future edits include every configured breakpoint. Source changes still require Review and Apply.'
-        : `Future edits are scoped to ${activeId === 'custom' ? 'the current breakpoint, not the custom width' : (contexts.find((item) => item.id === activeId)?.label ?? activeId)}.`;
-    root.querySelector('[data-responsive-scope="all"]').disabled = !connected || !selection?.source;
-    root.querySelector('#responsive-open-canvas').disabled = !connected;
+    scopeNote.setAttribute('role', 'status');
+    scopeNote.textContent = next.scopePending
+      ? 'Setting edit scope… Waiting for every preview to acknowledge.'
+      : next.scopeError ||
+        (!selection?.source
+          ? 'All breakpoints requires a source-mapped layer.'
+          : scope === 'all'
+            ? 'Future edits include every configured breakpoint. Source changes still require Review and Apply.'
+            : `Future edits are scoped to ${activeId === 'custom' ? 'the current breakpoint, not the custom width' : (contexts.find((item) => item.id === activeId)?.label ?? activeId)}.`);
+    root.querySelector('[data-responsive-scope="all"]').disabled =
+      Boolean(next.scopePending) || !connected || !selection?.source;
+    root.querySelector('[data-responsive-scope="breakpoint"]').disabled =
+      Boolean(next.scopePending) || !connected;
+    root
+      .querySelector('.responsive-scope-group')
+      .setAttribute('aria-busy', String(Boolean(next.scopePending)));
+    root.querySelector('#responsive-open-canvas').disabled =
+      !connected || Boolean(next.scopePending) || Boolean(next.scopeError);
     root.querySelector('[data-studio-action="responsive-audit"]').disabled =
       running || !contexts.length;
     root.querySelector('[data-studio-action="responsive-audit"]').textContent = running
@@ -332,14 +352,26 @@ export function createNextResponsiveLab(root, { selectFrame }) {
     const canCapture =
       connected &&
       frames.get('custom')?.connection === 'live' &&
-      Boolean(snapshots.get('custom')?.selection) &&
+      (!pilot
+        ? Boolean(snapshots.get('custom')?.selection)
+        : responsiveCaptureReady(snapshots.get('custom'), {
+            selector: selection?.selector,
+            target: scrubTarget,
+            width: next.customWidth,
+            containerWidth: next.containerWidth,
+            stress,
+          })) &&
       Boolean(selection);
     root.querySelector('#responsive-capture-before').disabled = !canCapture;
     root.querySelector('#responsive-capture-after').disabled = !canCapture;
     const live = contexts.filter((item) => frames.get(item.id)?.connection === 'live').length;
-    root.querySelector('#responsive-lab-status').textContent = running
-      ? `Measuring ${complete} of ${contexts.length} frames…`
-      : `${live} of ${contexts.length} previews connected · ${scope === 'all' ? 'All breakpoints' : 'This breakpoint'} edit scope`;
+    root.querySelector('#responsive-lab-status').textContent = next.scopeError
+      ? 'Edit scope needs confirmation'
+      : running
+        ? `Measuring ${complete} of ${contexts.length} frames…`
+        : `${live} of ${contexts.length} previews connected · ${scope === 'all' ? 'All breakpoints' : 'This breakpoint'} edit scope`;
+    if (pilot) refinePilotResponsiveLab(root, { ...next, stale });
+    widthEntry?.sync();
     fit();
     if (!running && auditScrollTop !== null) {
       grid.scrollTop = auditScrollTop;

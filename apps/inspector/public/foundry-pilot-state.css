@@ -1,0 +1,295 @@
+/* State Workbench body only; shared sidebar owns the 320px rail and responsive grid. */
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .mode-head p {
+  display: none;
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .mode-actions button {
+  height: 28px;
+  min-height: 28px;
+  padding-inline: 10px;
+  border-radius: var(--fd-radius-control);
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .next-state-controls {
+  padding: 12px 0 24px;
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .state-matrix-list button {
+  grid-template-columns: 16px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  min-height: 48px;
+  height: auto;
+  gap: 0 8px;
+  padding: 5px 10px;
+  border-radius: var(--fd-radius-control);
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .state-matrix-list
+  button
+  > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .next-state-row-status {
+  grid-column: 2;
+  text-align: left;
+  font: 400 11px/18px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  :is(.foundry-state-choice-icon, .foundry-state-status-icon, .foundry-state-chevron) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  flex: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .next-state-help {
+  font: 400 11px/18px var(--sans);
+  overflow-wrap: anywhere;
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  :is(.state-verification-summary, .next-state-conditions) {
+  margin: 20px 16px 0;
+  padding: 20px 0 0;
+  border-top: 1px solid var(--line);
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  :is(.state-verification-summary, .next-state-conditions)
+  h2 {
+  margin: 0 0 8px;
+  font: 600 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .state-verification-summary {
+  display: grid;
+  gap: 4px;
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  :is(#state-verification-count, #state-verification-copy) {
+  margin: 0;
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior #state-verification-count {
+  font: 500 12px/20px var(--sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior #state-verification-copy {
+  font: 400 11px/18px var(--sans);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .foundry-state-condition-help {
+  margin: 0 0 4px;
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .next-state-conditions {
+  gap: 12px;
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-conditions
+  > label {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: var(--fd-control-height);
+  padding-left: 10px;
+  border-radius: var(--fd-radius-control);
+  background: var(--fd-sidebar-field);
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-conditions
+  > label
+  > span {
+  font: 400 12px/20px var(--sans);
+  color: var(--fd-sidebar-control);
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-conditions
+  .foundry-select-trigger {
+  background: transparent;
+  border: 0;
+  text-align: right;
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-conditions
+  .foundry-select-value {
+  text-align: right;
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-evidence-scroll
+  > .foundry-state-measurement {
+  margin-top: 8px;
+  padding-top: 0;
+  border: 0;
+  font-variant-numeric: tabular-nums;
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .next-state-conditions h2 {
+  margin: 0;
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-evidence-scroll
+  h2 {
+  font: 600 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-conditions
+  :is(select, .foundry-select-trigger) {
+  min-height: 32px;
+  height: 32px;
+  border-radius: var(--fd-radius-control);
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .next-state-evidence-scroll {
+  padding: 16px;
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-evidence-scroll
+  > *
+  + * {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .state-ready-note {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px 8px;
+  padding: 12px;
+  border: 0;
+  border-radius: var(--fd-radius-control);
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .state-ready-note strong {
+  font: 600 12px/20px var(--sans);
+  overflow-wrap: anywhere;
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .state-ready-note > span {
+  grid-column: 2;
+  font: 400 11px/18px var(--sans);
+  overflow-wrap: anywhere;
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .next-state-target {
+  gap: 6px;
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .next-state-target p {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-target
+  p.next-state-help {
+  font: 400 11px/18px var(--fd-font-code);
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-requested
+  dl
+  > div {
+  min-height: 28px;
+  gap: 16px;
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-requested
+  dl
+  > div[hidden] {
+  display: none;
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .next-state-requested dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-axis:last-of-type {
+  border-bottom: 0;
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .next-state-axis summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  gap: 8px;
+  min-height: 36px;
+  border-radius: var(--fd-radius-compact);
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-axis
+  summary::after {
+  content: none;
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-axis
+  summary
+  > span:nth-child(2) {
+  color: var(--muted);
+  font: 400 11px/18px var(--sans);
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-axis[open]
+  .foundry-state-chevron {
+  transform: rotate(180deg);
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  .next-state-axis[data-status='unsupported']
+  summary
+  > span:nth-child(2) {
+  color: var(--fd-color-warning);
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .state-preview-stage {
+  background: var(--fd-color-canvas);
+}
+:root[data-foundry-pilot='states'] [data-next] .foundry-state-interior .state-preview-viewport {
+  border-radius: var(--fd-radius-control);
+}
+:root[data-foundry-pilot='states']
+  [data-next]
+  .foundry-state-interior
+  :is(button, summary, select, .foundry-select-trigger):focus-visible {
+  outline: 2px solid var(--fd-color-focus);
+  outline-offset: 2px;
+}

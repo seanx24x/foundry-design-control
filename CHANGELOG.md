@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0-beta.24 - 2026-11-04
+
+- Make the refined studio foundations the default, with local Geist typography, Lucide and property-specific icons, neutral selection states, and shared control geometry in light and dark themes.
+- Unify the 320px navigation rail and the visual system across Canvas, Design System, Component Workshop, Motion, Typography, Recipes, State Workbench, Responsive Lab, Content Stress, Visual Agent, Branches, Memory, Review and Delivery.
+- Add direct-manipulation numeric controls, richer colour and gradient editing, grouped reset and restoration controls, and keyboard-safe draft handling.
+- Preserve reviewed changes through connectivity failures and make interrupted Apply recovery inspect and explicitly confirm current source without silently reverting files or duplicating a run.
+- Strengthen stale-command, preview-owner, inclusion, cancellation and resume-transaction guards with targeted unit and browser coverage.
+- Patch Sharp to 0.35.5, require the patched MCP server SDK and Zod releases, and include the Keyline icon redistribution notice in the Inspector package.
+
 ## 0.2.0-beta.23 - 2026-09-25
 
 - Made the redesigned Foundry workspace the default, with an explicit `ui=legacy` fallback and continued support for existing `ui=next` links.

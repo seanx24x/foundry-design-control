@@ -5,8 +5,93 @@ import {
   NEXT_ICONS,
   NEXT_ICON_SCOPE,
   NEXT_TOOL_ICONS,
+  NEXT_PROPERTY_ICONS,
+  inspectorPropertyIcon,
   refineNextIcons,
 } from '../public/next-icons.js';
+
+test('inspector font and opacity symbols are distinct, native 16px and decorative', () => {
+  assert.equal(
+    new Set(['fontFamily', 'fontSize', 'opacity'].map((key) => NEXT_PROPERTY_ICONS[key])).size,
+    3,
+  );
+  for (const property of ['fontFamily', 'fontSize', 'opacity']) {
+    const svg = inspectorPropertyIcon(property);
+    assert.match(svg, /viewBox="0 0 16 16"/);
+    assert.match(svg, /data-icon-family="foundry"/);
+    assert.match(svg, /aria-hidden="true" focusable="false"/);
+    assert.match(svg, /stroke="currentColor" stroke-width="1.25"/);
+    assert.doesNotMatch(svg, /<text|non-scaling-stroke/);
+    assert.ok(svg.includes(NEXT_PROPERTY_ICONS[property]));
+  }
+  assert.equal(inspectorPropertyIcon('unsupportedProperty'), null);
+  assert.equal(inspectorPropertyIcon('toString'), null);
+});
+
+test('each scrubbable Next property has an explicit field icon, never a category fallback', () => {
+  const adapter = readFileSync(
+    new URL('../../../packages/web-adapter/src/index.ts', import.meta.url),
+    'utf8',
+  );
+  const next = readFileSync(
+    new URL('../../../packages/web-adapter/src/next-inspector.ts', import.meta.url),
+    'utf8',
+  );
+  const allowed = new Set([...next.matchAll(/^  '([^']+)',/gm)].map((match) => match[1]));
+  const properties = [
+    ...adapter.matchAll(/(?:pxControl|numberStyleControl)\(element, computed, '[^']+', '([^']+)'/g),
+  ]
+    .map((match) => match[1])
+    .filter((property) => allowed.has(property));
+  assert.ok(properties.length >= 20);
+  for (const property of [
+    ...properties,
+    'paddingHorizontal',
+    'paddingVertical',
+    'paddingLinked',
+    'radiusLinked',
+  ]) {
+    assert.ok(NEXT_PROPERTY_ICONS[property], `Missing field icon: ${property}`);
+    assert.match(inspectorPropertyIcon(property), /viewBox="0 0 16 16"/);
+  }
+  const source = readFileSync(new URL('../public/next-workspace.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /icon\(control\.category/);
+});
+
+test('spacing sides, inside/outside, axes and corners retain distinct geometry', () => {
+  const keys = [
+    'left',
+    'top',
+    'width',
+    'height',
+    'gap',
+    'rowGap',
+    'columnGap',
+    'paddingTop',
+    'paddingRight',
+    'paddingBottom',
+    'paddingLeft',
+    'paddingHorizontal',
+    'paddingVertical',
+    'paddingLinked',
+    'marginTop',
+    'marginRight',
+    'marginBottom',
+    'marginLeft',
+    'borderWidth',
+    'borderTopLeftRadius',
+    'borderTopRightRadius',
+    'borderBottomRightRadius',
+    'borderBottomLeftRadius',
+    'radiusLinked',
+  ];
+  assert.equal(new Set(keys.map((key) => NEXT_PROPERTY_ICONS[key])).size, keys.length);
+  for (const property of keys) {
+    const svg = inspectorPropertyIcon(property);
+    assert.match(svg, /aria-hidden="true" focusable="false"/);
+    assert.doesNotMatch(svg, /<text|non-scaling-stroke|#[0-9a-f]{3}/i);
+  }
+});
 
 test('pending changes uses the comparison glyph, not the theme sun', () => {
   const node = {

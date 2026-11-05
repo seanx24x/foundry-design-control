@@ -1,4 +1,6 @@
+import { foundryFoundationsEnabled } from './foundry-foundations.js';
 // Next-only presentation. The adapter remains the owner of saved project memory.
+import { createPilotDesignMemory } from './foundry-pilot-memory.js';
 export function memoryCaptureAvailability({ connected, canCapture, busy, title, summary }) {
   if (busy) return { disabled: true, message: 'Saving decision…' };
   if (!connected)
@@ -89,6 +91,7 @@ export function createNextDesignMemory(root) {
   capturePanel.append(saveArea);
   root.querySelector('.decision-memory-footer > span').textContent =
     'Saved guidance informs future edits. Source changes still require reviewed Apply.';
+  const pilot = foundryFoundationsEnabled() ? createPilotDesignMemory(root) : null;
   let state = {},
     activeId,
     base,
@@ -119,13 +122,17 @@ export function createNextDesignMemory(root) {
   function refreshAvailability() {
     const availability = memoryCaptureAvailability({
       ...state,
+      busy: state.busy || state.actionBusy,
       title: title.value,
       summary: summary.value,
     });
     save.disabled = availability.disabled;
     save.textContent = state.busy ? 'Saving…' : 'Save decision';
-    saveHelp.textContent = state.error || availability.message;
-    saveHelp.dataset.error = String(Boolean(state.error));
+    saveHelp.textContent =
+      state.error ||
+      state.actionError ||
+      (state.actionBusy ? 'Updating saved guidance…' : availability.message);
+    saveHelp.dataset.error = String(Boolean(state.error || state.actionError));
     const selectedOutcome = root.querySelector('[data-decision-outcome][aria-pressed="true"]')
       ?.dataset.decisionOutcome;
     outcomeHelp.textContent =
@@ -139,25 +146,44 @@ export function createNextDesignMemory(root) {
     if (correct)
       correct.disabled =
         !state.connected ||
+        state.busy ||
+        state.actionBusy ||
         !current.summary.value.trim() ||
         sameMemoryDraft(
           { summary: current.summary.value, rationale: current.rationale.value },
           base,
         );
     for (const action of stage.querySelectorAll('[data-toggle-decision], [data-remove-decision]'))
-      action.disabled = !state.connected;
-    root.querySelector('#decision-memory-import').disabled = !state.connected;
+      action.disabled = !state.connected || state.busy || state.actionBusy;
+    root.querySelector('#decision-memory-import').disabled =
+      !state.connected || state.busy || state.actionBusy;
     const connection = stage.querySelector('.next-memory-edit-help');
     if (connection)
-      connection.textContent = state.connected
-        ? 'Updates saved guidance, not the product source. Your unsubmitted edits stay here when you switch decisions.'
-        : 'Preview offline. Your edits are preserved; reconnect to update guidance.';
+      connection.textContent =
+        state.actionError ||
+        (state.actionBusy
+          ? 'Updating saved guidance… Wait for acknowledgement before trying again.'
+          : state.connected
+            ? 'Updates the saved summary and reasoning, not explicit rules or product source. Unsubmitted edits stay here when you switch decisions.'
+            : 'Preview offline. Your edits are preserved; reconnect to update guidance.');
+    if (connection) connection.setAttribute('role', state.actionError ? 'alert' : 'status');
+    stage.setAttribute('aria-busy', String(Boolean(state.actionBusy)));
   }
   form.addEventListener('input', refreshAvailability);
   outcome.addEventListener('click', () => queueMicrotask(refreshAvailability));
   stage.addEventListener('input', refreshAvailability);
-  function update({ decision, decisions, filtered, connected, canCapture, busy, error }) {
-    state = { connected, canCapture, busy, error };
+  function update({
+    decision,
+    decisions,
+    filtered,
+    connected,
+    canCapture,
+    busy,
+    error,
+    actionBusy,
+    actionError,
+  }) {
+    state = { connected, canCapture, busy, error, actionBusy, actionError };
     const changed = activeId !== decision?.id;
     activeId = decision?.id;
     base = decision ? { summary: decision.summary, rationale: decision.rationale ?? '' } : null;
@@ -231,6 +257,7 @@ export function createNextDesignMemory(root) {
         'New decisions will appear here. Import an existing library or capture one on the right.';
     }
     refreshAvailability();
+    pilot?.update({ decision, decisions, filtered, connected, canCapture, busy, error });
     stage.scrollTop = changed ? 0 : (scroll ?? 0);
   }
   return { capture, update, refreshAvailability };

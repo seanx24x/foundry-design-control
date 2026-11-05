@@ -1,4 +1,6 @@
+import { foundryFoundationsEnabled } from './foundry-foundations.js';
 // Next presentation only. Keep the existing motion nodes and their acknowledged handlers.
+import { refinePilotMotion } from './foundry-pilot-motion.js';
 export function motionAvailability(selection, motion, connected) {
   if (!selection)
     return {
@@ -50,6 +52,7 @@ const node = (tag, className, text) => {
 };
 
 export function createNextMotionStudio(root) {
+  const pilot = foundryFoundationsEnabled();
   const stage = root.querySelector('#motion-studio-stage');
   const properties = root.querySelector('#motion-studio-properties');
   const list = root.querySelector('#motion-studio-list');
@@ -127,6 +130,7 @@ export function createNextMotionStudio(root) {
             motion: active.dataset.motionStudioSelect,
             section: active.closest('details')?.dataset.motionSection,
             summary: active.tagName === 'SUMMARY',
+            curveHandle: active.dataset.curveHandle,
           }
         : null;
       if (!currentKey) return;
@@ -233,6 +237,17 @@ export function createNextMotionStudio(root) {
       const keyframe = propertyScroll.querySelector('.motion-studio-keyframe');
       const timing = propertyScroll.querySelector('.motion-timing-section');
       if (timing) propertyScroll.prepend(timing);
+      if (pilot && timing) {
+        const fields = timing.querySelector('.motion-studio-fields');
+        const advanced = node('div', 'motion-studio-fields');
+        for (const label of [...fields.querySelectorAll('label')]) {
+          const field = label.querySelector('[data-studio-property]');
+          if (field && ['iterations', 'direction', 'fill'].includes(field.dataset.studioProperty))
+            advanced.append(label);
+        }
+        if (advanced.children.length)
+          timing.append(details(advanced, 'More playback options', 'timing-options'));
+      }
       if (keyframe && timing) timing.after(keyframe);
       properties.replaceChildren(propertyHead, propertyScroll);
       stage.replaceChildren(header, scroll);
@@ -279,6 +294,7 @@ export function createNextMotionStudio(root) {
       root.querySelector('#motion-studio-review').textContent = 'Review changes';
       root.querySelector('.motion-studio-footer > span').textContent =
         'Playback is temporary. Property edits go to Review before source Apply.';
+      if (pilot) refinePilotMotion(root, { motion, availability });
       observer.observe(scroll);
       scroll.style.setProperty(
         '--motion-scrollbar-width',
@@ -294,6 +310,10 @@ export function createNextMotionStudio(root) {
         [...root.querySelectorAll('details')]
           .find((item) => item.dataset.motionSection === focus.section)
           ?.querySelector('summary')
+          ?.focus({ preventScroll: true });
+      if (focus?.curveHandle)
+        root
+          .querySelector(`[data-curve-handle="${focus.curveHandle}"]`)
           ?.focus({ preventScroll: true });
     },
   };

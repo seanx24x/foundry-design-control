@@ -1840,6 +1840,7 @@ test('marks interrupted source work for explicit resume and preserves run identi
       expectedDesignGraphRevision: null,
       currentRevision: 'rev-1',
       currentDesignGraphRevision: null,
+      sourceProof: projectSourceProof(),
     }),
     /Resume revision conflict/,
   );
@@ -1848,6 +1849,7 @@ test('marks interrupted source work for explicit resume and preserves run identi
     expectedDesignGraphRevision: null,
     currentRevision: 'rev-1',
     currentDesignGraphRevision: null,
+    sourceProof: projectSourceProof(),
   });
   assert.equal(stored.applyRuns.length, 1);
   assert.equal(stored.applyRuns[0]?.state, 'queued');

@@ -1,0 +1,315 @@
+/* Workshop owns its own library, real gallery and Properties rail. Never alter
+   the specimen iframe, its returned product background or the hidden bridge. */
+:root[data-foundry-pilot='components'] [data-next] .center-workspace {
+  border-radius: 0;
+  background: var(--fd-shell-background);
+  overflow: hidden;
+}
+:root[data-foundry-pilot='components'] [data-next] .component-workshop-mode:not([hidden]) {
+  display: grid;
+  grid-template-columns: var(--layers-dock-width) minmax(0, 1fr) 300px;
+  grid-template-rows: 44px minmax(0, 1fr) 44px;
+  background: var(--fd-shell-background);
+}
+:root[data-foundry-pilot='components'] [data-next] .component-workshop-shell {
+  display: contents;
+}
+:root[data-foundry-pilot='components'] [data-next] .component-workshop-mode > .mode-head {
+  grid-column: 2 / -1;
+  grid-row: 1;
+  min-width: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+:root[data-foundry-pilot='components'] [data-next] .component-workshop-mode > .mode-head p {
+  display: none;
+}
+:root[data-foundry-pilot='components'] [data-next] .component-workshop-browser {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  grid-template-rows: 60px 40px 48px minmax(0, 1fr);
+  border: 0;
+  background: var(--fd-shell-background);
+  color: var(--fd-shell-ink);
+  --surface: var(--fd-shell-background);
+  --surface-2: var(--fd-sidebar-field);
+  --surface-3: var(--fd-sidebar-hover);
+  --ink: var(--fd-shell-ink);
+  --muted: var(--fd-shell-muted);
+  --line: var(--fd-sidebar-divider);
+  --selection: var(--fd-shell-focus);
+  --selection-soft: var(--fd-shell-selected);
+  --selection-ink: var(--fd-shell-ink);
+}
+:root[data-foundry-pilot='components'] [data-next] .workshop-browser-head {
+  height: 40px;
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+}
+:root[data-foundry-pilot='components'] [data-next] .component-workshop-browser > .search-field {
+  height: 32px;
+  min-height: 32px;
+  margin: 0 12px 8px;
+  border: 1px solid var(--fd-sidebar-boundary);
+  border-bottom-color: var(--fd-sidebar-control);
+  border-radius: 6px;
+  background: var(--fd-sidebar-field);
+}
+:root[data-foundry-pilot='components'] [data-next] .component-workshop-browser input::placeholder {
+  color: var(--fd-shell-muted);
+  opacity: 1;
+}
+:root[data-foundry-pilot='components']
+  [data-next]
+  .component-workshop-browser
+  > .search-field:focus-within {
+  outline: 2px solid var(--fd-shell-focus);
+  outline-offset: 2px;
+  box-shadow: none;
+  border-color: transparent;
+}
+:root[data-foundry-pilot='components']
+  [data-next]
+  .component-workshop-browser
+  > .search-field
+  input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+:root[data-foundry-pilot='components'] [data-next] .workshop-component-row {
+  color: var(--fd-shell-muted);
+  border-radius: 6px;
+}
+:root[data-foundry-pilot='components'] [data-next] .workshop-component-row.is-active {
+  color: var(--fd-shell-ink);
+}
+:root[data-foundry-pilot='components'] [data-next] .workshop-component-row.is-active > svg {
+  color: inherit;
+}
+:root[data-foundry-pilot='components'] [data-next] .next-workshop-center {
+  grid-column: 2;
+  grid-row: 2;
+  --workshop-content-inset: 24px;
+  background: var(--surface);
+}
+:root[data-foundry-pilot='components'] [data-next] .component-workshop-contract {
+  grid-column: 3;
+  grid-row: 2;
+  overflow: hidden;
+  border-top: 0;
+}
+:root[data-foundry-pilot='components'] [data-next] .component-workshop-footer {
+  grid-column: 2 / -1;
+  grid-row: 3;
+  /* This is the working pane's actual bottom edge, beside the square sidebar. */
+  border-radius: 0 0 12px 12px;
+}
+:root[data-foundry-pilot='components'] [data-next] .next-gallery-intro h3,
+:root[data-foundry-pilot='components'] [data-next] .next-workshop-section h3 {
+  font: 600 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='components'] [data-next] .next-gallery-intro p {
+  max-width: 72ch;
+}
+:root[data-foundry-pilot='components'] [data-next] .next-specimen {
+  border-radius: 10px;
+}
+:root[data-foundry-pilot='components'] [data-next] .next-specimen.is-selected {
+  border-color: var(--fd-color-control);
+  box-shadow: none;
+}
+:root[data-foundry-pilot='components'] [data-next] .next-specimen.is-selected > header {
+  background: var(--fd-color-selected);
+  color: var(--ink);
+}
+:root[data-foundry-pilot='components'] [data-next] .next-specimen.is-selected > header span {
+  color: inherit;
+}
+:root[data-foundry-pilot='components']
+  [data-next]
+  .component-workshop-mode
+  :is(.workshop-instance-row, .workshop-scope, .workshop-state-grid button) {
+  border-radius: var(--fd-radius-control);
+}
+:root[data-foundry-pilot='components'] [data-next] .component-workshop-mode .workshop-scope button {
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='components']
+  [data-next]
+  .component-workshop-mode
+  .workshop-scope
+  button.is-active {
+  background: var(--selection-soft);
+  color: var(--selection-ink);
+}
+:root[data-foundry-pilot='components'] [data-next] .workshop-authoring-form > label {
+  display: grid;
+  grid-template-columns: minmax(84px, 0.65fr) minmax(0, 1fr);
+  align-items: center;
+  min-height: var(--fd-control-height);
+  gap: 8px;
+  padding: 0 10px;
+  border-radius: var(--fd-radius-control);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+:root[data-foundry-pilot='components']
+  [data-next]
+  .workshop-authoring-form
+  :is(input, .foundry-select-trigger) {
+  padding-inline: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  font: 400 12px/20px var(--sans);
+}
+:root[data-foundry-pilot='components']
+  [data-next]
+  .workshop-authoring-form
+  > label:has(:focus-visible) {
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+}
+:root[data-foundry-pilot='components']
+  [data-next]
+  .workshop-authoring-form
+  :is(input, .foundry-select-trigger):focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+:root[data-foundry-pilot='components'] [data-next] .workshop-axis-summary {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font: 400 11px/18px var(--sans);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+:root[data-foundry-pilot='components'] [data-next] .workshop-axis-summary p {
+  margin: 0;
+  font: inherit;
+}
+:root[data-foundry-pilot='components'] [data-next] .workshop-authoring-error {
+  color: var(--fd-color-error);
+}
+:root[data-foundry-pilot='components'] [data-next] [data-workshop-create-variant] {
+  min-height: var(--fd-control-height);
+  padding: 0 12px;
+  border-radius: var(--fd-radius-control);
+}
+:root[data-foundry-pilot='components']
+  [data-next]
+  .workshop-variant-properties
+  .next-workshop-facts
+  > div {
+  padding: 6px 10px;
+  border-radius: var(--fd-radius-control);
+  background: var(--surface-2);
+}
+:root[data-foundry-pilot='components']
+  [data-next]
+  .workshop-authoring-form
+  input[aria-invalid='true'] {
+  color: var(--fd-color-error);
+}
+:root[data-foundry-pilot='components']
+  [data-next]
+  .component-workshop-mode
+  :is(button, input, summary):focus-visible {
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+:root[data-foundry-pilot='components']
+  [data-next]
+  .component-workshop-mode
+  :is(.next-specimen-select, .workshop-component-row):focus-visible {
+  outline-offset: -3px;
+}
+@media (max-width: 1100px) {
+  :root[data-foundry-pilot='components'] [data-next] .component-workshop-mode:not([hidden]) {
+    grid-template-columns: var(--layers-dock-width) minmax(0, 1fr);
+    grid-template-rows: 44px minmax(360px, 1fr) auto 44px;
+    overflow-y: auto;
+  }
+  :root[data-foundry-pilot='components'] [data-next] .component-workshop-browser {
+    grid-row: 1 / -1;
+  }
+  :root[data-foundry-pilot='components'] [data-next] .component-workshop-contract {
+    grid-column: 2;
+    grid-row: 3;
+    overflow: visible;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  :root[data-foundry-pilot='components'] [data-next] .component-workshop-footer {
+    grid-column: 2;
+    grid-row: 4;
+    height: auto;
+    padding-block: 8px;
+  }
+  :root[data-foundry-pilot='components'] [data-next] .next-workshop-properties {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+}
+@media (max-width: 700px) {
+  :root[data-foundry-pilot='components'] [data-next] .workshop-authoring-form {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  :root[data-foundry-pilot='components'] [data-next] .workshop-authoring-form > label {
+    grid-template-columns: 116px minmax(0, 1fr);
+  }
+  :root[data-foundry-pilot='components'] [data-next] .component-workshop-mode:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    background: var(--fd-shell-background);
+    border-radius: 0 0 12px 12px;
+  }
+  :root[data-foundry-pilot='components'] [data-next] .component-workshop-browser {
+    order: -1;
+    flex: none;
+    height: 252px;
+    min-height: 252px;
+    max-height: 252px;
+  }
+  :root[data-foundry-pilot='components'] [data-next] .component-workshop-mode > .mode-head {
+    flex: none;
+    border-radius: 12px 12px 0 0;
+  }
+  :root[data-foundry-pilot='components'] [data-next] .next-workshop-center {
+    flex: none;
+    display: block;
+    min-height: 0;
+    --workshop-content-inset: 16px;
+  }
+  :root[data-foundry-pilot='components'] [data-next] .next-workshop-scroll {
+    overflow: visible;
+    scrollbar-gutter: auto;
+  }
+  :root[data-foundry-pilot='components'] [data-next] .next-workshop-properties {
+    display: flex;
+  }
+  :root[data-foundry-pilot='components'] [data-next] .component-workshop-footer {
+    flex: none;
+    border-radius: 0;
+  }
+  :root[data-foundry-pilot='components'] [data-next] .next-gallery-heading > div {
+    flex-wrap: wrap;
+    gap: 0 8px;
+  }
+  :root[data-foundry-pilot='components'] [data-next] .next-gallery-heading {
+    min-height: 52px;
+    padding-block: 8px;
+  }
+}
+@media (pointer: coarse) {
+  :root[data-foundry-pilot='components'] [data-next] .workshop-authoring-form input:focus {
+    font-size: 16px;
+  }
+}
