@@ -79,7 +79,18 @@ requirePath('Codex plugin logo', codexManifest.interface?.logo);
 
 const openAiSubmission = readJson('submission/openai/submission.json');
 if (openAiSubmission.submissionType !== 'skills-only')
-  failures.push('OpenAI submission must preserve the skills-only local-first boundary');
+  failures.push('Approved desktop local-MCP submissions use the portal Skills only upload path');
+if (openAiSubmission.shortDescription?.length > 30)
+  failures.push('OpenAI listing subtitle exceeds 30 characters');
+if (codexManifest.requires_local_executor !== true)
+  failures.push('Foundry requires local desktop execution');
+if (
+  !readFileSync(
+    join(pluginRoot, 'skills/foundry-design-control/scripts/foundry.sh'),
+    'utf8',
+  ).includes(`--package=foundry-design@${release.version} `)
+)
+  failures.push('Plugin CLI helper must pin the reviewed release');
 for (const field of [
   'name',
   'shortDescription',

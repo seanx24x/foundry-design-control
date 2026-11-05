@@ -91,4 +91,19 @@ for (const relativePath of ['README.md', 'DISTRIBUTION.md']) {
   writeFileSync(path, replaceCursorInstallUrl(markdown, release.version, relativePath));
 }
 
+const pluginLauncherPath = join(
+  root,
+  'plugins/foundry-design-control/skills/foundry-design-control/scripts/foundry.sh',
+);
+const pluginLauncher = readFileSync(pluginLauncherPath, 'utf8');
+if (!/--package=foundry-design@\S+/.test(pluginLauncher))
+  throw new Error('Plugin skill launcher is missing its versioned package spec.');
+writeFileSync(
+  pluginLauncherPath,
+  pluginLauncher.replace(
+    /--package=foundry-design@\S+/,
+    `--package=foundry-design@${release.version}`,
+  ),
+);
+
 console.log(`Synchronized Foundry release metadata at ${release.version}.`);

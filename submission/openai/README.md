@@ -1,41 +1,37 @@
-# OpenAI Plugin Directory submission
+# OpenAI directory submission candidate
 
-Foundry is prepared as a skills-first plugin for the universal Plugin Directory shared by ChatGPT and Codex.
+Foundry requires the **desktop-only local-MCP** route. This is not a remote HTTPS MCP service and is not a skills-only workaround. OpenAI currently limits local-MCP submissions to approved partners. No organization allowlist, portal submission, or approval is claimed here.
 
-## Why skills first
+## Access comes first
 
-Foundry's runtime and source-editing bridge are intentionally local. The public OpenAI MCP submission flow requires a publicly reachable HTTPS MCP server, while Foundry's MCP server runs on the user's machine and communicates only with its loopback runtime. The skills-first submission preserves that local-first boundary.
+Find the intended publishing organization's ID in [OpenAI Platform settings](https://platform.openai.com/settings/organization/general), then use [the access-request draft](access-request.md) with your actual OpenAI representative. Wait for explicit allowlist confirmation. Do not send credentials, invent a representative, or introduce a hosted proxy just to bypass this gate.
 
-After installing the directory plugin, the Foundry skill guides the user through installing the versioned local CLI and MCP bridge. A coding-agent restart is required when the local MCP connection is installed or updated.
-
-## Build the upload
-
-Run:
+## Build and inspect
 
 ```bash
 pnpm openai:submission
+pnpm test:submission
 ```
 
-This produces two ignored artifacts:
+Each build creates a new directory under `artifacts/openai/`, preserving earlier candidates and sealed npm release artifacts. It contains a ZIP with root `plugin.json`, `mcp.json`, unchanged skill instructions, a pinned CLI helper, assets, policy files, and an unminified self-contained stdio bridge with its dependency code, source map and third-party notices. No lifecycle hooks, app references, alternate host manifests, credentials or user sessions are included.
 
-- `artifacts/openai/foundry-design-control-openai-skill-<version>.zip`
-- `artifacts/openai/foundry-design-control-openai-plugin-<version>.zip`
+`provenance.json` stays outside the public ZIP. It records the source commit, dirty state, source input hashes, bundled dependency versions and ZIP digest. A dirty candidate is a rehearsal, not an immutable review version. Build again from a committed checkout before uploading. This prepares a directory candidate only. It does not publish or change npm beta/latest tags.
 
-Use the skill zip for the portal's **Skills only** submission. The plugin zip is retained for local Plugin Directory testing and contains no MCP declaration.
+## Submission after access approval
 
-## Portal checklist
+1. Confirm the correct publishing organization and its identity verification. The publisher needs organization-owner or Apps Management Write access.
+2. Complete a clean desktop install and the workflows in [the reviewer guide](../reviewer-guide.md). Expected cases are not executed evidence.
+3. Supply a genuine workflow recording. The website's authored concept film is not agent/source-verification evidence.
+4. Open [the plugin portal](https://platform.openai.com/plugins), select **Create plugin → Skills only → Upload ZIP**, and upload the **complete desktop plugin ZIP, including local MCP**. That UI label does not mean removing the bridge.
+5. Review imported listing metadata and test cases, choose country availability, and enter any private reviewer details separately. No Foundry account or API key is required.
+6. The publisher completes policy attestations, submits, and explicitly publishes only after approval.
 
-1. Confirm the submitting OpenAI Platform organization grants **Apps Management: Write**.
-2. Complete individual or business identity verification in the same organization.
-3. Create a **Skills only** submission.
-4. Copy the listing fields from `submission.json`.
-5. Upload the generated skill zip.
-6. Add the five positive and three negative cases from `test-cases.json`.
-7. Select the intended country availability.
-8. Complete the policy attestations and submit for review.
+If `requires_local_executor` or local MCP is rejected, confirm allowlisting with OpenAI rather than stripping the restriction. Automated smoke tests do not prove a real desktop install or directory acceptance.
 
-The portal-only identity, availability, and policy decisions must be completed by the publisher. Do not describe Foundry as directory-installed until OpenAI approves the listing.
+## Official references
 
-## Future MCP submission
+- [Desktop-only plugins](https://developers.openai.com/plugins/deploy/desktop-only)
+- [Submission and publishing](https://developers.openai.com/plugins/deploy/submission)
+- [Package structure](https://developers.openai.com/plugins/build/plugins)
 
-Do not introduce a hosted MCP proxy solely to satisfy directory submission. Revisit an MCP-backed OpenAI listing only if the platform adds support for reviewed local MCP packages, or if Foundry deliberately adopts an optional hosted service with an updated privacy model.
+Requirements checked on 2026-11-05. Recheck before upload.

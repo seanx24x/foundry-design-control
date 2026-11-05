@@ -23,6 +23,7 @@
     "release:check": "node scripts/sync-package-readmes.mjs && pnpm release:artifact-contract && node scripts/release-check.mjs && node scripts/release-safety-check.mjs && pnpm release:trust-contract",
     "distribution:check": "node scripts/distribution-check.mjs",
     "openai:submission": "node scripts/build-openai-submission.mjs",
+    "test:submission": "node --test scripts/submission-package.test.mjs",
     "release:pack": "node scripts/pack-release.mjs",
     "release:verify-artifacts": "node scripts/verify-release-artifacts.mjs",
     "release:publish": "node scripts/publish-release.mjs",

@@ -67,4 +67,5 @@ jobs:
           path: artifacts/compatibility/*.json
           if-no-files-found: ignore
       - run: pnpm distribution:check
+      - run: pnpm test:submission
       - run: pnpm mcpb:build

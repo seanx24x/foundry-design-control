@@ -218,7 +218,18 @@ for (const [label, copy] of [
       failures.push(`${label} is missing skill file ${localPath}`);
       continue;
     }
-    if (digest(sourcePath) !== digest(copiedPath)) {
+    const expected =
+      label === 'Plugin' && localPath === join('scripts', 'foundry.sh')
+        ? createHash('sha256')
+            .update(
+              readFileSync(sourcePath, 'utf8').replace(
+                '--package=foundry-design@latest',
+                `--package=foundry-design@${version}`,
+              ),
+            )
+            .digest('hex')
+        : digest(sourcePath);
+    if (expected !== digest(copiedPath)) {
       failures.push(`${label} skill copy drifted at ${localPath}`);
     }
   }

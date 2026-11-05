@@ -1,4 +1,4 @@
-import { cpSync, existsSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
@@ -15,4 +15,17 @@ if (!existsSync(join(source, 'SKILL.md'))) {
 for (const target of targets) {
   rmSync(target, { recursive: true, force: true });
   cpSync(source, target, { recursive: true });
+  // Public plugin review must not execute a moving CLI tag. Keep the direct
+  // npm-installed skill's existing update behavior separate from this package.
+  if (target.includes(join('plugins', 'foundry-design-control'))) {
+    const version = JSON.parse(readFileSync(join(root, 'release.json'), 'utf8')).version;
+    const launcher = join(target, 'scripts/foundry.sh');
+    writeFileSync(
+      launcher,
+      readFileSync(launcher, 'utf8').replace(
+        '--package=foundry-design@latest',
+        `--package=foundry-design@${version}`,
+      ),
+    );
+  }
 }

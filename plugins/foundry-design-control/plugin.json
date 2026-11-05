@@ -7,7 +7,7 @@
     "name": "Sean Lynch"
   },
   "homepage": "https://withfoundry.ai",
-  "repository": "https://withfoundry.ai",
+  "repository": "https://github.com/seanx24x/foundry-design-control",
   "license": "MIT",
   "keywords": ["design", "visual-inspector", "motion", "mcp", "developer-tools"]
 }

@@ -30,13 +30,13 @@ npx foundry-design install-agent codex
 
 The repository includes an Agent Plugin manifest, Codex interface metadata, the Foundry skill, and its MCP connection for marketplace validation. A newly installed or updated plugin becomes available in a new Codex task.
 
-Foundry's public OpenAI directory submission is skills-first because the production MCP bridge is intentionally local and loopback-only. Build the upload and review packet with:
+Foundry needs the desktop-only local-MCP submission route. OpenAI currently limits this route to approved partners and requires the submitting organization to be allowlisted. Build the self-contained candidate and review packet with:
 
 ```bash
 pnpm openai:submission
 ```
 
-See [the OpenAI submission README](submission/openai/README.md) for the listing copy, test cases, portal requirements, and the boundary for a future MCP-backed listing.
+See [the OpenAI submission README](submission/openai/README.md) for the access gate, listing copy, test cases, and validation boundaries. Do not submit a skills-only workaround that silently installs the same local bridge.
 
 ## Cursor
 
@@ -77,7 +77,7 @@ The release workflow can publish the seven beta packages with npm trusted publis
 ## Public review boundaries
 
 - Cursor marketplace submission: `https://cursor.com/marketplace/publish`
-- Anthropic plugin submission: `https://claude.ai/settings/plugins/submit`
-- OpenAI Plugin Directory submission: `https://platform.openai.com/apps-manage`
+- Claude plugin directory: `https://claude.ai/directory/manage`, with [submission notes](submission/claude/README.md). The separate `claude-plugins-official` marketplace requires an Anthropic partner discussion.
+- OpenAI Plugin Directory: `https://platform.openai.com/plugins`, after local-MCP allowlisting.
 
 Do not describe a plugin as marketplace-installed until its listing has passed that host's review. The npm installer is the supported public route until then.

@@ -9,4 +9,4 @@ if [[ -f "$foundry_design_home/package.json" && -f "$foundry_design_home/package
   exec pnpm --dir "$foundry_design_home" foundry "$@"
 fi
 
-exec npx -y --prefer-online --package=foundry-design@latest foundry-design "$@"
+exec npx -y --prefer-online --package=foundry-design@0.2.0-beta.25 foundry-design "$@"
