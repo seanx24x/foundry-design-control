@@ -6,6 +6,16 @@ Foundry requires the **desktop-only local-MCP** route. This is not a remote HTTP
 
 Find the intended publishing organization's ID in [OpenAI Platform settings](https://platform.openai.com/settings/organization/general), then use [the access-request draft](access-request.md) with your actual OpenAI representative. Wait for explicit allowlist confirmation. Do not send credentials, invent a representative, or introduce a hosted proxy just to bypass this gate.
 
+## Confirmed listing facts and remaining preparation
+
+The publisher has selected **Sean Lynch** as the public name and confirmed **no payments or purchases**. These values populate the package; developer identity verification in the portal remains unverified. The base listing is English and accurately states that the interface and documentation are currently English-only. No translations are fabricated.
+
+Country availability is still a publisher decision. English-only is a language description, not a country selection. Recommend all countries supported by the host, but leave `publication.countries` absent until the publisher explicitly confirms. An empty array would actively remove country restrictions and must not be inferred.
+
+The candidate rasterizes the existing logo into a 512px PNG, retains review prompts, five distinct tool-specific positive cases and three negative cases, declares no commerce, and includes release notes. MCP read/write/destructive/open-world annotations are explicit in the bundled candidate bridge. The published npm bridge and Claude registry launcher remain at their existing release; pending source annotations do not change those published bytes. A future release must be versioned and verified separately if these server changes are published.
+
+Behavioral cases remain **Not run** for the candidate in the intended desktop client. Stdio discovery is a structural smoke test only. A real demo recording and a verified reviewer-accessible recording URL remain incomplete. Do not substitute the marketing film, a test script or an authored success state.
+
 ## Build and inspect
 
 ```bash

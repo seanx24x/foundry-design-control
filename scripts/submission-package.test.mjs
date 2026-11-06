@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { createInterface } from 'node:readline';
 import test from 'node:test';
+import sharp from 'sharp';
 import { buildSubmission, root } from './build-openai-submission.mjs';
 
 const json = (path) => JSON.parse(readFileSync(path, 'utf8'));
@@ -45,6 +46,25 @@ test('desktop candidate is self-contained, isolated and honest about review gate
         assert.equal(new URL(extension.interface[key]).protocol, 'https:');
       assert.equal(extension.review.test_cases.positive.length, 5);
       assert.equal(extension.review.test_cases.negative.length, 3);
+      assert.equal(extension.interface.developerName, 'Sean Lynch');
+      assert.equal(extension.review.commerce, false);
+      assert.ok(extension.review.commerce_description.includes('does not offer payments'));
+      assert.ok(extension.publication.release_notes.length > 0);
+      assert.equal(
+        extension.publication.countries,
+        undefined,
+        'Unknown targeting must stay absent',
+      );
+      assert.equal(extension.publication.translations, undefined, 'Do not invent translations');
+      assert.match(extension.interface.longDescription, /currently in English/);
+      for (const item of extension.review.test_cases.positive) {
+        assert.equal(typeof item.tools_triggered, 'string');
+        assert.ok(item.tools_triggered.length > 0);
+        assert.match(item.description, /Setup:/);
+        assert.ok(item.expected_behavior.length > 100);
+      }
+      for (const item of extension.review.test_cases.negative)
+        assert.match(item.description, /Expected:/);
       assert.equal(manifest.repository, 'https://github.com/seanx24x/foundry-design-control');
       assert.equal(candidate.report.status, 'candidate-not-submitted');
       assert.ok(
@@ -68,11 +88,24 @@ test('desktop candidate is self-contained, isolated and honest about review gate
       assert.equal(extension.hooks, undefined);
       assert.equal(extension.apps, undefined);
       for (const path of files(extracted)) {
-        if (/\.svg$/.test(path)) continue;
+        if (/\.(svg|png)$/.test(path)) continue;
         const source = readFileSync(path, 'utf8');
         assert.doesNotMatch(source, /\/Users\/seanlynch|[?&]__foundry_token=|[?&]session=ses_/);
       }
     });
+    await t.test(
+      'public listing icon is a real square PNG at listing and composer sizes',
+      async () => {
+        for (const field of ['logo', 'composerIcon']) {
+          const path = join(extracted, extension.interface[field]);
+          const metadata = await sharp(path).metadata();
+          assert.equal(metadata.format, 'png');
+          assert.equal(metadata.width, metadata.height);
+          assert.ok(metadata.width >= (field === 'logo' ? 256 : 48));
+          assert.ok(lstatSync(path).size <= 5 * 1024 * 1024);
+        }
+      },
+    );
     await t.test('dependency code, sources, licensing and input hashes are retained', () => {
       for (const path of [
         'server/index.mjs',
@@ -167,6 +200,28 @@ test('desktop candidate is self-contained, isolated and honest about review gate
           );
           const result = await request(2, 'tools/list', {});
           const names = result.tools.map(({ name }) => name);
+          const readOnlyNames = new Set([
+            'foundry_design_get_change_set',
+            'foundry_design_get_project_design',
+            'foundry_design_get_visual_request',
+            'foundry_design_get_apply_run',
+            'foundry_design_export',
+          ]);
+          for (const tool of result.tools) {
+            for (const key of ['readOnlyHint', 'openWorldHint', 'destructiveHint'])
+              assert.equal(typeof tool.annotations?.[key], 'boolean', `${tool.name}.${key}`);
+            assert.equal(tool.annotations.openWorldHint, false);
+            assert.equal(tool.annotations.readOnlyHint, readOnlyNames.has(tool.name), tool.name);
+            assert.equal(
+              tool.annotations.destructiveHint,
+              !readOnlyNames.has(tool.name) && tool.name !== 'foundry_design_start_session',
+              tool.name,
+            );
+          }
+          for (const item of extension.review.test_cases.positive) {
+            for (const name of item.tools_triggered.split(', '))
+              assert.ok(names.includes(name), `Case names real tool ${name}`);
+          }
           for (const name of [
             'foundry_design_wait_for_work',
             'foundry_design_get_change_set',

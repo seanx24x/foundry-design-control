@@ -12,6 +12,7 @@ import {
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import sharp from 'sharp';
 
 export const root = resolve(import.meta.dirname, '..');
 const json = (path) => JSON.parse(readFileSync(path, 'utf8'));
@@ -40,6 +41,12 @@ export async function buildSubmission() {
   mkdirSync(join(plugin, 'server'), { recursive: true });
   for (const path of ['skills', 'assets'])
     cpSync(join(source, path), join(plugin, path), { recursive: true });
+  // Rasterize the supplied branding without redesigning it. Public listing
+  // requirements are stricter than the portable format's SVG allowance.
+  await sharp(join(source, 'assets/logo.svg'), { density: 384 })
+    .resize(512, 512)
+    .png()
+    .toFile(join(plugin, 'assets/logo.png'));
   for (const path of ['LICENSE', 'PRIVACY.md', 'TERMS.md'])
     cpSync(join(root, path), join(plugin, path));
   const readme = readFileSync(join(root, 'submission/openai/PACKAGE_README.md'), 'utf8');
@@ -57,8 +64,8 @@ export async function buildSubmission() {
     privacyPolicyURL: listing.privacyPolicyURL,
     termsOfServiceURL: listing.termsOfServiceURL,
     defaultPrompt: listing.starterPrompts,
-    logo: './assets/logo.svg',
-    composerIcon: './assets/logo.svg',
+    logo: './assets/logo.png',
+    composerIcon: './assets/logo.png',
   };
   const manifest = json(join(source, 'plugin.json'));
   manifest.extensions = {
@@ -66,14 +73,30 @@ export async function buildSubmission() {
       requires_local_executor: true,
       interface: interfaceMetadata,
       review: {
+        prompts: listing.starterPrompts,
+        ...(typeof listing.commerce === 'boolean'
+          ? {
+              commerce: listing.commerce,
+              commerce_description: listing.commerceDescription,
+            }
+          : {}),
         test_cases: {
-          positive: cases.positive.map(({ name, prompt, expected }) => ({
-            description: name,
+          positive: cases.positive.map(({ name, setup, prompt, tools_triggered, expected }) => ({
+            description: `${name}. Setup: ${setup}`,
             prompt,
+            tools_triggered,
             expected_behavior: expected,
           })),
-          negative: cases.negative.map(({ name, prompt }) => ({ description: name, prompt })),
+          negative: cases.negative.map(({ name, setup, prompt, expected }) => ({
+            description: `${name}. Setup: ${setup}. Expected: ${expected}`,
+            prompt,
+          })),
         },
+      },
+      publication: {
+        release_notes: listing.releaseNotes,
+        // Omit unknown targeting; [] would explicitly remove restrictions.
+        ...(Array.isArray(listing.countries) ? { countries: listing.countries } : {}),
       },
     },
   };
@@ -173,6 +196,7 @@ export async function buildSubmission() {
       'OpenAI organization allowlist confirmation',
       'Fresh desktop client install and workflow review',
       'Genuine reviewer recording',
+      'Publisher country availability decision',
       'Publisher identity, availability and policy decisions',
       'Portal validation and review',
     ],

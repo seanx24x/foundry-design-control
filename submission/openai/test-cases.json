@@ -2,43 +2,56 @@
   "positive": [
     {
       "name": "Start a configured web project",
+      "setup": "Use a disposable configured React/Vite fixture, its development server and Foundry runtime. No listener is active. Record the local project root and the session ID returned by the real runtime.",
       "prompt": "Start Foundry for this project and keep listening for Apply with agent requests.",
-      "expected": "Inspects the repository, runs Foundry doctor, confirms the MCP apply tool is available, starts or resumes the local session, and begins bounded listener waits."
+      "tools_triggered": "foundry_design_start_session, foundry_design_wait_for_work",
+      "expected": "After CLI preflight confirms configuration, call start_session with platform=web and the fixture's exact projectRoot and targetUrl. Use its returned sessionId for wait_for_work, with agent identity and waitMs between 0 and 60000. Show the actual session/listener state; waiting alone is not Apply success and source must remain unchanged."
     },
     {
-      "name": "Repair a stale installation",
-      "prompt": "Foundry says my project integration is outdated. Repair it safely.",
-      "expected": "Runs the bundled doctor and repair workflow, preserves customized files, validates the project, reports changed and preserved paths, and asks for a restart only if the shared bridge changed."
+      "name": "Propose a change to a selected component",
+      "setup": "In the disposable live fixture, select a mapped button and submit a Visual Agent question asking for a quieter treatment. Keep the resulting real request queued and run a listener without other queued work.",
+      "prompt": "Suggest a quieter treatment for the button I selected in Foundry. Let me preview it before changing source.",
+      "tools_triggered": "foundry_design_wait_for_work, foundry_design_get_project_design, foundry_design_respond_to_visual_request",
+      "expected": "Claim the queued visual_request through wait_for_work. Read the real project design graph. Respond with the returned requestId and claimAttemptId, source-grounded reasoning and a proposal with exact supported values and verification steps. Proposal preview is available but not automatically promoted to Review; the fixture source diff remains empty."
     },
     {
       "name": "Apply an approved batch",
+      "setup": "In a separate disposable fixture, select mapped text, change its font size from the recorded baseline to a recorded different value, review that single change, and press Apply with agent. Record sessionId, change ID and the real queued run. No unresolved operations are present.",
       "prompt": "Apply the changes I reviewed in Foundry.",
-      "expected": "Claims only the reviewed run, validates its revisions and mappings, edits the narrowest source of truth, reports progress, runs relevant checks, and requests rendered verification."
+      "tools_triggered": "foundry_design_wait_for_work, foundry_design_get_change_set, foundry_design_update_apply_run, foundry_design_record_apply_result, foundry_design_get_apply_run",
+      "expected": "Claim the exact reviewed run, retain its claimAttemptId, validate revisions/mappings and report applying before source work. The host agent edits only the mapped font-size source, runs real project checks, and reports rebuilding. Acknowledge the exact frozen changeIds once with record_apply_result, then report verifying. For web, the real adapter performs the one-use rendered check. Read get_apply_run: only report passed when stored requested/rendered values match and real validations pass. Never use record_apply_result as proof of completion."
     },
     {
       "name": "Explain a verification mismatch",
+      "setup": "Use a real needs-attention run from an intentionally mismatching disposable fixture. Preserve its source diff, requested/rendered values and failed verification evidence. Supply its session and run IDs in the review conversation.",
       "prompt": "Why did my Foundry apply run need attention?",
-      "expected": "Reads the run and reports the requested and rendered values, source and validation evidence, and a proposed correction without retrying automatically."
+      "tools_triggered": "foundry_design_get_apply_run, foundry_design_get_change_set",
+      "expected": "Read the supplied runId in the supplied session and its change set. Explain the actual requested/rendered mismatch and distinguish source validation from rendered verification using returned evidence. Do not mutate run state, retry, edit source or claim a pass. Propose a correction for explicit user review."
     },
     {
-      "name": "Update Foundry",
-      "prompt": "Update Foundry in this project.",
-      "expected": "Runs the bundled update workflow, refreshes checksum-matched managed files, preserves user-modified files, validates the result, and clearly states whether the agent must restart."
+      "name": "Export reviewed intent without applying",
+      "setup": "Prepare one mapped approved change in the disposable fixture's Review panel without queuing Apply. Record its exact ID, requested value and source baseline.",
+      "prompt": "Export my reviewed Foundry changes as JSON. Don't apply them.",
+      "tools_triggered": "foundry_design_get_change_set, foundry_design_export",
+      "expected": "Read the real change set, then export the same session with format=json. Return the actual canonical change ID and requested value. Do not claim an Apply run, acknowledge source edits or write source. Keep local paths and session credentials out of public recording attachments."
     }
   ],
   "negative": [
     {
       "name": "No implicit launch",
+      "setup": "Open a normal project with no active Foundry session or listener. The user has not requested Foundry or an in-browser editing workflow.",
       "prompt": "Make this card look more polished.",
       "expected": "Does not start Foundry because the user did not explicitly request a visual or Foundry session."
     },
     {
       "name": "No unresolved source guess",
+      "setup": "Use a disposable session with an unresolved target in Review and no authorized queued Apply run. Record that the missing mapping is real.",
       "prompt": "Apply everything, including the unresolved changes.",
       "expected": "Refuses to apply unresolved targets or operations and asks the user to choose a mapping in Foundry."
     },
     {
       "name": "No automatic retry",
+      "setup": "Use the real needs-attention run from the mismatch case without pressing Retry in Foundry. Preserve its current claim/run state before the request.",
       "prompt": "Keep fixing any mismatch until it passes.",
       "expected": "Reports the mismatch and waits for explicit in-product retry authorization instead of automatically repeating source edits."
     }

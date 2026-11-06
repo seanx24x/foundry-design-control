@@ -7,6 +7,14 @@ import { ClaimLeaseKeeper } from './claim-lease.js';
 import { FoundryRuntimeClient } from './client.js';
 import packageJson from '../package.json' with { type: 'json' };
 
+// These tools address one configured Foundry runtime, not arbitrary external
+// services. State updates use the conservative destructive hint because they
+// can replace stored review/run state, even though these handlers do not edit
+// project source or delete files themselves.
+const localRead = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
+const localCreate = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
+const localUpdate = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
+
 const verificationContextSchema = z.object({
   breakpoint: z.string().default('current'),
   theme: z.string().default('current'),
@@ -47,6 +55,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_start_session',
     {
+      annotations: localCreate,
       description:
         'Create a local Foundry design-inspection session. The localhost runtime must already be running.',
       inputSchema: z.object({
@@ -77,6 +86,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_get_change_set',
     {
+      annotations: localRead,
       description:
         'Read the canonical change set and verification results for a Foundry session before editing code.',
       inputSchema: z.object({
@@ -91,6 +101,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_get_project_design',
     {
+      annotations: localRead,
       description:
         'Read the revisioned local project design graph, including tokens, components, variants, viewports, themes, states, and motion presets.',
       inputSchema: z.object({
@@ -107,6 +118,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_wait_for_work',
     {
+      annotations: localUpdate,
       description:
         'Keep one Foundry session listener active and atomically claim the next reviewed Apply run or grounded Visual Agent conversation request.',
       inputSchema: z.object({
@@ -241,6 +253,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_wait_for_apply',
     {
+      annotations: localUpdate,
       description:
         'Wait for the user to review a Foundry batch and press Apply with agent, then atomically claim that apply run.',
       inputSchema: z.object({
@@ -332,6 +345,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_wait_for_visual_request',
     {
+      annotations: localUpdate,
       description:
         'Wait for a Foundry user to ask about selected pixels or a canvas region, then claim the durable visual conversation request with its source, viewport, theme, state, measurements, comments, tokens, and design memory context.',
       inputSchema: z.object({
@@ -422,6 +436,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_get_visual_request',
     {
+      annotations: localRead,
       description:
         'Read one persistent visual conversation request and its grounded context, messages, proposals, and status.',
       inputSchema: z.object({
@@ -443,6 +458,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_respond_to_visual_request',
     {
+      annotations: localUpdate,
       description:
         'Return grounded visual reasoning and one or more exact, independently previewable design proposals. Proposals remain separate from Review until the user previews and promotes one.',
       inputSchema: z.object({
@@ -485,6 +501,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_heartbeat_apply_run',
     {
+      annotations: localUpdate,
       description:
         'Extend a claimed Foundry handoff lease while inspecting source before source work begins.',
       inputSchema: z.object({
@@ -513,6 +530,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_get_apply_run',
     {
+      annotations: localRead,
       description: 'Read one persistent Foundry apply run, including progress and verification.',
       inputSchema: z.object({
         sessionId: z.string().optional(),
@@ -533,6 +551,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_update_apply_run',
     {
+      annotations: localUpdate,
       description:
         'Report source-edit, rebuild, validation, verification-request, or failure progress for a claimed Foundry apply run.',
       inputSchema: z.object({
@@ -573,6 +592,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_review_change',
     {
+      annotations: localUpdate,
       description: 'Mark one recorded design change approved or rejected during the review step.',
       inputSchema: z.object({
         sessionId: z.string().optional(),
@@ -594,6 +614,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_export',
     {
+      annotations: localRead,
       description:
         'Export a reviewed Foundry change set as canonical JSON or one consolidated coding-agent prompt.',
       inputSchema: z.object({
@@ -615,6 +636,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_record_apply_result',
     {
+      annotations: localUpdate,
       description:
         'Acknowledge that the exact frozen changes for a claimed apply run produced a source diff. This tool does not edit source files or complete verification.',
       inputSchema: z
@@ -663,6 +685,7 @@ serveStdio(() => {
   server.registerTool(
     'foundry_design_record_verification',
     {
+      annotations: localUpdate,
       description: 'Store measured post-build verification results for the applied change set.',
       inputSchema: z.object({
         sessionId: z.string().optional(),
