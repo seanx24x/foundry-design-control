@@ -50,10 +50,10 @@ test('desktop candidate is self-contained, isolated and honest about review gate
       assert.equal(extension.review.commerce, false);
       assert.ok(extension.review.commerce_description.includes('does not offer payments'));
       assert.ok(extension.publication.release_notes.length > 0);
-      assert.equal(
+      assert.deepEqual(
         extension.publication.countries,
-        undefined,
-        'Unknown targeting must stay absent',
+        [],
+        'Publisher explicitly selected all platform-supported countries',
       );
       assert.equal(extension.publication.translations, undefined, 'Do not invent translations');
       assert.match(extension.interface.longDescription, /currently in English/);

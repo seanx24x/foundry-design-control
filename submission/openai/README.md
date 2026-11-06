@@ -10,7 +10,7 @@ Find the intended publishing organization's ID in [OpenAI Platform settings](htt
 
 The publisher has selected **Sean Lynch** as the public name and confirmed **no payments or purchases**. These values populate the package; developer identity verification in the portal remains unverified. The base listing is English and accurately states that the interface and documentation are currently English-only. No translations are fabricated.
 
-Country availability is still a publisher decision. English-only is a language description, not a country selection. Recommend all countries supported by the host, but leave `publication.countries` absent until the publisher explicitly confirms. An empty array would actively remove country restrictions and must not be inferred.
+The publisher explicitly selected **all platform-supported countries**, with English-only language coverage stated in the listing. Encode this as `publication.countries: []`, which removes publisher-imposed country restrictions; the platform's own availability limits still apply. No translations or additional language support are implied.
 
 The candidate rasterizes the existing logo into a 512px PNG, retains review prompts, five distinct tool-specific positive cases and three negative cases, declares no commerce, and includes release notes. MCP read/write/destructive/open-world annotations are explicit in the bundled candidate bridge. The published npm bridge and Claude registry launcher remain at their existing release; pending source annotations do not change those published bytes. A future release must be versioned and verified separately if these server changes are published.
 
@@ -33,7 +33,7 @@ Each build creates a new directory under `artifacts/openai/`, preserving earlier
 2. Complete a clean desktop install and the workflows in [the reviewer guide](../reviewer-guide.md). Expected cases are not executed evidence.
 3. Supply a genuine workflow recording. The website's authored concept film is not agent/source-verification evidence.
 4. Open [the plugin portal](https://platform.openai.com/plugins), select **Create plugin → Skills only → Upload ZIP**, and upload the **complete desktop plugin ZIP, including local MCP**. That UI label does not mean removing the bridge.
-5. Review imported listing metadata and test cases, choose country availability, and enter any private reviewer details separately. No Foundry account or API key is required.
+5. Review imported listing metadata and test cases, verify that all platform-supported countries are selected, and enter any private reviewer details separately. No Foundry account or API key is required.
 6. The publisher completes policy attestations, submits, and explicitly publishes only after approval.
 
 If `requires_local_executor` or local MCP is rejected, confirm allowlisting with OpenAI rather than stripping the restriction. Automated smoke tests do not prove a real desktop install or directory acceptance.

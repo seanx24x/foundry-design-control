@@ -5,6 +5,7 @@
   "longDescription": "Foundry turns a running product into a local design workbench for coding agents. Select and manipulate rendered elements, inspect project-native tokens and components, review a source-mapped change set, apply only approved changes, and verify the rebuilt result. Foundry stores preview state and apply history locally; your coding-agent provider has its own data policies. The interface and documentation are currently in English.",
   "category": "Productivity",
   "developerName": "Sean Lynch",
+  "countries": [],
   "commerce": false,
   "commerceDescription": "Foundry does not offer payments, purchases or subscriptions through the plugin.",
   "websiteURL": "https://withfoundry.ai",

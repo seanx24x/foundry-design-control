@@ -196,8 +196,8 @@ export async function buildSubmission() {
       'OpenAI organization allowlist confirmation',
       'Fresh desktop client install and workflow review',
       'Genuine reviewer recording',
-      'Publisher country availability decision',
-      'Publisher identity, availability and policy decisions',
+      ...(!Array.isArray(listing.countries) ? ['Publisher country availability decision'] : []),
+      'Publisher identity verification and policy acknowledgements',
       'Portal validation and review',
     ],
   };
